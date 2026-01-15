@@ -121,7 +121,7 @@ jobs:
           ref: ${{ needs.semantic-release.outputs.new_release_git_tag }}
 
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@7b1c307e0dcbda6122208f10795a713336a9b35a # master
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9
         with:
           toolchain: stable
           targets: ${{ matrix.target }}
@@ -245,7 +245,7 @@ jobs:
           ref: ${{ needs.semantic-release.outputs.new_release_git_tag }}
 
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@7b1c307e0dcbda6122208f10795a713336a9b35a # master
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9
         with:
           toolchain: stable
 
