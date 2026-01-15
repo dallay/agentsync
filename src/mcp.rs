@@ -910,8 +910,15 @@ mod tests {
 
         // Verify OpenCode specific structure
         assert_eq!(fs_server.get("type").unwrap().as_str().unwrap(), "local");
-        assert!(fs_server.get("command").unwrap().as_array().unwrap().len() > 0);
-        assert_eq!(fs_server.get("enabled").unwrap().as_bool().unwrap(), true);
+        assert!(
+            !fs_server
+                .get("command")
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+        assert!(fs_server.get("enabled").unwrap().as_bool().unwrap());
     }
 
     #[test]
