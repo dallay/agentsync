@@ -13,7 +13,7 @@ The release build artifact will be located at `./target/release/agentsync`.
 
 #### TypeScript Component
 ```bash
-npm run build
+pnpm run build
 ```
 This generates transpiled JavaScript output in the `lib` directory.
 
@@ -29,7 +29,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 #### TypeScript
 Type checking and linting with:
 ```bash
-npm run typecheck
+pnpm run typecheck
 ```
 
 ### Testing
