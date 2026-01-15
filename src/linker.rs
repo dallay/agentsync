@@ -414,6 +414,55 @@ impl Linker {
 
         Ok(result)
     }
+
+    /// Sync MCP configurations for all enabled agents
+    pub fn sync_mcp(&self, dry_run: bool) -> Result<crate::mcp::McpSyncResult> {
+        use crate::mcp::{McpAgent, McpGenerator};
+
+        if !self.config.mcp.enabled {
+            return Ok(crate::mcp::McpSyncResult::default());
+        }
+
+        if self.config.mcp_servers.is_empty() {
+            return Ok(crate::mcp::McpSyncResult::default());
+        }
+
+        // Determine which agents should receive MCP configs
+        let enabled_agents = McpGenerator::get_enabled_agents_from_config(&self.config.agents);
+
+        // If no agents map to MCP agents, skip
+        if enabled_agents.is_empty() {
+            // Fall back to generating for all known MCP agents that are not explicitly disabled
+            let all_agents: Vec<McpAgent> = McpAgent::all()
+                .iter()
+                .filter(|agent| {
+                    // Check if this agent is NOT explicitly disabled in config
+                    self.config
+                        .agents
+                        .get(agent.id())
+                        .map(|a| a.enabled)
+                        .unwrap_or(true) // Default to enabled if not configured
+                })
+                .copied()
+                .collect();
+
+            if all_agents.is_empty() {
+                return Ok(crate::mcp::McpSyncResult::default());
+            }
+
+            let generator = McpGenerator::new(
+                self.config.mcp_servers.clone(),
+                self.config.mcp.merge_strategy,
+            );
+            return generator.generate_all(&self.project_root, &all_agents, dry_run);
+        }
+
+        let generator = McpGenerator::new(
+            self.config.mcp_servers.clone(),
+            self.config.mcp.merge_strategy,
+        );
+        generator.generate_all(&self.project_root, &enabled_agents, dry_run)
+    }
 }
 
 /// Simple glob pattern matching (supports * and ?)
@@ -1141,5 +1190,111 @@ mod tests {
         // Should be a reasonable Unix timestamp (after year 2020)
         let ts_num: u64 = ts.parse().unwrap();
         assert!(ts_num > 1577836800); // 2020-01-01
+    }
+
+    // ==========================================================================
+    // MCP SYNC TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_sync_mcp_disabled_returns_empty() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            
+            [mcp]
+            enabled = false
+            
+            [mcp_servers.test]
+            command = "test"
+            
+            [agents.test]
+            enabled = true
+            [agents.test.targets.main]
+            source = "AGENTS.md"
+            destination = "TEST.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker.sync_mcp(false).unwrap();
+
+        // Should return empty result when MCP is disabled
+        assert_eq!(result.created, 0);
+        assert_eq!(result.updated, 0);
+    }
+
+    #[test]
+    fn test_sync_mcp_no_servers_returns_empty() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            
+            [mcp]
+            enabled = true
+            
+            [agents.test]
+            enabled = true
+            [agents.test.targets.main]
+            source = "AGENTS.md"
+            destination = "TEST.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker.sync_mcp(false).unwrap();
+
+        // Should return empty when no MCP servers defined
+        assert_eq!(result.created, 0);
+    }
+
+    #[test]
+    fn test_sync_mcp_creates_config_files() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            
+            [mcp]
+            enabled = true
+            
+            [mcp_servers.filesystem]
+            command = "npx"
+            args = ["-y", "@modelcontextprotocol/server-filesystem", "."]
+            
+            [agents.claude]
+            enabled = true
+            [agents.claude.targets.main]
+            source = "AGENTS.md"
+            destination = "CLAUDE.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker.sync_mcp(false).unwrap();
+
+        // Should create MCP config for Claude
+        assert!(result.created > 0);
+        assert!(temp_dir.path().join(".mcp.json").exists());
     }
 }

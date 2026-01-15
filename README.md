@@ -165,6 +165,46 @@ type = "symlink-contents"
 pattern = "*.agent.md"
 ```
 
+### MCP Support (Model Context Protocol)
+
+AgentSync can automatically generate MCP configuration files for supported agents (Claude Code, GitHub Copilot, Gemini CLI, VS Code).
+
+This allows you to define MCP servers once in `agentsync.toml` and have them synchronized to all agent-specific config files.
+
+```toml
+[mcp]
+enabled = true
+# Strategy for existing files: "merge" (default) or "overwrite"
+# "merge" preserves existing servers but overwrites conflicts with TOML config
+merge_strategy = "merge"
+
+# Define servers once
+[mcp_servers.filesystem]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem", "."]
+
+[mcp_servers.git]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-git", "--repository", "."]
+# Optional fields:
+# env = { "KEY" = "VALUE" }
+# disabled = false
+```
+
+#### Supported Agents & File Locations
+- **Claude Code**: `.mcp.json`
+- **GitHub Copilot**: `.copilot/mcp-config.json`
+- **Gemini CLI**: `.gemini/settings.json` (automatically adds `trust: true`)
+- **VS Code**: `.vscode/mcp.json`
+- **OpenCode**: `.opencode/mcp.json`
+
+#### Merge Behavior
+When `merge_strategy = "merge"`:
+1. AgentSync reads the existing config file (if it exists).
+2. It adds servers defined in `agentsync.toml`.
+3. **Conflict Resolution**: If a server name exists in both, the definition in `agentsync.toml` **wins** and overwrites the existing one.
+4. Existing servers NOT in `agentsync.toml` are preserved.
+
 ### Target Types
 
 | Type | Description |
