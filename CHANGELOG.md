@@ -1,3 +1,10 @@
+## [1.2.0](https://github.com/dallay/agentsync/compare/v1.1.1...v1.2.0) (2026-01-15)
+
+### ✨ Features
+
+* add NPM wrapper for npx distribution ([0658101](https://github.com/dallay/agentsync/commit/0658101f7cf48fca2229caf849ecec3812b94ba2))
+* add npx wrapper for agentsync and publish platform-specific NPM packages ([3f2ed71](https://github.com/dallay/agentsync/commit/3f2ed71224d8b732a7b7e8df99dac283f5f7e7eb))
+
 ## [1.1.1](https://github.com/dallay/agentsync/compare/v1.1.0...v1.1.1) (2026-01-15)
 
 ### 🐛 Bug Fixes
