@@ -24,7 +24,7 @@ marker = "AI Agent Symlinks"
 # MCP (Model Context Protocol) Configuration
 # =============================================================================
 # Define MCP servers once here, and AgentSync will generate the appropriate
-# config files for each AI agent (Claude, Copilot, Gemini, VS Code).
+# config files for each AI agent (Claude, Copilot, Gemini, VS Code, OpenCode).
 #
 # [mcp]
 # enabled = true
