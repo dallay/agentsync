@@ -4,7 +4,7 @@
 //! configurations should be synchronized via symbolic links.
 
 use anyhow::{Context, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -29,6 +29,14 @@ pub struct Config {
     /// Gitignore management settings
     #[serde(default)]
     pub gitignore: GitignoreConfig,
+
+    /// MCP global settings
+    #[serde(default)]
+    pub mcp: McpGlobalConfig,
+
+    /// MCP server definitions
+    #[serde(default)]
+    pub mcp_servers: HashMap<String, McpServerConfig>,
 }
 
 fn default_source_dir() -> String {
@@ -111,6 +119,78 @@ impl Default for GitignoreConfig {
             entries: Vec::new(),
         }
     }
+}
+
+// =============================================================================
+// MCP Configuration
+// =============================================================================
+
+/// Global MCP configuration settings
+#[derive(Debug, Deserialize, Clone)]
+pub struct McpGlobalConfig {
+    /// Enable/disable MCP propagation globally
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
+    /// Global merge strategy: 'merge' or 'overwrite'
+    #[serde(default)]
+    pub merge_strategy: McpMergeStrategy,
+}
+
+impl Default for McpGlobalConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            merge_strategy: McpMergeStrategy::default(),
+        }
+    }
+}
+
+/// Merge strategy for MCP configurations
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum McpMergeStrategy {
+    /// Merge with existing configuration (default)
+    #[default]
+    Merge,
+    /// Overwrite existing configuration completely
+    Overwrite,
+}
+
+/// Configuration for a single MCP server
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct McpServerConfig {
+    /// Command to execute (for stdio transport)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+
+    /// Arguments for the command
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub args: Vec<String>,
+
+    /// Environment variables
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub env: HashMap<String, String>,
+
+    /// URL for HTTP/SSE transport
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+
+    /// HTTP headers (for remote servers)
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub headers: HashMap<String, String>,
+
+    /// Transport type (stdio, http, sse)
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub transport_type: Option<String>,
+
+    /// Whether the server is disabled
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub disabled: bool,
+}
+
+fn is_false(v: &bool) -> bool {
+    !*v
 }
 
 impl Config {
@@ -666,5 +746,199 @@ mod tests {
 
         let config: Config = toml::from_str(toml).unwrap();
         assert!(!config.gitignore.enabled);
+    }
+
+    // ==========================================================================
+    // MCP CONFIG TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_mcp_config_defaults() {
+        let toml = "";
+        let config: Config = toml::from_str(toml).unwrap();
+
+        assert!(config.mcp.enabled);
+        assert_eq!(config.mcp.merge_strategy, McpMergeStrategy::Merge);
+        assert!(config.mcp_servers.is_empty());
+    }
+
+    #[test]
+    fn test_mcp_config_disabled() {
+        let toml = r#"
+            [mcp]
+            enabled = false
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        assert!(!config.mcp.enabled);
+    }
+
+    #[test]
+    fn test_mcp_merge_strategy_overwrite() {
+        let toml = r#"
+            [mcp]
+            merge_strategy = "overwrite"
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        assert_eq!(config.mcp.merge_strategy, McpMergeStrategy::Overwrite);
+    }
+
+    #[test]
+    fn test_mcp_server_stdio_config() {
+        let toml = r#"
+            [mcp_servers.filesystem]
+            command = "npx"
+            args = ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/project"]
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        let server = &config.mcp_servers["filesystem"];
+
+        assert_eq!(server.command.as_deref(), Some("npx"));
+        assert_eq!(server.args.len(), 3);
+        assert_eq!(server.args[0], "-y");
+        assert!(server.url.is_none());
+    }
+
+    #[test]
+    fn test_mcp_server_with_env() {
+        let toml = r#"
+            [mcp_servers.test]
+            command = "node"
+            args = ["server.js"]
+            
+            [mcp_servers.test.env]
+            DEBUG = "true"
+            API_KEY = "${MY_API_KEY}"
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        let server = &config.mcp_servers["test"];
+
+        assert_eq!(server.env.get("DEBUG"), Some(&"true".to_string()));
+        assert_eq!(
+            server.env.get("API_KEY"),
+            Some(&"${MY_API_KEY}".to_string())
+        );
+    }
+
+    #[test]
+    fn test_mcp_server_remote_url() {
+        let toml = r#"
+            [mcp_servers.remote_api]
+            url = "https://api.example.com"
+            
+            [mcp_servers.remote_api.headers]
+            Authorization = "Bearer token123"
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        let server = &config.mcp_servers["remote_api"];
+
+        assert_eq!(server.url.as_deref(), Some("https://api.example.com"));
+        assert_eq!(
+            server.headers.get("Authorization"),
+            Some(&"Bearer token123".to_string())
+        );
+        assert!(server.command.is_none());
+    }
+
+    #[test]
+    fn test_mcp_server_disabled() {
+        let toml = r#"
+            [mcp_servers.disabled_server]
+            command = "npx"
+            args = ["server"]
+            disabled = true
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        let server = &config.mcp_servers["disabled_server"];
+
+        assert!(server.disabled);
+    }
+
+    #[test]
+    fn test_mcp_multiple_servers() {
+        let toml = r#"
+            [mcp]
+            enabled = true
+            merge_strategy = "merge"
+            
+            [mcp_servers.filesystem]
+            command = "npx"
+            args = ["-y", "@modelcontextprotocol/server-filesystem", "."]
+            
+            [mcp_servers.git]
+            command = "npx"
+            args = ["-y", "@modelcontextprotocol/server-git", "--repository", "."]
+            
+            [mcp_servers.postgres]
+            command = "npx"
+            args = ["-y", "@modelcontextprotocol/server-postgres"]
+            
+            [mcp_servers.postgres.env]
+            DATABASE_URL = "${DATABASE_URL}"
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+
+        assert_eq!(config.mcp_servers.len(), 3);
+        assert!(config.mcp_servers.contains_key("filesystem"));
+        assert!(config.mcp_servers.contains_key("git"));
+        assert!(config.mcp_servers.contains_key("postgres"));
+    }
+
+    #[test]
+    fn test_mcp_full_config_with_agents() {
+        let toml = r#"
+            source_dir = "."
+            
+            [mcp]
+            enabled = true
+            
+            [mcp_servers.filesystem]
+            command = "npx"
+            args = ["-y", "@modelcontextprotocol/server-filesystem", "."]
+            
+            [agents.claude]
+            enabled = true
+            
+            [agents.claude.targets.instructions]
+            source = "AGENTS.md"
+            destination = "CLAUDE.md"
+            type = "symlink"
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+
+        // MCP config should coexist with agent config
+        assert!(config.mcp.enabled);
+        assert_eq!(config.mcp_servers.len(), 1);
+        assert!(config.agents.contains_key("claude"));
+    }
+
+    #[test]
+    fn test_mcp_server_config_serialization() {
+        let server = McpServerConfig {
+            command: Some("npx".to_string()),
+            args: vec!["-y".to_string(), "server".to_string()],
+            env: HashMap::from([("DEBUG".to_string(), "true".to_string())]),
+            url: None,
+            headers: HashMap::new(),
+            transport_type: Some("stdio".to_string()),
+            disabled: false,
+        };
+
+        let json = serde_json::to_string(&server).unwrap();
+
+        // Should serialize command and args
+        assert!(json.contains("\"command\":\"npx\""));
+        assert!(json.contains("\"args\":["));
+        // Should NOT serialize empty headers
+        assert!(!json.contains("\"headers\""));
+        // Should NOT serialize disabled=false
+        assert!(!json.contains("\"disabled\""));
     }
 }

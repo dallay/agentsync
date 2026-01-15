@@ -8,6 +8,8 @@ pub mod config;
 pub mod gitignore;
 pub mod init;
 pub mod linker;
+pub mod mcp;
 
 pub use config::Config;
 pub use linker::{Linker, SyncOptions, SyncResult};
+pub use mcp::{McpAgent, McpGenerator, McpSyncResult};

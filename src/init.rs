@@ -21,6 +21,24 @@ marker = "AI Agent Symlinks"
 # entries = ["custom-file.md"]
 
 # =============================================================================
+# MCP (Model Context Protocol) Configuration
+# =============================================================================
+# Define MCP servers once here, and AgentSync will generate the appropriate
+# config files for each AI agent (Claude, Copilot, Gemini, VS Code, OpenCode).
+#
+# [mcp]
+# enabled = true
+# merge_strategy = "merge"  # "merge" (default) or "overwrite"
+#
+# [mcp_servers.filesystem]
+# command = "npx"
+# args = ["-y", "@modelcontextprotocol/server-filesystem", "."]
+#
+# [mcp_servers.git]
+# command = "npx"
+# args = ["-y", "@modelcontextprotocol/server-git", "--repository", "."]
+
+# =============================================================================
 # Agent Configurations
 # =============================================================================
 # Each agent has:

@@ -5,21 +5,23 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub release](https://img.shields.io/github/v/release/dallay/agentsync)](https://github.com/dallay/agentsync/releases)
 
-A fast, portable CLI tool for synchronizing AI agent configurations across multiple AI coding assistants using symbolic links.
+A fast, portable CLI tool for synchronizing AI agent configurations across multiple AI coding
+assistants using symbolic links.
 
 ## Why AgentSync?
 
 Different AI coding tools expect configuration files in different locations:
 
-| Tool | Instructions | Commands | Skills |
-|------|--------------|----------|--------|
-| **Claude Code** | `CLAUDE.md` | `.claude/commands/` | `.claude/skills/` |
-| **GitHub Copilot** | `.github/copilot-instructions.md` | `.github/agents/` | - |
-| **Gemini CLI** | `GEMINI.md` | `.gemini/commands/` | `.gemini/skills/` |
-| **OpenCode** | - | `.opencode/command/` | `.opencode/skill/` |
-| **Cursor** | `.cursor/rules` | - | - |
+| Tool               | Instructions                      | Commands             | Skills             |
+|--------------------|-----------------------------------|----------------------|--------------------|
+| **Claude Code**    | `CLAUDE.md`                       | `.claude/commands/`  | `.claude/skills/`  |
+| **GitHub Copilot** | `.github/copilot-instructions.md` | `.github/agents/`    | -                  |
+| **Gemini CLI**     | `GEMINI.md`                       | `.gemini/commands/`  | `.gemini/skills/`  |
+| **OpenCode**       | -                                 | `.opencode/command/` | `.opencode/skill/` |
+| **Cursor**         | `.cursor/rules`                   | -                    | -                  |
 
-AgentSync maintains a **single source of truth** in `.agents/` and creates symlinks to all required locations.
+AgentSync maintains a **single source of truth** in `.agents/` and creates symlinks to all required
+locations.
 
 ## Features
 
@@ -165,14 +167,61 @@ type = "symlink-contents"
 pattern = "*.agent.md"
 ```
 
+### MCP Support (Model Context Protocol)
+
+AgentSync can automatically generate MCP configuration files for supported agents (Claude Code,
+GitHub Copilot, Gemini CLI, VS Code).
+
+This allows you to define MCP servers once in `agentsync.toml` and have them synchronized to all
+agent-specific config files.
+
+```toml
+[mcp]
+enabled = true
+# Strategy for existing files: "merge" (default) or "overwrite"
+# "merge" preserves existing servers but overwrites conflicts with TOML config
+merge_strategy = "merge"
+
+# Define servers once
+[mcp_servers.filesystem]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem", "."]
+
+[mcp_servers.git]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-git", "--repository", "."]
+# Optional fields:
+# env = { "KEY" = "VALUE" }
+# disabled = false
+```
+
+#### Supported Agents & File Locations
+
+- **Claude Code**: `.mcp.json`
+- **GitHub Copilot**: `.copilot/mcp-config.json`
+- **Gemini CLI**: `.gemini/settings.json` (automatically adds `trust: true`)
+- **VS Code**: `.vscode/mcp.json`
+- **OpenCode**: `.opencode/mcp.json`
+
+#### Merge Behavior
+
+When `merge_strategy = "merge"`:
+
+1. AgentSync reads the existing config file (if it exists).
+2. It adds servers defined in `agentsync.toml`.
+3. **Conflict Resolution**: If a server name exists in both, the definition in `agentsync.toml` *
+   *wins** and overwrites the existing one.
+4. Existing servers NOT in `agentsync.toml` are preserved.
+
 ### Target Types
 
-| Type | Description |
-|------|-------------|
-| `symlink` | Create a symlink to the source file/directory |
+| Type               | Description                                           |
+|--------------------|-------------------------------------------------------|
+| `symlink`          | Create a symlink to the source file/directory         |
 | `symlink-contents` | Create symlinks for each file in the source directory |
 
-The `symlink-contents` type optionally supports a `pattern` field (glob pattern like `*.md`) to filter which files to link.
+The `symlink-contents` type optionally supports a `pattern` field (glob pattern like `*.md`) to
+filter which files to link.
 
 ## Project Structure
 
@@ -237,7 +286,8 @@ If you need agentsync in CI, add it to your workflow:
 
 ## Inspiration
 
-- [Ruler](https://github.com/intellectronica/ruler) - Similar concept but copies files instead of using symlinks
+- [Ruler](https://github.com/intellectronica/ruler) - Similar concept but copies files instead of
+  using symlinks
 
 ## Contributing
 

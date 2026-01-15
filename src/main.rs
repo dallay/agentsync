@@ -157,7 +157,7 @@ fn main() -> Result<()> {
                 agents,
             };
 
-            let result = linker.sync(&options)?;
+            let mut result = linker.sync(&options)?;
 
             // Update gitignore
             if !no_gitignore && linker.config().gitignore.enabled {
@@ -169,6 +169,26 @@ fn main() -> Result<()> {
                     &entries,
                     dry_run,
                 )?;
+            }
+
+            // Sync MCP configurations
+            if linker.config().mcp.enabled && !linker.config().mcp_servers.is_empty() {
+                println!("\n{}", "➤ Syncing MCP configurations".cyan().bold());
+                match linker.sync_mcp(dry_run) {
+                    Ok(mcp_result) => {
+                        if mcp_result.created > 0 || mcp_result.updated > 0 {
+                            println!(
+                                "  MCP configs: Created {}, Updated {}",
+                                mcp_result.created.to_string().green(),
+                                mcp_result.updated.to_string().yellow()
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("  {} Error syncing MCP configs: {}", "✘".red(), e);
+                        result.errors += 1;
+                    }
+                }
             }
 
             // Summary
