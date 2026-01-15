@@ -1295,6 +1295,27 @@ mod tests {
 
         // Should create MCP config for Claude
         assert!(result.created > 0);
-        assert!(temp_dir.path().join(".mcp.json").exists());
+        let mcp_config_path = temp_dir.path().join(".mcp.json");
+        assert!(mcp_config_path.exists());
+
+        // Verify content
+        let content = fs::read_to_string(&mcp_config_path).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+        let servers = parsed.get("mcpServers").expect("mcpServers key missing");
+        let filesystem = servers
+            .get("filesystem")
+            .expect("filesystem server missing");
+
+        assert_eq!(filesystem.get("command").unwrap().as_str().unwrap(), "npx");
+
+        let args = filesystem.get("args").unwrap().as_array().unwrap();
+        assert_eq!(args.len(), 3);
+        assert_eq!(args[0].as_str().unwrap(), "-y");
+        assert_eq!(
+            args[1].as_str().unwrap(),
+            "@modelcontextprotocol/server-filesystem"
+        );
+        assert_eq!(args[2].as_str().unwrap(), ".");
     }
 }

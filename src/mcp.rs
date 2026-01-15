@@ -53,7 +53,7 @@ pub enum McpAgent {
     GeminiCli,
     /// VS Code (.vscode/mcp.json)
     VsCode,
-    /// OpenCode (.opencode/mcp.json)
+    /// OpenCode (opencode.json)
     OpenCode,
 }
 
@@ -152,6 +152,56 @@ pub trait McpFormatter: Send + Sync {
 }
 
 // =============================================================================
+// Standard MCP Helper Functions
+// =============================================================================
+
+/// Format servers into standard { "mcpServers": { ... } } structure
+fn format_standard_mcp(servers: &HashMap<String, &McpServerConfig>) -> Value {
+    let mut mcp_servers = Map::new();
+
+    for (name, config) in servers {
+        mcp_servers.insert(name.clone(), server_to_json(config));
+    }
+
+    json!({
+        "mcpServers": mcp_servers
+    })
+}
+
+/// Parse standard MCP config structure
+fn parse_standard_mcp(content: &str, context_msg: &str) -> Result<HashMap<String, Value>> {
+    let parsed: Value = serde_json::from_str(content).context(context_msg.to_string())?;
+
+    let servers = parsed
+        .get("mcpServers")
+        .and_then(|v| v.as_object())
+        .map(|obj| obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+        .unwrap_or_default();
+
+    Ok(servers)
+}
+
+/// Merge new servers into standard MCP config structure
+fn merge_standard_mcp(
+    existing_content: &str,
+    new_servers: &HashMap<String, &McpServerConfig>,
+    context_msg: &str,
+) -> Result<String> {
+    let mut existing = parse_standard_mcp(existing_content, context_msg)?;
+
+    // New servers override existing ones with same name
+    for (name, config) in new_servers {
+        existing.insert(name.clone(), server_to_json(config));
+    }
+
+    let output = json!({
+        "mcpServers": existing
+    });
+
+    serde_json::to_string_pretty(&output).context("Failed to serialize merged config")
+}
+
+// =============================================================================
 // Claude Code Formatter
 // =============================================================================
 
@@ -162,28 +212,11 @@ pub struct ClaudeCodeFormatter;
 
 impl McpFormatter for ClaudeCodeFormatter {
     fn format(&self, servers: &HashMap<String, &McpServerConfig>) -> Value {
-        let mut mcp_servers = Map::new();
-
-        for (name, config) in servers {
-            mcp_servers.insert(name.clone(), server_to_json(config));
-        }
-
-        json!({
-            "mcpServers": mcp_servers
-        })
+        format_standard_mcp(servers)
     }
 
     fn parse_existing(&self, content: &str) -> Result<HashMap<String, Value>> {
-        let parsed: Value =
-            serde_json::from_str(content).context("Failed to parse existing MCP config as JSON")?;
-
-        let servers = parsed
-            .get("mcpServers")
-            .and_then(|v| v.as_object())
-            .map(|obj| obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
-            .unwrap_or_default();
-
-        Ok(servers)
+        parse_standard_mcp(content, "Failed to parse existing MCP config as JSON")
     }
 
     fn merge(
@@ -191,18 +224,11 @@ impl McpFormatter for ClaudeCodeFormatter {
         existing_content: &str,
         new_servers: &HashMap<String, &McpServerConfig>,
     ) -> Result<String> {
-        let mut existing = self.parse_existing(existing_content)?;
-
-        // New servers override existing ones with same name
-        for (name, config) in new_servers {
-            existing.insert(name.clone(), server_to_json(config));
-        }
-
-        let output = json!({
-            "mcpServers": existing
-        });
-
-        serde_json::to_string_pretty(&output).context("Failed to serialize merged config")
+        merge_standard_mcp(
+            existing_content,
+            new_servers,
+            "Failed to parse existing MCP config as JSON",
+        )
     }
 }
 
@@ -217,28 +243,14 @@ pub struct GithubCopilotFormatter;
 
 impl McpFormatter for GithubCopilotFormatter {
     fn format(&self, servers: &HashMap<String, &McpServerConfig>) -> Value {
-        let mut mcp_servers = Map::new();
-
-        for (name, config) in servers {
-            mcp_servers.insert(name.clone(), server_to_json(config));
-        }
-
-        json!({
-            "mcpServers": mcp_servers
-        })
+        format_standard_mcp(servers)
     }
 
     fn parse_existing(&self, content: &str) -> Result<HashMap<String, Value>> {
-        let parsed: Value = serde_json::from_str(content)
-            .context("Failed to parse existing Copilot MCP config as JSON")?;
-
-        let servers = parsed
-            .get("mcpServers")
-            .and_then(|v| v.as_object())
-            .map(|obj| obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
-            .unwrap_or_default();
-
-        Ok(servers)
+        parse_standard_mcp(
+            content,
+            "Failed to parse existing Copilot MCP config as JSON",
+        )
     }
 
     fn merge(
@@ -246,17 +258,11 @@ impl McpFormatter for GithubCopilotFormatter {
         existing_content: &str,
         new_servers: &HashMap<String, &McpServerConfig>,
     ) -> Result<String> {
-        let mut existing = self.parse_existing(existing_content)?;
-
-        for (name, config) in new_servers {
-            existing.insert(name.clone(), server_to_json(config));
-        }
-
-        let output = json!({
-            "mcpServers": existing
-        });
-
-        serde_json::to_string_pretty(&output).context("Failed to serialize merged config")
+        merge_standard_mcp(
+            existing_content,
+            new_servers,
+            "Failed to parse existing Copilot MCP config as JSON",
+        )
     }
 }
 
@@ -339,28 +345,14 @@ pub struct VsCodeFormatter;
 
 impl McpFormatter for VsCodeFormatter {
     fn format(&self, servers: &HashMap<String, &McpServerConfig>) -> Value {
-        let mut mcp_servers = Map::new();
-
-        for (name, config) in servers {
-            mcp_servers.insert(name.clone(), server_to_json(config));
-        }
-
-        json!({
-            "mcpServers": mcp_servers
-        })
+        format_standard_mcp(servers)
     }
 
     fn parse_existing(&self, content: &str) -> Result<HashMap<String, Value>> {
-        let parsed: Value = serde_json::from_str(content)
-            .context("Failed to parse existing VS Code MCP config as JSON")?;
-
-        let servers = parsed
-            .get("mcpServers")
-            .and_then(|v| v.as_object())
-            .map(|obj| obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
-            .unwrap_or_default();
-
-        Ok(servers)
+        parse_standard_mcp(
+            content,
+            "Failed to parse existing VS Code MCP config as JSON",
+        )
     }
 
     fn merge(
@@ -368,17 +360,11 @@ impl McpFormatter for VsCodeFormatter {
         existing_content: &str,
         new_servers: &HashMap<String, &McpServerConfig>,
     ) -> Result<String> {
-        let mut existing = self.parse_existing(existing_content)?;
-
-        for (name, config) in new_servers {
-            existing.insert(name.clone(), server_to_json(config));
-        }
-
-        let output = json!({
-            "mcpServers": existing
-        });
-
-        serde_json::to_string_pretty(&output).context("Failed to serialize merged config")
+        merge_standard_mcp(
+            existing_content,
+            new_servers,
+            "Failed to parse existing VS Code MCP config as JSON",
+        )
     }
 }
 
