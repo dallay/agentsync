@@ -1,3 +1,17 @@
+## [1.1.0](https://github.com/dallay/agentsync/compare/v1.0.0...v1.1.0) (2026-01-15)
+
+### ✨ Features
+
+* add Docker support and publish workflow to release pipeline ([62c8ac0](https://github.com/dallay/agentsync/commit/62c8ac02a725521b250909f910f652dd6b9ffdc1))
+* complete release workflow with docker support and security hardening ([e5ef7eb](https://github.com/dallay/agentsync/commit/e5ef7eb0f8e9fa11cef5a0dc7991fbc92a26297d))
+* update actions/checkout version to v6 in CI and release workflows ([34a6a7d](https://github.com/dallay/agentsync/commit/34a6a7d112885ca1545805ad6bfc4d5f6f3fa0b2))
+* update Rust toolchain version in release workflow ([0485d00](https://github.com/dallay/agentsync/commit/0485d006bfaadb3a19c6ff0c59649d04cc2f964c))
+
+### 🐛 Bug Fixes
+
+* replace dtolnay/rust-action with correct rust-toolchain action in CI ([59fd667](https://github.com/dallay/agentsync/commit/59fd6670b8956ec387eceaa8c394913d2d6327ef))
+* resolve clippy warnings and formatting issues ([60a7674](https://github.com/dallay/agentsync/commit/60a767478d96f5428f2f8a41cf5004bf5b7696f8))
+
 ## 1.0.0 (2026-01-15)
 
 ### ✨ Features
