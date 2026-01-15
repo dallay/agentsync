@@ -1,3 +1,18 @@
+## [1.3.0](https://github.com/dallay/agentsync/compare/v1.2.0...v1.3.0) (2026-01-15)
+
+### ✨ Features
+
+* add MCP (Model Context Protocol) config generation for Claude, Copilot, Gemini, VS Code, and OpenCode ([f555e95](https://github.com/dallay/agentsync/commit/f555e95f7afcf282af31f6f5554ab42d35e4fbb0))
+
+### ♻️ Refactors
+
+* extract standard MCP config helpers and deduplicate formatter logic ([2a9a025](https://github.com/dallay/agentsync/commit/2a9a02528c0261f15dd2320a1af361d1b781f2f5))
+
+### 📝 Documentation
+
+* add AGENTS.md for build, lint, and test commands ([2d3f1a4](https://github.com/dallay/agentsync/commit/2d3f1a4ba6df11866fdd61d05e467bf4603826ef))
+* improve README formatting and clarify MCP and target type sections ([a63df17](https://github.com/dallay/agentsync/commit/a63df17545943b7ce761b6cfd7b638cd18bf0386))
+
 ## [1.2.0](https://github.com/dallay/agentsync/compare/v1.1.1...v1.2.0) (2026-01-15)
 
 ### ✨ Features
