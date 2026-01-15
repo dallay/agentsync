@@ -47,18 +47,23 @@ jobs:
           node-version: "24"
 
       - name: Semantic Release
-        uses: cycjimmy/semantic-release-action@cb425203a562475bca039ba4dbf90c7f9ac790f4 # v4.1.1
+        uses: cycjimmy/semantic-release-action@v4
         id: semantic
         with:
-          semantic_version: 25
           extra_plugins: |
             @semantic-release/changelog
             @semantic-release/git
             @semantic-release/exec
             conventional-changelog-conventionalcommits
-          dry_run: ${{ inputs.dry_run }}
+          dry_run: ${{ inputs.dry_run || false }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Debug Semantic Release Outputs
+        run: |
+          echo "new_release_published: ${{ steps.semantic.outputs.new_release_published }}"
+          echo "new_release_version: ${{ steps.semantic.outputs.new_release_version }}"
+          echo "new_release_git_tag: ${{ steps.semantic.outputs.new_release_git_tag }}"
 
       - name: Release Summary
         if: steps.semantic.outputs.new_release_published == 'true'
