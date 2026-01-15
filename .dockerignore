@@ -1,0 +1,62 @@
+# =============================================================================
+# Docker ignore file
+# Exclude files that shouldn't be in the Docker build context
+# =============================================================================
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# GitHub
+.github
+
+# IDE and editor files
+.idea
+.vscode
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Rust build artifacts (we build fresh in Docker)
+target
+**/*.rs.bk
+Cargo.lock.bak
+
+# Documentation (not needed in image)
+*.md
+!README.md
+docs
+
+# CI/CD
+.travis.yml
+.gitlab-ci.yml
+azure-pipelines.yml
+Jenkinsfile
+
+# Release/deployment scripts
+deployment
+*.sh
+!docker-entrypoint.sh
+
+# Test files
+tests
+benches
+examples
+
+# Config files not needed in build
+.releaserc.json
+.editorconfig
+.pre-commit-config.yaml
+rustfmt.toml
+clippy.toml
+deny.toml
+
+# Docker files (prevent recursive inclusion)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# License (embedded in binary metadata)
+LICENSE

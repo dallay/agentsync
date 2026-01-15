@@ -230,32 +230,91 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ==========================================================================
-  # Publish to crates.io (optional - manual trigger recommended)
+  # Publish to crates.io
   # ==========================================================================
-  # publish-crates:
-  #   name: Publish to crates.io
-  #   needs: [semantic-release, build-binaries]
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Checkout repository
-  #       uses: actions/checkout@v4
-  #       with:
-  #         ref: ${{ needs.semantic-release.outputs.new_release_git_tag }}
-  #
-  #     - name: Setup Rust toolchain
-  #       uses: dtolnay/rust-action@stable
-  #
-  #     - name: Publish to crates.io
-  #       run: cargo publish
-  #       env:
-  #         CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+  publish-crates:
+    name: Publish to crates.io
+    needs: [semantic-release, build-binaries]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.semantic-release.outputs.new_release_git_tag }}
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-action@stable
+
+      - name: Publish to crates.io
+        run: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  # ==========================================================================
+  # Publish Docker Image - Docker Hub & GitHub Container Registry
+  # ==========================================================================
+  publish-docker:
+    name: Publish Docker Image
+    needs: [semantic-release, build-binaries]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.semantic-release.outputs.new_release_git_tag }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/agentsync
+            ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.semantic-release.outputs.new_release_version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.semantic-release.outputs.new_release_version }}
+            type=semver,pattern={{major}},value=${{ needs.semantic-release.outputs.new_release_version }}
+            type=raw,value=latest
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
 
   # ==========================================================================
   # Release Summary
   # ==========================================================================
   release-summary:
     name: Release Summary
-    needs: [semantic-release, build-binaries, upload-assets]
+    needs: [semantic-release, build-binaries, upload-assets, publish-docker]
     runs-on: ubuntu-latest
     if: always() && needs.semantic-release.outputs.new_release_published == 'true'
     steps:
@@ -273,6 +332,7 @@ jobs:
             echo "| Semantic Release | ✅ ${{ needs.semantic-release.result }} |"
             echo "| Build Binaries | ${{ needs.build-binaries.result == 'success' && '✅' || '❌' }} ${{ needs.build-binaries.result }} |"
             echo "| Upload Assets | ${{ needs.upload-assets.result == 'success' && '✅' || '❌' }} ${{ needs.upload-assets.result }} |"
+            echo "| Docker Image | ${{ needs.publish-docker.result == 'success' && '✅' || '❌' }} ${{ needs.publish-docker.result }} |"
             echo ""
             echo "### Installation"
             echo ""
@@ -282,5 +342,8 @@ jobs:
             echo ""
             echo "# Linux (x86_64)"
             echo "curl -LO https://github.com/dallay/agentsync/releases/download/${{ needs.semantic-release.outputs.new_release_git_tag }}/agentsync-${{ needs.semantic-release.outputs.new_release_version }}-x86_64-unknown-linux-gnu.tar.gz"
+            echo ""
+            echo "# Docker"
+            echo "docker pull ghcr.io/${{ github.repository }}:${{ needs.semantic-release.outputs.new_release_version }}"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
