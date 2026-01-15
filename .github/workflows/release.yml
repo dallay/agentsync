@@ -232,6 +232,195 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ==========================================================================
+  # Publish NPM Platform-Specific Packages
+  # ==========================================================================
+  publish-npm-binaries:
+    name: Publish NPM (${{ matrix.config.name }})
+    needs: [semantic-release, build-binaries]
+    if: needs.semantic-release.outputs.new_release_published == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - name: linux-x64
+            target: x86_64-unknown-linux-gnu
+            os: linux
+            arch: x64
+          - name: linux-arm64
+            target: aarch64-unknown-linux-gnu
+            os: linux
+            arch: arm64
+          - name: darwin-x64
+            target: x86_64-apple-darwin
+            os: darwin
+            arch: x64
+          - name: darwin-arm64
+            target: aarch64-apple-darwin
+            os: darwin
+            arch: arm64
+          - name: windows-x64
+            target: x86_64-pc-windows-msvc
+            os: win32
+            arch: x64
+          - name: windows-arm64
+            target: aarch64-pc-windows-msvc
+            os: win32
+            arch: arm64
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+        with:
+          ref: ${{ needs.semantic-release.outputs.new_release_git_tag }}
+
+      - name: Download artifact
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: agentsync-${{ matrix.config.target }}
+          path: artifacts
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.2.0
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Publish platform package to NPM
+        shell: bash
+        run: |
+          cd npm
+          
+          # Set version from semantic release
+          export node_version="${{ needs.semantic-release.outputs.new_release_version }}"
+          export node_os="${{ matrix.config.os }}"
+          export node_arch="${{ matrix.config.arch }}"
+          export node_pkg="agentsync-${{ matrix.config.name }}"
+          
+          # Create package directory
+          mkdir -p "${node_pkg}/bin"
+          
+          # Generate package.json from template
+          envsubst < package.json.tmpl > "${node_pkg}/package.json"
+          
+          # Extract binary from artifact
+          cd ../artifacts
+          
+          # Find and validate the archive
+          if [[ "${{ matrix.config.os }}" == "win32" ]]; then
+            # Windows - look for .zip
+            matches=(agentsync-*.zip)
+            BINARY_NAME="agentsync.exe"
+            EXTRACT_CMD="unzip -o"
+          else
+            # Unix-like - look for .tar.gz
+            matches=(agentsync-*.tar.gz)
+            BINARY_NAME="agentsync"
+            EXTRACT_CMD="tar -xzvf"
+          fi
+          
+          # Validate exactly one archive exists
+          if [ ! -e "${matches[0]}" ]; then
+            echo "Error: No matching archive found"
+            echo "Expected pattern: ${matches[0]}"
+            echo "Available files:"
+            ls -la
+            exit 1
+          fi
+          
+          if [ ${#matches[@]} -gt 1 ]; then
+            echo "Error: Multiple matching archives found (ambiguous):"
+            printf '%s\n' "${matches[@]}"
+            exit 1
+          fi
+          
+          ARCHIVE="${matches[0]}"
+          echo "Found archive: $ARCHIVE"
+          
+          # Extract and verify success
+          if ! $EXTRACT_CMD "$ARCHIVE"; then
+            echo "Error: Failed to extract $ARCHIVE"
+            exit 1
+          fi
+          
+          # Find the extracted binary
+          BINARY_PATH=$(find . -name "$BINARY_NAME" -type f | head -1)
+          
+          if [ -z "$BINARY_PATH" ] || [ ! -f "$BINARY_PATH" ]; then
+            echo "Error: Could not find binary $BINARY_NAME after extraction"
+            echo "Archive used: $ARCHIVE"
+            echo "Working directory contents:"
+            ls -laR
+            exit 1
+          fi
+          
+          echo "Found binary at: $BINARY_PATH"
+          
+          # Copy binary to package
+          cp "$BINARY_PATH" "../npm/${node_pkg}/bin/"
+          chmod +x "../npm/${node_pkg}/bin/$BINARY_NAME"
+          
+          # Publish the package
+          cd "../npm/${node_pkg}"
+          echo "Publishing ${node_pkg}@${node_version}..."
+          cat package.json
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # ==========================================================================
+  # Publish NPM Base Package
+  # ==========================================================================
+  publish-npm-base:
+    name: Publish NPM Base Package
+    needs: [semantic-release, publish-npm-binaries]
+    if: needs.publish-npm-binaries.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+        with:
+          ref: ${{ needs.semantic-release.outputs.new_release_git_tag }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.2.0
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Update package.json version
+        run: |
+          cd npm/agentsync
+          # Update version in package.json
+          VERSION="${{ needs.semantic-release.outputs.new_release_version }}"
+          
+          # Update main package version and all optionalDependencies versions
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.version = '${VERSION}';
+            for (const dep in pkg.optionalDependencies) {
+              pkg.optionalDependencies[dep] = '${VERSION}';
+            }
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          
+          echo "Updated package.json:"
+          cat package.json
+
+      - name: Install dependencies and build
+        run: |
+          cd npm/agentsync
+          npm install
+          npm run build
+
+      - name: Publish base package to NPM
+        run: |
+          cd npm/agentsync
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # ==========================================================================
   # Publish to crates.io
   # ==========================================================================
   publish-crates:
@@ -318,7 +507,7 @@ jobs:
   # ==========================================================================
   release-summary:
     name: Release Summary
-    needs: [semantic-release, build-binaries, upload-assets, publish-crates, publish-docker]
+    needs: [semantic-release, build-binaries, upload-assets, publish-crates, publish-docker, publish-npm-base]
     runs-on: ubuntu-latest
     if: always() && needs.semantic-release.outputs.new_release_published == 'true'
     steps:
@@ -337,11 +526,21 @@ jobs:
             echo "| Build Binaries | ${{ needs.build-binaries.result == 'success' && '✅' || '❌' }} ${{ needs.build-binaries.result }} |"
             echo "| Upload Assets | ${{ needs.upload-assets.result == 'success' && '✅' || '❌' }} ${{ needs.upload-assets.result }} |"
             echo "| Publish to crates.io | ${{ needs.publish-crates.result == 'success' && '✅' || '❌' }} ${{ needs.publish-crates.result }} |"
+            echo "| Publish to NPM | ${{ needs.publish-npm-base.result == 'success' && '✅' || '❌' }} ${{ needs.publish-npm-base.result }} |"
             echo "| Docker Image | ${{ needs.publish-docker.result == 'success' && '✅' || '❌' }} ${{ needs.publish-docker.result }} |"
             echo ""
             echo "### Installation"
             echo ""
             echo '```bash'
+            echo "# NPM / npx (easiest!)"
+            echo "npx agentsync@${{ needs.semantic-release.outputs.new_release_version }} --help"
+            echo ""
+            echo "# Or install globally"
+            echo "npm install -g agentsync@${{ needs.semantic-release.outputs.new_release_version }}"
+            echo ""
+            echo "# Cargo"
+            echo "cargo install agentsync"
+            echo ""
             echo "# macOS (Apple Silicon)"
             echo "curl -LO https://github.com/dallay/agentsync/releases/download/${{ needs.semantic-release.outputs.new_release_git_tag }}/agentsync-${{ needs.semantic-release.outputs.new_release_version }}-aarch64-apple-darwin.tar.gz"
             echo ""
