@@ -1,3 +1,9 @@
+## [1.1.1](https://github.com/dallay/agentsync/compare/v1.1.0...v1.1.1) (2026-01-15)
+
+### 🐛 Bug Fixes
+
+* remove deprecated CLI tests using cargo_bin ([680893e](https://github.com/dallay/agentsync/commit/680893e4f6816a6870fb6813b3152842591fcdb2))
+
 ## [1.1.0](https://github.com/dallay/agentsync/compare/v1.0.0...v1.1.0) (2026-01-15)
 
 ### ✨ Features
