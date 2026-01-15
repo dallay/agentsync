@@ -104,7 +104,11 @@ pub fn init(project_root: &Path, force: bool) -> Result<()> {
     // Create .agents directory
     if !agents_dir.exists() {
         fs::create_dir_all(&agents_dir)?;
-        println!("  {} Created directory: {}", "✔".green(), agents_dir.display());
+        println!(
+            "  {} Created directory: {}",
+            "✔".green(),
+            agents_dir.display()
+        );
     }
 
     // Create config file

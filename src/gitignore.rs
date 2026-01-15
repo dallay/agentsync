@@ -28,7 +28,8 @@ pub fn update_gitignore(
     };
 
     // Remove existing managed section if present
-    let content_without_managed = remove_managed_section(&existing_content, &start_marker, &end_marker);
+    let content_without_managed =
+        remove_managed_section(&existing_content, &start_marker, &end_marker);
 
     // Build new managed section
     let mut managed_section = String::new();
@@ -43,11 +44,7 @@ pub fn update_gitignore(
     managed_section.push('\n');
 
     // Combine content
-    let new_content = format!(
-        "{}{}",
-        content_without_managed.trim_end(),
-        managed_section
-    );
+    let new_content = format!("{}{}", content_without_managed.trim_end(), managed_section);
 
     if dry_run {
         println!(

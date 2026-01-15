@@ -12,7 +12,7 @@ use walkdir::WalkDir;
 use crate::config::{Config, SyncType, TargetConfig};
 
 /// Options for the sync operation
-#[derive(Debug, Clone)]
+#[derive(Debug, Default)]
 pub struct SyncOptions {
     /// Remove existing symlinks before creating new ones
     pub clean: bool,
@@ -22,17 +22,6 @@ pub struct SyncOptions {
     pub verbose: bool,
     /// Filter to specific agents
     pub agents: Option<Vec<String>>,
-}
-
-impl Default for SyncOptions {
-    fn default() -> Self {
-        Self {
-            clean: false,
-            dry_run: false,
-            verbose: false,
-            agents: None,
-        }
-    }
 }
 
 /// Result of a sync operation
@@ -143,9 +132,12 @@ impl Linker {
 
         match target.sync_type {
             SyncType::Symlink => self.create_symlink(&source, &dest, options),
-            SyncType::SymlinkContents => {
-                self.create_symlinks_for_contents(&source, &dest, target.pattern.as_deref(), options)
-            }
+            SyncType::SymlinkContents => self.create_symlinks_for_contents(
+                &source,
+                &dest,
+                target.pattern.as_deref(),
+                options,
+            ),
         }
     }
 
@@ -160,7 +152,11 @@ impl Linker {
 
         // Check if source exists
         if !source.exists() {
-            println!("  {} Source does not exist: {}", "!".yellow(), source.display());
+            println!(
+                "  {} Source does not exist: {}",
+                "!".yellow(),
+                source.display()
+            );
             result.skipped += 1;
             return Ok(result);
         }
@@ -170,11 +166,16 @@ impl Linker {
             if !parent.exists() {
                 if options.dry_run {
                     if options.verbose {
-                        println!("  {} Would create directory: {}", "→".cyan(), parent.display());
+                        println!(
+                            "  {} Would create directory: {}",
+                            "→".cyan(),
+                            parent.display()
+                        );
                     }
                 } else {
-                    fs::create_dir_all(parent)
-                        .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
+                    fs::create_dir_all(parent).with_context(|| {
+                        format!("Failed to create directory: {}", parent.display())
+                    })?;
                     if options.verbose {
                         println!("  {} Created directory: {}", "✔".green(), parent.display());
                     }
@@ -311,7 +312,11 @@ impl Linker {
             } else {
                 fs::create_dir_all(dest_dir)?;
                 if options.verbose {
-                    println!("  {} Created directory: {}", "✔".green(), dest_dir.display());
+                    println!(
+                        "  {} Created directory: {}",
+                        "✔".green(),
+                        dest_dir.display()
+                    );
                 }
             }
         }
@@ -349,7 +354,9 @@ impl Linker {
             fs::canonicalize(from_dir)?
         } else {
             // If dest dir doesn't exist yet, use project root as base
-            let relative = from_dir.strip_prefix(&self.project_root).unwrap_or(from_dir);
+            let relative = from_dir
+                .strip_prefix(&self.project_root)
+                .unwrap_or(from_dir);
             self.project_root.join(relative)
         };
 
@@ -367,8 +374,8 @@ impl Linker {
 
         println!("{}", "Cleaning managed symlinks...".cyan());
 
-        for (_agent_name, agent_config) in &self.config.agents {
-            for (_target_name, target_config) in &agent_config.targets {
+        for agent_config in self.config.agents.values() {
+            for target_config in agent_config.targets.values() {
                 let dest = self.project_root.join(&target_config.destination);
 
                 if dest.is_symlink() {
@@ -385,7 +392,11 @@ impl Linker {
                         let entry = entry?;
                         if entry.path().is_symlink() {
                             if options.dry_run {
-                                println!("  {} Would remove: {}", "→".cyan(), entry.path().display());
+                                println!(
+                                    "  {} Would remove: {}",
+                                    "→".cyan(),
+                                    entry.path().display()
+                                );
                             } else {
                                 fs::remove_file(entry.path())?;
                                 println!("  {} Removed: {}", "✔".green(), entry.path().display());

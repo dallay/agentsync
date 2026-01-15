@@ -8,11 +8,15 @@ use colored::Colorize;
 use std::env;
 use std::path::PathBuf;
 
-use agentsync::{config::Config, gitignore, init, Linker, SyncOptions};
+use agentsync::{Linker, SyncOptions, config::Config, gitignore, init};
 
 #[derive(Parser)]
 #[command(name = "agentsync")]
-#[command(author, version, about = "Sync AI agent configurations using symbolic links")]
+#[command(
+    author,
+    version,
+    about = "Sync AI agent configurations using symbolic links"
+)]
 #[command(propagate_version = true)]
 struct Cli {
     #[command(subcommand)]
@@ -123,7 +127,10 @@ fn main() -> Result<()> {
             };
 
             if verbose {
-                println!("Using config: {}\n", config_path.display().to_string().dimmed());
+                println!(
+                    "Using config: {}\n",
+                    config_path.display().to_string().dimmed()
+                );
             }
 
             // Load configuration

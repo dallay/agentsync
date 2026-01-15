@@ -158,7 +158,10 @@ impl Config {
         let parent = config_path.parent().unwrap_or(config_path);
 
         // If config is inside .agents directory, go up one more level
-        if parent.file_name().is_some_and(|name| name == DEFAULT_SOURCE_DIR) {
+        if parent
+            .file_name()
+            .is_some_and(|name| name == DEFAULT_SOURCE_DIR)
+        {
             parent.parent().unwrap_or(parent).to_path_buf()
         } else {
             parent.to_path_buf()
