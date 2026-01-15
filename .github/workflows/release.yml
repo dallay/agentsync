@@ -1,0 +1,286 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Perform a dry run (no actual release)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ==========================================================================
+  # Semantic Release - Determine version
+  # ==========================================================================
+  semantic-release:
+    name: Semantic Release
+    runs-on: ubuntu-latest
+    outputs:
+      new_release_published: ${{ steps.semantic.outputs.new_release_published }}
+      new_release_version: ${{ steps.semantic.outputs.new_release_version }}
+      new_release_git_tag: ${{ steps.semantic.outputs.new_release_git_tag }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm install -g semantic-release @semantic-release/changelog @semantic-release/git @semantic-release/exec conventional-changelog-conventionalcommits
+
+      - name: Run Semantic Release
+        id: semantic
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            npx semantic-release --dry-run
+          else
+            npx semantic-release
+          fi
+
+      - name: Release Summary
+        if: steps.semantic.outputs.new_release_published == 'true'
+        run: |
+          {
+            echo "## 🚀 New Release"
+            echo ""
+            echo "| Property | Value |"
+            echo "|----------|-------|"
+            echo "| Version  | ${{ steps.semantic.outputs.new_release_version }} |"
+            echo "| Git Tag  | ${{ steps.semantic.outputs.new_release_git_tag }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ==========================================================================
+  # Build Release Binaries - Cross-platform
+  # ==========================================================================
+  build-binaries:
+    name: Build (${{ matrix.target }})
+    needs: semantic-release
+    if: needs.semantic-release.outputs.new_release_published == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            archive: tar.gz
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            archive: tar.gz
+
+          # macOS
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+
+          # Windows
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive: zip
+          - target: aarch64-pc-windows-msvc
+            os: windows-latest
+            archive: zip
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.semantic-release.outputs.new_release_git_tag }}
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-action@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross-compilation tools (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          if [[ "${{ matrix.target }}" == *"musl"* ]]; then
+            sudo apt-get install -y musl-tools
+          fi
+          if [[ "${{ matrix.target }}" == "aarch64-"* ]]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu
+          fi
+
+      - name: Install cross
+        if: runner.os == 'Linux'
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build binary (Linux with cross)
+        if: runner.os == 'Linux'
+        run: cross build --release --target ${{ matrix.target }}
+
+      - name: Build binary (macOS/Windows)
+        if: runner.os != 'Linux'
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Prepare artifact (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cd target/${{ matrix.target }}/release
+          BINARY_NAME="agentsync"
+          ARCHIVE_NAME="agentsync-${{ needs.semantic-release.outputs.new_release_version }}-${{ matrix.target }}"
+          
+          # Create archive directory
+          mkdir -p "$ARCHIVE_NAME"
+          cp "$BINARY_NAME" "$ARCHIVE_NAME/"
+          cp ../../../README.md "$ARCHIVE_NAME/" 2>/dev/null || true
+          cp ../../../LICENSE "$ARCHIVE_NAME/" 2>/dev/null || true
+          
+          # Create tarball
+          tar -czvf "$ARCHIVE_NAME.tar.gz" "$ARCHIVE_NAME"
+          
+          # Create checksum
+          shasum -a 256 "$ARCHIVE_NAME.tar.gz" > "$ARCHIVE_NAME.tar.gz.sha256"
+          
+          # Move to workspace root for upload
+          mv "$ARCHIVE_NAME.tar.gz" ../../../
+          mv "$ARCHIVE_NAME.tar.gz.sha256" ../../../
+
+      - name: Prepare artifact (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cd target/${{ matrix.target }}/release
+          $BINARY_NAME = "agentsync.exe"
+          $ARCHIVE_NAME = "agentsync-${{ needs.semantic-release.outputs.new_release_version }}-${{ matrix.target }}"
+          
+          # Create archive directory
+          New-Item -ItemType Directory -Force -Path $ARCHIVE_NAME
+          Copy-Item $BINARY_NAME -Destination "$ARCHIVE_NAME/"
+          Copy-Item ../../../README.md -Destination "$ARCHIVE_NAME/" -ErrorAction SilentlyContinue
+          Copy-Item ../../../LICENSE -Destination "$ARCHIVE_NAME/" -ErrorAction SilentlyContinue
+          
+          # Create zip
+          Compress-Archive -Path $ARCHIVE_NAME -DestinationPath "$ARCHIVE_NAME.zip"
+          
+          # Create checksum
+          (Get-FileHash "$ARCHIVE_NAME.zip" -Algorithm SHA256).Hash.ToLower() + "  $ARCHIVE_NAME.zip" | Out-File -FilePath "$ARCHIVE_NAME.zip.sha256" -Encoding ascii
+          
+          # Move to workspace root
+          Move-Item "$ARCHIVE_NAME.zip" ../../../
+          Move-Item "$ARCHIVE_NAME.zip.sha256" ../../../
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentsync-${{ matrix.target }}
+          path: |
+            agentsync-*.${{ matrix.archive }}
+            agentsync-*.${{ matrix.archive }}.sha256
+          if-no-files-found: error
+
+  # ==========================================================================
+  # Upload Release Assets
+  # ==========================================================================
+  upload-assets:
+    name: Upload Release Assets
+    needs: [semantic-release, build-binaries]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: agentsync-*
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -la artifacts/
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.semantic-release.outputs.new_release_git_tag }}
+          files: artifacts/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ==========================================================================
+  # Publish to crates.io (optional - manual trigger recommended)
+  # ==========================================================================
+  # publish-crates:
+  #   name: Publish to crates.io
+  #   needs: [semantic-release, build-binaries]
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@v4
+  #       with:
+  #         ref: ${{ needs.semantic-release.outputs.new_release_git_tag }}
+  #
+  #     - name: Setup Rust toolchain
+  #       uses: dtolnay/rust-action@stable
+  #
+  #     - name: Publish to crates.io
+  #       run: cargo publish
+  #       env:
+  #         CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  # ==========================================================================
+  # Release Summary
+  # ==========================================================================
+  release-summary:
+    name: Release Summary
+    needs: [semantic-release, build-binaries, upload-assets]
+    runs-on: ubuntu-latest
+    if: always() && needs.semantic-release.outputs.new_release_published == 'true'
+    steps:
+      - name: Generate Summary
+        run: |
+          {
+            echo "# 🎉 AgentSync Release Summary"
+            echo ""
+            echo "## Version: ${{ needs.semantic-release.outputs.new_release_version }}"
+            echo ""
+            echo "### Build Status"
+            echo ""
+            echo "| Component | Status |"
+            echo "|-----------|--------|"
+            echo "| Semantic Release | ✅ ${{ needs.semantic-release.result }} |"
+            echo "| Build Binaries | ${{ needs.build-binaries.result == 'success' && '✅' || '❌' }} ${{ needs.build-binaries.result }} |"
+            echo "| Upload Assets | ${{ needs.upload-assets.result == 'success' && '✅' || '❌' }} ${{ needs.upload-assets.result }} |"
+            echo ""
+            echo "### Installation"
+            echo ""
+            echo '```bash'
+            echo "# macOS (Apple Silicon)"
+            echo "curl -LO https://github.com/dallay/agentsync/releases/download/${{ needs.semantic-release.outputs.new_release_git_tag }}/agentsync-${{ needs.semantic-release.outputs.new_release_version }}-aarch64-apple-darwin.tar.gz"
+            echo ""
+            echo "# Linux (x86_64)"
+            echo "curl -LO https://github.com/dallay/agentsync/releases/download/${{ needs.semantic-release.outputs.new_release_git_tag }}/agentsync-${{ needs.semantic-release.outputs.new_release_version }}-x86_64-unknown-linux-gnu.tar.gz"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

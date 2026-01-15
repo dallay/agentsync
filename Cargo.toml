@@ -1,0 +1,55 @@
+[package]
+name = "agentsync"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Sync AI agent configurations across multiple AI coding assistants using symbolic links"
+license = "MIT"
+repository = "https://github.com/dallay/agentsync"
+homepage = "https://github.com/dallay/agentsync"
+documentation = "https://github.com/dallay/agentsync#readme"
+readme = "README.md"
+keywords = ["ai", "agents", "symlink", "configuration", "cli"]
+categories = ["command-line-utilities", "development-tools"]
+authors = ["Yuniel Acosta <yunielacosta738@gmail.com>"]
+exclude = [
+    ".github/",
+    ".gitignore",
+    "*.md",
+    "!README.md",
+]
+
+[dependencies]
+# CLI
+clap = { version = "4.5", features = ["derive", "env"] }
+
+# Config parsing
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "2.0"
+
+# Terminal output
+colored = "3.0"
+
+# File system
+walkdir = "2.5"
+
+# Path handling
+pathdiff = "0.2"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+opt-level = "z"  # Optimize for size
+
+[[bin]]
+name = "agentsync"
+path = "src/main.rs"
+
+[lib]
+name = "agentsync"
+path = "src/lib.rs"
