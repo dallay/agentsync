@@ -15,12 +15,12 @@ ARG BUILDPLATFORM
 
 WORKDIR /build
 
-# Install build dependencies
+# Install build dependencies with pinned versions for reproducible builds
 # - musl-dev: Required for musl libc linking
-# - pkgconfig: For finding system libraries
+# - pkgconf: For finding system libraries (pkgconfig is a virtual package pointing to this)
 RUN apk add --no-cache \
-    musl-dev \
-    pkgconfig
+    musl-dev=1.2.5-r9 \
+    pkgconf=2.3.0-r0
 
 # Copy only dependency files first for better layer caching
 # This means dependencies are only rebuilt when Cargo.toml/Cargo.lock change
@@ -60,12 +60,12 @@ LABEL org.opencontainers.image.title="AgentSync" \
       org.opencontainers.image.vendor="Yuniel Acosta" \
       org.opencontainers.image.licenses="MIT"
 
-# Install runtime dependencies
+# Install runtime dependencies with pinned versions for reproducible builds
 # - ca-certificates: For HTTPS connections (future-proofing)
 # - tini: Proper init system for containers (handles signals correctly)
 RUN apk add --no-cache \
-    ca-certificates \
-    tini
+    ca-certificates=20250911-r0 \
+    tini=0.19.0-r3
 
 # Create non-root user for security
 # Running as root in containers is a security anti-pattern
