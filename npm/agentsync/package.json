@@ -1,0 +1,55 @@
+{
+  "name": "agentsync",
+  "version": "1.1.0",
+  "description": "Sync AI agent configurations across multiple AI coding assistants using symbolic links",
+  "author": "Yuniel Acosta <yunielacosta738@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dallay/agentsync.git"
+  },
+  "homepage": "https://github.com/dallay/agentsync#readme",
+  "bugs": {
+    "url": "https://github.com/dallay/agentsync/issues"
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "symlink",
+    "configuration",
+    "cli",
+    "claude",
+    "copilot",
+    "gemini",
+    "cursor",
+    "opencode"
+  ],
+  "bin": {
+    "agentsync": "lib/index.js"
+  },
+  "main": "lib/index.js",
+  "files": [
+    "lib"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc",
+    "clean": "rm -rf lib",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  },
+  "optionalDependencies": {
+    "agentsync-linux-x64": "1.1.0",
+    "agentsync-linux-arm64": "1.1.0",
+    "agentsync-darwin-x64": "1.1.0",
+    "agentsync-darwin-arm64": "1.1.0",
+    "agentsync-windows-x64": "1.1.0",
+    "agentsync-windows-arm64": "1.1.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -25,3 +25,8 @@ Thumbs.db
 *.tar.gz
 *.zip
 agentsync-*
+
+# NPM
+npm/agentsync/lib/
+npm/agentsync/node_modules/
+npm/agentsync/*.tgz

@@ -1,0 +1,18 @@
+{
+  "name": "${node_pkg}",
+  "version": "${node_version}",
+  "description": "Platform-specific binary for agentsync (${node_os}-${node_arch})",
+  "author": "Yuniel Acosta <yunielacosta738@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dallay/agentsync.git"
+  },
+  "homepage": "https://github.com/dallay/agentsync#readme",
+  "os": ["${node_os}"],
+  "cpu": ["${node_arch}"],
+  "files": [
+    "bin"
+  ],
+  "preferUnplugged": true
+}
