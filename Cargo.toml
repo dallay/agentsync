@@ -40,6 +40,12 @@ walkdir = "2.5"
 # Path handling
 pathdiff = "0.2"
 
+[dev-dependencies]
+# Testing utilities
+tempfile = "3.15"        # Temporary directories for tests
+assert_cmd = "2.0"       # CLI testing
+predicates = "3.1"       # Assertions for CLI output
+
 [profile.release]
 lto = true
 codegen-units = 1
