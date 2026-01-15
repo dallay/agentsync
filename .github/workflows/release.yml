@@ -305,25 +305,55 @@ jobs:
           # Extract binary from artifact
           cd ../artifacts
           
-          # Find and extract the archive
+          # Find and validate the archive
           if [[ "${{ matrix.config.os }}" == "win32" ]]; then
-            ARCHIVE=$(ls agentsync-*.zip 2>/dev/null | head -1)
-            unzip -o "$ARCHIVE"
+            # Windows - look for .zip
+            matches=(agentsync-*.zip)
             BINARY_NAME="agentsync.exe"
+            EXTRACT_CMD="unzip -o"
           else
-            ARCHIVE=$(ls agentsync-*.tar.gz 2>/dev/null | head -1)
-            tar -xzvf "$ARCHIVE"
+            # Unix-like - look for .tar.gz
+            matches=(agentsync-*.tar.gz)
             BINARY_NAME="agentsync"
+            EXTRACT_CMD="tar -xzvf"
+          fi
+          
+          # Validate exactly one archive exists
+          if [ ! -e "${matches[0]}" ]; then
+            echo "Error: No matching archive found"
+            echo "Expected pattern: ${matches[0]}"
+            echo "Available files:"
+            ls -la
+            exit 1
+          fi
+          
+          if [ ${#matches[@]} -gt 1 ]; then
+            echo "Error: Multiple matching archives found (ambiguous):"
+            printf '%s\n' "${matches[@]}"
+            exit 1
+          fi
+          
+          ARCHIVE="${matches[0]}"
+          echo "Found archive: $ARCHIVE"
+          
+          # Extract and verify success
+          if ! $EXTRACT_CMD "$ARCHIVE"; then
+            echo "Error: Failed to extract $ARCHIVE"
+            exit 1
           fi
           
           # Find the extracted binary
           BINARY_PATH=$(find . -name "$BINARY_NAME" -type f | head -1)
           
-          if [ -z "$BINARY_PATH" ]; then
-            echo "Error: Could not find binary $BINARY_NAME"
+          if [ -z "$BINARY_PATH" ] || [ ! -f "$BINARY_PATH" ]; then
+            echo "Error: Could not find binary $BINARY_NAME after extraction"
+            echo "Archive used: $ARCHIVE"
+            echo "Working directory contents:"
             ls -laR
             exit 1
           fi
+          
+          echo "Found binary at: $BINARY_PATH"
           
           # Copy binary to package
           cp "$BINARY_PATH" "../npm/${node_pkg}/bin/"
@@ -343,6 +373,7 @@ jobs:
   publish-npm-base:
     name: Publish NPM Base Package
     needs: [semantic-release, publish-npm-binaries]
+    if: needs.publish-npm-binaries.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository

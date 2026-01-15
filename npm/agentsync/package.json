@@ -34,7 +34,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc",
-    "clean": "rm -rf lib",
+    "clean": "node -e \"require('fs').rmSync('lib', {recursive: true, force: true})\"",
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {

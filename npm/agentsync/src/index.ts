@@ -14,6 +14,8 @@ const PLATFORMS: Record<string, string> = {
   "linux-arm64": "agentsync-linux-arm64",
   "win32-x64": "agentsync-windows-x64",
   "win32-arm64": "agentsync-windows-arm64",
+  "cygwin-x64": "agentsync-windows-x64",
+  "cygwin-arm64": "agentsync-windows-arm64",
 };
 
 /**
@@ -41,8 +43,8 @@ function getExePath(): string {
     );
   }
 
-  // Determine binary name (with .exe on Windows)
-  const binaryName = platform === "win32" ? "agentsync.exe" : "agentsync";
+  // Determine binary name (with .exe on Windows and Cygwin)
+  const binaryName = platform === "win32" || platform === "cygwin" ? "agentsync.exe" : "agentsync";
 
   // Try to resolve the binary from the platform-specific package
   let binaryPath: string;
