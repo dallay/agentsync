@@ -1,3 +1,9 @@
+## [1.4.0](https://github.com/dallay/agentsync/compare/v1.3.0...v1.4.0) (2026-01-15)
+
+### ✨ Features
+
+* update first-interaction action version and enhance greeting messages in workflow ([29b3657](https://github.com/dallay/agentsync/commit/29b3657f367aa42b68644d5b9b89c68324f6ea20))
+
 ## [1.3.0](https://github.com/dallay/agentsync/compare/v1.2.0...v1.3.0) (2026-01-15)
 
 ### ✨ Features
