@@ -199,6 +199,11 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
+
+    // ==========================================================================
+    // PARSING TESTS
+    // ==========================================================================
 
     #[test]
     fn test_parse_minimal_config() {
@@ -255,5 +260,411 @@ mod tests {
             config.agents["copilot"].targets["skills"].sync_type,
             SyncType::SymlinkContents
         );
+    }
+
+    #[test]
+    fn test_parse_empty_config() {
+        let toml = "";
+        let config: Config = toml::from_str(toml).unwrap();
+
+        assert!(config.agents.is_empty());
+        assert_eq!(config.source_dir, ".");
+        assert!(config.gitignore.enabled);
+    }
+
+    #[test]
+    fn test_parse_config_with_defaults() {
+        let toml = r#"
+            [agents.test]
+            [agents.test.targets.main]
+            source = "src.md"
+            destination = "dest.md"
+            type = "symlink"
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+
+        // Agent enabled by default
+        assert!(config.agents["test"].enabled);
+        // Default description is empty
+        assert!(config.agents["test"].description.is_empty());
+        // Default source_dir
+        assert_eq!(config.source_dir, ".");
+    }
+
+    #[test]
+    fn test_parse_invalid_sync_type() {
+        let toml = r#"
+            [agents.test.targets.main]
+            source = "src.md"
+            destination = "dest.md"
+            type = "invalid-type"
+        "#;
+
+        let result: Result<Config, _> = toml::from_str(toml);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_missing_required_fields() {
+        let toml = r#"
+            [agents.test.targets.main]
+            source = "src.md"
+            type = "symlink"
+        "#;
+
+        let result: Result<Config, _> = toml::from_str(toml);
+        assert!(result.is_err(), "Should fail without destination field");
+    }
+
+    // ==========================================================================
+    // CONFIG LOAD TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_load_config_from_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("agentsync.toml");
+
+        let config_content = r#"
+            source_dir = "custom_dir"
+            
+            [agents.test]
+            enabled = true
+            
+            [agents.test.targets.main]
+            source = "src.md"
+            destination = "dest.md"
+            type = "symlink"
+        "#;
+
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        assert_eq!(config.source_dir, "custom_dir");
+        assert!(config.agents.contains_key("test"));
+    }
+
+    #[test]
+    fn test_load_config_file_not_found() {
+        let result = Config::load(Path::new("/nonexistent/path/agentsync.toml"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_config_invalid_toml() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("agentsync.toml");
+
+        fs::write(&config_path, "this is not { valid toml").unwrap();
+
+        let result = Config::load(&config_path);
+        assert!(result.is_err());
+    }
+
+    // ==========================================================================
+    // FIND CONFIG TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_find_config_in_agents_dir() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        fs::write(&config_path, "[agents]").unwrap();
+
+        let found = Config::find_config(temp_dir.path()).unwrap();
+        assert_eq!(found, config_path);
+    }
+
+    #[test]
+    fn test_find_config_in_root() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("agentsync.toml");
+        fs::write(&config_path, "[agents]").unwrap();
+
+        let found = Config::find_config(temp_dir.path()).unwrap();
+        assert_eq!(found, config_path);
+    }
+
+    #[test]
+    fn test_find_config_prefers_agents_dir() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create both configs
+        let root_config = temp_dir.path().join("agentsync.toml");
+        fs::write(&root_config, "[agents]").unwrap();
+
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+        let agents_config = agents_dir.join("agentsync.toml");
+        fs::write(&agents_config, "[agents]").unwrap();
+
+        // Should prefer .agents/agentsync.toml
+        let found = Config::find_config(temp_dir.path()).unwrap();
+        assert_eq!(found, agents_config);
+    }
+
+    #[test]
+    fn test_find_config_searches_parent_dirs() {
+        let temp_dir = TempDir::new().unwrap();
+        let nested_dir = temp_dir.path().join("sub1").join("sub2").join("sub3");
+        fs::create_dir_all(&nested_dir).unwrap();
+
+        // Config at root
+        let config_path = temp_dir.path().join("agentsync.toml");
+        fs::write(&config_path, "[agents]").unwrap();
+
+        // Search from nested directory
+        let found = Config::find_config(&nested_dir).unwrap();
+        assert_eq!(found, config_path);
+    }
+
+    #[test]
+    fn test_find_config_not_found() {
+        let temp_dir = TempDir::new().unwrap();
+        let result = Config::find_config(temp_dir.path());
+        assert!(result.is_err());
+    }
+
+    // ==========================================================================
+    // PROJECT ROOT TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_project_root_from_agents_dir() {
+        let config_path = PathBuf::from("/project/.agents/agentsync.toml");
+        let root = Config::project_root(&config_path);
+        assert_eq!(root, PathBuf::from("/project"));
+    }
+
+    #[test]
+    fn test_project_root_from_root_config() {
+        let config_path = PathBuf::from("/project/agentsync.toml");
+        let root = Config::project_root(&config_path);
+        assert_eq!(root, PathBuf::from("/project"));
+    }
+
+    #[test]
+    fn test_project_root_nested_agents_dir() {
+        // Edge case: .agents inside another directory
+        let config_path = PathBuf::from("/project/subdir/.agents/agentsync.toml");
+        let root = Config::project_root(&config_path);
+        assert_eq!(root, PathBuf::from("/project/subdir"));
+    }
+
+    // ==========================================================================
+    // SOURCE DIR TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_source_dir_default() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        fs::write(&config_path, "source_dir = \".\"").unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let source = config.source_dir(&config_path);
+
+        assert_eq!(source, agents_dir.join("."));
+    }
+
+    #[test]
+    fn test_source_dir_custom() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("agentsync.toml");
+
+        fs::write(&config_path, "source_dir = \"custom/sources\"").unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let source = config.source_dir(&config_path);
+
+        assert_eq!(source, temp_dir.path().join("custom/sources"));
+    }
+
+    // ==========================================================================
+    // GITIGNORE ENTRIES TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_all_gitignore_entries_collects_destinations() {
+        let toml = r#"
+            [gitignore]
+            entries = ["manual-entry.md"]
+
+            [agents.claude]
+            enabled = true
+            
+            [agents.claude.targets.instructions]
+            source = "AGENTS.md"
+            destination = "CLAUDE.md"
+            type = "symlink"
+
+            [agents.copilot]
+            enabled = true
+            
+            [agents.copilot.targets.instructions]
+            source = "AGENTS.md"
+            destination = ".github/copilot-instructions.md"
+            type = "symlink"
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        let entries = config.all_gitignore_entries();
+
+        assert!(entries.contains(&"manual-entry.md".to_string()));
+        assert!(entries.contains(&"CLAUDE.md".to_string()));
+        assert!(entries.contains(&".github/copilot-instructions.md".to_string()));
+    }
+
+    #[test]
+    fn test_all_gitignore_entries_skips_disabled_agents() {
+        let toml = r#"
+            [agents.enabled_agent]
+            enabled = true
+            
+            [agents.enabled_agent.targets.main]
+            source = "src.md"
+            destination = "enabled.md"
+            type = "symlink"
+
+            [agents.disabled_agent]
+            enabled = false
+            
+            [agents.disabled_agent.targets.main]
+            source = "src.md"
+            destination = "disabled.md"
+            type = "symlink"
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        let entries = config.all_gitignore_entries();
+
+        assert!(entries.contains(&"enabled.md".to_string()));
+        assert!(!entries.contains(&"disabled.md".to_string()));
+    }
+
+    #[test]
+    fn test_all_gitignore_entries_deduplicates() {
+        let toml = r#"
+            [gitignore]
+            entries = ["AGENTS.md"]
+
+            [agents.agent1]
+            enabled = true
+            [agents.agent1.targets.main]
+            source = "src.md"
+            destination = "AGENTS.md"
+            type = "symlink"
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        let entries = config.all_gitignore_entries();
+
+        // Should only appear once
+        assert_eq!(entries.iter().filter(|e| *e == "AGENTS.md").count(), 1);
+    }
+
+    #[test]
+    fn test_all_gitignore_entries_sorted() {
+        let toml = r#"
+            [agents.z_agent]
+            enabled = true
+            [agents.z_agent.targets.main]
+            source = "z.md"
+            destination = "z-dest.md"
+            type = "symlink"
+
+            [agents.a_agent]
+            enabled = true
+            [agents.a_agent.targets.main]
+            source = "a.md"
+            destination = "a-dest.md"
+            type = "symlink"
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        let entries = config.all_gitignore_entries();
+
+        // Should be sorted alphabetically
+        let mut sorted = entries.clone();
+        sorted.sort();
+        assert_eq!(entries, sorted);
+    }
+
+    // ==========================================================================
+    // SYNC TYPE TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_sync_type_symlink() {
+        let toml = r#"
+            [agents.test.targets.main]
+            source = "src"
+            destination = "dest"
+            type = "symlink"
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        assert_eq!(
+            config.agents["test"].targets["main"].sync_type,
+            SyncType::Symlink
+        );
+    }
+
+    #[test]
+    fn test_sync_type_symlink_contents() {
+        let toml = r#"
+            [agents.test.targets.main]
+            source = "src"
+            destination = "dest"
+            type = "symlink-contents"
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        assert_eq!(
+            config.agents["test"].targets["main"].sync_type,
+            SyncType::SymlinkContents
+        );
+    }
+
+    // ==========================================================================
+    // GITIGNORE CONFIG DEFAULTS TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_gitignore_config_defaults() {
+        let config = GitignoreConfig::default();
+
+        assert!(config.enabled);
+        assert_eq!(config.marker, "AI Agent Symlinks");
+        assert!(config.entries.is_empty());
+    }
+
+    #[test]
+    fn test_gitignore_config_custom_marker() {
+        let toml = r#"
+            [gitignore]
+            marker = "Custom Marker"
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        assert_eq!(config.gitignore.marker, "Custom Marker");
+    }
+
+    #[test]
+    fn test_gitignore_config_disabled() {
+        let toml = r#"
+            [gitignore]
+            enabled = false
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        assert!(!config.gitignore.enabled);
     }
 }

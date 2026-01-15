@@ -470,6 +470,11 @@ fn chrono_lite_timestamp() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
+
+    // ==========================================================================
+    // PATTERN MATCHING TESTS
+    // ==========================================================================
 
     #[test]
     fn test_pattern_matching() {
@@ -482,5 +487,659 @@ mod tests {
         assert!(matches_pattern("a", "*"));
         assert!(matches_pattern("", "*"));
         assert!(!matches_pattern("", "?"));
+    }
+
+    #[test]
+    fn test_pattern_matching_asterisk_middle() {
+        assert!(matches_pattern("test-file.md", "test-*.md"));
+        assert!(matches_pattern("test-.md", "test-*.md"));
+        assert!(matches_pattern("test-abc-xyz.md", "test-*.md"));
+        assert!(!matches_pattern("test.md", "test-*.md"));
+    }
+
+    #[test]
+    fn test_pattern_matching_multiple_asterisks() {
+        assert!(matches_pattern("abc.def.txt", "*.*.*"));
+        assert!(matches_pattern("a.b.c", "*.*.*"));
+        assert!(!matches_pattern("a.b", "*.*.*"));
+    }
+
+    #[test]
+    fn test_pattern_matching_question_marks() {
+        assert!(matches_pattern("abc", "???"));
+        assert!(!matches_pattern("ab", "???"));
+        assert!(!matches_pattern("abcd", "???"));
+        assert!(matches_pattern("a1c", "a?c"));
+    }
+
+    #[test]
+    fn test_pattern_matching_mixed() {
+        assert!(matches_pattern("file123.txt", "file???.txt"));
+        assert!(matches_pattern("file123.txt", "file*.txt"));
+        assert!(matches_pattern("file123.txt", "*123*"));
+        assert!(matches_pattern("a", "?"));
+    }
+
+    #[test]
+    fn test_pattern_matching_edge_cases() {
+        assert!(matches_pattern("", ""));
+        assert!(!matches_pattern("a", ""));
+        assert!(!matches_pattern("", "a"));
+        assert!(matches_pattern("*", "*"));
+        assert!(matches_pattern("?", "?"));
+    }
+
+    // ==========================================================================
+    // LINKER CREATION TESTS
+    // ==========================================================================
+
+    fn create_test_config() -> Config {
+        let toml = r#"
+            source_dir = "."
+            
+            [agents.test]
+            enabled = true
+            description = "Test Agent"
+            
+            [agents.test.targets.main]
+            source = "AGENTS.md"
+            destination = "TEST.md"
+            type = "symlink"
+        "#;
+        toml::from_str(toml).unwrap()
+    }
+
+    #[test]
+    fn test_linker_new() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        fs::write(&config_path, "").unwrap();
+
+        let config = create_test_config();
+        let linker = Linker::new(config, config_path.clone());
+
+        assert_eq!(linker.project_root(), temp_dir.path());
+    }
+
+    #[test]
+    fn test_linker_project_root_accessor() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("agentsync.toml");
+        fs::write(&config_path, "").unwrap();
+
+        let config = create_test_config();
+        let linker = Linker::new(config, config_path);
+
+        assert_eq!(linker.project_root(), temp_dir.path());
+    }
+
+    #[test]
+    fn test_linker_config_accessor() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("agentsync.toml");
+        fs::write(&config_path, "").unwrap();
+
+        let config = create_test_config();
+        let linker = Linker::new(config, config_path);
+
+        assert!(linker.config().agents.contains_key("test"));
+    }
+
+    // ==========================================================================
+    // SYMLINK CREATION TESTS
+    // ==========================================================================
+
+    #[test]
+    #[cfg(unix)]
+    fn test_sync_creates_symlink() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        // Create source file
+        let source_file = agents_dir.join("AGENTS.md");
+        fs::write(&source_file, "# Test").unwrap();
+
+        // Create config
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            
+            [agents.test]
+            enabled = true
+            
+            [agents.test.targets.main]
+            source = "AGENTS.md"
+            destination = "TEST.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let options = SyncOptions::default();
+        let result = linker.sync(&options).unwrap();
+
+        assert_eq!(result.created, 1);
+
+        // Verify symlink was created
+        let dest = temp_dir.path().join("TEST.md");
+        assert!(dest.is_symlink());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_sync_dry_run_does_not_create_files() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        // Create source file
+        let source_file = agents_dir.join("AGENTS.md");
+        fs::write(&source_file, "# Test").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            [agents.test]
+            enabled = true
+            [agents.test.targets.main]
+            source = "AGENTS.md"
+            destination = "TEST.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let options = SyncOptions {
+            dry_run: true,
+            ..Default::default()
+        };
+        linker.sync(&options).unwrap();
+
+        // Symlink should NOT exist
+        let dest = temp_dir.path().join("TEST.md");
+        assert!(!dest.exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_sync_skips_disabled_agents() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let source_file = agents_dir.join("AGENTS.md");
+        fs::write(&source_file, "# Test").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            [agents.disabled]
+            enabled = false
+            [agents.disabled.targets.main]
+            source = "AGENTS.md"
+            destination = "DISABLED.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let options = SyncOptions::default();
+        let result = linker.sync(&options).unwrap();
+
+        assert_eq!(result.created, 0);
+        assert!(!temp_dir.path().join("DISABLED.md").exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_sync_filters_by_agent_name() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let source_file = agents_dir.join("AGENTS.md");
+        fs::write(&source_file, "# Test").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            
+            [agents.claude]
+            enabled = true
+            [agents.claude.targets.main]
+            source = "AGENTS.md"
+            destination = "CLAUDE.md"
+            type = "symlink"
+            
+            [agents.copilot]
+            enabled = true
+            [agents.copilot.targets.main]
+            source = "AGENTS.md"
+            destination = "COPILOT.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        // Only sync claude
+        let options = SyncOptions {
+            agents: Some(vec!["claude".to_string()]),
+            ..Default::default()
+        };
+        let result = linker.sync(&options).unwrap();
+
+        assert_eq!(result.created, 1);
+        assert!(temp_dir.path().join("CLAUDE.md").exists());
+        assert!(!temp_dir.path().join("COPILOT.md").exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_sync_skips_missing_source() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        // DON'T create source file
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            [agents.test]
+            enabled = true
+            [agents.test.targets.main]
+            source = "NONEXISTENT.md"
+            destination = "TEST.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let options = SyncOptions::default();
+        let result = linker.sync(&options).unwrap();
+
+        assert_eq!(result.skipped, 1);
+        assert_eq!(result.created, 0);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_sync_creates_parent_directories() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let source_file = agents_dir.join("AGENTS.md");
+        fs::write(&source_file, "# Test").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            [agents.test]
+            enabled = true
+            [agents.test.targets.main]
+            source = "AGENTS.md"
+            destination = "deep/nested/dir/TEST.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let options = SyncOptions::default();
+        linker.sync(&options).unwrap();
+
+        let dest = temp_dir.path().join("deep/nested/dir/TEST.md");
+        assert!(dest.is_symlink());
+    }
+
+    // ==========================================================================
+    // SYMLINK CONTENTS TESTS
+    // ==========================================================================
+
+    #[test]
+    #[cfg(unix)]
+    fn test_sync_symlink_contents() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        let skills_dir = agents_dir.join("skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        // Create multiple source files
+        fs::write(skills_dir.join("skill1.md"), "# Skill 1").unwrap();
+        fs::write(skills_dir.join("skill2.md"), "# Skill 2").unwrap();
+        fs::write(skills_dir.join("readme.txt"), "Not a skill").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            [agents.test]
+            enabled = true
+            [agents.test.targets.skills]
+            source = "skills"
+            destination = "output_skills"
+            type = "symlink-contents"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let options = SyncOptions::default();
+        let result = linker.sync(&options).unwrap();
+
+        assert_eq!(result.created, 3);
+
+        let output_dir = temp_dir.path().join("output_skills");
+        assert!(output_dir.join("skill1.md").is_symlink());
+        assert!(output_dir.join("skill2.md").is_symlink());
+        assert!(output_dir.join("readme.txt").is_symlink());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_sync_symlink_contents_with_pattern() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        let skills_dir = agents_dir.join("skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        fs::write(skills_dir.join("skill1.md"), "# Skill 1").unwrap();
+        fs::write(skills_dir.join("skill2.md"), "# Skill 2").unwrap();
+        fs::write(skills_dir.join("readme.txt"), "Not included").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            [agents.test]
+            enabled = true
+            [agents.test.targets.skills]
+            source = "skills"
+            destination = "output_skills"
+            type = "symlink-contents"
+            pattern = "*.md"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let options = SyncOptions::default();
+        let result = linker.sync(&options).unwrap();
+
+        // Only .md files should be linked
+        assert_eq!(result.created, 2);
+
+        let output_dir = temp_dir.path().join("output_skills");
+        assert!(output_dir.join("skill1.md").is_symlink());
+        assert!(output_dir.join("skill2.md").is_symlink());
+        assert!(!output_dir.join("readme.txt").exists());
+    }
+
+    // ==========================================================================
+    // CLEAN TESTS
+    // ==========================================================================
+
+    #[test]
+    #[cfg(unix)]
+    fn test_clean_removes_symlinks() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let source_file = agents_dir.join("AGENTS.md");
+        fs::write(&source_file, "# Test").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            [agents.test]
+            enabled = true
+            [agents.test.targets.main]
+            source = "AGENTS.md"
+            destination = "TEST.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path.clone());
+
+        // First sync to create symlinks
+        linker.sync(&SyncOptions::default()).unwrap();
+        assert!(temp_dir.path().join("TEST.md").is_symlink());
+
+        // Now clean
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+        let result = linker.clean(&SyncOptions::default()).unwrap();
+
+        assert_eq!(result.removed, 1);
+        assert!(!temp_dir.path().join("TEST.md").exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_clean_dry_run() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let source_file = agents_dir.join("AGENTS.md");
+        fs::write(&source_file, "# Test").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            [agents.test]
+            enabled = true
+            [agents.test.targets.main]
+            source = "AGENTS.md"
+            destination = "TEST.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path.clone());
+
+        // First sync
+        linker.sync(&SyncOptions::default()).unwrap();
+
+        // Clean with dry_run
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+        let options = SyncOptions {
+            dry_run: true,
+            ..Default::default()
+        };
+        let result = linker.clean(&options).unwrap();
+
+        assert_eq!(result.removed, 1);
+        // Symlink should STILL exist
+        assert!(temp_dir.path().join("TEST.md").is_symlink());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_clean_symlink_contents() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        let skills_dir = agents_dir.join("skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        fs::write(skills_dir.join("skill1.md"), "# Skill 1").unwrap();
+        fs::write(skills_dir.join("skill2.md"), "# Skill 2").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            [agents.test]
+            enabled = true
+            [agents.test.targets.skills]
+            source = "skills"
+            destination = "output_skills"
+            type = "symlink-contents"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path.clone());
+
+        // First sync
+        linker.sync(&SyncOptions::default()).unwrap();
+
+        // Clean
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+        let result = linker.clean(&SyncOptions::default()).unwrap();
+
+        assert_eq!(result.removed, 2);
+    }
+
+    // ==========================================================================
+    // UPDATE/REPLACE TESTS
+    // ==========================================================================
+
+    #[test]
+    #[cfg(unix)]
+    fn test_sync_updates_existing_symlink_with_different_target() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        // Create two source files
+        let source1 = agents_dir.join("source1.md");
+        let source2 = agents_dir.join("source2.md");
+        fs::write(&source1, "# Source 1").unwrap();
+        fs::write(&source2, "# Source 2").unwrap();
+
+        let dest = temp_dir.path().join("TEST.md");
+
+        // Create initial symlink to source1
+        std::os::unix::fs::symlink(&source1, &dest).unwrap();
+
+        // Config points to source2
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            [agents.test]
+            enabled = true
+            [agents.test.targets.main]
+            source = "source2.md"
+            destination = "TEST.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker.sync(&SyncOptions::default()).unwrap();
+
+        assert_eq!(result.updated, 1);
+        assert_eq!(result.created, 0);
+
+        // Symlink should now point to source2
+        let target = fs::read_link(&dest).unwrap();
+        assert!(target.to_string_lossy().contains("source2.md"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_sync_skips_already_correct_symlink() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let source_file = agents_dir.join("AGENTS.md");
+        fs::write(&source_file, "# Test").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            [agents.test]
+            enabled = true
+            [agents.test.targets.main]
+            source = "AGENTS.md"
+            destination = "TEST.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path.clone());
+
+        // First sync
+        let result1 = linker.sync(&SyncOptions::default()).unwrap();
+        assert_eq!(result1.created, 1);
+
+        // Second sync should skip
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+        let result2 = linker.sync(&SyncOptions::default()).unwrap();
+
+        assert_eq!(result2.created, 0);
+        assert_eq!(result2.updated, 0);
+        assert_eq!(result2.skipped, 1);
+    }
+
+    // ==========================================================================
+    // SYNC OPTIONS TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_sync_options_default() {
+        let options = SyncOptions::default();
+
+        assert!(!options.clean);
+        assert!(!options.dry_run);
+        assert!(!options.verbose);
+        assert!(options.agents.is_none());
+    }
+
+    // ==========================================================================
+    // SYNC RESULT TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_sync_result_default() {
+        let result = SyncResult::default();
+
+        assert_eq!(result.created, 0);
+        assert_eq!(result.updated, 0);
+        assert_eq!(result.skipped, 0);
+        assert_eq!(result.removed, 0);
+        assert_eq!(result.errors, 0);
+    }
+
+    // ==========================================================================
+    // TIMESTAMP FUNCTION TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_chrono_lite_timestamp() {
+        let ts = chrono_lite_timestamp();
+
+        // Should be a numeric string
+        assert!(ts.chars().all(|c| c.is_ascii_digit()));
+
+        // Should be a reasonable Unix timestamp (after year 2020)
+        let ts_num: u64 = ts.parse().unwrap();
+        assert!(ts_num > 1577836800); // 2020-01-01
     }
 }
