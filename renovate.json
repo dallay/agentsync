@@ -12,6 +12,11 @@
   "prHourlyLimit": 2,
   "packageRules": [
     {
+      "matchUpdateTypes": ["major"],
+      "groupName": "major upgrades",
+      "automerge": false
+    },
+    {
       "matchDepTypes": ["devDependencies"],
       "groupName": "devDependencies",
       "automerge": true,
