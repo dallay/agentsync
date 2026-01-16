@@ -1,6 +1,6 @@
 {
   "name": "agentsync",
-  "version": "1.1.0",
+  "version": "0.1.0",
   "description": "Sync AI agent configurations across multiple AI coding assistants using symbolic links",
   "author": "Yuniel Acosta <yunielacosta738@gmail.com>",
   "license": "MIT",
