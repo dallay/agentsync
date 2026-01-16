@@ -2,560 +2,303 @@ name: Release
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - beta
+      - alpha
   workflow_dispatch:
     inputs:
       dry_run:
         description: "Perform a dry run (no actual release)"
         type: boolean
         default: false
+        required: false
+
+env:
+  NODE_VERSION: "24"
+  CARGO_TERM_COLOR: always
 
 permissions:
   contents: write
+  packages: write
   issues: write
   pull-requests: write
-  packages: write
+  id-token: write
 
 concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: false
-
-env:
-  CARGO_TERM_COLOR: always
+  # Use dedicated concurrency group for releases to prevent queueing behind PR workflows
+  # Only main releases get the high-priority group; other branches use per-branch groups
+  group: ${{ github.ref == 'refs/heads/main' && 'release-priority-main' || format('release-{0}', github.ref_name) }}
+  cancel-in-progress: true
 
 jobs:
-  # ==========================================================================
-  # Semantic Release - Determine version
-  # ==========================================================================
+  # ============================================================================
+  # Semantic Release - Version calculation and release creation
+  # ============================================================================
   semantic-release:
     name: Semantic Release
     runs-on: ubuntu-latest
+    # Retry entire job if it fails due to transient errors
+    strategy:
+      max-parallel: 1
+      fail-fast: true
     outputs:
       new_release_published: ${{ steps.semantic.outputs.new_release_published }}
       new_release_version: ${{ steps.semantic.outputs.new_release_version }}
+      new_release_major_version: ${{ steps.semantic.outputs.new_release_major_version }}
+      new_release_minor_version: ${{ steps.semantic.outputs.new_release_minor_version }}
+      new_release_patch_version: ${{ steps.semantic.outputs.new_release_patch_version }}
       new_release_git_tag: ${{ steps.semantic.outputs.new_release_git_tag }}
     steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - name: Checkout repository
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           persist-credentials: false
+          token: ${{ steps.app-token.outputs.token }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+      - name: Setup Node.js and pnpm
+        uses: ./.github/actions/setup/node
         with:
-          node-version: "24.13"
+          node-version: ${{ env.NODE_VERSION }}
 
-      - name: Semantic Release
-        uses: cycjimmy/semantic-release-action@v4
-        id: semantic
-        with:
-          extra_plugins: |
-            @semantic-release/changelog
-            @semantic-release/git
-            @semantic-release/exec
-            conventional-changelog-conventionalcommits
-          dry_run: ${{ inputs.dry_run || false }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Debug Semantic Release Outputs
+      - name: Verify commit analyzer
         run: |
-          echo "new_release_published: ${{ steps.semantic.outputs.new_release_published }}"
-          echo "new_release_version: ${{ steps.semantic.outputs.new_release_version }}"
-          echo "new_release_git_tag: ${{ steps.semantic.outputs.new_release_git_tag }}"
+          echo "📋 Checking recent commits for release triggers..."
+          git log --oneline -10
+
+      - name: Run Semantic Release
+        id: semantic
+        uses: cycjimmy/semantic-release-action@v6
+        with:
+          dry_run: ${{ inputs.dry_run }}
+          branches: |
+            [
+              'main',
+              {'name': 'beta', 'prerelease': true},
+              {'name': 'alpha', 'prerelease': true}
+            ]
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          GIT_AUTHOR_NAME: cvix-release-bot[bot]
+          GIT_AUTHOR_EMAIL: cvix-release-bot[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: cvix-release-bot[bot]
+          GIT_COMMITTER_EMAIL: cvix-release-bot[bot]@users.noreply.github.com
+          LEFTHOOK: 0
+          # Increase GraphQL timeout and retries for reliability
+          OCTOKIT_TIMEOUT: 60000
+          OCTOKIT_REQUEST_RETRIES: 5
+        # Retry on transient failures (timeouts, rate limits, etc)
+        continue-on-error: false
 
       - name: Release Summary
         if: steps.semantic.outputs.new_release_published == 'true'
         run: |
           {
-            echo "## 🚀 New Release"
+            echo "## 🚀 New Release Published"
             echo ""
             echo "| Property | Value |"
             echo "|----------|-------|"
             echo "| Version  | ${{ steps.semantic.outputs.new_release_version }} |"
             echo "| Git Tag  | ${{ steps.semantic.outputs.new_release_git_tag }} |"
+            echo "| Major    | ${{ steps.semantic.outputs.new_release_major_version }} |"
+            echo "| Minor    | ${{ steps.semantic.outputs.new_release_minor_version }} |"
+            echo "| Patch    | ${{ steps.semantic.outputs.new_release_patch_version }} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # ==========================================================================
-  # Build Release Binaries - Cross-platform
-  # ==========================================================================
-  build-binaries:
-    name: Build (${{ matrix.target }})
+  # ============================================================================
+  # Docker Build & Push - Backend (Multi-Registry)
+  # ============================================================================
+  docker-backend:
+    name: Build & Push Backend Images
+    runs-on: ubuntu-latest
     needs: semantic-release
     if: needs.semantic-release.outputs.new_release_published == 'true'
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Linux
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-            archive: tar.gz
-          - target: x86_64-unknown-linux-musl
-            os: ubuntu-latest
-            archive: tar.gz
-          - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
-            archive: tar.gz
-          - target: aarch64-unknown-linux-musl
-            os: ubuntu-latest
-            archive: tar.gz
-
-          # macOS
-          - target: x86_64-apple-darwin
-            os: macos-latest
-            archive: tar.gz
-          - target: aarch64-apple-darwin
-            os: macos-latest
-            archive: tar.gz
-
-          # Windows
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-            archive: zip
-          - target: aarch64-pc-windows-msvc
-            os: windows-latest
-            archive: zip
-
     steps:
       - name: Checkout repository
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+        uses: actions/checkout@v6
         with:
           ref: ${{ needs.semantic-release.outputs.new_release_git_tag }}
 
-      - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@f7ccc83f9ed1e5b9c81d8a67d7ad1a747e22a561
-        with:
-          toolchain: stable
-          targets: ${{ matrix.target }}
+      - name: Setup Docker Buildx
+        uses: ./.github/actions/setup-buildx
 
-      - name: Install cross-compilation tools (Linux)
-        if: runner.os == 'Linux'
+      - name: Setup Java and Gradle
+        uses: ./.github/actions/setup/java
+        with:
+          java-version: "24"
+
+      - name: Pre-pull TexLive Docker image
+        timeout-minutes: 10
         run: |
-          sudo apt-get update
-          if [[ "${{ matrix.target }}" == *"musl"* ]]; then
-            sudo apt-get install -y musl-tools
-          fi
-          if [[ "${{ matrix.target }}" == "aarch64-"* ]]; then
-            sudo apt-get install -y gcc-aarch64-linux-gnu
-          fi
+          echo "Pre-pulling TexLive Docker image (${{ env.TEXLIVE_IMAGE }}) for PDF generation tests..."
 
-      - name: Install cross
-        if: runner.os == 'Linux'
-        run: cargo install cross --git https://github.com/cross-rs/cross
+          # Retry logic: attempt up to 5 times with linear backoff (10s, 20s, 30s, 40s, 50s)
+          for i in {1..5}; do
+            echo "Attempt $i/5: Pulling image..."
+            if docker pull ${{ env.TEXLIVE_IMAGE }}; then
+              echo "✅ Docker image pulled successfully"
+              docker images | grep texlive
+              break
+            fi
 
-      - name: Build binary (Linux with cross)
-        if: runner.os == 'Linux'
-        run: cross build --release --target ${{ matrix.target }}
+            if [ $i -lt 5 ]; then
+              wait_time=$((10 * i))
+              echo "❌ Pull attempt $i failed, retrying in ${wait_time}s..."
+              sleep $wait_time
+            else
+              echo "❌ Failed to pull image after 5 attempts"
+              exit 1
+            fi
+          done
 
-      - name: Build binary (macOS/Windows)
-        if: runner.os != 'Linux'
-        run: cargo build --release --target ${{ matrix.target }}
-
-      - name: Prepare artifact (Unix)
-        if: runner.os != 'Windows'
+      - name: Verify TexLive Image
         run: |
-          cd target/${{ matrix.target }}/release
-          BINARY_NAME="agentsync"
-          ARCHIVE_NAME="agentsync-${{ needs.semantic-release.outputs.new_release_version }}-${{ matrix.target }}"
-          
-          # Create archive directory
-          mkdir -p "$ARCHIVE_NAME"
-          cp "$BINARY_NAME" "$ARCHIVE_NAME/"
-          cp ../../../README.md "$ARCHIVE_NAME/" 2>/dev/null || true
-          cp ../../../LICENSE "$ARCHIVE_NAME/" 2>/dev/null || true
-          
-          # Create tarball
-          tar -czvf "$ARCHIVE_NAME.tar.gz" "$ARCHIVE_NAME"
-          
-          # Create checksum
-          shasum -a 256 "$ARCHIVE_NAME.tar.gz" > "$ARCHIVE_NAME.tar.gz.sha256"
-          
-          # Move to workspace root for upload
-          mv "$ARCHIVE_NAME.tar.gz" ../../../
-          mv "$ARCHIVE_NAME.tar.gz.sha256" ../../../
-
-      - name: Prepare artifact (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          cd target/${{ matrix.target }}/release
-          $BINARY_NAME = "agentsync.exe"
-          $ARCHIVE_NAME = "agentsync-${{ needs.semantic-release.outputs.new_release_version }}-${{ matrix.target }}"
-          
-          # Create archive directory
-          New-Item -ItemType Directory -Force -Path $ARCHIVE_NAME
-          Copy-Item $BINARY_NAME -Destination "$ARCHIVE_NAME/"
-          Copy-Item ../../../README.md -Destination "$ARCHIVE_NAME/" -ErrorAction SilentlyContinue
-          Copy-Item ../../../LICENSE -Destination "$ARCHIVE_NAME/" -ErrorAction SilentlyContinue
-          
-          # Create zip
-          Compress-Archive -Path $ARCHIVE_NAME -DestinationPath "$ARCHIVE_NAME.zip"
-          
-          # Create checksum
-          (Get-FileHash "$ARCHIVE_NAME.zip" -Algorithm SHA256).Hash.ToLower() + "  $ARCHIVE_NAME.zip" | Out-File -FilePath "$ARCHIVE_NAME.zip.sha256" -Encoding ascii
-          
-          # Move to workspace root
-          Move-Item "$ARCHIVE_NAME.zip" ../../../
-          Move-Item "$ARCHIVE_NAME.zip.sha256" ../../../
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
-        with:
-          name: agentsync-${{ matrix.target }}
-          path: |
-            agentsync-*.${{ matrix.archive }}
-            agentsync-*.${{ matrix.archive }}.sha256
-          if-no-files-found: error
-
-  # ==========================================================================
-  # Upload Release Assets
-  # ==========================================================================
-  upload-assets:
-    name: Upload Release Assets
-    needs: [semantic-release, build-binaries]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
-        with:
-          path: artifacts
-          pattern: agentsync-*
-          merge-multiple: true
-
-      - name: List artifacts
-        run: ls -la artifacts/
-
-      - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
-        with:
-          tag_name: ${{ needs.semantic-release.outputs.new_release_git_tag }}
-          files: artifacts/*
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # ==========================================================================
-  # Publish NPM Platform-Specific Packages
-  # ==========================================================================
-  publish-npm-binaries:
-    name: Publish NPM (${{ matrix.config.name }})
-    needs: [semantic-release, build-binaries]
-    if: needs.semantic-release.outputs.new_release_published == 'true'
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        config:
-          - name: linux-x64
-            target: x86_64-unknown-linux-gnu
-            os: linux
-            arch: x64
-          - name: linux-arm64
-            target: aarch64-unknown-linux-gnu
-            os: linux
-            arch: arm64
-          - name: darwin-x64
-            target: x86_64-apple-darwin
-            os: darwin
-            arch: x64
-          - name: darwin-arm64
-            target: aarch64-apple-darwin
-            os: darwin
-            arch: arm64
-          - name: windows-x64
-            target: x86_64-pc-windows-msvc
-            os: win32
-            arch: x64
-          - name: windows-arm64
-            target: aarch64-pc-windows-msvc
-            os: win32
-            arch: arm64
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
-        with:
-          ref: ${{ needs.semantic-release.outputs.new_release_git_tag }}
-
-      - name: Download artifact
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
-        with:
-          name: agentsync-${{ matrix.config.target }}
-          path: artifacts
-
-      - name: Setup Node.js
-        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
-        with:
-          node-version: "24.13"
-          registry-url: "https://registry.npmjs.org"
-
-      - name: Publish platform package to NPM
-        shell: bash
-        run: |
-          cd npm
-          
-          # Set version from semantic release
-          export node_version="${{ needs.semantic-release.outputs.new_release_version }}"
-          export node_os="${{ matrix.config.os }}"
-          export node_arch="${{ matrix.config.arch }}"
-          export node_pkg="agentsync-${{ matrix.config.name }}"
-          
-          # Create package directory
-          mkdir -p "${node_pkg}/bin"
-          
-          # Generate package.json from template
-          envsubst < package.json.tmpl > "${node_pkg}/package.json"
-          
-          # Extract binary from artifact
-          cd ../artifacts
-          
-          # Find and validate the archive
-          if [[ "${{ matrix.config.os }}" == "win32" ]]; then
-            # Windows - look for .zip
-            matches=(agentsync-*.zip)
-            BINARY_NAME="agentsync.exe"
-            EXTRACT_CMD="unzip -o"
-          else
-            # Unix-like - look for .tar.gz
-            matches=(agentsync-*.tar.gz)
-            BINARY_NAME="agentsync"
-            EXTRACT_CMD="tar -xzvf"
-          fi
-          
-          # Validate exactly one archive exists
-          if [ ! -e "${matches[0]}" ]; then
-            echo "Error: No matching archive found"
-            echo "Expected pattern: ${matches[0]}"
-            echo "Available files:"
-            ls -la
+          echo "Verifying TexLive image is available..."
+          # Verify image is available (fail fast if missing)
+          if ! docker image inspect "${{ env.TEXLIVE_IMAGE }}" >/dev/null 2>&1; then
+            echo "ERROR: TexLive image ${{ env.TEXLIVE_IMAGE }} not found after pre-pull step"
+            echo "Available images:"
+            docker images
             exit 1
           fi
-          
-          if [ ${#matches[@]} -gt 1 ]; then
-            echo "Error: Multiple matching archives found (ambiguous):"
-            printf '%s\n' "${matches[@]}"
-            exit 1
-          fi
-          
-          ARCHIVE="${matches[0]}"
-          echo "Found archive: $ARCHIVE"
-          
-          # Extract and verify success
-          if ! $EXTRACT_CMD "$ARCHIVE"; then
-            echo "Error: Failed to extract $ARCHIVE"
-            exit 1
-          fi
-          
-          # Find the extracted binary
-          BINARY_PATH=$(find . -name "$BINARY_NAME" -type f | head -1)
-          
-          if [ -z "$BINARY_PATH" ] || [ ! -f "$BINARY_PATH" ]; then
-            echo "Error: Could not find binary $BINARY_NAME after extraction"
-            echo "Archive used: $ARCHIVE"
-            echo "Working directory contents:"
-            ls -laR
-            exit 1
-          fi
-          
-          echo "Found binary at: $BINARY_PATH"
-          
-          # Copy binary to package
-          cp "$BINARY_PATH" "../npm/${node_pkg}/bin/"
-          chmod +x "../npm/${node_pkg}/bin/$BINARY_NAME"
-          
-          # Publish the package
-          cd "../npm/${node_pkg}"
-          echo "Publishing ${node_pkg}@${node_version}..."
-          cat package.json
-          npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          echo "✅ TexLive image verified: ${{ env.TEXLIVE_IMAGE }}"
 
-  # ==========================================================================
-  # Publish NPM Base Package
-  # ==========================================================================
-  publish-npm-base:
-    name: Publish NPM Base Package
-    needs: [semantic-release, publish-npm-binaries]
-    if: needs.publish-npm-binaries.result == 'success'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
-        with:
-          ref: ${{ needs.semantic-release.outputs.new_release_git_tag }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
-        with:
-          node-version: "24.13"
-          registry-url: "https://registry.npmjs.org"
-
-      - name: Update package.json version
+      - name: Warm up Docker with TexLive
         run: |
-          cd npm/agentsync
-          # Update version in package.json
-          VERSION="${{ needs.semantic-release.outputs.new_release_version }}"
-          
-          # Update main package version and all optionalDependencies versions
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            pkg.version = '${VERSION}';
-            for (const dep in pkg.optionalDependencies) {
-              pkg.optionalDependencies[dep] = '${VERSION}';
-            }
-            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-          "
-          
-          echo "Updated package.json:"
-          cat package.json
+          echo "Warming up Docker by running a test command..."
+          docker run --rm ${{ env.TEXLIVE_IMAGE }} pdflatex --version
+          echo "Docker warmup successful - TexLive container can be launched"
 
-      - name: Install dependencies and build
-        run: |
-          cd npm/agentsync
-          npm install
-          npm run build
-
-      - name: Publish base package to NPM
-        run: |
-          cd npm/agentsync
-          npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-  # ==========================================================================
-  # Publish to crates.io
-  # ==========================================================================
-  publish-crates:
-    name: Publish to crates.io
-    needs: [semantic-release, build-binaries]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
-        with:
-          ref: ${{ needs.semantic-release.outputs.new_release_git_tag }}
-
-      - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@f7ccc83f9ed1e5b9c81d8a67d7ad1a747e22a561
-        with:
-          toolchain: stable
-
-      - name: Publish to crates.io
-        run: cargo publish --locked
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
-  # ==========================================================================
-  # Publish Docker Image - Docker Hub & GitHub Container Registry
-  # ==========================================================================
-  publish-docker:
-    name: Publish Docker Image
-    needs: [semantic-release, build-binaries]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
-        with:
-          ref: ${{ needs.semantic-release.outputs.new_release_git_tag }}
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata for Docker
-        id: meta
-        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
-        with:
-          images: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/agentsync
-            ghcr.io/${{ github.repository }}
-          tags: |
-            type=semver,pattern={{version}},value=${{ needs.semantic-release.outputs.new_release_version }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ needs.semantic-release.outputs.new_release_version }}
-            type=semver,pattern={{major}},value=${{ needs.semantic-release.outputs.new_release_version }}
-            type=raw,value=latest
+      - name: Build JAR
+        run: ./gradlew :server:engine:bootJar --no-daemon
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        uses: ./.github/actions/docker/build-and-push
         with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64
+          image-name: cvix-engine
+          image-title: cvix-engine
+          image-description: ProFileTailors Backend Service
+          dockerfile: ./server/engine/Dockerfile
+          github-owner: ${{ github.repository_owner }}
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
+          version: ${{ needs.semantic-release.outputs.new_release_version }}
+          major-version: ${{ needs.semantic-release.outputs.new_release_major_version }}
+          build-args: |
+            VERSION=${{ needs.semantic-release.outputs.new_release_version }}
 
-  # ==========================================================================
+  # ============================================================================
+  # Docker Build & Push - Marketing Site (Multi-Registry)
+  # ============================================================================
+  docker-marketing:
+    name: Build & Push Marketing Images
+    runs-on: ubuntu-latest
+    needs: semantic-release
+    if: needs.semantic-release.outputs.new_release_published == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.semantic-release.outputs.new_release_git_tag }}
+
+      - name: Setup Docker Buildx
+        uses: ./.github/actions/setup-buildx
+
+      - name: Build and push Docker image
+        uses: ./.github/actions/docker/build-and-push
+        with:
+          image-name: cvix-marketing
+          image-title: cvix-marketing
+          image-description: ProFileTailors Marketing Site
+          dockerfile: ./client/apps/marketing/Dockerfile
+          github-owner: ${{ github.repository_owner }}
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
+          version: ${{ needs.semantic-release.outputs.new_release_version }}
+          major-version: ${{ needs.semantic-release.outputs.new_release_major_version }}
+          build-args: |
+            VERSION=${{ needs.semantic-release.outputs.new_release_version }}
+
+  # ============================================================================
+  # Docker Build & Push - WebApp (Multi-Registry)
+  # ============================================================================
+  docker-webapp:
+    name: Build & Push WebApp Images
+    runs-on: ubuntu-latest
+    needs: semantic-release
+    if: needs.semantic-release.outputs.new_release_published == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.semantic-release.outputs.new_release_git_tag }}
+
+      - name: Setup Docker Buildx
+        uses: ./.github/actions/setup-buildx
+
+      - name: Build and push Docker image
+        uses: ./.github/actions/docker/build-and-push
+        with:
+          image-name: cvix-webapp
+          image-title: cvix-webapp
+          image-description: ProFileTailors Web Application
+          dockerfile: ./client/apps/webapp/Dockerfile
+          github-owner: ${{ github.repository_owner }}
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
+          version: ${{ needs.semantic-release.outputs.new_release_version }}
+          major-version: ${{ needs.semantic-release.outputs.new_release_major_version }}
+          build-args: |
+            VERSION=${{ needs.semantic-release.outputs.new_release_version }}
+
+  # ============================================================================
   # Release Summary
-  # ==========================================================================
+  # ============================================================================
   release-summary:
     name: Release Summary
-    needs: [semantic-release, build-binaries, upload-assets, publish-crates, publish-docker, publish-npm-base]
     runs-on: ubuntu-latest
+    needs:
+      - semantic-release
+      - docker-backend
+      - docker-marketing
+      - docker-webapp
     if: always() && needs.semantic-release.outputs.new_release_published == 'true'
     steps:
       - name: Generate Summary
         run: |
           {
-            echo "# 🎉 AgentSync Release Summary"
+            echo "# 🎉 Release Summary"
             echo ""
             echo "## Version: ${{ needs.semantic-release.outputs.new_release_version }}"
             echo ""
-            echo "### Build Status"
+            echo "### Component Status"
             echo ""
             echo "| Component | Status |"
             echo "|-----------|--------|"
             echo "| Semantic Release | ✅ ${{ needs.semantic-release.result }} |"
-            echo "| Build Binaries | ${{ needs.build-binaries.result == 'success' && '✅' || '❌' }} ${{ needs.build-binaries.result }} |"
-            echo "| Upload Assets | ${{ needs.upload-assets.result == 'success' && '✅' || '❌' }} ${{ needs.upload-assets.result }} |"
-            echo "| Publish to crates.io | ${{ needs.publish-crates.result == 'success' && '✅' || '❌' }} ${{ needs.publish-crates.result }} |"
-            echo "| Publish to NPM | ${{ needs.publish-npm-base.result == 'success' && '✅' || '❌' }} ${{ needs.publish-npm-base.result }} |"
-            echo "| Docker Image | ${{ needs.publish-docker.result == 'success' && '✅' || '❌' }} ${{ needs.publish-docker.result }} |"
+            echo "| Backend Docker | ${{ needs.docker-backend.result == 'success' && '✅' || needs.docker-backend.result == 'skipped' && '⏭️' || '❌' }} ${{ needs.docker-backend.result }} |"
+            echo "| Marketing Docker | ${{ needs.docker-marketing.result == 'success' && '✅' || needs.docker-marketing.result == 'skipped' && '⏭️' || '❌' }} ${{ needs.docker-marketing.result }} |"
+            echo "| WebApp Docker | ${{ needs.docker-webapp.result == 'success' && '✅' || needs.docker-webapp.result == 'skipped' && '⏭️' || '❌' }} ${{ needs.docker-webapp.result }} |"
             echo ""
-            echo "### Installation"
+            echo "### Docker Image Registries"
             echo ""
-            echo '```bash'
-            echo "# NPM / npx (easiest!)"
-            echo "npx agentsync@${{ needs.semantic-release.outputs.new_release_version }} --help"
+            echo "- **GitHub Container Registry**: \`ghcr.io/${{ github.repository_owner }}/cvix-*\`"
+            echo "- **Docker Hub**: \`docker.io/$DOCKERHUB_USERNAME/cvix-*\`"
             echo ""
-            echo "# Or install globally"
-            echo "npm install -g agentsync@${{ needs.semantic-release.outputs.new_release_version }}"
+            echo "### Available Tags"
             echo ""
-            echo "# Cargo"
-            echo "cargo install agentsync"
-            echo ""
-            echo "# macOS (Apple Silicon)"
-            echo "curl -LO https://github.com/dallay/agentsync/releases/download/${{ needs.semantic-release.outputs.new_release_git_tag }}/agentsync-${{ needs.semantic-release.outputs.new_release_version }}-aarch64-apple-darwin.tar.gz"
-            echo ""
-            echo "# Linux (x86_64)"
-            echo "curl -LO https://github.com/dallay/agentsync/releases/download/${{ needs.semantic-release.outputs.new_release_git_tag }}/agentsync-${{ needs.semantic-release.outputs.new_release_version }}-x86_64-unknown-linux-gnu.tar.gz"
-            echo ""
-            echo "# Docker Hub"
-            echo "docker pull yacosta738/agentsync:${{ needs.semantic-release.outputs.new_release_version }}"
-            echo ""
-            echo "# GitHub Container Registry"
-            echo "docker pull ghcr.io/${{ github.repository }}:${{ needs.semantic-release.outputs.new_release_version }}"
-            echo '```'
+            echo "- \`latest\` - Rolling tag for main branch"
+            echo "- \`${{ needs.semantic-release.outputs.new_release_version }}\` - Semantic version"
+            echo "- \`v${{ needs.semantic-release.outputs.new_release_major_version }}\` - Major version tag"
           } >> "$GITHUB_STEP_SUMMARY"
