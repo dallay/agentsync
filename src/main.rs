@@ -98,6 +98,10 @@ enum Commands {
     },
 }
 
+/// The main entry point for the AgentSync CLI.
+///
+/// This function parses command-line arguments, executes the specified command,
+/// and prints the results to the console.
 fn main() -> Result<()> {
     let cli = Cli::parse();
 

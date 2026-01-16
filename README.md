@@ -81,26 +81,38 @@ cargo build --release
 cargo install agentsync
 ```
 
-## Quick Start
+## Getting Started
 
-1. **Initialize configuration** in your project:
+Follow these steps to get AgentSync up and running in your project:
+
+### 1. Initialize Configuration
+
+First, navigate to your project's root directory and run the `init` command:
 
 ```bash
 cd your-project
 agentsync init
 ```
 
-This creates `.agents/agentsync.toml` with a default configuration.
+This command creates a new `.agents/agentsync.toml` file with a default configuration, which you can customize to fit your needs.
 
-2. **Edit the configuration** to match your needs (see [Configuration](#configuration))
+### 2. Customize the Configuration
 
-3. **Apply the configuration**:
+Next, open the `.agents/agentsync.toml` file and modify it to match your project's requirements. You can define which AI agents to support, specify the source and destination for your configuration files, and set up advanced options like Gitignore management and MCP support. For more details, see the [Configuration](#configuration) section.
+
+### 3. Apply the Configuration
+
+Once you're satisfied with your configuration, apply it by running the `apply` command:
 
 ```bash
 agentsync apply
 ```
 
-4. **Add to your project setup** (e.g., `package.json`):
+This command will create the necessary symbolic links, synchronize your MCP configurations, and update your `.gitignore` file, if enabled.
+
+### 4. Add to Your Project Setup (Optional)
+
+To ensure your configurations are always up-to-date, you can add AgentSync to your project's setup scripts. For example, in a `package.json` file, you can add the following:
 
 ```json
 {
@@ -109,6 +121,8 @@ agentsync apply
   }
 }
 ```
+
+This will run `agentsync apply` automatically every time you install your project's dependencies.
 
 ## Usage
 
@@ -286,18 +300,29 @@ If you need agentsync in CI, add it to your workflow:
 
 ## Inspiration
 
-- [Ruler](https://github.com/intellectronica/ruler) - Similar concept but copies files instead of
-  using symlinks
+- [Ruler](https://github.com/intellectronica/ruler) - A similar tool that copies files instead of using symbolic links.
+
+## Troubleshooting
+
+If you encounter any issues while using AgentSync, here are a few common troubleshooting steps:
+
+- **Permission Denied**: If you see a "Permission Denied" error when creating symbolic links, make sure you have the necessary permissions in the target directories. On Windows, you may need to run your terminal as an administrator.
+- **File Not Found**: If AgentSync reports that a source file or directory is not found, double-check that the paths in your `.agents/agentsync.toml` file are correct and relative to the project root.
+- **Configuration Issues**: If your configuration is not being applied as expected, run `agentsync apply --dry-run` to see a detailed preview of the changes without actually modifying your files.
+
+If you continue to experience issues, please [open an issue](https://github.com/dallay/agentsync/issues) on our GitHub repository.
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+We welcome contributions from the community! If you'd like to get involved, please follow these steps:
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feat/amazing-feature`)
-3. Commit your changes (`git commit -m 'feat: add amazing feature'`)
-4. Push to the branch (`git push origin feat/amazing-feature`)
-5. Open a Pull Request
+1. **Fork the Repository**: Create your own fork of the [AgentSync repository](https://github.com/dallay/agentsync).
+2. **Create a Feature Branch**: Make a new branch for your changes (`git checkout -b feat/your-new-feature`).
+3. **Commit Your Changes**: Commit your work with a clear and descriptive message (`git commit -m 'feat: add your-new-feature'`).
+4. **Push to Your Branch**: Push your changes to your forked repository (`git push origin feat/your-new-feature`).
+5. **Open a Pull Request**: Submit a pull request to the `main` branch of the official repository.
+
+Before submitting your pull request, please make sure your code is well-tested and follows the existing style of the project.
 
 ## License
 
