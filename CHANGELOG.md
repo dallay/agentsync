@@ -1,3 +1,9 @@
+## [1.7.0](https://github.com/dallay/agentsync/compare/v1.6.0...v1.7.0) (2026-01-16)
+
+### ✨ Features
+
+* migrate package naming to [@dallay](https://github.com/dallay) scope and update platform dependencies ([0b9d351](https://github.com/dallay/agentsync/commit/0b9d351755664282b8a4cd67da3ddad4868985ae))
+
 ## [1.6.0](https://github.com/dallay/agentsync/compare/v1.5.0...v1.6.0) (2026-01-16)
 
 ### ✨ Features
