@@ -8,14 +8,14 @@ import { join } from "path";
  * Supported platforms and their npm package mappings
  */
 const PLATFORMS: Record<string, string> = {
-  "darwin-x64": "agentsync-darwin-x64",
-  "darwin-arm64": "agentsync-darwin-arm64",
-  "linux-x64": "agentsync-linux-x64",
-  "linux-arm64": "agentsync-linux-arm64",
-  "win32-x64": "agentsync-windows-x64",
-  "win32-arm64": "agentsync-windows-arm64",
-  "cygwin-x64": "agentsync-windows-x64",
-  "cygwin-arm64": "agentsync-windows-arm64",
+  "darwin-x64": "@dallay/agentsync-darwin-x64",
+  "darwin-arm64": "@dallay/agentsync-darwin-arm64",
+  "linux-x64": "@dallay/agentsync-linux-x64",
+  "linux-arm64": "@dallay/agentsync-linux-arm64",
+  "win32-x64": "@dallay/agentsync-windows-x64",
+  "win32-arm64": "@dallay/agentsync-windows-arm64",
+  "cygwin-x64": "@dallay/agentsync-windows-x64",
+  "cygwin-arm64": "@dallay/agentsync-windows-arm64",
 };
 
 /**
@@ -62,7 +62,7 @@ function getExePath(): string {
     throw new Error(
       `Could not find agentsync binary at: ${binaryPath}\n\n` +
         `This usually means the platform-specific package (${packageName}) was not installed.\n` +
-        `Try reinstalling with: npm install agentsync\n\n` +
+        `Try reinstalling with: npm install @dallay/agentsync\n\n` +
         `If the problem persists, please open an issue at https://github.com/dallay/agentsync/issues`
     );
   }

@@ -9,8 +9,8 @@ jobs:
       issues: write
       pull-requests: write
     steps:
-    - uses: actions/first-interaction@v3.1.0
+    - uses: actions/first-interaction@v3
       with:
         repo-token: ${{ secrets.GITHUB_TOKEN }}
-        issue-message: '✨ Thank you for reporting this issue — welcome to the community and the amazing world of open source! 🌍🤝✨'
-        pr-message: '🎉 Thank you for contributing to this project with this PR — welcome to the community and the amazing world of open source! 🚀🤖🌈'
+        issue-message: 'Thank you for reporting this issue, welcome to the community and the amazing world of open source'
+        pr-message: 'Thank you for contributing to this project with this PR, welcome to the community and the amazing world of open source'

@@ -30,3 +30,6 @@ agentsync-*
 npm/agentsync/lib/
 npm/agentsync/node_modules/
 npm/agentsync/*.tgz
+node_modules/
+.pnpm-store/
+pnpm-debug.log
