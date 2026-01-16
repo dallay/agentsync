@@ -34,7 +34,11 @@ enum Commands {
         path: Option<PathBuf>,
 
         /// Overwrite existing agentsync.toml and AGENTS.md files if they already exist.
-        #[arg(short, long, help = "Overwrite existing configuration without prompting")]
+        #[arg(
+            short,
+            long,
+            help = "Overwrite existing configuration without prompting"
+        )]
         force: bool,
     },
 
@@ -43,7 +47,11 @@ enum Commands {
     Apply {
         /// The root directory of the project to apply settings for.
         /// If not specified, agentsync will search for a config file in the current directory and its parents.
-        #[arg(short, long, help = "Project root directory (searches upwards from current dir if not set)")]
+        #[arg(
+            short,
+            long,
+            help = "Project root directory (searches upwards from current dir if not set)"
+        )]
         path: Option<PathBuf>,
 
         /// Path to a specific agentsync.toml configuration file.
@@ -67,7 +75,12 @@ enum Commands {
 
         /// Filter the operation to only include specific agents, specified as a comma-separated list.
         /// Example: `agentsync apply --agents claude,copilot`
-        #[arg(short, long, value_delimiter = ',', help = "Filter to specific agents (e.g., 'claude,copilot')")]
+        #[arg(
+            short,
+            long,
+            value_delimiter = ',',
+            help = "Filter to specific agents (e.g., 'claude,copilot')"
+        )]
         agents: Option<Vec<String>>,
 
         /// Disable the automatic update of the .gitignore file.
@@ -80,7 +93,11 @@ enum Commands {
     Clean {
         /// The root directory of the project to clean.
         /// If not specified, agentsync will search for a config file in the current directory and its parents.
-        #[arg(short, long, help = "Project root directory (searches upwards from current dir if not set)")]
+        #[arg(
+            short,
+            long,
+            help = "Project root directory (searches upwards from current dir if not set)"
+        )]
         path: Option<PathBuf>,
 
         /// Path to a specific agentsync.toml configuration file.
@@ -98,10 +115,6 @@ enum Commands {
     },
 }
 
-/// The main entry point for the AgentSync CLI.
-///
-/// This function parses command-line arguments, executes the specified command,
-/// and prints the results to the console.
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
