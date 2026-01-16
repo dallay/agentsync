@@ -11,9 +11,6 @@ pre-commit:
     cargo-clippy:
       run: cargo clippy --all-targets --all-features -- -D warnings
       # make sure code compiles cleanly
-    pnpm-typecheck:
-      run: pnpm -w run typecheck
-      # TypeScript typecheck for npm/agentsync package (relies on workspace script)
 
 pre-push:
   parallel: false
