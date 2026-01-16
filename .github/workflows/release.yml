@@ -229,7 +229,7 @@ jobs:
         run: ls -la artifacts/
 
       - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@c062e08bd532815e2082a85e87e3ef29c3e6d191 # v2.0.8
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
         with:
           tag_name: ${{ needs.semantic-release.outputs.new_release_git_tag }}
           files: artifacts/*
