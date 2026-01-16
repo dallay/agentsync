@@ -25,64 +25,75 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Initialize a new agentsync configuration
+    /// Initialize a new agentsync configuration in the current or specified directory.
+    /// This creates a default .agents/agentsync.toml file and an AGENTS.md file.
     Init {
-        /// Project root directory (default: current directory)
-        #[arg(short, long)]
+        /// Project root directory where the .agents/ directory will be created.
+        /// Defaults to the current working directory.
+        #[arg(short, long, help = "Project root directory (defaults to current dir)")]
         path: Option<PathBuf>,
 
-        /// Overwrite existing configuration
-        #[arg(short, long)]
+        /// Overwrite existing agentsync.toml and AGENTS.md files if they already exist.
+        #[arg(short, long, help = "Overwrite existing configuration without prompting")]
         force: bool,
     },
 
-    /// Apply configuration and create symlinks
+    /// Apply the configuration from agentsync.toml to create and manage symlinks.
+    /// This is the main command to synchronize your agent configurations.
     Apply {
-        /// Project root directory (default: current directory)
-        #[arg(short, long)]
+        /// The root directory of the project to apply settings for.
+        /// If not specified, agentsync will search for a config file in the current directory and its parents.
+        #[arg(short, long, help = "Project root directory (searches upwards from current dir if not set)")]
         path: Option<PathBuf>,
 
-        /// Path to configuration file
-        #[arg(short, long)]
+        /// Path to a specific agentsync.toml configuration file.
+        /// Overrides the default search behavior.
+        #[arg(short, long, help = "Path to a custom configuration file")]
         config: Option<PathBuf>,
 
-        /// Remove existing symlinks before creating new ones
-        #[arg(long)]
+        /// Remove all symlinks managed by agentsync before creating new ones.
+        /// Useful for a clean re-application of the configuration.
+        #[arg(long, help = "Remove existing symlinks before creating new ones")]
         clean: bool,
 
-        /// Show what would be done without making changes
-        #[arg(long)]
+        /// Show what changes would be made without actually creating or deleting any files.
+        /// This is useful for testing your configuration.
+        #[arg(long, help = "Show what would be done without making changes")]
         dry_run: bool,
 
-        /// Show detailed output
-        #[arg(short, long)]
+        /// Show detailed output of which files are being created, updated, or skipped.
+        #[arg(short, long, help = "Enable detailed, verbose output")]
         verbose: bool,
 
-        /// Filter to specific agents (comma-separated)
-        #[arg(short, long, value_delimiter = ',')]
+        /// Filter the operation to only include specific agents, specified as a comma-separated list.
+        /// Example: `agentsync apply --agents claude,copilot`
+        #[arg(short, long, value_delimiter = ',', help = "Filter to specific agents (e.g., 'claude,copilot')")]
         agents: Option<Vec<String>>,
 
-        /// Disable gitignore updates
-        #[arg(long)]
+        /// Disable the automatic update of the .gitignore file.
+        /// By default, agentsync adds generated symlinks to .gitignore.
+        #[arg(long, help = "Disable automatic updates to .gitignore")]
         no_gitignore: bool,
     },
 
-    /// Remove all managed symlinks
+    /// Remove all symlinks created by agentsync based on the configuration file.
     Clean {
-        /// Project root directory (default: current directory)
-        #[arg(short, long)]
+        /// The root directory of the project to clean.
+        /// If not specified, agentsync will search for a config file in the current directory and its parents.
+        #[arg(short, long, help = "Project root directory (searches upwards from current dir if not set)")]
         path: Option<PathBuf>,
 
-        /// Path to configuration file
-        #[arg(short, long)]
+        /// Path to a specific agentsync.toml configuration file.
+        /// Overrides the default search behavior.
+        #[arg(short, long, help = "Path to a custom configuration file")]
         config: Option<PathBuf>,
 
-        /// Show what would be done without making changes
-        #[arg(long)]
+        /// Show which symlinks would be removed without actually deleting them.
+        #[arg(long, help = "Show what would be done without making changes")]
         dry_run: bool,
 
-        /// Show detailed output
-        #[arg(short, long)]
+        /// Show detailed output of which symlinks are being removed.
+        #[arg(short, long, help = "Enable detailed, verbose output")]
         verbose: bool,
     },
 }

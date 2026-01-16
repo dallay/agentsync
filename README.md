@@ -139,7 +139,7 @@ agentsync apply --clean
 # Use a custom config file
 agentsync apply --config /path/to/config.toml
 
-# Dry run (show what would be done)
+# Dry run (show what would be done without making changes)
 agentsync apply --dry-run
 
 # Show version
