@@ -42,9 +42,9 @@ jobs:
           persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
         with:
-          node-version: "22.14"
+          node-version: "24.13"
 
       - name: Semantic Release
         uses: cycjimmy/semantic-release-action@v4
@@ -202,7 +202,7 @@ jobs:
           Move-Item "$ARCHIVE_NAME.zip.sha256" ../../../
 
       - name: Upload artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: agentsync-${{ matrix.target }}
           path: |
@@ -219,7 +219,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           path: artifacts
           pattern: agentsync-*
@@ -279,15 +279,15 @@ jobs:
           ref: ${{ needs.semantic-release.outputs.new_release_git_tag }}
 
       - name: Download artifact
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: agentsync-${{ matrix.config.target }}
           path: artifacts
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
         with:
-          node-version: "22.14"
+          node-version: "24.13"
           registry-url: "https://registry.npmjs.org"
 
       - name: Publish platform package to NPM
@@ -387,9 +387,9 @@ jobs:
           ref: ${{ needs.semantic-release.outputs.new_release_git_tag }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
         with:
-          node-version: "22.14"
+          node-version: "24.13"
           registry-url: "https://registry.npmjs.org"
 
       - name: Update package.json version
