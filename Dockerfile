@@ -7,7 +7,7 @@
 # Stage 1: Build environment
 # Using official Rust image with Alpine for smaller base
 # -----------------------------------------------------------------------------
-FROM rust:1.85-alpine AS builder
+FROM rust:1.92-alpine AS builder
 
 # Build arguments for flexibility
 ARG TARGETPLATFORM
@@ -64,7 +64,7 @@ LABEL org.opencontainers.image.title="AgentSync" \
 # - ca-certificates: For HTTPS connections (future-proofing)
 # - tini: Proper init system for containers (handles signals correctly)
 RUN apk add --no-cache \
-    ca-certificates=20250911-r0 \
+    ca-certificates \
     tini=0.19.0-r3
 
 # Create non-root user for security
