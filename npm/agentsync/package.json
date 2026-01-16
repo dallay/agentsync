@@ -41,7 +41,7 @@
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {
-    "@types/node": "^22.9.0",
+    "@types/node": "^24.0.0",
     "typescript": "^5.9.3"
   },
   "optionalDependencies": {
