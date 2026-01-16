@@ -44,7 +44,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: "24"
+          node-version: "22.14"
 
       - name: Semantic Release
         uses: cycjimmy/semantic-release-action@v4
@@ -287,7 +287,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: "24"
+          node-version: "22.14"
           registry-url: "https://registry.npmjs.org"
 
       - name: Publish platform package to NPM
@@ -389,7 +389,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: "24"
+          node-version: "22.14"
           registry-url: "https://registry.npmjs.org"
 
       - name: Update package.json version

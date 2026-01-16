@@ -64,7 +64,7 @@ description = "OpenCode - OpenAI coding assistant"
 
 [agents.opencode.targets.instructions]
 source = "AGENTS.md"
-destination = "OPENCODE.md"
+destination = "AGENTS.md"
 type = "symlink"
 
 # -----------------------------------------------------------------------------
