@@ -33,3 +33,8 @@ npm/agentsync/*.tgz
 node_modules/
 .pnpm-store/
 pnpm-debug.log
+# START AI Agent Symlinks
+.github/copilot-instructions.md
+AGENTS.md
+CLAUDE.md
+# END AI Agent Symlinks

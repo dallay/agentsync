@@ -1,0 +1,92 @@
+# AgentSync Configuration
+# This file defines how AI agent configurations are synchronized via symbolic links.
+
+# Source directory (relative to this config file)
+source_dir = "."
+
+# Gitignore management
+[gitignore]
+enabled = true
+marker = "AI Agent Symlinks"
+# Additional entries can be added here:
+# entries = ["custom-file.md"]
+
+# =============================================================================
+# MCP (Model Context Protocol) Configuration
+# =============================================================================
+# Define MCP servers once here, and AgentSync will generate the appropriate
+# config files for each AI agent (Claude, Copilot, Gemini, VS Code, OpenCode).
+#
+# [mcp]
+# enabled = true
+# merge_strategy = "merge"  # "merge" (default) or "overwrite"
+#
+# [mcp_servers.filesystem]
+# command = "npx"
+# args = ["-y", "@modelcontextprotocol/server-filesystem", "."]
+#
+# [mcp_servers.git]
+# command = "npx"
+# args = ["-y", "@modelcontextprotocol/server-git", "--repository", "."]
+
+# =============================================================================
+# Agent Configurations
+# =============================================================================
+# Each agent has:
+#   - enabled: Whether to sync this agent (default: true)
+#   - description: Human-readable description
+#   - targets: Map of target configurations
+#
+# Each target has:
+#   - source: Path relative to source_dir
+#   - destination: Path relative to project root
+#   - type: "symlink" or "symlink-contents"
+#   - pattern: (optional) Glob pattern for symlink-contents
+
+# -----------------------------------------------------------------------------
+# Claude Code
+# -----------------------------------------------------------------------------
+[agents.claude]
+enabled = true
+description = "Claude Code - Anthropic's AI coding assistant"
+
+[agents.claude.targets.instructions]
+source = "AGENTS.md"
+destination = "CLAUDE.md"
+type = "symlink"
+
+# -----------------------------------------------------------------------------
+# OpenCode
+# -----------------------------------------------------------------------------
+[agents.opencode]
+enabled = true
+description = "OpenCode - OpenAI coding assistant"
+
+[agents.opencode.targets.instructions]
+source = "AGENTS.md"
+destination = "OPENCODE.md"
+type = "symlink"
+
+# -----------------------------------------------------------------------------
+# GitHub Copilot
+# -----------------------------------------------------------------------------
+[agents.copilot]
+enabled = true
+description = "GitHub Copilot - VS Code and GitHub integrated AI"
+
+[agents.copilot.targets.instructions]
+source = "AGENTS.md"
+destination = ".github/copilot-instructions.md"
+type = "symlink"
+
+# -----------------------------------------------------------------------------
+# Root AGENTS.md
+# -----------------------------------------------------------------------------
+[agents.root]
+enabled = true
+description = "Root AGENTS.md for tools that look for it in repo root"
+
+[agents.root.targets.agents]
+source = "AGENTS.md"
+destination = "AGENTS.md"
+type = "symlink"
