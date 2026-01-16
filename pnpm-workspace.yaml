@@ -1,8 +1,6 @@
 packages:
   - npm/agentsync
 
-# catalog definition for the agentsync package
-
 minimumReleaseAge: 4320 # 3 days
 
 minimumReleaseAgeExclude:
