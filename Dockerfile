@@ -64,7 +64,7 @@ LABEL org.opencontainers.image.title="AgentSync" \
 # - ca-certificates: For HTTPS connections (future-proofing)
 # - tini: Proper init system for containers (handles signals correctly)
 RUN apk add --no-cache \
-    ca-certificates=20250911-r0 \
+    ca-certificates \
     tini=0.19.0-r3
 
 # Create non-root user for security
