@@ -74,6 +74,9 @@ jobs:
         with:
           version: 10.28.0
 
+      - name: Upgrade npm
+        run: npm install -g npm@10
+
       - name: Cache pnpm store
         uses: actions/cache@v5
         with:
