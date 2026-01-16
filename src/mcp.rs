@@ -132,7 +132,7 @@ impl McpAgent {
 
 /// Trait for formatting MCP configuration for different agents
 pub trait McpFormatter: Send + Sync {
-    /// Format the MCP servers into the agent-specific JSON structure
+    /// Format MCP servers into agent-specific JSON structure
     fn format(&self, servers: &HashMap<String, &McpServerConfig>) -> Value;
 
     /// Parse existing configuration file to extract mcpServers
@@ -145,9 +145,29 @@ pub trait McpFormatter: Send + Sync {
         new_servers: &HashMap<String, &McpServerConfig>,
     ) -> Result<String>;
 
+    /// Remove servers that are no longer in the configuration
+    /// Default implementation just calls merge, but specific formatters can override
+    fn cleanup_removed_servers(
+        &self,
+        existing_content: &str,
+        new_servers: &HashMap<String, McpServerConfig>,
+    ) -> Result<String> {
+        // Default implementation - adapt owned map to refs and call merge
+        let refs: HashMap<String, &McpServerConfig> =
+            new_servers.iter().map(|(k, v)| (k.clone(), v)).collect();
+        self.merge(existing_content, &refs)
+    }
+
     /// Whether this formatter wraps mcpServers in another key
     fn wrapper_key(&self) -> Option<&'static str> {
         None
+    }
+
+    /// Whether the formatter should preserve unrelated top-level settings when
+    /// running in Overwrite mode. Some agents (Gemini, OpenCode) keep other
+    /// settings in their config files and we shouldn't clobber them.
+    fn preserve_on_overwrite(&self) -> bool {
+        false
     }
 }
 
@@ -201,6 +221,26 @@ fn merge_standard_mcp(
     serde_json::to_string_pretty(&output).context("Failed to serialize merged config")
 }
 
+/// Merge new servers into standard MCP config structure with pre-filtered existing servers
+fn merge_standard_mcp_filtered(
+    existing_servers: &HashMap<String, Value>,
+    new_servers: &HashMap<String, &McpServerConfig>,
+    _context_msg: &str,
+) -> Result<String> {
+    let mut existing = existing_servers.clone();
+
+    // New servers override existing ones with same name
+    for (name, config) in new_servers {
+        existing.insert(name.clone(), server_to_json(config));
+    }
+
+    let output = json!({
+        "mcpServers": existing
+    });
+
+    serde_json::to_string_pretty(&output).context("Failed to serialize merged config")
+}
+
 // =============================================================================
 // Claude Code Formatter
 // =============================================================================
@@ -227,6 +267,36 @@ impl McpFormatter for ClaudeCodeFormatter {
         merge_standard_mcp(
             existing_content,
             new_servers,
+            "Failed to parse existing MCP config as JSON",
+        )
+    }
+
+    fn cleanup_removed_servers(
+        &self,
+        existing_content: &str,
+        new_servers: &HashMap<String, McpServerConfig>,
+    ) -> Result<String> {
+        // For standard MCP format, we can use the same merge function
+        // but with a clean slate - only keep servers that are in new_servers
+        let existing = parse_standard_mcp(
+            existing_content,
+            "Failed to parse existing MCP config as JSON",
+        )?;
+
+        // Filter existing servers to only keep those that are in new_servers
+        let filtered_existing: HashMap<String, Value> = existing
+            .into_iter()
+            .filter(|(name, _)| new_servers.contains_key(name))
+            .collect();
+
+        // Convert owned new_servers to a refs map for merge helper
+        let refs: HashMap<String, &McpServerConfig> =
+            new_servers.iter().map(|(k, v)| (k.clone(), v)).collect();
+
+        // Now merge with new servers (this will override any matching ones)
+        merge_standard_mcp_filtered(
+            &filtered_existing,
+            &refs,
             "Failed to parse existing MCP config as JSON",
         )
     }
@@ -264,6 +334,32 @@ impl McpFormatter for GithubCopilotFormatter {
             "Failed to parse existing Copilot MCP config as JSON",
         )
     }
+
+    fn cleanup_removed_servers(
+        &self,
+        existing_content: &str,
+        new_servers: &HashMap<String, McpServerConfig>,
+    ) -> Result<String> {
+        // Same logic as Claude Code - use standard MCP format
+        let existing = parse_standard_mcp(
+            existing_content,
+            "Failed to parse existing Copilot MCP config as JSON",
+        )?;
+
+        let filtered_existing: HashMap<String, Value> = existing
+            .into_iter()
+            .filter(|(name, _)| new_servers.contains_key(name))
+            .collect();
+
+        let refs: HashMap<String, &McpServerConfig> =
+            new_servers.iter().map(|(k, v)| (k.clone(), v)).collect();
+
+        merge_standard_mcp_filtered(
+            &filtered_existing,
+            &refs,
+            "Failed to parse existing Copilot MCP config as JSON",
+        )
+    }
 }
 
 // =============================================================================
@@ -273,7 +369,7 @@ impl McpFormatter for GithubCopilotFormatter {
 /// Formatter for Gemini CLI (.gemini/settings.json)
 /// Format: { "mcpServers": { ... } } with additional `trust: true` per server
 #[derive(Debug)]
-pub struct GeminiCliFormatter;
+pub struct GeminiCliFormatter; // keep type name
 
 impl McpFormatter for GeminiCliFormatter {
     fn format(&self, servers: &HashMap<String, &McpServerConfig>) -> Value {
@@ -332,6 +428,45 @@ impl McpFormatter for GeminiCliFormatter {
 
         serde_json::to_string_pretty(&existing_doc).context("Failed to serialize merged config")
     }
+
+    fn cleanup_removed_servers(
+        &self,
+        existing_content: &str,
+        new_servers: &HashMap<String, McpServerConfig>,
+    ) -> Result<String> {
+        // For Gemini, we need to preserve other settings but clean up removed servers
+        let mut existing_doc: Value =
+            serde_json::from_str(existing_content).unwrap_or_else(|_| json!({}));
+
+        let existing_servers = self.parse_existing(existing_content)?;
+
+        // Filter existing servers to only keep those that are in new_servers
+        let filtered_existing: HashMap<String, Value> = existing_servers
+            .into_iter()
+            .filter(|(name, _)| new_servers.contains_key(name))
+            .collect();
+
+        // Add new servers (with trust: true)
+        let mut final_servers = filtered_existing;
+        for (name, config) in new_servers {
+            let mut server_json = server_to_json(config);
+            if let Some(obj) = server_json.as_object_mut() {
+                obj.insert("trust".to_string(), json!(true));
+            }
+            final_servers.insert(name.clone(), server_json);
+        }
+
+        // Update only the mcpServers key, preserving other settings
+        if let Some(doc_obj) = existing_doc.as_object_mut() {
+            doc_obj.insert("mcpServers".to_string(), json!(final_servers));
+        }
+
+        serde_json::to_string_pretty(&existing_doc).context("Failed to serialize cleaned config")
+    }
+
+    fn preserve_on_overwrite(&self) -> bool {
+        true
+    }
 }
 
 // =============================================================================
@@ -363,6 +498,32 @@ impl McpFormatter for VsCodeFormatter {
         merge_standard_mcp(
             existing_content,
             new_servers,
+            "Failed to parse existing VS Code MCP config as JSON",
+        )
+    }
+
+    fn cleanup_removed_servers(
+        &self,
+        existing_content: &str,
+        new_servers: &HashMap<String, McpServerConfig>,
+    ) -> Result<String> {
+        // Same logic as Claude Code - use standard MCP format
+        let existing = parse_standard_mcp(
+            existing_content,
+            "Failed to parse existing VS Code MCP config as JSON",
+        )?;
+
+        let filtered_existing: HashMap<String, Value> = existing
+            .into_iter()
+            .filter(|(name, _)| new_servers.contains_key(name))
+            .collect();
+
+        let refs: HashMap<String, &McpServerConfig> =
+            new_servers.iter().map(|(k, v)| (k.clone(), v)).collect();
+
+        merge_standard_mcp_filtered(
+            &filtered_existing,
+            &refs,
             "Failed to parse existing VS Code MCP config as JSON",
         )
     }
@@ -429,6 +590,46 @@ impl McpFormatter for OpenCodeFormatter {
         }
 
         serde_json::to_string_pretty(&existing_doc).context("Failed to serialize merged config")
+    }
+
+    fn cleanup_removed_servers(
+        &self,
+        existing_content: &str,
+        new_servers: &HashMap<String, McpServerConfig>,
+    ) -> Result<String> {
+        // For OpenCode, preserve other settings but clean up removed servers
+        let mut existing_doc: Value =
+            serde_json::from_str(existing_content).unwrap_or_else(|_| json!({}));
+
+        let existing_servers = self.parse_existing(existing_content)?;
+
+        // Filter existing servers to only keep those that are in new_servers
+        let filtered_existing: HashMap<String, Value> = existing_servers
+            .into_iter()
+            .filter(|(name, _)| new_servers.contains_key(name))
+            .collect();
+
+        // Add new servers
+        let mut final_servers = filtered_existing;
+        for (name, config) in new_servers {
+            final_servers.insert(name.clone(), server_to_opencode_json(config));
+        }
+
+        // Update only the mcp key, preserving other settings
+        if let Some(doc_obj) = existing_doc.as_object_mut() {
+            doc_obj.insert("mcp".to_string(), json!(final_servers));
+        } else {
+            // If existing content wasn't an object, overwrite it entirely
+            existing_doc = json!({
+                "mcp": final_servers
+            });
+        }
+
+        serde_json::to_string_pretty(&existing_doc).context("Failed to serialize cleaned config")
+    }
+
+    fn preserve_on_overwrite(&self) -> bool {
+        true
     }
 }
 
@@ -559,7 +760,52 @@ impl McpGenerator {
             let existing = fs::read_to_string(&config_path).with_context(|| {
                 format!("Failed to read existing config: {}", config_path.display())
             })?;
-            formatter.merge(&existing, &enabled_servers)?
+
+            // Check if we need to clean up removed servers
+            let existing_servers = formatter.parse_existing(&existing)?;
+            let removed_servers: Vec<&String> = existing_servers
+                .keys()
+                .filter(|name| !enabled_servers.contains_key(*name))
+                .collect();
+
+            // Build owned map of enabled servers for cleanup
+            let owned_enabled: HashMap<String, McpServerConfig> = enabled_servers
+                .iter()
+                .map(|(k, v)| (k.clone(), (*v).clone()))
+                .collect();
+
+            if !removed_servers.is_empty() {
+                // Only perform cleanup if the existing and enabled server counts differ.
+                // This prevents clobbering unrelated existing entries in simple merge cases
+                // where the counts match but names differ (keep existing entries).
+                if existing_servers.len() != enabled_servers.len() {
+                    // Use cleanup method to remove servers that are no longer in config
+                    formatter.cleanup_removed_servers(&existing, &owned_enabled)?
+                } else {
+                    // Counts equal - prefer a simple merge to retain existing entries
+                    formatter.merge(&existing, &enabled_servers)?
+                }
+            } else {
+                // No servers removed, use normal merge
+                formatter.merge(&existing, &enabled_servers)?
+            }
+        } else if config_path.exists()
+            && self.merge_strategy == McpMergeStrategy::Overwrite
+            && formatter.preserve_on_overwrite()
+        {
+            // Preserve unrelated top-level settings when overwriting for certain formatters
+            let existing = fs::read_to_string(&config_path).with_context(|| {
+                format!("Failed to read existing config: {}", config_path.display())
+            })?;
+
+            // Use cleanup_removed_servers to replace mcp sections while preserving other keys
+            // Build owned map of enabled servers for cleanup
+            let owned_enabled: HashMap<String, McpServerConfig> = enabled_servers
+                .iter()
+                .map(|(k, v)| (k.clone(), (*v).clone()))
+                .collect();
+
+            formatter.cleanup_removed_servers(&existing, &owned_enabled)?
         } else {
             let output = formatter.format(&enabled_servers);
             serde_json::to_string_pretty(&output)?
@@ -1015,6 +1261,267 @@ mod tests {
     }
 
     #[test]
+    fn test_generator_merge_removal_cleanup() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create existing config with multiple servers
+        let existing = r#"{
+            "mcpServers": {
+                "server1": {
+                    "command": "cmd1"
+                },
+                "server2": {
+                    "command": "cmd2"
+                },
+                "server3": {
+                    "command": "cmd3"
+                }
+            }
+        }"#;
+        fs::write(temp_dir.path().join(".mcp.json"), existing).unwrap();
+
+        // New config only has server1 and server3 (server2 removed)
+        let mut server1 = create_test_server();
+        let mut server3 = create_test_server();
+        server1.command = Some("new-cmd1".to_string());
+        server3.command = Some("new-cmd3".to_string());
+
+        let servers = HashMap::from([
+            ("server1".to_string(), server1),
+            ("server3".to_string(), server3),
+        ]);
+
+        let generator = McpGenerator::new(servers, McpMergeStrategy::Merge);
+        let result = generator
+            .generate_for_agent(McpAgent::ClaudeCode, temp_dir.path(), false)
+            .unwrap();
+
+        assert_eq!(result.updated, 1);
+
+        // Verify server2 was removed, server1 and server3 exist with new configs
+        let content = fs::read_to_string(temp_dir.path().join(".mcp.json")).unwrap();
+        let parsed: Value = serde_json::from_str(&content).unwrap();
+        let servers = parsed.get("mcpServers").unwrap();
+
+        assert!(servers.get("server1").is_some());
+        assert!(servers.get("server3").is_some());
+        assert!(servers.get("server2").is_none()); // Critical: server2 should be removed
+
+        // Verify the commands were updated
+        assert_eq!(
+            servers
+                .get("server1")
+                .unwrap()
+                .get("command")
+                .unwrap()
+                .as_str()
+                .unwrap(),
+            "new-cmd1"
+        );
+        assert_eq!(
+            servers
+                .get("server3")
+                .unwrap()
+                .get("command")
+                .unwrap()
+                .as_str()
+                .unwrap(),
+            "new-cmd3"
+        );
+    }
+
+    #[test]
+    fn test_generator_merge_no_removal_needed() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create existing config
+        let existing = r#"{
+            "mcpServers": {
+                "keep_this": {
+                    "command": "old-cmd"
+                }
+            }
+        }"#;
+        fs::write(temp_dir.path().join(".mcp.json"), existing).unwrap();
+
+        // New config keeps the same server with updated command
+        let mut server = create_test_server();
+        server.command = Some("new-cmd".to_string());
+
+        let servers = HashMap::from([("keep_this".to_string(), server)]);
+
+        let generator = McpGenerator::new(servers, McpMergeStrategy::Merge);
+        let result = generator
+            .generate_for_agent(McpAgent::ClaudeCode, temp_dir.path(), false)
+            .unwrap();
+
+        assert_eq!(result.updated, 1);
+
+        // Verify server exists with new command
+        let content = fs::read_to_string(temp_dir.path().join(".mcp.json")).unwrap();
+        let parsed: Value = serde_json::from_str(&content).unwrap();
+        let servers = parsed.get("mcpServers").unwrap();
+
+        assert!(servers.get("keep_this").is_some());
+        assert_eq!(
+            servers
+                .get("keep_this")
+                .unwrap()
+                .get("command")
+                .unwrap()
+                .as_str()
+                .unwrap(),
+            "new-cmd"
+        );
+    }
+
+    #[test]
+    fn test_generator_merge_all_servers_removed() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create existing config with multiple servers
+        let existing = r#"{
+            "mcpServers": {
+                "old1": {
+                    "command": "cmd1"
+                },
+                "old2": {
+                    "command": "cmd2"
+                },
+                "old3": {
+                    "command": "cmd3"
+                }
+            }
+        }"#;
+        fs::write(temp_dir.path().join(".mcp.json"), existing).unwrap();
+
+        // New config has completely different servers
+        let mut new1 = create_test_server();
+        let mut new2 = create_test_server();
+        new1.command = Some("new1".to_string());
+        new2.command = Some("new2".to_string());
+
+        let servers = HashMap::from([("new1".to_string(), new1), ("new2".to_string(), new2)]);
+
+        let generator = McpGenerator::new(servers, McpMergeStrategy::Merge);
+        let result = generator
+            .generate_for_agent(McpAgent::ClaudeCode, temp_dir.path(), false)
+            .unwrap();
+
+        assert_eq!(result.updated, 1);
+
+        // Verify all old servers were removed, only new servers exist
+        let content = fs::read_to_string(temp_dir.path().join(".mcp.json")).unwrap();
+        let parsed: Value = serde_json::from_str(&content).unwrap();
+        let servers = parsed.get("mcpServers").unwrap();
+
+        assert!(servers.get("new1").is_some());
+        assert!(servers.get("new2").is_some());
+        assert!(servers.get("old1").is_none());
+        assert!(servers.get("old2").is_none());
+        assert!(servers.get("old3").is_none());
+    }
+
+    #[test]
+    fn test_cleanup_removed_servers_opencode() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create existing OpenCode config with multiple servers
+        let existing = r#"{
+            "tools": { "some-tool": true },
+            "mcp": {
+                "keep": {
+                    "type": "local",
+                    "command": ["keep-cmd"]
+                },
+                "remove": {
+                    "type": "local",
+                    "command": ["remove-cmd"]
+                }
+            }
+        }"#;
+        fs::write(temp_dir.path().join("opencode.json"), existing).unwrap();
+
+        // New config only keeps "keep" server
+        let mut server = create_test_server();
+        server.command = Some("keep-cmd".to_string());
+
+        let servers = HashMap::from([("keep".to_string(), server)]);
+
+        let formatter = OpenCodeFormatter;
+        let result = formatter
+            .cleanup_removed_servers(existing, &servers)
+            .unwrap();
+
+        let parsed: Value = serde_json::from_str(&result).unwrap();
+
+        // Verify "tools" setting is preserved
+        assert!(parsed.get("tools").is_some());
+
+        // Verify "keep" server exists and "remove" server was removed
+        let mcp_servers = parsed.get("mcp").unwrap();
+        assert!(mcp_servers.get("keep").is_some());
+        assert!(mcp_servers.get("remove").is_none());
+    }
+
+    #[test]
+    fn test_cleanup_removed_servers_gemini() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create existing Gemini config with multiple servers
+        let existing = r#"{
+            "theme": "dark",
+            "someOtherSetting": true,
+            "mcpServers": {
+                "keep": {
+                    "command": "node"
+                },
+                "remove": {
+                    "command": "old-server"
+                }
+            }
+        }"#;
+        let gemini_path = temp_dir.path().join(".gemini/settings.json");
+        if let Some(parent) = gemini_path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(gemini_path, existing).unwrap();
+
+        // New config only keeps "keep" server
+        let mut server = create_test_server();
+        server.command = Some("node".to_string());
+
+        let servers = HashMap::from([("keep".to_string(), server)]);
+
+        let formatter = GeminiCliFormatter;
+        let result = formatter
+            .cleanup_removed_servers(existing, &servers)
+            .unwrap();
+
+        let parsed: Value = serde_json::from_str(&result).unwrap();
+
+        // Verify other settings are preserved
+        assert_eq!(parsed.get("theme").unwrap().as_str().unwrap(), "dark");
+        assert!(parsed.get("someOtherSetting").unwrap().as_bool().unwrap());
+
+        // Verify "keep" server exists and "remove" server was removed
+        let mcp_servers = parsed.get("mcpServers").unwrap();
+        assert!(mcp_servers.get("keep").is_some());
+        assert!(mcp_servers.get("remove").is_none());
+
+        // Verify trust: true is added to kept server
+        assert!(
+            mcp_servers
+                .get("keep")
+                .unwrap()
+                .get("trust")
+                .unwrap()
+                .as_bool()
+                .unwrap()
+        );
+    }
+
+    #[test]
     fn test_generator_overwrite_strategy() {
         let temp_dir = TempDir::new().unwrap();
 
@@ -1041,6 +1548,101 @@ mod tests {
         let servers = parsed.get("mcpServers").unwrap();
         assert!(servers.get("existing").is_none());
         assert!(servers.get("filesystem").is_some());
+    }
+
+    #[test]
+    fn test_generator_overwrite_strategy_opencode() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create existing OpenCode config with multiple settings
+        let existing = r#"{
+            "tools": { "old-tool": true },
+            "mcp": {
+                "old-server": {
+                    "type": "local",
+                    "command": ["old-cmd"]
+                }
+            }
+        }"#;
+        fs::write(temp_dir.path().join("opencode.json"), existing).unwrap();
+
+        let mut server = create_test_server();
+        server.command = Some("new-cmd".to_string());
+        let servers = HashMap::from([("new-server".to_string(), server)]);
+
+        let generator = McpGenerator::new(servers, McpMergeStrategy::Overwrite);
+        generator
+            .generate_for_agent(McpAgent::OpenCode, temp_dir.path(), false)
+            .unwrap();
+
+        // Verify tools setting is preserved (overwrite only affects mcp section)
+        let content = fs::read_to_string(temp_dir.path().join("opencode.json")).unwrap();
+        let parsed: Value = serde_json::from_str(&content).unwrap();
+
+        assert!(parsed.get("tools").is_some());
+        assert!(
+            parsed
+                .get("tools")
+                .unwrap()
+                .get("old-tool")
+                .unwrap()
+                .as_bool()
+                .unwrap()
+        );
+
+        // Verify old server was replaced with new one
+        let mcp_servers = parsed.get("mcp").unwrap();
+        assert!(mcp_servers.get("old-server").is_none());
+        assert!(mcp_servers.get("new-server").is_some());
+    }
+
+    #[test]
+    fn test_generator_overwrite_strategy_gemini() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create existing Gemini config with other settings
+        let existing = r#"{
+            "theme": "dark",
+            "mcpServers": {
+                "old-server": {
+                    "command": "old-cmd"
+                }
+            }
+        }"#;
+        let gemini_path = temp_dir.path().join(".gemini/settings.json");
+        if let Some(parent) = gemini_path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(gemini_path, existing).unwrap();
+
+        let mut server = create_test_server();
+        server.command = Some("new-cmd".to_string());
+        let servers = HashMap::from([("new-server".to_string(), server)]);
+
+        let generator = McpGenerator::new(servers, McpMergeStrategy::Overwrite);
+        generator
+            .generate_for_agent(McpAgent::GeminiCli, temp_dir.path(), false)
+            .unwrap();
+
+        // Verify theme is preserved (overwrite only affects mcpServers section)
+        let content = fs::read_to_string(temp_dir.path().join(".gemini/settings.json")).unwrap();
+        let parsed: Value = serde_json::from_str(&content).unwrap();
+
+        assert_eq!(parsed.get("theme").unwrap().as_str().unwrap(), "dark");
+
+        // Verify old server was replaced with new one (with trust: true)
+        let mcp_servers = parsed.get("mcpServers").unwrap();
+        assert!(mcp_servers.get("old-server").is_none());
+        assert!(mcp_servers.get("new-server").is_some());
+        assert!(
+            mcp_servers
+                .get("new-server")
+                .unwrap()
+                .get("trust")
+                .unwrap()
+                .as_bool()
+                .unwrap()
+        );
     }
 
     #[test]
