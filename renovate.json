@@ -1,6 +1,76 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
-  ]
+    "config:base"
+  ],
+  "automergeType": "branch",
+  "automerge": true,
+  "automergeStrategy": "auto",
+  "dependencyDashboard": true,
+  "platformAutomerge": true,
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "packageRules": [
+    {
+      "matchUpdateTypes": ["major"],
+      "groupName": "major upgrades",
+      "automerge": false
+    },
+    {
+      "matchDepTypes": ["devDependencies"],
+      "groupName": "devDependencies",
+      "automerge": true,
+      "automergeType": "branch",
+      "semanticCommitType": "chore",
+      "matchUpdateTypes": ["minor", "patch"],
+      "matchManagers": ["npm", "pnpm"]
+    },
+    {
+      "matchManagers": ["cargo"],
+      "groupName": "cargo dependencies",
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true,
+      "automergeType": "branch",
+      "semanticCommitType": "chore"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions",
+      "automerge": true,
+      "matchUpdateTypes": ["minor", "patch"]
+    },
+    {
+      "matchManagers": ["pnpm"],
+      "groupName": "runtime deps",
+      "matchDepTypes": ["dependencies"],
+      "automerge": false
+    },
+    {
+      "matchManagers": ["cargo"],
+      "groupName": "cargo major/minor upgrades",
+      "matchUpdateTypes": ["major"],
+      "automerge": false
+    },
+    {
+      "matchManagers": ["pnpm"],
+      "groupName": "pnpm major upgrades",
+      "matchUpdateTypes": ["major"],
+      "automerge": false
+    }
+  ],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true,
+    "schedule": [
+      "before 8am",
+      "after 5pm and before midnight on monday",
+      "after 5pm and before midnight on tuesday",
+      "after 5pm and before midnight on wednesday",
+      "after 5pm and before midnight on thursday",
+      "after 1pm and before midnight on friday",
+      "every weekend"
+    ]
+  },
+  "labels": ["dependencies", "renovate"],
+  "dependencyDashboardTitle": "🔗 Dependency Dashboard"
 }
