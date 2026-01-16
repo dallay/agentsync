@@ -1,0 +1,23 @@
+# Lefthook configuration for AgentSync
+# Runs basic quality gates locally before commit/push
+# Requires: lefthook installed (https://github.com/evilmartians/lefthook) and pnpm available for TS checks
+
+pre-commit:
+  parallel: true
+  commands:
+    cargo-fmt:
+      run: cargo fmt --all -- --check
+      # run in repo root
+    cargo-clippy:
+      run: cargo clippy --all-targets --all-features -- -D warnings
+      # make sure code compiles cleanly
+    pnpm-typecheck:
+      run: pnpm -w run typecheck
+      # TypeScript typecheck for npm/agentsync package (relies on workspace script)
+
+pre-push:
+  parallel: false
+  commands:
+    cargo-test:
+      run: cargo test --all-features
+      # Runs the Rust test suite before push
