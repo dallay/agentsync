@@ -317,9 +317,9 @@ If you continue to experience issues, please [open an issue](https://github.com/
 We welcome contributions from the community! If you'd like to get involved, please follow these steps:
 
 1. **Fork the Repository**: Create your own fork of the [AgentSync repository](https://github.com/dallay/agentsync).
-2. **Create a Feature Branch**: Make a new branch for your changes (`git checkout -b feat/your-amazing-feature`).
-3. **Commit Your Changes**: Commit your work with a clear and descriptive message (`git commit -m 'feat: add amazing feature'`).
-4. **Push to Your Branch**: Push your changes to your forked repository (`git push origin feat/your-amazing-feature`).
+2. **Create a Feature Branch**: Make a new branch for your changes (`git checkout -b feat/your-new-feature`).
+3. **Commit Your Changes**: Commit your work with a clear and descriptive message (`git commit -m 'feat: add your-new-feature'`).
+4. **Push to Your Branch**: Push your changes to your forked repository (`git push origin feat/your-new-feature`).
 5. **Open a Pull Request**: Submit a pull request to the `main` branch of the official repository.
 
 Before submitting your pull request, please make sure your code is well-tested and follows the existing style of the project.
