@@ -72,7 +72,18 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v2
         with:
-          version: 9.5.0
+          version: 10.28.0
+
+      - name: Cache pnpm store
+        uses: actions/cache@v3
+        with:
+          path: ~/.pnpm-store
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Verify commit analyzer
         run: |
@@ -298,12 +309,12 @@ jobs:
             echo ""
             echo "### Docker Image Registries"
             echo ""
-            echo "- **GitHub Container Registry**: \`ghcr.io/${{ github.repository_owner }}/cvix-*\`"
-            echo "- **Docker Hub**: \`docker.io/$DOCKERHUB_USERNAME/cvix-*\`"
+            echo "- **GitHub Container Registry**: `ghcr.io/${{ github.repository_owner }}/cvix-*`"
+            echo "- **Docker Hub**: `docker.io/$DOCKERHUB_USERNAME/cvix-*`"
             echo ""
             echo "### Available Tags"
             echo ""
-            echo "- \`latest\` - Rolling tag for main branch"
-            echo "- \`${{ needs.semantic-release.outputs.new_release_version }}\` - Semantic version"
-            echo "- \`v${{ needs.semantic-release.outputs.new_release_major_version }}\` - Major version tag"
+            echo "- `latest` - Rolling tag for main branch"
+            echo "- `${{ needs.semantic-release.outputs.new_release_version }}` - Semantic version"
+            echo "- `v${{ needs.semantic-release.outputs.new_release_major_version }}` - Major version tag"
           } >> "$GITHUB_STEP_SUMMARY"
