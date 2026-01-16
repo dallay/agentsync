@@ -50,7 +50,7 @@ RUN strip /build/target/release/agentsync && \
 # Stage 2: Runtime environment
 # Minimal Alpine image - no Rust toolchain, no build dependencies
 # -----------------------------------------------------------------------------
-FROM alpine:3.21 AS runtime
+FROM alpine:3.23 AS runtime
 
 # Labels for container metadata (OCI standard)
 LABEL org.opencontainers.image.title="AgentSync" \
