@@ -9,7 +9,7 @@
     "release:dry-run": "semantic-release --dry-run",
     "update-deps": "pnpm update -i -r --latest",
     "preinstall": "npx only-allow pnpm",
-    "prepare": "if [ -d .git ]; then pnpm exec lefthook install && pnpm run agents:sync; fi",
+    "prepare": "node -e \"const {existsSync}=require('fs'); if (existsSync('.git')) { require('child_process').execSync('pnpm exec lefthook install && pnpm run agents:sync', {stdio:'inherit'}); }\"",
     "agents:sync": "pnpm exec agentsync apply",
     "agents:sync:clean": "pnpm exec agentsync apply --clean",
     "precommit": "pnpm exec agentsync apply --dry-run"
@@ -24,6 +24,7 @@
     "lefthook": "^2.0.15",
     "semantic-release": "^25.0.2"
   },
+  "packageManager": "pnpm@10.28.0",
   "dependencies": {
     "@dallay/agentsync": "catalog:"
   }
