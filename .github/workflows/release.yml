@@ -111,6 +111,7 @@ jobs:
           # Increase GraphQL timeout and retries for reliability
           OCTOKIT_TIMEOUT: 60000
           OCTOKIT_REQUEST_RETRIES: 5
+          NPM_CONFIG_WORKSPACES: 'false'
         # Retry on transient failures (timeouts, rate limits, etc)
         continue-on-error: false
 
