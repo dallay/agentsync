@@ -15,26 +15,27 @@ pub const CONFIG_FILE_NAME: &str = "agentsync.toml";
 /// Default source directory name
 pub const DEFAULT_SOURCE_DIR: &str = ".agents";
 
-/// Root configuration structure
+/// Represents the root of the `agentsync.toml` configuration file.
 #[derive(Debug, Deserialize)]
 pub struct Config {
-    /// Directory containing source files (relative to config file)
+    /// The directory where source files for agents are stored, relative to the
+    /// configuration file. Defaults to ".".
     #[serde(default = "default_source_dir")]
     pub source_dir: String,
 
-    /// Agent configurations
+    /// A map of agent configurations, where the key is the agent's name (e.g., "claude").
     #[serde(default)]
     pub agents: HashMap<String, AgentConfig>,
 
-    /// Gitignore management settings
+    /// Settings for managing the project's `.gitignore` file.
     #[serde(default)]
     pub gitignore: GitignoreConfig,
 
-    /// MCP global settings
+    /// Global settings for Model Context Protocol (MCP) integration.
     #[serde(default)]
     pub mcp: McpGlobalConfig,
 
-    /// MCP server definitions
+    /// A map of MCP server configurations, where the key is a unique server name.
     #[serde(default)]
     pub mcp_servers: HashMap<String, McpServerConfig>,
 }
@@ -43,18 +44,20 @@ fn default_source_dir() -> String {
     ".".to_string()
 }
 
-/// Configuration for a single AI agent
+/// Defines the configuration for a single AI agent, such as Claude or GitHub Copilot.
+/// Corresponds to a `[agents.agent_name]` section in `agentsync.toml`.
 #[derive(Debug, Deserialize)]
 pub struct AgentConfig {
-    /// Whether this agent is enabled
+    /// If `true`, this agent's configuration will be processed. Defaults to `true`.
     #[serde(default = "default_true")]
     pub enabled: bool,
 
-    /// Human-readable description
+    /// A human-readable description of the agent. Not used programmatically.
     #[serde(default)]
     pub description: String,
 
-    /// Targets to sync for this agent
+    /// A map of synchronization targets for this agent, where the key is a logical name
+    /// for the target (e.g., "instructions").
     #[serde(default)]
     pub targets: HashMap<String, TargetConfig>,
 }
@@ -63,46 +66,52 @@ fn default_true() -> bool {
     true
 }
 
-/// Configuration for a single sync target
+/// Specifies a single file or directory synchronization rule for an agent.
+/// Corresponds to a `[agents.agent_name.targets.target_name]` section.
 #[derive(Debug, Deserialize)]
 pub struct TargetConfig {
-    /// Source path (relative to source_dir)
+    /// The source file or directory, relative to `Config.source_dir`.
     pub source: String,
 
-    /// Destination path (relative to project root)
+    /// The destination path for the symlink, relative to the project root.
     pub destination: String,
 
-    /// Type of sync operation
+    /// The type of synchronization to perform.
     #[serde(rename = "type")]
     pub sync_type: SyncType,
 
-    /// Pattern for filtering files (only for symlink-contents)
+    /// An optional glob pattern to filter files when using `symlink-contents`.
+    /// For example, `*.md` would only link Markdown files.
     #[serde(default)]
     pub pattern: Option<String>,
 }
 
-/// Type of synchronization to perform
+/// The type of synchronization operation to perform for a target.
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum SyncType {
-    /// Create a single symlink to a file or directory
+    /// Creates a single symlink from `source` to `destination`.
+    /// If `source` is a directory, the entire directory is linked.
     Symlink,
-    /// Create symlinks for all contents of a directory
+    /// Creates symlinks for each item *inside* the `source` directory at the `destination`.
+    /// The `destination` directory will be created if it doesn't exist.
     SymlinkContents,
 }
 
-/// Gitignore management configuration
+/// Configuration for managing the `.gitignore` file.
+/// Corresponds to the `[gitignore]` section in `agentsync.toml`.
 #[derive(Debug, Deserialize)]
 pub struct GitignoreConfig {
-    /// Whether to manage .gitignore
+    /// If `true`, agentsync will add symlink destinations to `.gitignore`. Defaults to `true`.
     #[serde(default = "default_true")]
     pub enabled: bool,
 
-    /// Marker text for the managed section
+    /// The marker used to delineate the section in `.gitignore` managed by agentsync.
+    /// Defaults to "AI Agent Symlinks".
     #[serde(default = "default_marker")]
     pub marker: String,
 
-    /// Additional entries to add to .gitignore
+    /// A list of additional paths to include in the `.gitignore` managed section.
     #[serde(default)]
     pub entries: Vec<String>,
 }
