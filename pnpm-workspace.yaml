@@ -11,7 +11,7 @@ catalog:
   conventional-changelog-conventionalcommits: ^9.1.0
   semantic-release: ^25.0.2
 
-minimumReleaseAge: 4320
+minimumReleaseAge: 4320 # 3 days
 
 minimumReleaseAgeExclude:
   - '@dallay/*'
