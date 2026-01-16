@@ -1,5 +1,5 @@
 {
-
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:base"
   ],
@@ -23,7 +23,8 @@
       "automergeType": "branch",
       "semanticCommitType": "chore",
       "matchUpdateTypes": ["minor", "patch"],
-      "matchManagers": ["npm", "pnpm"]
+      "matchManagers": ["npm", "pnpm"],
+      "schedule": ["after 5pm", "every weekend"]
     },
     {
       "matchManagers": ["cargo"],
@@ -31,23 +32,27 @@
       "matchUpdateTypes": ["minor", "patch"],
       "automerge": true,
       "automergeType": "branch",
-      "semanticCommitType": "chore"
+      "semanticCommitType": "chore",
+      "schedule": ["after 5pm", "every weekend"]
     },
     {
       "matchManagers": ["github-actions"],
       "groupName": "GitHub Actions",
       "automerge": true,
-      "matchUpdateTypes": ["minor", "patch"]
+      "matchUpdateTypes": ["minor", "patch"],
+      "schedule": ["after 5pm", "every weekend"]
     },
     {
       "matchManagers": ["pnpm"],
       "groupName": "runtime deps",
       "matchDepTypes": ["dependencies"],
-      "automerge": false
+      "automerge": false,
+      "matchUpdateTypes": ["patch"],
+      "minimumReleaseAge": "3 days"
     },
     {
       "matchManagers": ["cargo"],
-      "groupName": "cargo major/minor upgrades",
+      "groupName": "cargo major upgrades",
       "matchUpdateTypes": ["major"],
       "automerge": false
     },
@@ -56,20 +61,21 @@
       "groupName": "pnpm major upgrades",
       "matchUpdateTypes": ["major"],
       "automerge": false
+    },
+    {
+      "matchPackagePatterns": ["*"],
+      "vulnerabilityAlerts": {
+        "enabled": true
+      },
+      "matchUpdateTypes": ["patch"],
+      "automerge": true,
+      "prPriority": 10
     }
   ],
   "lockFileMaintenance": {
     "enabled": true,
     "automerge": true,
-    "schedule": [
-      "before 8am",
-      "after 5pm and before midnight on monday",
-      "after 5pm and before midnight on tuesday",
-      "after 5pm and before midnight on wednesday",
-      "after 5pm and before midnight on thursday",
-      "after 1pm and before midnight on friday",
-      "every weekend"
-    ]
+    "schedule": ["after 5pm", "every weekend"]
   },
   "labels": ["dependencies", "renovate"],
   "dependencyDashboardTitle": "🔗 Dependency Dashboard"
