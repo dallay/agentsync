@@ -1,3 +1,9 @@
+## [1.8.2](https://github.com/dallay/agentsync/compare/v1.8.1...v1.8.2) (2026-01-17)
+
+### 🐛 Bug Fixes
+
+* **opencode:** use standard opencode.json path and add schema validation ([fab593b](https://github.com/dallay/agentsync/commit/fab593b34d5c2c07078efc8bf84a4f23dc038168))
+
 ## [1.8.1](https://github.com/dallay/agentsync/compare/v1.8.0...v1.8.1) (2026-01-17)
 
 ### 🐛 Bug Fixes
