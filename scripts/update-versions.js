@@ -2,10 +2,12 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
-const nextVersion = process.argv[2];
+const SEMVER_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+const rawNextVersion = process.argv[2];
+const nextVersion = rawNextVersion && rawNextVersion.trim();
 
-if (!nextVersion) {
-  console.error('Error: No version provided');
+if (!nextVersion || !SEMVER_RE.test(nextVersion)) {
+  console.error('Error: Invalid or missing version (expected SemVer, e.g., 1.2.3)');
   process.exit(1);
 }
 
