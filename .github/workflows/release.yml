@@ -74,9 +74,6 @@ jobs:
         with:
           version: 10.28.0
 
-      - name: Upgrade npm
-        run: npm install -g npm@9
-
       - name: Cache pnpm store
         uses: actions/cache@v5
         with:
@@ -106,6 +103,8 @@ jobs:
             ]
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          NPM_CONFIG_WORKSPACES: "false"
+          NPM_CONFIG_INCLUDE_WORKSPACE_ROOT: "false"
           GIT_AUTHOR_NAME: cvix-release-bot[bot]
           GIT_AUTHOR_EMAIL: cvix-release-bot[bot]@users.noreply.github.com
           GIT_COMMITTER_NAME: cvix-release-bot[bot]

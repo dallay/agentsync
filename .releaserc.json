@@ -49,22 +49,15 @@
 		],
 		"@semantic-release/changelog",
 		[
-			"@semantic-release/npm",
-			{
-				"pkgRoot": "npm/agentsync",
-				"npmPublish": false
-			}
-		],
-		[
 			"@semantic-release/exec",
 			{
-				"prepareCmd": "sed -i.bak 's/^version = \".*\"/version = \"${nextRelease.version}\"/' Cargo.toml && rm -f Cargo.toml.bak && cargo check"
+				"prepareCmd": "node scripts/update-versions.js ${nextRelease.version} && pnpm install --lockfile-only && cargo check"
 			}
 		],
 		[
 			"@semantic-release/git",
 			{
-				"assets": ["CHANGELOG.md", "npm/agentsync/package.json", "Cargo.toml", "Cargo.lock"],
+				"assets": ["CHANGELOG.md", "npm/agentsync/package.json", "Cargo.toml", "Cargo.lock", "pnpm-lock.yaml"],
 				"message": "chore(release): 🔖 ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
 			}
 		],

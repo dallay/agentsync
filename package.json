@@ -15,15 +15,15 @@
     "precommit": "pnpm exec agentsync apply --dry-run"
   },
   "devDependencies": {
-    "@dallay/agentsync": "catalog:",
-    "@semantic-release/changelog": "catalog:",
-    "@semantic-release/exec": "catalog:",
-    "@semantic-release/git": "catalog:",
-    "@semantic-release/github": "catalog:",
-    "@semantic-release/npm": "catalog:",
-    "conventional-changelog-conventionalcommits": "catalog:",
+    "@dallay/agentsync": "*",
+    "@semantic-release/changelog": "*",
+    "@semantic-release/exec": "*",
+    "@semantic-release/git": "*",
+    "@semantic-release/github": "*",
+    "@semantic-release/npm": "*",
+    "conventional-changelog-conventionalcommits": "*",
     "lefthook": "^2.0.15",
-    "semantic-release": "catalog:"
+    "semantic-release": "*"
   },
   "packageManager": "pnpm@10.28.0"
 }
