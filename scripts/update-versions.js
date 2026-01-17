@@ -20,27 +20,24 @@ let hadErrors = false;
 const cargoPath = path.join(rootDir, 'Cargo.toml');
 if (fs.existsSync(cargoPath)) {
   const cargoContent = fs.readFileSync(cargoPath, 'utf8');
-  const pkgSectionRe = /^\[(?:workspace\.)?package\][\s\S]*?(?=^\[|\s*$)/m;
-  let sectionFound = false;
   let versionUpdated = false;
 
-  const updatedCargo = cargoContent.replace(pkgSectionRe, (section) => {
-    sectionFound = true;
-    const updatedSection = section.replace(
-      /^\s*version\s*=\s*".*"$/m,
-      `version = "${nextVersion}"`
-    );
-    if (updatedSection !== section || section.includes(`version = "${nextVersion}"`)) {
+  // Robust regex to find version inside [package] or [workspace.package]
+  const updatedCargo = cargoContent.replace(
+    /(\[(?:workspace\.)?package\][\s\S]*?^\s*version\s*=\s*")([^"]*)(")/m,
+    (match, prefix, oldVersion, suffix) => {
       versionUpdated = true;
+      console.log(`  Found Cargo.toml version: ${oldVersion} inside package section`);
+      return `${prefix}${nextVersion}${suffix}`;
     }
-    return updatedSection;
-  });
+  );
   
-  if (!sectionFound) {
-    console.error('❌ Could not find [package] or [workspace.package] section in Cargo.toml');
-    hadErrors = true;
-  } else if (!versionUpdated) {
-    console.error('❌ Could not find version line inside [package] section of Cargo.toml');
+  if (!versionUpdated) {
+    console.error('❌ Could not find version line inside [package] or [workspace.package] section of Cargo.toml');
+    // Log the first 200 chars to debug
+    console.log('--- Cargo.toml content start ---');
+    console.log(cargoContent.substring(0, 200));
+    console.log('--- End ---');
     hadErrors = true;
   } else {
     fs.writeFileSync(cargoPath, updatedCargo);
