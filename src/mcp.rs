@@ -547,6 +547,7 @@ impl McpFormatter for OpenCodeFormatter {
         }
 
         json!({
+            "$schema": "https://opencode.ai/config.json",
             "mcp": mcp_servers
         })
     }
@@ -582,9 +583,17 @@ impl McpFormatter for OpenCodeFormatter {
         // Update only the mcp key
         if let Some(doc_obj) = existing_doc.as_object_mut() {
             doc_obj.insert("mcp".to_string(), json!(existing_servers));
+            // Add schema if missing
+            if !doc_obj.contains_key("$schema") {
+                doc_obj.insert(
+                    "$schema".to_string(),
+                    json!("https://opencode.ai/config.json"),
+                );
+            }
         } else {
             // If existing content wasn't an object, overwrite it entirely
             existing_doc = json!({
+                "$schema": "https://opencode.ai/config.json",
                 "mcp": existing_servers
             });
         }
@@ -618,9 +627,17 @@ impl McpFormatter for OpenCodeFormatter {
         // Update only the mcp key, preserving other settings
         if let Some(doc_obj) = existing_doc.as_object_mut() {
             doc_obj.insert("mcp".to_string(), json!(final_servers));
+            // Add schema if missing
+            if !doc_obj.contains_key("$schema") {
+                doc_obj.insert(
+                    "$schema".to_string(),
+                    json!("https://opencode.ai/config.json"),
+                );
+            }
         } else {
             // If existing content wasn't an object, overwrite it entirely
             existing_doc = json!({
+                "$schema": "https://opencode.ai/config.json",
                 "mcp": final_servers
             });
         }
@@ -1136,6 +1153,10 @@ mod tests {
 
         let output = formatter.format(&servers);
 
+        assert_eq!(
+            output.get("$schema").unwrap().as_str().unwrap(),
+            "https://opencode.ai/config.json"
+        );
         assert!(output.get("mcp").is_some());
         let mcp_servers = output.get("mcp").unwrap();
         let fs_server = mcp_servers.get("filesystem").unwrap();
@@ -1428,6 +1449,7 @@ mod tests {
 
         // Create existing OpenCode config with multiple servers
         let existing = r#"{
+            "$schema": "https://opencode.ai/config.json",
             "tools": { "some-tool": true },
             "mcp": {
                 "keep": {
@@ -1554,46 +1576,36 @@ mod tests {
     fn test_generator_overwrite_strategy_opencode() {
         let temp_dir = TempDir::new().unwrap();
 
-        // Create existing OpenCode config with multiple settings
+        // Create existing config
         let existing = r#"{
-            "tools": { "old-tool": true },
+            "$schema": "https://opencode.ai/config.json",
+            "theme": "dark",
             "mcp": {
-                "old-server": {
+                "existing": {
                     "type": "local",
-                    "command": ["old-cmd"]
+                    "command": ["existing-cmd"]
                 }
             }
         }"#;
-        fs::write(temp_dir.path().join("opencode.json"), existing).unwrap();
+        let opencode_path = temp_dir.path().join("opencode.json");
+        fs::write(&opencode_path, existing).unwrap();
 
-        let mut server = create_test_server();
-        server.command = Some("new-cmd".to_string());
-        let servers = HashMap::from([("new-server".to_string(), server)]);
+        let servers = HashMap::from([("filesystem".to_string(), create_test_server())]);
 
         let generator = McpGenerator::new(servers, McpMergeStrategy::Overwrite);
-        generator
+        let result = generator
             .generate_for_agent(McpAgent::OpenCode, temp_dir.path(), false)
             .unwrap();
 
-        // Verify tools setting is preserved (overwrite only affects mcp section)
-        let content = fs::read_to_string(temp_dir.path().join("opencode.json")).unwrap();
+        assert_eq!(result.updated, 1);
+
+        // Verify other setting is preserved and mcp is replaced
+        let content = fs::read_to_string(&opencode_path).unwrap();
         let parsed: Value = serde_json::from_str(&content).unwrap();
-
-        assert!(parsed.get("tools").is_some());
-        assert!(
-            parsed
-                .get("tools")
-                .unwrap()
-                .get("old-tool")
-                .unwrap()
-                .as_bool()
-                .unwrap()
-        );
-
-        // Verify old server was replaced with new one
-        let mcp_servers = parsed.get("mcp").unwrap();
-        assert!(mcp_servers.get("old-server").is_none());
-        assert!(mcp_servers.get("new-server").is_some());
+        assert_eq!(parsed.get("theme").unwrap().as_str().unwrap(), "dark");
+        let servers = parsed.get("mcp").unwrap();
+        assert!(servers.get("existing").is_none());
+        assert!(servers.get("filesystem").is_some());
     }
 
     #[test]
