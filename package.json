@@ -15,6 +15,7 @@
     "precommit": "pnpm exec agentsync apply --dry-run"
   },
   "devDependencies": {
+    "@dallay/agentsync": "catalog:",
     "@semantic-release/changelog": "^6.0.3",
     "@semantic-release/exec": "^7.1.0",
     "@semantic-release/git": "^10.0.1",
@@ -24,8 +25,5 @@
     "lefthook": "^2.0.15",
     "semantic-release": "^25.0.2"
   },
-  "packageManager": "pnpm@10.28.0",
-  "dependencies": {
-    "@dallay/agentsync": "catalog:"
-  }
+  "packageManager": "pnpm@10.28.0"
 }
