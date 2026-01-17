@@ -1446,5 +1446,4 @@ mod tests {
         );
         assert_eq!(args[2].as_str().unwrap(), ".");
     }
-
 }

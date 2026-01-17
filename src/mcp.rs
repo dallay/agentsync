@@ -1762,9 +1762,7 @@ mod tests {
         let generator = McpGenerator::new(servers, McpMergeStrategy::Merge);
         let temp_dir = TempDir::new().unwrap();
 
-        let result = generator
-            .generate_all(temp_dir.path(), &[], false)
-            .unwrap();
+        let result = generator.generate_all(temp_dir.path(), &[], false).unwrap();
 
         assert_eq!(result.created, 0);
     }
