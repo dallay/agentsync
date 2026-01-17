@@ -20,10 +20,20 @@ let hadErrors = false;
 const cargoPath = path.join(rootDir, 'Cargo.toml');
 if (fs.existsSync(cargoPath)) {
   const cargoContent = fs.readFileSync(cargoPath, 'utf8');
-  const updatedCargo = cargoContent.replace(/^version = ".*"$/m, `version = "${nextVersion}"`);
+  const pkgSectionRe = /^\[(?:workspace\.)?package\][\s\S]*?(?=^\[|\s*$)/m;
+  let replaced = false;
+  const updatedCargo = cargoContent.replace(pkgSectionRe, (section) => {
+    const updatedSection = section.replace(
+      /^version\s*=\s*".*"$/m,
+      `version = "${nextVersion}"`
+    );
+    if (updatedSection !== section) replaced = true;
+    return updatedSection;
+  });
   
-  if (updatedCargo === cargoContent) {
-    console.warn('⚠️ No version line found in Cargo.toml or version is already up to date.');
+  if (!replaced) {
+    console.error('❌ No package version line found in Cargo.toml.');
+    hadErrors = true;
   } else {
     fs.writeFileSync(cargoPath, updatedCargo);
     console.log('✅ Updated Cargo.toml');
