@@ -71,6 +71,25 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+    optionalDependencies:
+      '@dallay/agentsync-darwin-arm64':
+        specifier: 1.7.0
+        version: 1.7.0
+      '@dallay/agentsync-darwin-x64':
+        specifier: 1.7.0
+        version: 1.7.0
+      '@dallay/agentsync-linux-arm64':
+        specifier: 1.7.0
+        version: 1.7.0
+      '@dallay/agentsync-linux-x64':
+        specifier: 1.7.0
+        version: 1.7.0
+      '@dallay/agentsync-windows-arm64':
+        specifier: 1.7.0
+        version: 1.7.0
+      '@dallay/agentsync-windows-x64':
+        specifier: 1.7.0
+        version: 1.7.0
 
 packages:
 
