@@ -41,7 +41,7 @@
 		[
 			"@semantic-release/exec",
 			{
-				"prepareCmd": "node scripts/update-versions.js ${nextRelease.version} && pnpm install --lockfile-only && cargo check"
+				"prepareCmd": "node scripts/update-versions.js ${nextRelease.version} && pnpm install --lockfile-only --no-optional && cargo check"
 			}
 		],
 		[
