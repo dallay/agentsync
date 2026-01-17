@@ -53,6 +53,11 @@ jobs:
         with:
           node-version: "24.13"
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@fe02b34f77f8bc703788d5817da081398fad5df2 # v4.0.0
+        with:
+          version: 10
+
       - name: Semantic Release
         uses: cycjimmy/semantic-release-action@v4
         id: semantic
