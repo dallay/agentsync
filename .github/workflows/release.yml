@@ -52,13 +52,249 @@ jobs:
         uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
         with:
           node-version: "24.13"
-          registry-url: "https://registry.npmjs.org"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 10
 
+      - name: Semantic Release
+        uses: cycjimmy/semantic-release-action@v4
+        id: semantic
+        with:
+          extra_plugins: |
+            @semantic-release/changelog
+            @semantic-release/git
+            @semantic-release/exec
+            conventional-changelog-conventionalcommits
+          dry_run: ${{ inputs.dry_run || false }}
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+
+  # ==========================================================================
+  # Build Release Binaries - Cross-platform
+  # ==========================================================================
+  build-binaries:
+    name: Build (${{ matrix.target }})
+    needs: semantic-release
+    if: needs.semantic-release.outputs.new_release_published == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            archive: tar.gz
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            archive: tar.gz
+
+          # macOS
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+
+          # Windows
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive: zip
+          - target: aarch64-pc-windows-msvc
+            os: windows-latest
+            archive: zip
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+        with:
+          ref: ${{ needs.semantic-release.outputs.new_release_git_tag }}
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@f7ccc83f9ed1e5b9c81d8a67d7ad1a747e22a561
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+
+      - name: Install cross-compilation tools (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          if [[ "${{ matrix.target }}" == *"musl"* ]]; then
+            sudo apt-get install -y musl-tools
+          fi
+          if [[ "${{ matrix.target }}" == "aarch64-"* ]]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu
+          fi
+
+      - name: Install cross
+        if: runner.os == 'Linux'
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build binary (Linux with cross)
+        if: runner.os == 'Linux'
+        run: cross build --release --target ${{ matrix.target }}
+
+      - name: Build binary (macOS/Windows)
+        if: runner.os != 'Linux'
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Prepare artifact (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cd target/${{ matrix.target }}/release
+          BINARY_NAME="agentsync"
+          ARCHIVE_NAME="agentsync-${{ needs.semantic-release.outputs.new_release_version }}-${{ matrix.target }}"
+          
+          # Create archive directory
+          mkdir -p "$ARCHIVE_NAME"
+          cp "$BINARY_NAME" "$ARCHIVE_NAME/"
+          cp ../../../README.md "$ARCHIVE_NAME/" 2>/dev/null || true
+          cp ../../../LICENSE "$ARCHIVE_NAME/" 2>/dev/null || true
+          
+          # Create tarball
+          tar -czvf "$ARCHIVE_NAME.tar.gz" "$ARCHIVE_NAME"
+          
+          # Create checksum
+          shasum -a 256 "$ARCHIVE_NAME.tar.gz" > "$ARCHIVE_NAME.tar.gz.sha256"
+          
+          # Move to workspace root for upload
+          mv "$ARCHIVE_NAME.tar.gz" ../../../
+          mv "$ARCHIVE_NAME.tar.gz.sha256" ../../../
+
+      - name: Prepare artifact (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cd target/${{ matrix.target }}/release
+          $BINARY_NAME = "agentsync.exe"
+          $ARCHIVE_NAME = "agentsync-${{ needs.semantic-release.outputs.new_release_version }}-${{ matrix.target }}"
+          
+          # Create archive directory
+          New-Item -ItemType Directory -Force -Path $ARCHIVE_NAME
+          Copy-Item $BINARY_NAME -Destination "$ARCHIVE_NAME/"
+          Copy-Item ../../../README.md -Destination "$ARCHIVE_NAME/" -ErrorAction SilentlyContinue
+          Copy-Item ../../../LICENSE -Destination "$ARCHIVE_NAME/" -ErrorAction SilentlyContinue
+          
+          # Create zip
+          Compress-Archive -Path $ARCHIVE_NAME -DestinationPath "$ARCHIVE_NAME.zip"
+          
+          # Create checksum
+          (Get-FileHash "$ARCHIVE_NAME.zip" -Algorithm SHA256).Hash.ToLower() + "  $ARCHIVE_NAME.zip" | Out-File -FilePath "$ARCHIVE_NAME.zip.sha256" -Encoding ascii
+          
+          # Move to workspace root
+          Move-Item "$ARCHIVE_NAME.zip" ../../../
+          Move-Item "$ARCHIVE_NAME.zip.sha256" ../../../
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: agentsync-${{ matrix.target }}
+          path: |
+            agentsync-*.${{ matrix.archive }}
+            agentsync-*.${{ matrix.archive }}.sha256
+          if-no-files-found: error
+
+  # ==========================================================================
+  # Upload Release Assets
+  # ==========================================================================
+  upload-assets:
+    name: Upload Release Assets
+    needs: [semantic-release, build-binaries]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          path: artifacts
+          pattern: agentsync-*
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -la artifacts/
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
+        with:
+          tag_name: ${{ needs.semantic-release.outputs.new_release_git_tag }}
+          files: artifacts/*
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+
+  # ==========================================================================
+  # Publish NPM Platform-Specific Packages
+  # ==========================================================================
+  publish-npm-binaries:
+    name: Publish NPM (${{ matrix.config.name }})
+    needs: [semantic-release, build-binaries]
+    if: needs.semantic-release.outputs.new_release_published == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - name: linux-x64
+            target: x86_64-unknown-linux-gnu
+            os: linux
+            arch: x64
+          - name: linux-arm64
+            target: aarch64-unknown-linux-gnu
+            os: linux
+            arch: arm64
+          - name: darwin-x64
+            target: x86_64-apple-darwin
+            os: darwin
+            arch: x64
+          - name: darwin-arm64
+            target: aarch64-apple-darwin
+            os: darwin
+            arch: arm64
+          - name: windows-x64
+            target: x86_64-pc-windows-msvc
+            os: win32
+            arch: x64
+          - name: windows-arm64
+            target: aarch64-pc-windows-msvc
+            os: win32
+            arch: arm64
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+        with:
+          ref: ${{ needs.semantic-release.outputs.new_release_git_tag }}
+
+      - name: Download artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: agentsync-${{ matrix.config.target }}
+          path: artifacts
+
+      - name: Setup Node.js
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: "24.13"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
 
       - name: Publish platform package to NPM
         shell: bash
@@ -138,7 +374,7 @@ jobs:
           cd "../npm/${node_pkg}"
           echo "Publishing ${node_pkg}@${node_version}..."
           cat package.json
-          npm publish --access public
+          pnpm publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -161,6 +397,11 @@ jobs:
         with:
           node-version: "24.13"
           registry-url: "https://registry.npmjs.org"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
 
       - name: Update package.json version
         run: |
@@ -191,7 +432,7 @@ jobs:
       - name: Publish base package to NPM
         run: |
           cd npm/agentsync
-          pnpm publish --access public
+          pnpm publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
