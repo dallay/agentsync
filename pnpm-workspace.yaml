@@ -2,7 +2,7 @@ packages:
   - npm/agentsync
 
 catalog:
-  '@dallay/agentsync': 1.7.0
+  '@dallay/agentsync': 1.8.2
   '@semantic-release/changelog': ^6.0.3
   '@semantic-release/exec': ^7.1.0
   '@semantic-release/git': ^10.0.1
