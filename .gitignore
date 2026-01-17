@@ -20,6 +20,7 @@ Thumbs.db
 # Test artifacts
 *.profraw
 *.profdata
+coverage/
 
 # Release artifacts (these go in GitHub releases, not the repo)
 *.tar.gz

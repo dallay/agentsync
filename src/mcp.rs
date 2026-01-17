@@ -1708,6 +1708,67 @@ mod tests {
         assert!(temp_dir.path().join(".copilot/mcp-config.json").exists());
     }
 
+    #[test]
+    fn test_generator_overwrite_with_preserve() {
+        let temp_dir = TempDir::new().unwrap();
+        let gemini_dir = temp_dir.path().join(".gemini");
+        fs::create_dir_all(&gemini_dir).unwrap();
+
+        let existing = r#"{
+            "theme": "dark",
+            "mcpServers": {
+                "existing": { "command": "old" }
+            }
+        }"#;
+        fs::write(gemini_dir.join("settings.json"), existing).unwrap();
+
+        let mut server = create_test_server();
+        server.command = Some("new".to_string());
+        let servers = HashMap::from([("new".to_string(), server)]);
+
+        let generator = McpGenerator::new(servers, McpMergeStrategy::Overwrite);
+        generator
+            .generate_for_agent(McpAgent::GeminiCli, temp_dir.path(), false)
+            .unwrap();
+
+        let content = fs::read_to_string(gemini_dir.join("settings.json")).unwrap();
+        let parsed: Value = serde_json::from_str(&content).unwrap();
+
+        assert_eq!(parsed.get("theme").unwrap().as_str().unwrap(), "dark");
+        let mcp_servers = parsed.get("mcpServers").unwrap();
+        assert!(mcp_servers.get("new").is_some());
+        assert!(mcp_servers.get("existing").is_none());
+    }
+
+    #[test]
+    fn test_generator_no_enabled_servers() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut server = create_test_server();
+        server.disabled = true;
+        let servers = HashMap::from([("filesystem".to_string(), server)]);
+
+        let generator = McpGenerator::new(servers, McpMergeStrategy::Overwrite);
+        let result = generator
+            .generate_for_agent(McpAgent::ClaudeCode, temp_dir.path(), false)
+            .unwrap();
+
+        assert_eq!(result.skipped, 1);
+        assert!(!temp_dir.path().join(".mcp.json").exists());
+    }
+
+    #[test]
+    fn test_generator_generate_all_empty_agents() {
+        let servers = HashMap::from([("server1".to_string(), create_test_server())]);
+        let generator = McpGenerator::new(servers, McpMergeStrategy::Merge);
+        let temp_dir = TempDir::new().unwrap();
+
+        let result = generator
+            .generate_all(temp_dir.path(), &[], false)
+            .unwrap();
+
+        assert_eq!(result.created, 0);
+    }
+
     // ==========================================================================
     // MCP OUTPUT TESTS
     // ==========================================================================

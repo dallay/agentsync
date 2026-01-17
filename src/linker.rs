@@ -939,6 +939,37 @@ mod tests {
         assert!(!output_dir.join("readme.txt").exists());
     }
 
+    #[test]
+    #[cfg(unix)]
+    fn test_sync_symlink_contents_with_file_source() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let source_file = agents_dir.join("source.txt");
+        fs::write(&source_file, "content").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            [agents.test]
+            enabled = true
+            [agents.test.targets.main]
+            source = "source.txt"
+            destination = "output"
+            type = "symlink-contents"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker.sync(&SyncOptions::default()).unwrap();
+
+        assert_eq!(result.skipped, 1);
+        assert!(!temp_dir.path().join("output").exists());
+    }
+
     // ==========================================================================
     // CLEAN TESTS
     // ==========================================================================
@@ -1025,6 +1056,59 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
+    fn test_relative_path_non_existent_dest() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+        let config_path = agents_dir.join("agentsync.toml");
+        fs::write(&config_path, "").unwrap();
+
+        let source_file = agents_dir.join("source.txt");
+        fs::write(&source_file, "content").unwrap();
+
+        let dest_file = temp_dir.path().join("non_existent_dir/dest.txt");
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let relative = linker.relative_path(&dest_file, &source_file).unwrap();
+
+        assert_eq!(relative, PathBuf::from("../.agents/source.txt"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_clean_skips_non_symlinks() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let dest_file = temp_dir.path().join("TEST.md");
+        fs::write(&dest_file, "Existing file").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            [agents.test]
+            enabled = true
+            [agents.test.targets.main]
+            source = "AGENTS.md"
+            destination = "TEST.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker.clean(&SyncOptions::default()).unwrap();
+
+        assert_eq!(result.removed, 0);
+        assert!(dest_file.exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
     fn test_clean_symlink_contents() {
         let temp_dir = TempDir::new().unwrap();
         let agents_dir = temp_dir.path().join(".agents");
@@ -1058,6 +1142,7 @@ mod tests {
         let result = linker.clean(&SyncOptions::default()).unwrap();
 
         assert_eq!(result.removed, 2);
+        assert!(!temp_dir.path().join("output_skills").exists());
     }
 
     // ==========================================================================
@@ -1145,6 +1230,49 @@ mod tests {
         assert_eq!(result2.created, 0);
         assert_eq!(result2.updated, 0);
         assert_eq!(result2.skipped, 1);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_sync_backs_up_existing_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let source_file = agents_dir.join("AGENTS.md");
+        fs::write(&source_file, "# Test").unwrap();
+
+        let dest_file = temp_dir.path().join("TEST.md");
+        fs::write(&dest_file, "Existing file").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            [agents.test]
+            enabled = true
+            [agents.test.targets.main]
+            source = "AGENTS.md"
+            destination = "TEST.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker.sync(&SyncOptions::default()).unwrap();
+
+        assert_eq!(result.updated, 1);
+        assert!(dest_file.is_symlink());
+
+        // Verify that a backup was created
+        let backup_files: Vec<_> = fs::read_dir(temp_dir.path())
+            .unwrap()
+            .map(|r| r.unwrap().path())
+            .filter(|p| p.to_string_lossy().contains("TEST.md.bak"))
+            .collect();
+
+        assert_eq!(backup_files.len(), 1);
     }
 
     // ==========================================================================
@@ -1318,4 +1446,5 @@ mod tests {
         );
         assert_eq!(args[2].as_str().unwrap(), ".");
     }
+
 }
