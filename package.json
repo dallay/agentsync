@@ -9,21 +9,20 @@
     "release:dry-run": "semantic-release --dry-run",
     "update-deps": "pnpm update -i -r --latest",
     "preinstall": "npx only-allow pnpm",
-    "prepare": "node -e \"const {existsSync}=require('fs'); if (existsSync('.git')) { require('child_process').execSync('pnpm exec lefthook install && pnpm run agents:sync', {stdio:'inherit'}); }\"",
+    "prepare": "if [ -d .git ]; then pnpm exec lefthook install && pnpm run agents:sync; fi",
     "agents:sync": "pnpm exec agentsync apply",
     "agents:sync:clean": "pnpm exec agentsync apply --clean",
     "precommit": "pnpm exec agentsync apply --dry-run"
   },
   "devDependencies": {
-    "@dallay/agentsync": "*",
-    "@semantic-release/changelog": "*",
-    "@semantic-release/exec": "*",
-    "@semantic-release/git": "*",
-    "@semantic-release/github": "*",
-    "@semantic-release/npm": "*",
-    "conventional-changelog-conventionalcommits": "*",
+    "@dallay/agentsync": "catalog:",
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/exec": "^7.1.0",
+    "@semantic-release/git": "^10.0.1",
+    "@semantic-release/github": "^12.0.2",
+    "@semantic-release/npm": "^13.1.3",
+    "conventional-changelog-conventionalcommits": "^9.1.0",
     "lefthook": "^2.0.15",
-    "semantic-release": "*"
-  },
-  "packageManager": "pnpm@10.28.0"
+    "semantic-release": "^25.0.2"
+  }
 }
