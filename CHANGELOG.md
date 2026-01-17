@@ -1,3 +1,9 @@
+## [1.8.1](https://github.com/dallay/agentsync/compare/v1.8.0...v1.8.1) (2026-01-17)
+
+### 🐛 Bug Fixes
+
+* **docker:** remove pinned apk versions to fix build failure ([702f6c3](https://github.com/dallay/agentsync/commit/702f6c31a3ed8598afe4bd86a3783d6bb97e86c8))
+
 ## [1.8.0](https://github.com/dallay/agentsync/compare/v1.7.0...v1.8.0) (2026-01-17)
 
 ### ✨ Features
