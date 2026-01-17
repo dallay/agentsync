@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 
 const nextVersion = process.argv[2];
 
@@ -12,14 +12,20 @@ if (!nextVersion) {
 console.log(`🚀 Updating project versions to ${nextVersion}...`);
 
 const rootDir = path.resolve(__dirname, '..');
+let hadErrors = false;
 
 // 1. Update Cargo.toml
 const cargoPath = path.join(rootDir, 'Cargo.toml');
 if (fs.existsSync(cargoPath)) {
-  let cargoContent = fs.readFileSync(cargoPath, 'utf8');
-  cargoContent = cargoContent.replace(/^version = ".*"$/m, `version = "${nextVersion}"`);
-  fs.writeFileSync(cargoPath, cargoContent);
-  console.log('✅ Updated Cargo.toml');
+  const cargoContent = fs.readFileSync(cargoPath, 'utf8');
+  const updatedCargo = cargoContent.replace(/^version = ".*"$/m, `version = "${nextVersion}"`);
+  
+  if (updatedCargo === cargoContent) {
+    console.warn('⚠️ No version line found in Cargo.toml or version is already up to date.');
+  } else {
+    fs.writeFileSync(cargoPath, updatedCargo);
+    console.log('✅ Updated Cargo.toml');
+  }
 }
 
 // 2. Update root package.json
@@ -33,6 +39,7 @@ if (fs.existsSync(rootPkgPath)) {
 
 // 3. Update npm/agentsync/package.json
 const npmPkgPath = path.join(rootDir, 'npm/agentsync/package.json');
+const npmPkgDir = path.join(rootDir, 'npm/agentsync');
 if (fs.existsSync(npmPkgPath)) {
   const npmPkg = JSON.parse(fs.readFileSync(npmPkgPath, 'utf8'));
   npmPkg.version = nextVersion;
@@ -41,21 +48,25 @@ if (fs.existsSync(npmPkgPath)) {
 }
 
 // 4. Run sync-optional-deps.js if it exists
-const syncOptionalDepsPath = path.join(rootDir, 'npm/agentsync/scripts/sync-optional-deps.js');
-const npmPkgDir = path.join(rootDir, 'npm/agentsync');
-
+const syncOptionalDepsPath = path.join(npmPkgDir, 'scripts/sync-optional-deps.js');
 if (fs.existsSync(syncOptionalDepsPath)) {
   console.log('🔄 Running sync-optional-deps.js...');
   try {
-    // We run it from the npm/agentsync directory
-    execSync(`node scripts/sync-optional-deps.js ${nextVersion}`, { 
+    // We run it from the npm/agentsync directory using execFileSync for safety
+    execFileSync(process.execPath, ['scripts/sync-optional-deps.js', nextVersion], { 
       cwd: npmPkgDir,
       stdio: 'inherit' 
     });
     console.log('✅ Updated optional dependencies');
   } catch (error) {
     console.error('❌ Error running sync-optional-deps.js:', error.message);
+    hadErrors = true;
   }
+}
+
+if (hadErrors) {
+  console.error('❌ Version update completed with errors.');
+  process.exit(1);
 }
 
 console.log('🎉 All versions updated successfully!');
