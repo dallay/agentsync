@@ -21,18 +21,26 @@ const cargoPath = path.join(rootDir, 'Cargo.toml');
 if (fs.existsSync(cargoPath)) {
   const cargoContent = fs.readFileSync(cargoPath, 'utf8');
   const pkgSectionRe = /^\[(?:workspace\.)?package\][\s\S]*?(?=^\[|\s*$)/m;
-  let replaced = false;
+  let sectionFound = false;
+  let versionUpdated = false;
+
   const updatedCargo = cargoContent.replace(pkgSectionRe, (section) => {
+    sectionFound = true;
     const updatedSection = section.replace(
-      /^version\s*=\s*".*"$/m,
+      /^\s*version\s*=\s*".*"$/m,
       `version = "${nextVersion}"`
     );
-    if (updatedSection !== section) replaced = true;
+    if (updatedSection !== section || section.includes(`version = "${nextVersion}"`)) {
+      versionUpdated = true;
+    }
     return updatedSection;
   });
   
-  if (!replaced) {
-    console.error('❌ No package version line found in Cargo.toml.');
+  if (!sectionFound) {
+    console.error('❌ Could not find [package] or [workspace.package] section in Cargo.toml');
+    hadErrors = true;
+  } else if (!versionUpdated) {
+    console.error('❌ Could not find version line inside [package] section of Cargo.toml');
     hadErrors = true;
   } else {
     fs.writeFileSync(cargoPath, updatedCargo);
