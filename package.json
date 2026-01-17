@@ -16,14 +16,14 @@
   },
   "devDependencies": {
     "@dallay/agentsync": "catalog:",
-    "@semantic-release/changelog": "^6.0.3",
-    "@semantic-release/exec": "^7.1.0",
-    "@semantic-release/git": "^10.0.1",
-    "@semantic-release/github": "^12.0.2",
-    "@semantic-release/npm": "^13.1.3",
-    "conventional-changelog-conventionalcommits": "^9.1.0",
+    "@semantic-release/changelog": "catalog:",
+    "@semantic-release/exec": "catalog:",
+    "@semantic-release/git": "catalog:",
+    "@semantic-release/github": "catalog:",
+    "@semantic-release/npm": "catalog:",
+    "conventional-changelog-conventionalcommits": "catalog:",
     "lefthook": "^2.0.15",
-    "semantic-release": "^25.0.2"
+    "semantic-release": "catalog:"
   },
   "packageManager": "pnpm@10.28.0"
 }
