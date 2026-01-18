@@ -5,8 +5,10 @@
 
 use anyhow::{Context, Result};
 use colored::Colorize;
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use walkdir::WalkDir;
 
 use crate::config::{Config, SyncType, TargetConfig};
@@ -41,6 +43,7 @@ pub struct Linker {
     config_path: PathBuf,
     project_root: PathBuf,
     source_dir: PathBuf,
+    path_cache: Mutex<HashMap<PathBuf, PathBuf>>,
 }
 
 impl Linker {
@@ -54,6 +57,7 @@ impl Linker {
             config_path,
             project_root,
             source_dir,
+            path_cache: Mutex::new(HashMap::new()),
         }
     }
 
@@ -345,13 +349,25 @@ impl Linker {
         Ok(result)
     }
 
+    /// Canonicalize a path and cache the result to avoid repeated I/O.
+    fn canonicalize_with_cache(&self, path: &Path) -> Result<PathBuf> {
+        let mut cache = self.path_cache.lock().unwrap();
+        if let Some(cached_path) = cache.get(path) {
+            return Ok(cached_path.clone());
+        }
+
+        let canonical_path = fs::canonicalize(path)?;
+        cache.insert(path.to_path_buf(), canonical_path.clone());
+        Ok(canonical_path)
+    }
+
     /// Calculate relative path from dest to source
     fn relative_path(&self, from: &Path, to: &Path) -> Result<PathBuf> {
         let from_dir = from.parent().unwrap_or(from);
 
         // Canonicalize paths for accurate relative calculation
         let from_abs = if from_dir.exists() {
-            fs::canonicalize(from_dir)?
+            self.canonicalize_with_cache(from_dir)?
         } else {
             // If dest dir doesn't exist yet, use project root as base
             let relative = from_dir
@@ -360,7 +376,7 @@ impl Linker {
             self.project_root.join(relative)
         };
 
-        let to_abs = fs::canonicalize(to)
+        let to_abs = self.canonicalize_with_cache(to)
             .with_context(|| format!("Source path does not exist: {}", to.display()))?;
 
         // Use pathdiff to calculate relative path
