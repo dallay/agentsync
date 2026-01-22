@@ -77,6 +77,18 @@ destination = ".github/copilot-instructions.md"
 type = "symlink"
 
 # -----------------------------------------------------------------------------
+# OpenAI Codex CLI
+# -----------------------------------------------------------------------------
+[agents.codex]
+enabled = true
+description = "OpenAI Codex CLI - OpenAI's AI coding agent"
+
+[agents.codex.targets.skills]
+source = "skills"
+destination = ".codex/skills"
+type = "symlink-contents"
+
+# -----------------------------------------------------------------------------
 # Root AGENTS.md
 # -----------------------------------------------------------------------------
 [agents.root]
@@ -129,6 +141,17 @@ pub fn init(project_root: &Path, force: bool) -> Result<()> {
         );
     }
 
+    // Create skills directory
+    let skills_dir = agents_dir.join("skills");
+    if !skills_dir.exists() {
+        fs::create_dir_all(&skills_dir)?;
+        println!(
+            "  {} Created directory: {}",
+            "✔".green(),
+            skills_dir.display()
+        );
+    }
+
     // Create config file
     if config_path.exists() && !force {
         println!(
@@ -177,6 +200,17 @@ mod tests {
     }
 
     #[test]
+    fn test_init_creates_skills_directory() {
+        let temp_dir = TempDir::new().unwrap();
+
+        init(temp_dir.path(), false).unwrap();
+
+        let skills_dir = temp_dir.path().join(".agents").join("skills");
+        assert!(skills_dir.exists());
+        assert!(skills_dir.is_dir());
+    }
+
+    #[test]
     fn test_init_creates_config_file() {
         let temp_dir = TempDir::new().unwrap();
 
@@ -188,6 +222,7 @@ mod tests {
         let content = fs::read_to_string(&config_path).unwrap();
         assert!(content.contains("[agents.claude]"));
         assert!(content.contains("[agents.copilot]"));
+        assert!(content.contains("[agents.codex]"));
     }
 
     #[test]
@@ -249,6 +284,7 @@ mod tests {
         // Files SHOULD be overwritten with default content
         let config_content = fs::read_to_string(&config_path).unwrap();
         assert!(config_content.contains("[agents.claude]"));
+        assert!(config_content.contains("[agents.codex]"));
 
         let agents_content = fs::read_to_string(&agents_md_path).unwrap();
         assert!(agents_content.contains("# AI Agent Instructions"));
@@ -300,6 +336,7 @@ mod tests {
 
         assert!(config.agents.contains_key("claude"));
         assert!(config.agents.contains_key("copilot"));
+        assert!(config.agents.contains_key("codex"));
         assert!(config.agents.contains_key("root"));
     }
 
@@ -309,6 +346,7 @@ mod tests {
 
         assert!(config.agents["claude"].enabled);
         assert!(config.agents["copilot"].enabled);
+        assert!(config.agents["codex"].enabled);
         assert!(config.agents["root"].enabled);
     }
 

@@ -1,3 +1,17 @@
+## [1.9.0](https://github.com/dallay/agentsync/compare/v1.8.3...v1.9.0) (2026-01-22)
+
+### ✨ Features
+
+* add OpenAI Codex CLI support ([7f3ac8c](https://github.com/dallay/agentsync/commit/7f3ac8ce31a9fdbc739735db2ed0e998907fccfe)), closes [#51](https://github.com/dallay/agentsync/issues/51)
+
+## [1.8.3](https://github.com/dallay/agentsync/compare/v1.8.2...v1.8.3) (2026-01-22)
+
+### 🐛 Bug Fixes
+
+* **ci:** correct quoting and escaping for regex that verifies packaged binary executable bit ([35a957e](https://github.com/dallay/agentsync/commit/35a957ef8b290743ff25d3d8a0370b15a8a5e62c))
+* **ci:** ensure agentsync binary is executable and validate before publish ([78b47dc](https://github.com/dallay/agentsync/commit/78b47dc86ce53b390a81e6f532b65281d624eb97))
+* **ci:** update tar permission regex to correctly validate owner execute bit for packaged binary ([544bfa8](https://github.com/dallay/agentsync/commit/544bfa817231578cedc00c60689f78b65306dd30))
+
 ## [1.8.2](https://github.com/dallay/agentsync/compare/v1.8.1...v1.8.2) (2026-01-17)
 
 ### 🐛 Bug Fixes

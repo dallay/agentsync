@@ -1,6 +1,6 @@
 {
   "name": "@dallay/agentsync",
-  "version": "1.8.2",
+  "version": "1.9.0",
   "description": "Sync AI agent configurations across multiple AI coding assistants using symbolic links",
   "author": "Yuniel Acosta <yunielacosta738@gmail.com>",
   "license": "MIT",
@@ -45,12 +45,12 @@
     "typescript": "^5.9.3"
   },
   "optionalDependencies": {
-    "@dallay/agentsync-linux-x64": "1.8.2",
-    "@dallay/agentsync-linux-arm64": "1.8.2",
-    "@dallay/agentsync-darwin-x64": "1.8.2",
-    "@dallay/agentsync-darwin-arm64": "1.8.2",
-    "@dallay/agentsync-windows-x64": "1.8.2",
-    "@dallay/agentsync-windows-arm64": "1.8.2"
+    "@dallay/agentsync-linux-x64": "1.9.0",
+    "@dallay/agentsync-linux-arm64": "1.9.0",
+    "@dallay/agentsync-darwin-x64": "1.9.0",
+    "@dallay/agentsync-darwin-arm64": "1.9.0",
+    "@dallay/agentsync-windows-x64": "1.9.0",
+    "@dallay/agentsync-windows-arm64": "1.9.0"
   },
   "engines": {
     "node": ">=18"
