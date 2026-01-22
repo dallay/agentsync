@@ -1,3 +1,13 @@
+## [1.10.0](https://github.com/dallay/agentsync/compare/v1.9.0...v1.10.0) (2026-01-22)
+
+### ✨ Features
+
+* Cache fs::canonicalize results to reduce I/O ([a19fe36](https://github.com/dallay/agentsync/commit/a19fe3685001d8463faf87acaf95d39308057071))
+
+### 📝 Documentation
+
+* add initial README with usage, configuration, and contribution guidelines ([b03390d](https://github.com/dallay/agentsync/commit/b03390dedaeaadd3b3c7755199adc70f04e11e70))
+
 ## [1.9.0](https://github.com/dallay/agentsync/compare/v1.8.3...v1.9.0) (2026-01-22)
 
 ### ✨ Features
