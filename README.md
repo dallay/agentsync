@@ -18,7 +18,7 @@ Different AI coding tools expect configuration files in different locations:
 | **GitHub Copilot** | `.github/copilot-instructions.md` | `.github/agents/`    | -                  |
 | **Codex CLI**      | `AGENTS.md`                       | -                    | `.codex/skills/`   |
 | **Gemini CLI**     | `GEMINI.md`                       | `.gemini/commands/`  | `.gemini/skills/`  |
-| **OpenCode**       | -                                 | `.opencode/command/` | `.opencode/skill/` |
+| **OpenCode**       | `AGENTS.md`                       | `.opencode/command/` | `.opencode/skill/` |
 | **Cursor**         | `.cursor/rules`                   | -                    | -                  |
 
 AgentSync maintains a **single source of truth** in `.agents/` and creates symlinks to all required
