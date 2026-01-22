@@ -397,15 +397,15 @@ jobs:
           # The pattern below matches: ^-.{2}x.{6}\s+.*bin/<name>$
           # Use double quotes and escape the trailing $ so the shell redirect works correctly.
           # Prefer rg if available, otherwise fall back to grep -E
+          PATTERN="^-..x.{6}[[:space:]]+.*bin/${BINARY_NAME}\$"
+
           if command -v rg >/dev/null 2>&1; then
-            SEARCHER="rg -E"
+            SEARCHER=(rg)
           else
-            SEARCHER="grep -E"
+            SEARCHER=(grep -E)
           fi
 
-          PATTERN='^-..x.{6}[[:space:]]+.*bin/'"$BINARY_NAME""$'
-
-          if ! tar -tzvf "$PKG_TGZ" | eval "$SEARCHER" "$PATTERN" >/dev/null; then
+          if ! tar -tzvf "$PKG_TGZ" | "${SEARCHER[@]}" "$PATTERN" >/dev/null; then
             echo "Error: packaged binary does not have executable bit set. Aborting publish."
             tar -tzvf "$PKG_TGZ"
             exit 1
