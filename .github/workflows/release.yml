@@ -384,7 +384,8 @@ jobs:
           # Use a regex matching standard tar permission strings (10 chars) and require
           # only the owner execute bit. Example line: -rwxr-xr-x 0/0 123 2026-01-22 00:00 bin/agentsync
           # The pattern below matches: ^-.{2}x.{6}\s+.*bin/<name>$
-          if ! tar -tzvf "$PKG_TGZ" | rg '^-..x.{6}\s+.*bin/'"$BINARY_NAME""$' >/dev/null; then
+          # Use double quotes and escape the trailing $ so the shell redirect works correctly.
+          if ! tar -tzvf "$PKG_TGZ" | rg "^-..x.{6}\\s+.*bin/${BINARY_NAME}\\$" >/dev/null; then
             echo "Error: packaged binary does not have executable bit set. Aborting publish."
             tar -tzvf "$PKG_TGZ"
             exit 1
