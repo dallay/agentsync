@@ -387,9 +387,9 @@ jobs:
           echo "Listing package contents to verify executable permissions for bin/$BINARY_NAME"
           # Show the file entry for visibility (non-fatal). Prefer rg, fallback to grep.
           if command -v rg >/dev/null 2>&1; then
-            tar -tzvf "$PKG_TGZ" | rg "bin/$BINARY_NAME" || true
+            tar -tzvf "$PKG_TGZ" | rg -F "bin/$BINARY_NAME" || true
           else
-            tar -tzvf "$PKG_TGZ" | grep -E "bin/$BINARY_NAME" || true
+            tar -tzvf "$PKG_TGZ" | grep -F "bin/$BINARY_NAME" || true
           fi
           # Fail if the binary inside the tarball is not executable for owner
           # Use a regex matching standard tar permission strings (10 chars) and require
