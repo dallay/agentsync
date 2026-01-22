@@ -58,6 +58,12 @@ jobs:
         with:
           version: 10
 
+      - name: Install ripgrep (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ripgrep
+
       - name: Semantic Release
         uses: cycjimmy/semantic-release-action@v4
         id: semantic
@@ -379,13 +385,27 @@ jobs:
           PKG_TGZ=$(ls -1 /tmp/*.tgz | tail -n1)
           echo "Created temporary package: $PKG_TGZ"
           echo "Listing package contents to verify executable permissions for bin/$BINARY_NAME"
-          tar -tzvf "$PKG_TGZ" | rg "bin/$BINARY_NAME" || true
+          # Show the file entry for visibility (non-fatal). Prefer rg, fallback to grep.
+          if command -v rg >/dev/null 2>&1; then
+            tar -tzvf "$PKG_TGZ" | rg "bin/$BINARY_NAME" || true
+          else
+            tar -tzvf "$PKG_TGZ" | grep -E "bin/$BINARY_NAME" || true
+          fi
           # Fail if the binary inside the tarball is not executable for owner
           # Use a regex matching standard tar permission strings (10 chars) and require
           # only the owner execute bit. Example line: -rwxr-xr-x 0/0 123 2026-01-22 00:00 bin/agentsync
           # The pattern below matches: ^-.{2}x.{6}\s+.*bin/<name>$
           # Use double quotes and escape the trailing $ so the shell redirect works correctly.
-          if ! tar -tzvf "$PKG_TGZ" | rg "^-..x.{6}\\s+.*bin/${BINARY_NAME}\$" >/dev/null; then
+          # Prefer rg if available, otherwise fall back to grep -E
+          if command -v rg >/dev/null 2>&1; then
+            SEARCHER="rg -E"
+          else
+            SEARCHER="grep -E"
+          fi
+
+          PATTERN='^-..x.{6}[[:space:]]+.*bin/'"$BINARY_NAME""$'
+
+          if ! tar -tzvf "$PKG_TGZ" | eval "$SEARCHER" "$PATTERN" >/dev/null; then
             echo "Error: packaged binary does not have executable bit set. Aborting publish."
             tar -tzvf "$PKG_TGZ"
             exit 1
