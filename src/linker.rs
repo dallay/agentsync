@@ -5,6 +5,8 @@
 
 use anyhow::{Context, Result};
 use colored::Colorize;
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
@@ -41,6 +43,7 @@ pub struct Linker {
     config_path: PathBuf,
     project_root: PathBuf,
     source_dir: PathBuf,
+    path_cache: RefCell<HashMap<PathBuf, PathBuf>>,
 }
 
 impl Linker {
@@ -54,6 +57,7 @@ impl Linker {
             config_path,
             project_root,
             source_dir,
+            path_cache: RefCell::new(HashMap::new()),
         }
     }
 
@@ -345,13 +349,26 @@ impl Linker {
         Ok(result)
     }
 
+    /// Get the canonical path for a given path, using a cache to avoid
+    /// redundant I/O operations.
+    fn canonicalize_cached(&self, path: &Path) -> Result<PathBuf> {
+        let mut cache = self.path_cache.borrow_mut();
+        if let Some(cached) = cache.get(path) {
+            return Ok(cached.clone());
+        }
+
+        let canonical = fs::canonicalize(path)?;
+        cache.insert(path.to_path_buf(), canonical.clone());
+        Ok(canonical)
+    }
+
     /// Calculate relative path from dest to source
     fn relative_path(&self, from: &Path, to: &Path) -> Result<PathBuf> {
         let from_dir = from.parent().unwrap_or(from);
 
         // Canonicalize paths for accurate relative calculation
         let from_abs = if from_dir.exists() {
-            fs::canonicalize(from_dir)?
+            self.canonicalize_cached(from_dir)?
         } else {
             // If dest dir doesn't exist yet, use project root as base
             let relative = from_dir
@@ -360,7 +377,8 @@ impl Linker {
             self.project_root.join(relative)
         };
 
-        let to_abs = fs::canonicalize(to)
+        let to_abs = self
+            .canonicalize_cached(to)
             .with_context(|| format!("Source path does not exist: {}", to.display()))?;
 
         // Use pathdiff to calculate relative path
