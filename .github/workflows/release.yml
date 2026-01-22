@@ -368,7 +368,29 @@ jobs:
           
           # Copy binary to package
           cp "$BINARY_PATH" "../npm/${node_pkg}/bin/"
+          # Ensure binary is executable before publishing
           chmod +x "../npm/${node_pkg}/bin/$BINARY_NAME"
+
+          # Verify tarball will contain executable bit. Create a temporary package tgz and inspect.
+          # This acts as a safety check to avoid publishing packages without executable permissions.
+          pushd ../npm/${node_pkg} > /dev/null
+          # Create temp packed tarball
+          npm pack --pack-destination /tmp > /dev/null
+          PKG_TGZ=$(ls -1 /tmp/*.tgz | tail -n1)
+          echo "Created temporary package: $PKG_TGZ"
+          echo "Listing package contents to verify executable permissions for bin/$BINARY_NAME"
+          tar -tzvf "$PKG_TGZ" | rg "bin/$BINARY_NAME" || true
+          # Fail if the binary inside the tarball is not executable for owner
+          # Use a regex matching standard tar permission strings (10 chars) and require
+          # only the owner execute bit. Example line: -rwxr-xr-x 0/0 123 2026-01-22 00:00 bin/agentsync
+          # The pattern below matches: ^-.{2}x.{6}\s+.*bin/<name>$
+          # Use double quotes and escape the trailing $ so the shell redirect works correctly.
+          if ! tar -tzvf "$PKG_TGZ" | rg "^-..x.{6}\\s+.*bin/${BINARY_NAME}\$" >/dev/null; then
+            echo "Error: packaged binary does not have executable bit set. Aborting publish."
+            tar -tzvf "$PKG_TGZ"
+            exit 1
+          fi
+          popd > /dev/null
           
           # Publish the package
           cd "../npm/${node_pkg}"
