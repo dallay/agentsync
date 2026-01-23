@@ -468,7 +468,7 @@ jobs:
       - name: Install dependencies and build
         run: |
           cd npm/agentsync
-          pnpm install
+          pnpm install --no-frozen-lockfile
           pnpm run build
 
       - name: Publish base package to NPM
