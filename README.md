@@ -123,6 +123,9 @@ agentsync apply
 # Clean existing symlinks before applying
 agentsync apply --clean
 
+# Remove all managed symlinks
+agentsync clean
+
 # Use a custom config file
 agentsync apply --config /path/to/config.toml
 
