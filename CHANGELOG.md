@@ -1,3 +1,10 @@
+## [1.14.2](https://github.com/dallay/agentsync/compare/v1.14.1...v1.14.2) (2026-01-23)
+
+### 🐛 Bug Fixes
+
+* **config:** update site and base settings in Astro config; bump @astrojs/starlight to 0.37.4 ([60564f5](https://github.com/dallay/agentsync/commit/60564f51bb5e761452fd78e92cf7d0e0c5d2babb))
+* **deps:** downgrade @astrojs/starlight to 0.37.3; update pnpm lockfile with agentsync 1.14.1 optional dependencies ([9e24dfc](https://github.com/dallay/agentsync/commit/9e24dfc230bd3f7d9d30d94c26e5d5c552f4cd7c))
+
 ## [1.14.1](https://github.com/dallay/agentsync/compare/v1.14.0...v1.14.1) (2026-01-23)
 
 ### 🐛 Bug Fixes
