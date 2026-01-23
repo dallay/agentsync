@@ -57,8 +57,17 @@ AgentSync automatically knows where to place the MCP configuration for these ass
 
 ## How it works
 
-When you run `agentsync apply`, the tool:
-1. Gathers all servers defined in `mcp_servers`.
-2. For each supported agent, it checks if a target is required.
-3. It performs the `merge` or `overwrite` operation on the destination JSON file.
-4. It ensures the parent directories exist.
+The Model Context Protocol (MCP) allows you to define backend servers for AI assistants in one place and sync those configurations automatically across all supported agents. This reduces duplication and mistake-prone manual steps.
+
+### Setup instructions
+
+1. Add the `[mcp]` block to your `.agents/agentsync.toml` and set `enabled = true`. Optionally set `merge_strategy = "merge" | "overwrite"`.
+2. Under `[mcp_servers]`, define one block per MCP backend server (see example below).
+3. Run `agentsync apply`. AgentSync will:
+   - Gather all servers defined in `mcp_servers`.
+   - For each supported agent, check if an MCP config file should exist.
+   - Perform the chosen `merge` (default) or `overwrite` strategy for existing config files.
+   - Write new configuration files in the correct location.
+   - Ensure parent directories exist before writing.
+
+> **Best Practice:** Use the `merge` strategy for the least surprise—existing server entries not present in your TOML will be preserved.
