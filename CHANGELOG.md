@@ -1,3 +1,16 @@
+## [1.11.0](https://github.com/dallay/agentsync/compare/v1.10.0...v1.11.0) (2026-01-23)
+
+### ✨ Features
+
+* added documentation website ([cc2d328](https://github.com/dallay/agentsync/commit/cc2d328830c324b22a88dfecd742a32e76da42e3))
+
+### 📝 Documentation
+
+* add agentsync-docs workspace and npm scripts for documentation site ([d954b19](https://github.com/dallay/agentsync/commit/d954b1939f41027375f115ba7ff732c6c9846186))
+* fix JSON formatting in getting started script example ([b3ce430](https://github.com/dallay/agentsync/commit/b3ce43079df04f30aae81bc0ff98eabc70d477a8))
+* fix JSON formatting in getting started script example ([e855f55](https://github.com/dallay/agentsync/commit/e855f551995eed9a24d07d0f2435274735094d2b))
+* update OpenCode documentation reference in agent table ([ffe5b5e](https://github.com/dallay/agentsync/commit/ffe5b5e2a8a41182dd791a203ca7121da40c0bf2))
+
 ## [1.10.0](https://github.com/dallay/agentsync/compare/v1.9.0...v1.10.0) (2026-01-22)
 
 ### ✨ Features
