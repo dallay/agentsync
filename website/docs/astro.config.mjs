@@ -5,7 +5,7 @@ import Icons from 'unplugin-icons/vite'
 
 // https://astro.build/config
 export default defineConfig({
-    site: 'https://agentsync.dev',
+    site: 'https://dallay.github.io/agentsync',
     integrations: [
         starlight({
             title: 'AgentSync',
