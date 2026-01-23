@@ -20,16 +20,30 @@ jobs:
     steps:
       - name: Checkout your repository using git
         uses: actions/checkout@v6
-      - name: Install, build, and upload your site
-        uses: withastro/action@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
         with:
-          path: ./website/docs # The root location of your Astro project inside the repository. (optional)
-          package-manager: pnpm@latest # The Node package manager that should be used to install dependencies and build your site.
-          # Ensure the action installs with --no-frozen-lockfile if the lockfile is out of date in CI, then build the site
-          build-cmd: pnpm install --no-frozen-lockfile && pnpm run build
-          # node-version: 24 # The specific version of Node that should be used to build your site. Defaults to 22. (optional)
-          # env:
-        # PUBLIC_POKEAPI: 'https://pokeapi.co/api/v2' # Use single quotation marks for the variable value. (optional)
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build site
+        run: |
+          cd website/docs
+          pnpm run build
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: ./website/docs/dist
 
   deploy:
     needs: build
