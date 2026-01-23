@@ -1,3 +1,9 @@
+## [1.14.1](https://github.com/dallay/agentsync/compare/v1.14.0...v1.14.1) (2026-01-23)
+
+### 🐛 Bug Fixes
+
+* **config:** update site URL to dallay.github.io/agentsync in Astro config ([13a2957](https://github.com/dallay/agentsync/commit/13a295721560a76a9487c6d217938ae717648508))
+
 ## [1.14.0](https://github.com/dallay/agentsync/compare/v1.13.0...v1.14.0) (2026-01-23)
 
 ### ✨ Features
