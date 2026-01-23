@@ -1,3 +1,9 @@
+## [1.14.0](https://github.com/dallay/agentsync/compare/v1.13.0...v1.14.0) (2026-01-23)
+
+### ✨ Features
+
+* **ci:** update deploy-docs workflow to use --no-frozen-lockfile for pnpm install ([dbca1c6](https://github.com/dallay/agentsync/commit/dbca1c62ce56aeb4f98a689f98cd929273cfca26))
+
 ## [1.13.0](https://github.com/dallay/agentsync/compare/v1.12.0...v1.13.0) (2026-01-23)
 
 ### ✨ Features
