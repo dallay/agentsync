@@ -1,0 +1,139 @@
+---
+// Premium Footer component for AgentSync
+const currentYear = new Date().getFullYear();
+---
+
+<footer class="as-footer">
+    <div class="as-footer-inner">
+        <div class="as-footer-brand">
+            <span class="as-footer-logo gradient-text">AgentSync</span>
+            <p class="as-footer-tagline">
+                Sync your AI agents across all assistants — instantly.
+            </p>
+        </div>
+        <div class="as-footer-links">
+            <a
+                href="https://github.com/dallay/agentsync"
+                target="_blank"
+                rel="noopener noreferrer"
+            >
+                <svg
+                    aria-hidden="true"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                >
+                    <path
+                        d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"
+                    ></path>
+                </svg>
+                GitHub
+            </a>
+            <a href="/guides/getting-started/">Docs</a>
+            <a href="/guides/contributing/">Contributing</a>
+        </div>
+        <div class="as-footer-copy">
+            <p>
+                &copy; {currentYear} agentsync. Built with <a
+                    href="https://starlight.astro.build"
+                    target="_blank"
+                    rel="noopener noreferrer">Starlight</a
+                >.
+            </p>
+        </div>
+    </div>
+</footer>
+
+<style>
+    .as-footer {
+        background: var(--as-bg-elevated, #0d0d12);
+        border-top: 1px solid var(--as-border, rgba(255, 255, 255, 0.08));
+        padding: var(--as-space-2xl, 48px) var(--as-space-lg, 24px);
+        margin-top: var(--as-space-3xl, 64px);
+    }
+
+    .as-footer-inner {
+        max-width: 1100px;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: var(--as-space-lg, 24px);
+        text-align: center;
+    }
+
+    .as-footer-logo {
+        font-size: 1.5rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+    }
+
+    .as-footer-tagline {
+        color: var(--as-text-muted, #6b7280);
+        font-size: 0.875rem;
+        margin: var(--as-space-xs, 4px) 0 0 0;
+    }
+
+    .as-footer-links {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: var(--as-space-md, 16px) var(--as-space-xl, 32px);
+    }
+
+    .as-footer-links a {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--as-space-xs, 4px);
+        color: var(--as-text-secondary, #9aa7b3);
+        text-decoration: none;
+        font-size: 0.9rem;
+        transition: color var(--as-transition-fast, 150ms ease);
+    }
+
+    .as-footer-links a:hover {
+        color: var(--as-primary, #00e5c4);
+    }
+
+    .as-footer-links svg {
+        opacity: 0.8;
+    }
+
+    .as-footer-copy {
+        color: var(--as-text-muted, #6b7280);
+        font-size: 0.8rem;
+    }
+
+    .as-footer-copy p {
+        margin: 0;
+    }
+
+    .as-footer-copy a {
+        color: var(--as-text-secondary, #9aa7b3);
+        text-decoration: none;
+    }
+
+    .as-footer-copy a:hover {
+        color: var(--as-primary, #00e5c4);
+    }
+
+    /* Gradient text utility fallback */
+    .gradient-text {
+        background: linear-gradient(135deg, #00e5c4, #7c4dff);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+
+    @media (min-width: 640px) {
+        .as-footer-inner {
+            flex-direction: row;
+            justify-content: space-between;
+            text-align: left;
+        }
+        .as-footer-brand {
+            flex: 1;
+        }
+    }
+</style>

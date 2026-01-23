@@ -1,0 +1,56 @@
+---
+title: Workspaces Reference
+description: Detailed guide to the repository structure and polyglot development environment.
+---
+
+`agentsync` is a multi-language project that combines a high-performance Rust core with a TypeScript distribution layer.
+
+## Repository Structure
+
+- `src/`: Core logic and CLI implementation in **Rust**.
+- `npm/agentsync/`: **TypeScript** wrapper used for NPM distribution.
+- `docs/`: Documentation site built with **Starlight**.
+- `website/`: Main project website.
+- `tests/`: Integration tests for the CLI.
+
+---
+
+## Rust Workspace (The Core)
+
+The core logic is written in Rust for speed, safety, and easy distribution as a single binary.
+
+- **Tools**: Cargo
+- **Version**: Rust 1.85+ (Edition 2024)
+- **Key Commands**:
+  ```bash
+  cargo build    # Build debug binary
+  cargo test     # Run unit and integration tests
+  cargo run      # Run the CLI locally
+  ```
+- **Error Handling**: Uses `thiserror` for custom errors and `anyhow` for application-level error handling.
+
+---
+
+## JavaScript Workspace (Distribution)
+
+The JS workspace acts as a wrapper to provide an easy installation path via `pnpm/npm`. It manages platform-specific binary downloads.
+
+- **Tools**: pnpm, TypeScript
+- **Location**: `npm/agentsync/`
+- **Key Commands**:
+  ```bash
+  pnpm run typecheck  # Verify types
+  pnpm run build      # Compile TypeScript to JS
+  ```
+- **Strictness**: We enforce strict TypeScript configurations. Avoid `any` at all costs.
+
+---
+
+## Modern Tooling
+
+We enforce the use of modern CLI tools for development. If you don't have them, we recommend installing them:
+- `bat`: Syntax-highlighted file viewing (replaces `cat`).
+- `rg` (ripgrep): Fast recursive search (replaces `grep`).
+- `fd`: Simple and fast alternative to `find`.
+- `sd`: Intuitive find and replace (replaces `sed`).
+- `eza`: Feature-rich directory listing (replaces `ls`).

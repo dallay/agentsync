@@ -1,7 +1,7 @@
 {
   "name": "@dallay/agentsync",
   "version": "1.10.0",
-  "description": "Sync AI agent configurations across multiple AI coding assistants using symbolic links",
+  "description": "A fast CLI tool to sync AI agent configurations and MCP servers across Claude, Copilot, Cursor, and more using symbolic links.",
   "author": "Yuniel Acosta <yunielacosta738@gmail.com>",
   "license": "MIT",
   "publishConfig": {
@@ -25,7 +25,9 @@
     "copilot",
     "gemini",
     "cursor",
-    "opencode"
+    "opencode",
+    "mcp",
+    "mcp-server"
   ],
   "bin": {
     "agentsync": "lib/index.js"

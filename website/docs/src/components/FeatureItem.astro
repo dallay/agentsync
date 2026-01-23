@@ -1,0 +1,68 @@
+---
+// FeatureItem - Individual feature card with glassmorphism and hover effects
+interface Props {
+    title: string;
+    description: string;
+    icon?: string;
+    href?: string;
+}
+
+const { title, description, icon = "✨", href } = Astro.props;
+const Tag = href ? "a" : "div";
+---
+
+<Tag class="feature-item" href={href || undefined}>
+    <span class="feature-icon">{icon}</span>
+    <h3 class="feature-title">{title}</h3>
+    <p class="feature-desc">{description}</p>
+</Tag>
+
+<style>
+    .feature-item {
+        display: flex;
+        flex-direction: column;
+        padding: var(--as-space-lg, 24px);
+        background: var(--as-bg-card, rgba(18, 18, 24, 0.6));
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid var(--as-border, rgba(255, 255, 255, 0.08));
+        border-radius: var(--as-radius-lg, 16px);
+        text-decoration: none;
+        color: inherit;
+        transition:
+            transform var(--as-transition-base, 250ms ease),
+            border-color var(--as-transition-base, 250ms ease),
+            box-shadow var(--as-transition-base, 250ms ease);
+    }
+
+    .feature-item:hover {
+        transform: translateY(-4px);
+        border-color: var(--as-border-hover, rgba(255, 255, 255, 0.15));
+        box-shadow: var(--as-shadow-md, 0 12px 32px rgba(0, 0, 0, 0.3));
+    }
+
+    a.feature-item:hover {
+        cursor: pointer;
+    }
+
+    .feature-icon {
+        font-size: 2rem;
+        margin-bottom: var(--as-space-sm, 8px);
+        display: block;
+        line-height: 1;
+    }
+
+    .feature-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin: 0 0 var(--as-space-sm, 8px) 0;
+        color: var(--as-text-primary, #fff);
+    }
+
+    .feature-desc {
+        font-size: 0.9rem;
+        color: var(--as-text-secondary, #9aa7b3);
+        margin: 0;
+        line-height: 1.5;
+    }
+</style>
