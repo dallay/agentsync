@@ -1,0 +1,298 @@
+/* ============================================
+   AGENTSYNC - Premium Design System
+   ============================================ */
+
+/* --- CSS Custom Properties (Theme Tokens) --- */
+:root {
+  /* Primary Palette */
+  --as-primary: #00e5c4;
+  --as-primary-hover: #00d4b4;
+  --as-secondary: #7c4dff;
+  --as-secondary-hover: #6b3de8;
+
+  /* Background Layers */
+  --as-bg-base: #07070a;
+  --as-bg-elevated: #0d0d12;
+  --as-bg-surface: #121218;
+  --as-bg-card: rgba(18, 18, 24, 0.6);
+
+  /* Text Colors */
+  --as-text-primary: #ffffff;
+  --as-text-secondary: #9aa7b3;
+  --as-text-muted: #6b7280;
+
+  /* Borders & Accents */
+  --as-border: rgba(255, 255, 255, 0.08);
+  --as-border-hover: rgba(255, 255, 255, 0.15);
+  --as-glow-primary: rgba(0, 229, 196, 0.25);
+  --as-glow-secondary: rgba(124, 77, 255, 0.2);
+
+  /* Gradients */
+  --as-gradient-primary: linear-gradient(135deg, var(--as-primary), var(--as-secondary));
+  --as-gradient-bg: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(0, 229, 196, 0.08), transparent),
+    radial-gradient(ellipse 60% 40% at 80% 100%, rgba(124, 77, 255, 0.06), transparent);
+
+  /* Typography */
+  --as-font-sans: 'Geist Sans', system-ui, -apple-system, sans-serif;
+  --as-font-mono: 'Geist Mono', ui-monospace, 'Cascadia Code', monospace;
+
+  /* Spacing Scale */
+  --as-space-xs: 4px;
+  --as-space-sm: 8px;
+  --as-space-md: 16px;
+  --as-space-lg: 24px;
+  --as-space-xl: 32px;
+  --as-space-2xl: 48px;
+  --as-space-3xl: 64px;
+
+  /* Border Radius */
+  --as-radius-sm: 6px;
+  --as-radius-md: 10px;
+  --as-radius-lg: 16px;
+  --as-radius-xl: 24px;
+
+  /* Shadows */
+  --as-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --as-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --as-shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.5);
+  --as-shadow-glow: 0 0 40px var(--as-glow-primary);
+
+  /* Transitions */
+  --as-transition-fast: 150ms ease;
+  --as-transition-base: 250ms ease;
+  --as-transition-slow: 400ms ease;
+
+  /* Hero-specific (dark mode default) */
+  --as-hero-bg: linear-gradient(180deg, #07070a 0%, #0a0a10 100%);
+  --as-hero-glow-1: rgba(0, 229, 196, 0.08);
+  --as-hero-glow-2: rgba(124, 77, 255, 0.06);
+}
+
+/* Light mode overrides for Starlight compatibility */
+[data-theme='light'] {
+  --as-bg-base: #f8fafc;
+  --as-bg-elevated: #ffffff;
+  --as-bg-surface: #e2e8f0;
+  --as-bg-card: rgba(255, 255, 255, 0.9);
+  --as-text-primary: #0f172a;
+  --as-text-secondary: #475569;
+  --as-text-muted: #64748b;
+  --as-border: rgba(15, 23, 42, 0.12);
+  --as-border-hover: rgba(15, 23, 42, 0.25);
+  --as-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --as-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.08);
+  --as-shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.12);
+  --as-glow-primary: rgba(0, 229, 196, 0.15);
+  --as-glow-secondary: rgba(124, 77, 255, 0.1);
+
+  /* Hero-specific light mode */
+  --as-hero-bg: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 50%, #f1f5f9 100%);
+  --as-hero-glow-1: rgba(0, 229, 196, 0.15);
+  --as-hero-glow-2: rgba(124, 77, 255, 0.1);
+}
+
+
+/* --- Header Overrides --- */
+header.header {
+  background: var(--as-bg-elevated) !important;
+  border-bottom: 1px solid var(--as-border) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.site-title {
+  font-weight: 700 !important;
+  background: var(--as-gradient-primary) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
+}
+
+/* Search box styling */
+site-search button {
+  background: var(--as-bg-surface) !important;
+  border: 1px solid var(--as-border) !important;
+  border-radius: var(--as-radius-md) !important;
+}
+
+/* Theme toggle and social icons */
+starlight-theme-select select,
+.social-icons a {
+  color: var(--as-text-secondary) !important;
+  transition: color var(--as-transition-fast) !important;
+}
+
+starlight-theme-select select:hover,
+.social-icons a:hover {
+  color: var(--as-primary) !important;
+}
+
+
+/* --- Global Resets & Base Styles --- */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--as-font-sans);
+  background: var(--as-bg-base);
+  color: var(--as-text-primary);
+}
+
+::selection {
+  background: var(--as-primary);
+  color: var(--as-bg-base);
+}
+
+
+/* --- Custom Scrollbar --- */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--as-bg-elevated);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--as-border-hover);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--as-text-muted);
+}
+
+
+/* --- Glassmorphism Utility --- */
+.glass {
+  background: var(--as-bg-card);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--as-border);
+}
+
+.glass:hover {
+  border-color: var(--as-border-hover);
+}
+
+
+/* --- Gradient Text Utility --- */
+.gradient-text {
+  background: var(--as-gradient-primary);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+
+/* --- Starlight Overrides --- */
+
+/* Cards styling */
+.card {
+  background: var(--as-bg-card) !important;
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--as-border) !important;
+  border-radius: var(--as-radius-lg) !important;
+  transition: all var(--as-transition-base);
+}
+
+.card:hover {
+  border-color: var(--as-border-hover) !important;
+  transform: translateY(-2px);
+  box-shadow: var(--as-shadow-md);
+}
+
+/* Sidebar enhancements */
+.sidebar-content {
+  background: var(--as-bg-elevated);
+}
+
+/* Code blocks */
+pre {
+  background: var(--as-bg-surface) !important;
+  border: 1px solid var(--as-border) !important;
+  border-radius: var(--as-radius-md) !important;
+  padding: 16px !important;
+  box-shadow: var(--as-shadow-sm) !important;
+}
+
+/* Inline code */
+code {
+  font-family: var(--as-font-mono);
+  background: var(--as-bg-surface);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  border: 1px solid var(--as-border);
+}
+
+/* Code inside pre (don't double-style) */
+pre code {
+  background: transparent;
+  padding: 0;
+  border: none;
+}
+
+/* Force readable text color in code blocks for light mode */
+[data-theme='light'] pre,
+[data-theme='light'] pre code,
+[data-theme='light'] pre code span {
+  color: #1e293b !important;
+}
+
+/* Force readable text color in inline code for light mode */
+[data-theme='light'] code {
+  color: #334155 !important;
+}
+
+/* Links */
+a {
+  transition: color var(--as-transition-fast);
+}
+
+a:hover {
+  color: var(--as-primary);
+}
+
+
+/* --- Animation Utilities --- */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse-glow {
+
+  0%,
+  100% {
+    box-shadow: 0 0 20px var(--as-glow-primary);
+  }
+
+  50% {
+    box-shadow: 0 0 40px var(--as-glow-primary);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.6s ease forwards;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 3s ease-in-out infinite;
+}
+
+
+/* --- Focus States (A11y) --- */
+:focus-visible {
+  outline: 2px solid var(--as-primary);
+  outline-offset: 2px;
+}

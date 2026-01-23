@@ -10,16 +10,16 @@ assistants using symbolic links.
 
 ## Why AgentSync?
 
-Different AI coding tools expect configuration files in different locations:
+Different AI coding tools expect configuration files in various locations:
 
 | Tool               | Instructions                      | Commands             | Skills             |
 |--------------------|-----------------------------------|----------------------|--------------------|
 | **Claude Code**    | `CLAUDE.md`                       | `.claude/commands/`  | `.claude/skills/`  |
 | **GitHub Copilot** | `.github/copilot-instructions.md` | `.github/agents/`    | -                  |
+| **Cursor**         | `.cursorrules`                    | -                    | -                  |
 | **Codex CLI**      | `AGENTS.md`                       | -                    | `.codex/skills/`   |
 | **Gemini CLI**     | `GEMINI.md`                       | `.gemini/commands/`  | `.gemini/skills/`  |
 | **OpenCode**       | `AGENTS.md`                       | `.opencode/command/` | `.opencode/skill/` |
-| **Cursor**         | `.cursor/rules`                   | -                    | -                  |
 
 AgentSync maintains a **single source of truth** in `.agents/` and creates symlinks to all required
 locations.
@@ -76,7 +76,7 @@ cargo build --release
 # Binary at ./target/release/agentsync
 ```
 
-### From crates.io (coming soon)
+### From crates.io
 
 ```bash
 cargo install agentsync
@@ -210,8 +210,7 @@ When `merge_strategy = "merge"`:
 
 1. AgentSync reads the existing config file (if it exists).
 2. It adds servers defined in `agentsync.toml`.
-3. **Conflict Resolution**: If a server name exists in both, the definition in `agentsync.toml` *
-   *wins** and overwrites the existing one.
+3. **Conflict Resolution**: If a server name exists in both, the definition in `agentsync.toml` **wins** and overwrites the existing one.
 4. Existing servers NOT in `agentsync.toml` are preserved.
 
 ### Target Types

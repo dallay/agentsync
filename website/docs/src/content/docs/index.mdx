@@ -1,0 +1,76 @@
+---
+title: AgentSync — Documentation
+description: Sync your AI agent configurations and MCP servers across all assistants — instantly. Open-source CLI tool for managing AI agent instructions, commands, and skills.
+template: splash
+hero:
+  title: "Sync your AI agents — instantly."
+  tagline: "One source of truth for all your AI assistants. AgentSync automates configuration syncing so you can focus on coding, not copy-pasting."
+  image:
+    file: ../../assets/synchro.webp
+  actions:
+    - text: Get started
+      link: /guides/getting-started/
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/dallay/agentsync
+      variant: secondary
+      icon: external
+---
+
+import Features from '../../components/Features.astro';
+import FeatureItem from '../../components/FeatureItem.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+
+<Features title="Why agentsync?">
+  <FeatureItem
+    title="Single Source of Truth"
+    description="Maintain one AGENTS.md and sync it to Claude, Copilot, Gemini, and more via symlinks."
+    icon="🎯"
+    href="/guides/getting-started/"
+  />
+  <FeatureItem
+    title="Instant Propagation"
+    description="Uses symbolic links instead of copies. Change a file once, and every assistant sees it immediately."
+    icon="🔗"
+    href="/reference/configuration/#target-types"
+  />
+  <FeatureItem
+    title="MCP Integration"
+    description="Define MCP servers once in TOML and sync them across all supported agent environments."
+    icon="🤖"
+    href="/guides/mcp/"
+  />
+  <FeatureItem
+    title="Gitignore Management"
+    description="Automatically manages your .gitignore to keep symlinks out of your repository."
+    icon="📁"
+    href="/reference/configuration/#gitignore-management"
+  />
+  <FeatureItem
+    title="Cross-Platform"
+    description="Written in Rust for maximum speed and portability. Works on macOS, Linux, and Windows."
+    icon="⚙️"
+    href="/guides/getting-started/#installation"
+  />
+  <FeatureItem
+    title="Developer First"
+    description="Clean CLI, human-readable TOML configuration, and CI-friendly execution."
+    icon="💻"
+    href="/reference/cli/"
+  />
+</Features>
+
+---
+
+## Quick Start
+
+<CodeBlock code={`# Install (macOS)
+curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-aarch64-apple-darwin.tar.gz
+tar xzf agentsync-aarch64-apple-darwin.tar.gz
+sudo mv agentsync-*/agentsync /usr/local/bin/
+
+# Initialize and apply
+agentsync init
+agentsync apply`} lang="bash" />
+
+This documentation is the authoritative project reference.

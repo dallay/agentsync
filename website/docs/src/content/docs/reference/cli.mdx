@@ -1,0 +1,58 @@
+---
+title: CLI Reference
+description: Detailed documentation for all agentsync commands.
+---
+
+`agentsync` provides a straightforward set of commands to manage your AI agent configurations.
+
+## Commands
+
+### `init`
+Initializes a new AgentSync configuration in the current directory.
+
+```bash
+agentsync init
+```
+
+**Actions**:
+- Creates the `.agents/` directory if it doesn't exist.
+- Creates a default `.agents/agentsync.toml` file.
+- Creates a template `.agents/AGENTS.md` file.
+
+---
+
+### `apply`
+Applies the configuration defined in `agentsync.toml` by creating symbolic links and updating `.gitignore`.
+
+```bash
+agentsync apply [FLAGS]
+```
+
+**Flags**:
+- `-c, --clean`: Deletes existing symbolic links before applying. Useful for fixing broken links or cleaning up old configurations.
+- `-d, --dry-run`: Shows what actions would be taken without actually making any changes to the filesystem.
+- `--config <PATH>`: Use a custom configuration file path instead of the default `.agents/agentsync.toml`.
+
+---
+
+### `--version`
+Shows the current version of the AgentSync CLI.
+
+```bash
+agentsync --version
+```
+
+---
+
+### `--help`
+Shows help information for the CLI or a specific command.
+
+```bash
+agentsync --help
+agentsync apply --help
+```
+
+## Global Flags
+
+- `-v, --verbose`: Enable verbose logging for debugging purposes.
+- `-q, --quiet`: Only output errors.

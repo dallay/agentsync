@@ -1,0 +1,39 @@
+---
+// Features - Grid container for feature items
+import FeatureItem from "./FeatureItem.astro";
+
+interface Props {
+    title?: string;
+}
+
+const { title } = Astro.props;
+---
+
+<section class="features-section">
+    {title && <h2 class="features-heading">{title}</h2>}
+    <div class="features-grid">
+        <slot />
+    </div>
+</section>
+
+<style>
+    .features-section {
+        max-width: 1100px;
+        margin: var(--as-space-3xl, 64px) auto;
+        padding: 0 var(--as-space-lg, 24px);
+    }
+
+    .features-heading {
+        font-size: clamp(1.5rem, 3vw, 2rem);
+        font-weight: 700;
+        text-align: center;
+        margin: 0 0 var(--as-space-xl, 32px) 0;
+        color: var(--as-text-primary, #fff);
+    }
+
+    .features-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: var(--as-space-lg, 24px);
+    }
+</style>

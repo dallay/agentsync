@@ -1,0 +1,64 @@
+---
+title: MCP Integration
+description: How to synchronize Model Context Protocol servers across assistants.
+---
+
+AgentSync can automatically generate and synchronize MCP (Model Context Protocol) configuration files for multiple agents. This allows you to define your MCP servers once and use them everywhere.
+
+## Configuration
+
+Add the `[mcp]` section to your `agentsync.toml`:
+
+```toml
+[mcp]
+enabled = true
+# Strategy for existing files: "merge" (default) or "overwrite"
+merge_strategy = "merge"
+```
+
+### Merge Strategy
+
+- **`merge` (Default)**: AgentSync will read the existing agent-specific config file, add the servers defined in your TOML, and preserve existing servers that are not in the TOML. If a conflict occurs (same server name), the TOML configuration wins.
+- **`overwrite`**: AgentSync will completely replace the agent-specific config file with the servers defined in your TOML.
+
+## Defining Servers
+
+Define your servers under `[mcp_servers.<name>]`:
+
+```toml
+[mcp_servers.filesystem]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem", "."]
+
+[mcp_servers.git]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-git", "--repository", "."]
+env = { "DEBUG" = "true" }
+```
+
+### Server Fields
+
+- **`command`**: The executable to run.
+- **`args`**: List of arguments for the command.
+- **`env`**: (Optional) Key-value pairs for environment variables.
+- **`disabled`**: (Optional) Set to `true` to temporarily disable a server without removing it.
+
+## Supported Agents
+
+AgentSync automatically knows where to place the MCP configuration for these assistants:
+
+| Assistant | Destination File | Notes |
+| :--- | :--- | :--- |
+| **Claude Code** | `.mcp.json` | Standard format |
+| **GitHub Copilot** | `.copilot/mcp-config.json` | Copilot specific |
+| **Gemini CLI** | `.gemini/settings.json` | Automatically adds `"trust": true` |
+| **VS Code** | `.vscode/mcp.json` | For VS Code extensions |
+| **OpenCode** | `.opencode/mcp.json` | |
+
+## How it works
+
+When you run `agentsync apply`, the tool:
+1. Gathers all servers defined in `mcp_servers`.
+2. For each supported agent, it checks if a target is required.
+3. It performs the `merge` or `overwrite` operation on the destination JSON file.
+4. It ensures the parent directories exist.

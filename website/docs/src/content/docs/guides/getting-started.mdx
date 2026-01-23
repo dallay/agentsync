@@ -1,0 +1,88 @@
+---
+title: Getting started
+description: Quickstart for installing and using agentsync in your project.
+---
+
+`agentsync` is a fast, portable CLI tool for synchronizing AI agent configurations across multiple coding assistants using symbolic links.
+
+## Installation
+
+### From GitHub Releases (Recommended)
+
+Download the latest release for your platform:
+
+#### macOS (Apple Silicon)
+```bash
+curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-aarch64-apple-darwin.tar.gz
+tar xzf agentsync-aarch64-apple-darwin.tar.gz
+sudo mv agentsync-*/agentsync /usr/local/bin/
+```
+
+#### Linux (x86_64)
+```bash
+curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-x86_64-unknown-linux-gnu.tar.gz
+tar xzf agentsync-x86_64-unknown-linux-gnu.tar.gz
+sudo mv agentsync-*/agentsync /usr/local/bin/
+```
+
+### From Source (Requires Rust 1.85+)
+
+If you have Rust installed, you can install directly from [crates.io](https://crates.io/crates/agentsync) or from the repository:
+
+```bash
+# From crates.io
+cargo install agentsync
+
+# From GitHub
+cargo install --git https://github.com/dallay/agentsync
+```
+
+## Basic Usage
+
+### 1. Initialize Configuration
+
+Run `init` in your project root to create the default structure:
+
+```bash
+agentsync init
+```
+
+This creates a `.agents/` directory with an initial `agentsync.toml` and an `AGENTS.md` file.
+
+### 2. Configure your Agents
+
+Edit `.agents/agentsync.toml` to define which assistants you use. By default, it includes configurations for Claude Code and GitHub Copilot.
+
+```toml
+[agents.claude]
+enabled = true
+# ... configuration ...
+```
+
+### 3. Apply Symlinks
+
+Create the symbolic links in your project root:
+
+```bash
+agentsync apply
+```
+
+This will create files like `CLAUDE.md` and `.github/copilot-instructions.md` that point back to your single source of truth in `.agents/`.
+
+### 4. Integration with pnpm/npm
+
+We recommend adding the apply command to your `prepare` script to ensure symlinks are always present for your team:
+
+```json
+{
+  "scripts": {
+    "prepare": "agentsync apply || true"
+  }
+}
+```
+
+## Next Steps
+
+- Learn more about [Configuration Options](/reference/configuration/)
+- Explore [MCP Integration](/guides/mcp/)
+- See the [CLI Reference](/reference/cli/)

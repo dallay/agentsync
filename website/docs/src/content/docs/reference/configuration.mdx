@@ -1,0 +1,72 @@
+---
+title: Configuration Reference
+description: Detailed guide for agentsync.toml configuration.
+---
+
+The `agentsync.toml` file is the heart of your agent configuration. It defines the source of truth, how gitignore is managed, and the specific targets for each AI assistant.
+
+By default, `agentsync` looks for this file at `.agents/agentsync.toml`.
+
+## Global Settings
+
+### `source_dir`
+The base directory for your source files, relative to the configuration file.
+- **Default**: `"."`
+
+## Gitignore Management
+
+AgentSync can automatically manage your `.gitignore` file to ensure that generated symbolic links are not accidentally committed to version control.
+
+```toml
+[gitignore]
+enabled = true
+marker = "AI Agent Symlinks"
+entries = [
+    "CLAUDE.md",
+    "GEMINI.md",
+    ".github/copilot-instructions.md",
+]
+```
+
+- **`enabled`**: If `true`, AgentSync will update `.gitignore`.
+- **`marker`**: The text used in comments to identify the AgentSync section in `.gitignore`.
+- **`entries`**: A list of file paths to add to the ignore list.
+
+## Agent Definitions
+
+Each assistant is defined under the `[agents.<name>]` section.
+
+```toml
+[agents.claude]
+enabled = true
+description = "Claude Code - Anthropic's AI coding assistant"
+
+[agents.claude.targets.instructions]
+source = "AGENTS.md"
+destination = "CLAUDE.md"
+type = "symlink"
+```
+
+### Target Types
+
+| Type | Description |
+| :--- | :--- |
+| `symlink` | Creates a direct symbolic link from `destination` to `source`. |
+| `symlink-contents` | Creates individual symbolic links for every file inside the `source` directory into the `destination` directory. |
+
+#### `symlink-contents` with patterns
+When using `symlink-contents`, you can filter files using a glob pattern:
+
+```toml
+[agents.claude.targets.commands]
+source = "command"
+destination = ".claude/commands"
+type = "symlink-contents"
+pattern = "*.agent.md"
+```
+
+## MCP (Model Context Protocol)
+
+Configuration for MCP servers is managed under the `[mcp]` and `[mcp_servers]` sections.
+
+For a detailed guide on how to use MCP with AgentSync, see the [MCP Integration Guide](/guides/mcp/).
