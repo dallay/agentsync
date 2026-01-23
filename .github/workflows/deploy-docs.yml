@@ -25,8 +25,9 @@ jobs:
         with:
           path: ./website/docs # The root location of your Astro project inside the repository. (optional)
           package-manager: pnpm@latest # The Node package manager that should be used to install dependencies and build your site.
+          # Ensure the action installs with --no-frozen-lockfile if the lockfile is out of date in CI, then build the site
+          build-cmd: pnpm install --no-frozen-lockfile && pnpm run build
           # node-version: 24 # The specific version of Node that should be used to build your site. Defaults to 22. (optional)
-          # build-cmd: pnpm run build # The command to run to build your site. Runs the package build script/task by default. (optional)
           # env:
         # PUBLIC_POKEAPI: 'https://pokeapi.co/api/v2' # Use single quotation marks for the variable value. (optional)
 
