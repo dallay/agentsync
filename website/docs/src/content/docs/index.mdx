@@ -19,7 +19,7 @@ hero:
 
 import Features from '../../components/Features.astro';
 import FeatureItem from '../../components/FeatureItem.astro';
-import CodeBlock from '../../components/CodeBlock.astro';
+import { Code } from '@astrojs/starlight/components';
 
 <Features title="Why agentsync?">
   <FeatureItem
@@ -64,7 +64,7 @@ import CodeBlock from '../../components/CodeBlock.astro';
 
 ## Quick Start
 
-<CodeBlock code={`# Install (macOS)
+<Code code={`# Install (macOS)
 curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-aarch64-apple-darwin.tar.gz
 tar xzf agentsync-aarch64-apple-darwin.tar.gz
 sudo mv agentsync-*/agentsync /usr/local/bin/
@@ -74,3 +74,6 @@ agentsync init
 agentsync apply`} lang="bash" />
 
 This documentation is the authoritative project reference.
+
+> **Canonical Source**: All agent instructions and skills are maintained in `.agents/AGENTS.md`. This is the single source of truth—they get synced everywhere!
+

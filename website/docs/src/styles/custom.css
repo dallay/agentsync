@@ -91,7 +91,6 @@
   --as-hero-glow-2: rgba(124, 77, 255, 0.1);
 }
 
-
 /* --- Header Overrides --- */
 header.header {
   background: var(--as-bg-elevated) !important;
@@ -127,7 +126,6 @@ starlight-theme-select select:hover,
   color: var(--as-primary) !important;
 }
 
-
 /* --- Global Resets & Base Styles --- */
 html {
   scroll-behavior: smooth;
@@ -143,7 +141,6 @@ body {
   background: var(--as-primary);
   color: var(--as-bg-base);
 }
-
 
 /* --- Custom Scrollbar --- */
 ::-webkit-scrollbar {
@@ -164,7 +161,6 @@ body {
   background: var(--as-text-muted);
 }
 
-
 /* --- Glassmorphism Utility --- */
 .glass {
   background: var(--as-bg-card);
@@ -177,7 +173,6 @@ body {
   border-color: var(--as-border-hover);
 }
 
-
 /* --- Gradient Text Utility --- */
 .gradient-text {
   background: var(--as-gradient-primary);
@@ -185,7 +180,6 @@ body {
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
-
 
 /* --- Starlight Overrides --- */
 
@@ -256,7 +250,6 @@ a:hover {
   color: var(--as-primary);
 }
 
-
 /* --- Animation Utilities --- */
 @keyframes fadeInUp {
   from {
@@ -290,9 +283,14 @@ a:hover {
   animation: pulse-glow 3s ease-in-out infinite;
 }
 
-
 /* --- Focus States (A11y) --- */
 :focus-visible {
   outline: 2px solid var(--as-primary);
   outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto !important;
+  }
 }
