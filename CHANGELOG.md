@@ -1,3 +1,9 @@
+## [1.12.0](https://github.com/dallay/agentsync/compare/v1.11.0...v1.12.0) (2026-01-23)
+
+### ✨ Features
+
+* **deps:** release 1.x.x ([d03622c](https://github.com/dallay/agentsync/commit/d03622c42ff31c3d603ea1de964c467a15750366))
+
 ## [1.11.0](https://github.com/dallay/agentsync/compare/v1.10.0...v1.11.0) (2026-01-23)
 
 ### ✨ Features

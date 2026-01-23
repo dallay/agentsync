@@ -45,7 +45,7 @@ importers:
   npm/agentsync:
     devDependencies:
       '@types/node':
-        specifier: ^24.0.0
+        specifier: ^24.1.0
         version: 24.10.9
       typescript:
         specifier: ^5.9.3
