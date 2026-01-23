@@ -30,15 +30,15 @@ help:
 	@echo "  make fmt             -> rustfmt + prettier (si está instalado)"
 	@echo "  make docs-dev        -> iniciar docs en modo dev"
 	@echo "  make docs-build      -> build docs"
-	@echo "  make agents-sync     -> pnpm exec agentsync apply"
-	@echo "  make agents-sync-clean -> pnpm exec agentsync apply --clean"
+  	@echo "  make agents-sync     -> pnpm run agents:sync"
+  	@echo "  make agents-sync-clean -> pnpm run agents:sync:clean"
 	@echo "  make clean           -> limpia artefactos comunes"
 	@echo ""
 	@echo "Ejemplos:"
 	@echo "  make js-test"
 	@echo "  make rust-test"
 
-all: install js-build rust-build
+all: install js-build
 
 install: js-install rust-build
 	@echo "Instalación completa."
@@ -58,8 +58,8 @@ js-test:
 
 js-build:
 	@echo "Running JS build (workspace scripts if present)..."
-	# Intent: prefer a workspace build script; ajusta si tu workspace tiene scripts distintos.
-	-$(JS_WORKSPACE) run build
+ 	# Intent: prefer a workspace build script; ajusta si tu workspace tiene scripts distintos.
+ 	$(JS_WORKSPACE) run --if-present build
 
 js-release:
 	@echo "Running JS release (semantic-release)..."
