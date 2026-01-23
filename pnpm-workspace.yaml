@@ -1,5 +1,6 @@
 packages:
   - npm/agentsync
+  - website/docs
 
 catalog:
   '@dallay/agentsync': 1.7.0

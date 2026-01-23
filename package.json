@@ -12,7 +12,12 @@
     "prepare": "if [ -d .git ]; then pnpm exec lefthook install && pnpm run agents:sync; fi",
     "agents:sync": "pnpm exec agentsync apply",
     "agents:sync:clean": "pnpm exec agentsync apply --clean",
-    "precommit": "pnpm exec agentsync apply --dry-run"
+    "precommit": "pnpm exec agentsync apply --dry-run",
+    "docs:dev": "pnpm --filter agentsync-docs run dev",
+    "docs:start": "pnpm --filter agentsync-docs run start",
+    "docs:build": "pnpm --filter agentsync-docs run build",
+    "docs:preview": "pnpm --filter agentsync-docs run preview",
+    "docs:astro": "pnpm --filter agentsync-docs run astro"
   },
   "devDependencies": {
     "@dallay/agentsync": "catalog:",
