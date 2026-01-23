@@ -50,6 +50,25 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+    optionalDependencies:
+      '@dallay/agentsync-darwin-arm64':
+        specifier: 1.14.1
+        version: 1.14.1
+      '@dallay/agentsync-darwin-x64':
+        specifier: 1.14.1
+        version: 1.14.1
+      '@dallay/agentsync-linux-arm64':
+        specifier: 1.14.1
+        version: 1.14.1
+      '@dallay/agentsync-linux-x64':
+        specifier: 1.14.1
+        version: 1.14.1
+      '@dallay/agentsync-windows-arm64':
+        specifier: 1.14.1
+        version: 1.14.1
+      '@dallay/agentsync-windows-x64':
+        specifier: 1.14.1
+        version: 1.14.1
 
   website/docs:
     dependencies:
@@ -163,10 +182,22 @@ packages:
     resolution: {integrity: sha512-kzyuwOAQnXJNLS9PSyrk0CWk35nWJW/zl/6KvnTBMFK65gm7U1/Z5BqjxeapjZCIhQcM/DsrEmcbRwDyXyXK4A==}
     engines: {node: '>=14'}
 
+  '@dallay/agentsync-darwin-arm64@1.14.1':
+    resolution: {integrity: sha512-RhMndUHrLmBfrQKxJiWyhzt3A0HEH8on8H2V+BOprWj0s1iU+6OHzg9O5ZNSBc4aOzyUT9AUR4wxIpoFY3R14A==}
+    engines: {node: '>=18'}
+    cpu: [arm64]
+    os: [darwin]
+
   '@dallay/agentsync-darwin-arm64@1.7.0':
     resolution: {integrity: sha512-l6eNFkrC6MxnI2Z9fWKMQV8cCeCl4ORRrwArrY5d+Ybbszye7dX7DhkkPcYCXa3JbK+gj4iDQdpOhaJLxfh7QA==}
     engines: {node: '>=18'}
     cpu: [arm64]
+    os: [darwin]
+
+  '@dallay/agentsync-darwin-x64@1.14.1':
+    resolution: {integrity: sha512-UiJ8FuKJUOy1/q2HRkhuhic7E0yc4TV8z7HKkU5LUGRSdcLhU2QJzokcMCFNeA9tytcc1Po5dApMqS0i5zRSYA==}
+    engines: {node: '>=18'}
+    cpu: [x64]
     os: [darwin]
 
   '@dallay/agentsync-darwin-x64@1.7.0':
@@ -175,10 +206,22 @@ packages:
     cpu: [x64]
     os: [darwin]
 
+  '@dallay/agentsync-linux-arm64@1.14.1':
+    resolution: {integrity: sha512-nBDhnpTJKNZe4lgPqXFnREX0Ljt8rrJTf85Wsv4bYyO4rxgYDzWEjrqBCwl/QSuGd0iXmcqiepaZXBt2z0YK9w==}
+    engines: {node: '>=18'}
+    cpu: [arm64]
+    os: [linux]
+
   '@dallay/agentsync-linux-arm64@1.7.0':
     resolution: {integrity: sha512-gEnjbWK0/UrufkTcrpNJtU1kpB2rJvoEWy3fKtbdbbTX/Zs38WP7V7q1dzcRFEgnv/22TAlJpLyX+1Uq3QSVxA==}
     engines: {node: '>=18'}
     cpu: [arm64]
+    os: [linux]
+
+  '@dallay/agentsync-linux-x64@1.14.1':
+    resolution: {integrity: sha512-HKeN1BWxpj9w3sRJ907l0Z9LFBOgDyqDOMUFRQtFlcFBGBtTNnDDe+kMwdEvkJPPdlGI+aQVqOBWCyhGH8FroQ==}
+    engines: {node: '>=18'}
+    cpu: [x64]
     os: [linux]
 
   '@dallay/agentsync-linux-x64@1.7.0':
@@ -187,10 +230,22 @@ packages:
     cpu: [x64]
     os: [linux]
 
+  '@dallay/agentsync-windows-arm64@1.14.1':
+    resolution: {integrity: sha512-s5P0F4sMX58JA1hBLjHc543D7/DdtKXObt6ZUJk7DpTPxfXDRoZ+okoOEDI2eEwnD+1LYX8IwYZHhTm/k1VBPg==}
+    engines: {node: '>=18'}
+    cpu: [arm64]
+    os: [win32]
+
   '@dallay/agentsync-windows-arm64@1.7.0':
     resolution: {integrity: sha512-J3OC9qiZYOhHTpyfO3X/xuyrxDk4gQ86AVdf/4RZj4F+UaAVMVvy2WvQ3cI/7JmvlHl3Jk98FRDoU0TU/R1Ifg==}
     engines: {node: '>=18'}
     cpu: [arm64]
+    os: [win32]
+
+  '@dallay/agentsync-windows-x64@1.14.1':
+    resolution: {integrity: sha512-FMV/yNasQRKp9hxlMAykJ2IpvvR++bNfxgPNmmnun+yWyRh/5aWDvMcWskTUFPdxtQNoTxQVI9rGg2OKEcjVew==}
+    engines: {node: '>=18'}
+    cpu: [x64]
     os: [win32]
 
   '@dallay/agentsync-windows-x64@1.7.0':
@@ -3369,19 +3424,37 @@ snapshots:
 
   '@ctrl/tinycolor@4.2.0': {}
 
+  '@dallay/agentsync-darwin-arm64@1.14.1':
+    optional: true
+
   '@dallay/agentsync-darwin-arm64@1.7.0':
+    optional: true
+
+  '@dallay/agentsync-darwin-x64@1.14.1':
     optional: true
 
   '@dallay/agentsync-darwin-x64@1.7.0':
     optional: true
 
+  '@dallay/agentsync-linux-arm64@1.14.1':
+    optional: true
+
   '@dallay/agentsync-linux-arm64@1.7.0':
+    optional: true
+
+  '@dallay/agentsync-linux-x64@1.14.1':
     optional: true
 
   '@dallay/agentsync-linux-x64@1.7.0':
     optional: true
 
+  '@dallay/agentsync-windows-arm64@1.14.1':
+    optional: true
+
   '@dallay/agentsync-windows-arm64@1.7.0':
+    optional: true
+
+  '@dallay/agentsync-windows-x64@1.14.1':
     optional: true
 
   '@dallay/agentsync-windows-x64@1.7.0':
