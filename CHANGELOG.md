@@ -1,3 +1,9 @@
+## [1.13.0](https://github.com/dallay/agentsync/compare/v1.12.0...v1.13.0) (2026-01-23)
+
+### ✨ Features
+
+* **ci:** update checkout action and pnpm install flags in workflows ([6381b76](https://github.com/dallay/agentsync/commit/6381b76be4ea9d068aefab00a443d782b2f937c2))
+
 ## [1.12.0](https://github.com/dallay/agentsync/compare/v1.11.0...v1.12.0) (2026-01-23)
 
 ### ✨ Features
