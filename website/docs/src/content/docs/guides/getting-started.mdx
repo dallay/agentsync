@@ -77,11 +77,10 @@ We recommend adding the apply command to your `prepare` script to ensure symlink
 {
   "scripts": {
     "prepare": "agentsync apply || true"
-
-> **Note:** `|| true` ensures the install process does not fail if `agentsync` is not yet installed, such as on a fresh clone or in CI environments.
   }
 }
 ```
+> **Note:** `|| true` ensures the install process does not fail if `agentsync` is not yet installed, such as on a fresh clone or in CI environments.
 
 ## Next Steps
 
