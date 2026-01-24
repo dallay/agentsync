@@ -7,7 +7,7 @@
 
 A fast, portable CLI tool for synchronizing AI agent configurations across multiple AI coding
 assistants using symbolic links.
-
+![synchro.webp](website/docs/src/assets/synchro.webp)
 ## Why AgentSync?
 
 Different AI coding tools expect configuration files in various locations:
