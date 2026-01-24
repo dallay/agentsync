@@ -287,6 +287,51 @@ If you need agentsync in CI, add it to your workflow:
     sudo mv agentsync-*/agentsync /usr/local/bin/
 ```
 
+## Getting Started (Development)
+
+This project is a monorepo containing a Rust core and a JavaScript/TypeScript wrapper.
+
+### Prerequisites
+
+- [**Rust**](https://www.rust-lang.org/tools/install) (1.85+ recommended)
+- [**Node.js**](https://nodejs.org/) (v18+)
+- [**pnpm**](https://pnpm.io/installation)
+
+### Setup
+
+1.  **Install JavaScript dependencies:**
+
+    ```bash
+    pnpm install
+    ```
+
+2.  **Build the Rust binary:**
+
+    ```bash
+    cargo build
+    ```
+
+### Common Commands
+
+This project uses a `Makefile` to orchestrate common tasks.
+
+-   **Run Rust tests:**
+    ```bash
+    make rust-test
+    ```
+-   **Run JavaScript tests:**
+    ```bash
+    make js-test
+    ```
+-   **Build all components:**
+    ```bash
+    make all
+    ```
+-   **Format the code:**
+    ```bash
+    make fmt
+    ```
+
 ## Inspiration
 
 - [Ruler](https://github.com/intellectronica/ruler) - Similar concept but copies files instead of

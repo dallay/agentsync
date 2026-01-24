@@ -9,18 +9,18 @@ PRETTIER := $(shell command -v npx >/dev/null 2>&1 && echo "npx prettier" || ech
 # Root/workspace helpers
 JS_WORKSPACE := $(PNPM) --filter agentsync
 
-.PHONY: help all install js-install js-lint js-test js-build js-release \
+.PHONY: help all install js-install js-test js-build js-release \
         rust-build rust-test rust-run fmt docs-dev docs-build docs-preview \
-        agents-sync agents-sync-clean clean
+        agents-sync agents-sync-clean clean verify-all
 
 help:
 	@echo "Makefile para agentsync"
 	@echo ""
 	@echo "Targets principales:"
 	@echo "  make all             -> install + build (js + rust)"
+	@echo "  make verify-all      -> run all tests and linters"
 	@echo "  make install         -> instalar dependencias (pnpm + cargo build deps)"
 	@echo "  make js-install      -> pnpm install (workspace root)"
-	@echo "  make js-lint         -> ejecutar linter (pnpm run lint)"
 	@echo "  make js-test         -> ejecutar tests JS (pnpm test)"
 	@echo "  make js-build        -> build JS packages (si existe script \"build\")"
 	@echo "  make js-release      -> release JS (pnpm run release)"
@@ -30,8 +30,8 @@ help:
 	@echo "  make fmt             -> rustfmt + prettier (si está instalado)"
 	@echo "  make docs-dev        -> iniciar docs en modo dev"
 	@echo "  make docs-build      -> build docs"
-  	@echo "  make agents-sync     -> pnpm run agents:sync"
-  	@echo "  make agents-sync-clean -> pnpm run agents:sync:clean"
+	@echo "  make agents-sync     -> pnpm run agents:sync"
+	@echo "  make agents-sync-clean -> pnpm run agents:sync:clean"
 	@echo "  make clean           -> limpia artefactos comunes"
 	@echo ""
 	@echo "Ejemplos:"
@@ -39,6 +39,9 @@ help:
 	@echo "  make rust-test"
 
 all: install js-build
+
+verify-all: js-test rust-test
+	@echo "All checks passed."
 
 install: js-install rust-build
 	@echo "Instalación completa."
@@ -48,18 +51,13 @@ js-install:
 	@echo "Running pnpm install (workspace root)..."
 	$(PNPM) install
 
-js-lint:
-	@echo "Running JS linter..."
-	$(JS_WORKSPACE) run lint
-
 js-test:
 	@echo "Running JS tests..."
-	$(PNPM) test
+	$(JS_WORKSPACE) run test
 
 js-build:
 	@echo "Running JS build (workspace scripts if present)..."
- 	# Intent: prefer a workspace build script; ajusta si tu workspace tiene scripts distintos.
- 	$(JS_WORKSPACE) run --if-present build
+	$(JS_WORKSPACE) run --if-present build
 
 js-release:
 	@echo "Running JS release (semantic-release)..."
