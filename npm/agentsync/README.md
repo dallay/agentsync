@@ -1,114 +1,150 @@
 # @dallay/agentsync
 
-Sync AI agent configurations across multiple coding assistants using symbolic links.
+[![npm version](https://img.shields.io/npm/v/@dallay/agentsync.svg)](https://www.npmjs.com/package/@dallay/agentsync)  
+[![license](https://img.shields.io/npm/l/@dallay/agentsync.svg)](https://github.com/dallay/agentsync/blob/main/LICENSE)  
+[![repository](https://img.shields.io/badge/repo-dallay%2Fagentsync-blue)](https://github.com/dallay/agentsync)  
 
-[![npm version](https://img.shields.io/npm/v/@dallay/agentsync.svg)](https://www.npmjs.com/package/@dallay/agentsync)
-[![license](https://img.shields.io/npm/l/@dallay/agentsync.svg)](./LICENSE)
-[![repo](https://img.shields.io/badge/repo-dallay%2Fagentsync-blue)](https://github.com/dallay/agentsync)
+**Version:** 1.14.2  
+**License:** MIT  
 
-Purpose
--------
-agentsync helps you keep AI agent configuration files synchronized across multiple AI coding assistants (e.g. Copilot, Claude, Gemini) by managing symbolic links and a simple CLI.
+Effortlessly synchronize AI agent configurations across tools like Copilot, Claude, Cursor, and other MCP-compatible servers using symbolic links and an intuitive CLI.
 
-Quick links
------------
-- Repository: https://github.com/dallay/agentsync
-- Issues: https://github.com/dallay/agentsync/issues
+🌟 **[Explore the Full Documentation Here](https://dallay.github.io/agentsync/)**
 
-Installation
-------------
-This package is part of a [pnpm workspace](https://pnpm.io/workspaces). To install dependencies, run the following command from the root of the repository:
+---
 
+## ✨ Key Features
+
+- **Simple CLI**: Manage symbolic links with minimal setup.
+- **Multi-assistant support**: Compatible across Copilot, Claude, Gemini, and more.
+- **Cross-platform binaries**: Available for Linux, MacOS, and Windows.
+- **Node.js integration**: Use programmatically within your applications.
+
+---
+
+## 🚀 Installation
+
+Make sure you have Node.js (>=18) installed.
+
+### Using `pnpm` (recommended):
 ```bash
-pnpm install
+pnpm install -g @dallay/agentsync
 ```
 
-### Running the CLI
-
-You can run the CLI directly using `pnpm`:
-
+### Using `npm`:
 ```bash
-pnpm exec agentsync --help
+npm install -g @dallay/agentsync
 ```
 
-Or by using the scripts defined in the root `package.json`:
-
+### Using `yarn`:
 ```bash
-# Apply the configuration
-pnpm run agents:sync
-
-# Clean the symlinks
-pnpm run agents:sync:clean
+yarn global add @dallay/agentsync
 ```
 
-Usage
------
-This package provides the core functionality for the `agentsync` CLI. The main executable and configuration are managed from the root of the repository.
-
-Please refer to the [root `README.md`](../../README.md) for detailed usage instructions and configuration options.
-
-Programmatic usage
--------------------
-This package can be executed as a CLI. If you need to call core functionality from Node, require the package entry point and use the public functions exported from `lib/` (build artifacts). Generate typed API docs with TypeDoc if you want accurate signatures.
-
-Example (run CLI programmatically):
-
-```js
-// run the CLI handler as a programmatic entry point
-const { main } = require('@dallay/agentsync');
-main(process.argv).catch(err => {
-  console.error(err);
-  process.exit(1);
-});
+### Using `bun`:
+```bash
+bun add -g @dallay/agentsync
 ```
 
-Note: Replace the snippet above with the real exported function names if your code exposes a different API. Prefer inspecting `lib/index.js` or generating TypeDoc output to document precise signatures.
+Verify installation:
+```bash
+agentsync --help
+```
 
-Development
------------
-Build and type-check (this project uses TypeScript):
+---
 
-pnpm install
-pnpm run typecheck
-pnpm run build
+## 🛠️ Usage
 
-Useful scripts defined in package.json:
+### Managing Configurations
 
-- typecheck — tsc --noEmit
-- build — tsc
-- clean — remove generated `lib/`
+#### Sync Configurations:
+Run the following to create symbolic links across your AI coding assistants:
+```bash
+agentsync apply
+```
 
-Publishing
-----------
-This package is published to npm as @dallay/agentsync. The repository sets `publishConfig.access=public`.
+#### Clean Configurations:
+Remove previously created symbolic links:
+```bash
+agentsync clean
+```
 
-Before publishing:
+🎯 **Example Workflows**:
 
-1. Ensure `lib/` is built (pnpm run build).
-2. Verify package.json fields: `main`, `files`, `bin`, `repository`, `bugs`, `homepage`.
-3. Ensure LICENSE is present and tests/CI are green.
+- **Programmatic Usage in Node.js**:
+   ```javascript
+   const { main } = require('@dallay/agentsync');
 
-pnpm publish --access public
+   main(['apply']).catch((error) => {
+      console.error(error);
+      process.exit(1);
+   });
+   ```
 
-Contributing
-------------
-Contributions welcome. Keep it simple:
+- **Integrate with npm scripts**:
+   Add configuration syncing to your npm scripts to automate process workflows.
+   For example, in your `package.json`:
+   ```json
+   {
+     "scripts": {
+       "precommit": "pnpm exec agentsync apply --dry-run",
+       "prepare": "pnpm exec agentsync apply"
+     }
+   }
+   ```
 
-1. Fork the repo and create a feature branch.
-2. pnpm install
-3. pnpm run typecheck && pnpm run build
-4. Open a PR with a clear description and link to any related issue.
+- For complex workflows, see the [detailed API documentation](https://dallay.github.io/agentsync/).
 
-We use Conventional Commits to generate changelogs. Keep commits focused and small.
+---
 
-Security
---------
-Report security issues by opening a private issue on the repository or emailing the maintainer listed in package.json.
+## 👷 Development
 
-License
--------
-MIT — see LICENSE
+### Prerequisites
+- [pnpm](https://pnpm.io/): Dependency manager.
+- [Node.js](https://nodejs.org/) >= 18.
 
-More documentation
-------------------
-For full API docs and examples, generate TypeDoc or add an `docs/` or `examples/` directory. If you want, I can generate a TypeDoc-based docs bundle and add CI to publish it to GitHub Pages.
+### Steps
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/dallay/agentsync.git
+   cd agentsync
+   ```
+
+2. Install dependencies:
+   ```bash
+   pnpm install
+   ```
+
+3. Build:
+   ```bash
+   pnpm run build
+   ```
+
+4. Run type checks:
+   ```bash
+   pnpm run typecheck
+   ```
+
+---
+
+## 🌐 Resources
+
+- **Project Repository**: [GitHub Repository](https://github.com/dallay/agentsync)
+- **Submit Issues**: [GitHub Issues](https://github.com/dallay/agentsync/issues)
+- **Explore Full Documentation**: [Documentation Website](https://dallay.github.io/agentsync/)
+
+---
+
+## 📜 License
+
+MIT License. See the [LICENSE](https://github.com/dallay/agentsync/blob/main/LICENSE) for details.
+
+---
+
+## 🙏 Acknowledgments
+
+Special thanks to the developer community for their contributions and feedback. For suggestions and improvements, feel free to open a pull request!
+
+---
+
+📣 Ready? Start syncing agent configs today with `@dallay/agentsync`!
