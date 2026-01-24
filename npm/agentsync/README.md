@@ -17,53 +17,35 @@ Quick links
 
 Installation
 ------------
-Install locally with pnpm (recommended):
+This package is part of a [pnpm workspace](https://pnpm.io/workspaces). To install dependencies, run the following command from the root of the repository:
 
-pnpm add @dallay/agentsync
-
-Run without installing with pnpm dlx:
-
-pnpm dlx @dallay/agentsync --help
-
-Or with npx:
-
-npx @dallay/agentsync --help
-
-CLI Usage
----------
-The package exposes a CLI executable named `agentsync`.
-
-Basic help:
-
-agentsync --help
-
-Common workflows:
-
-- Create or update symlinks from a central config directory to target assistant config locations.
-- Validate existing symlinks and report missing or broken links.
-- Export or import agent configurations.
-
-Configuration
--------------
-agentsync uses a small configuration file to define sources and targets for synchronization. Example (adjust to your environment):
-
-```json
-{
-  "sources": [
-    "~/.config/agents/common",
-    "./shared-agent-configs"
-  ],
-  "targets": {
-    "copilot": "~/.config/copilot/agents",
-    "claude": "~/.config/claude/agents",
-    "gemini": "~/.config/gemini/agents"
-  },
-  "options": {
-    "dryRun": false,
-    "force": false
-  }
-}
+```bash
+pnpm install
 ```
+
+### Running the CLI
+
+You can run the CLI directly using `pnpm`:
+
+```bash
+pnpm exec agentsync --help
+```
+
+Or by using the scripts defined in the root `package.json`:
+
+```bash
+# Apply the configuration
+pnpm run agents:sync
+
+# Clean the symlinks
+pnpm run agents:sync:clean
+```
+
+Usage
+-----
+This package provides the core functionality for the `agentsync` CLI. The main executable and configuration are managed from the root of the repository.
+
+Please refer to the [root `README.md`](../../README.md) for detailed usage instructions and configuration options.
 
 Programmatic usage
 -------------------
