@@ -24,7 +24,11 @@ function setupGitHooks() {
 			"📦 Git repository detected. Setting up hooks and syncing agents...",
 		);
 		runCommand("pnpm exec lefthook install");
-		runCommand("pnpm run agents:sync");
+		if (!process.env.CI) {
+			runCommand("pnpm run agents:sync");
+		} else {
+			console.log("  Skipping agents:sync in CI environment.");
+		}
 	} else {
 		console.log("⚠️ Not a git repository. Skipping git-specific setup.");
 	}
