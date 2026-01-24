@@ -16,43 +16,53 @@ currently being supported with security updates.
 
 If you believe you've found a security vulnerability in this project, please
 report it privately so we can investigate and remediate it before public
-disclosure.
+disclosure. We provide the following reporting channels and commitments to
+ensure timely handling and clear expectations.
 
-Reporting options (preferred order):
+- Designated contact (preferred order):
+  - Open a private Security Advisory on GitHub for this repository: go to
+    "Security" → "Advisories" → "Create new draft advisory" and follow the
+    prompts. This lets us track the issue privately and (optionally) request a
+    CVE.
+  - Email: security@profiletailors.com (you may send a GPG‑encrypted message if you
+    prefer).
 
-- Open a private Security Advisory on GitHub for this repository: go to
-  "Security" → "Advisories" → "Create new draft advisory" and follow the
-  prompts. This lets us track the issue privately and (optionally) request a
-  CVE.
-- Email: security@dallay.org (use a GPG‑encrypted message if you prefer).
+- What to include in your report:
+  - Affected version(s) or commit SHAs.
+  - A clear description of the vulnerability and its security impact.
+  - Reproduction steps and a minimal proof‑of‑concept (PoC), if available.
+  - Any relevant logs, configurations, or environment details.
+  - Whether you request a CVE and your preferred contact method.
+  - Whether you are reporting as an individual or on behalf of an
+    organization, and any disclosure preferences.
 
-What to include in your report
-- Affected version(s) of agentsync.
-- A clear description of the issue and the security impact.
-- Reproduction steps and a minimal PoC (if available).
-- Any relevant logs, configuration, or environment information.
-- Your contact information and whether you are reporting as an individual or
-  on behalf of an organization.
+- Response commitments (SLAs):
+  - Acknowledgement: within 48 hours of receiving your report (business days).
+  - Initial triage: within 7 calendar days with a summary of the triage result
+    and an estimated remediation plan or mitigation steps.
+  - Status updates: for critical/urgent issues we will provide updates at
+    least every 72 hours; for other issues we will provide updates at least
+    weekly until resolved, or more frequently if agreed with the reporter.
 
-Response commitments
-- Acknowledgement: within 48 hours of receiving your report (business days).
-- Initial triage: within 7 calendar days with an estimated remediation plan.
-- Updates: we will provide status updates at least weekly until resolved, or
-  more frequently for critical issues.
+- Disclosure process and timeline:
+  - We will coordinate disclosure with the reporter and aim to publish a
+    public advisory once a fix is available and users can upgrade safely.
+  - Typical responsible disclosure window is 90 days from initial report; we
+    may extend this window for complex fixes if both parties agree.
+  - If coordination with the reporter is not possible, we reserve the right to
+    disclose the issue after the disclosure window while trying to minimize
+    user impact.
+  - CVE assignment: we will request CVEs when appropriate.
+  - Bounties: we do not operate a formal vulnerability bounty program at this
+    time; however, we may consider discretionary rewards on a case‑by‑case
+    basis. Contact security@profiletailors.com to discuss.
 
-Disclosure process
-- We will coordinate disclosure with the reporter. Our goal is to publish a
-  public advisory once a fix is available and users can upgrade. If a
-  coordinated disclosure is not possible, we will provide a responsible
-  disclosure timeline (typically no longer than 90 days) before public
-  disclosure unless a longer window is required for a complex fix.
+- Confidentiality and safe harbor:
+  - Please avoid public disclosure (including posting PoCs) until a fix is
+    available or disclosure is coordinated with project maintainers.
+  - We appreciate responsible research and will not pursue legal action against
+    good‑faith security researchers who follow these guidelines.
 
-Confidentiality and safe harbor
-- We ask reporters to avoid public disclosure (including PoCs) until a fix is
-  available or disclosure is coordinated with the project maintainers.
-- We welcome and appreciate responsible security research. We will not pursue
-  legal action against good‑faith security researchers acting in accordance
-  with these guidelines.
-
-If you need faster handling for a high‑severity issue, please indicate that in
-your report and provide the best way to contact you securely.
+If you need faster handling for an active exploit or very high‑severity
+incident, please mark the report as high severity and include the best way to
+contact you securely in the report.
