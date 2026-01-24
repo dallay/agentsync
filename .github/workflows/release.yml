@@ -312,6 +312,11 @@ jobs:
           export node_os="${{ matrix.config.os }}"
           export node_arch="${{ matrix.config.arch }}"
           export node_pkg="agentsync-${{ matrix.config.name }}"
+          if [[ "${{ matrix.config.os }}" == "win32" ]]; then
+            export node_bin="agentsync.exe"
+          else
+            export node_bin="agentsync"
+          fi
           
           # Create package directory
           mkdir -p "${node_pkg}/bin"
