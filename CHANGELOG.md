@@ -1,3 +1,9 @@
+## [1.14.4](https://github.com/dallay/agentsync/compare/v1.14.3...v1.14.4) (2026-01-24)
+
+### 🐛 Bug Fixes
+
+* **setup:** skip agents:sync step in CI environments ([da3e7e7](https://github.com/dallay/agentsync/commit/da3e7e7133f5a2d65311600e0ed3bd8924c229a5))
+
 ## [1.14.3](https://github.com/dallay/agentsync/compare/v1.14.2...v1.14.3) (2026-01-24)
 
 ### 🐛 Bug Fixes
