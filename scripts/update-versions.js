@@ -18,56 +18,120 @@ console.log(`🚀 Updating project versions to ${nextVersion}...`);
 const rootDir = path.resolve(__dirname, "..");
 let hadErrors = false;
 
-// 1. Update Cargo.toml
+// 1. Update Cargo.toml (use file descriptor to avoid TOCTOU)
 const cargoPath = path.join(rootDir, "Cargo.toml");
-if (fs.existsSync(cargoPath)) {
-	const cargoContent = fs.readFileSync(cargoPath, "utf8");
-	let versionUpdated = false;
+try {
+	const fd = fs.openSync(cargoPath, "r+");
+	try {
+		const cargoContent = fs.readFileSync(fd, "utf8");
+		let versionUpdated = false;
 
-	// Robust regex to find version inside [package] or [workspace.package]
-	const updatedCargo = cargoContent.replace(
-		/(\[(?:workspace\.)?package\][\s\S]*?^\s*version\s*=\s*")([^"]*)(")/m,
-		(match, prefix, oldVersion, suffix) => {
-			versionUpdated = true;
-			console.log(
-				`  Found Cargo.toml version: ${oldVersion} inside package section`,
-			);
-			return `${prefix}${nextVersion}${suffix}`;
-		},
-	);
-
-	if (!versionUpdated) {
-		console.error(
-			"❌ Could not find version line inside [package] or [workspace.package] section of Cargo.toml",
+		// Robust regex to find version inside [package] or [workspace.package]
+		const updatedCargo = cargoContent.replace(
+			/(\[(?:workspace\.)?package\][\s\S]*?^\s*version\s*=\s*")([^"]*)(")/m,
+			(match, prefix, oldVersion, suffix) => {
+				versionUpdated = true;
+				console.log(
+					`  Found Cargo.toml version: ${oldVersion} inside package section`,
+				);
+				return `${prefix}${nextVersion}${suffix}`;
+			},
 		);
-		// Log the first 200 chars to debug
-		console.log("--- Cargo.toml content start ---");
-		console.log(cargoContent.substring(0, 200));
-		console.log("--- End ---");
+
+		if (!versionUpdated) {
+			console.error(
+				"❌ Could not find version line inside [package] or [workspace.package] section of Cargo.toml",
+			);
+			// Log the first 200 chars to debug
+			console.log("--- Cargo.toml content start ---");
+			console.log(cargoContent.substring(0, 200));
+			console.log("--- End ---");
+			hadErrors = true;
+		} else {
+			// Truncate and write using the same file descriptor to avoid races
+			fs.ftruncateSync(fd, 0);
+			fs.writeSync(fd, updatedCargo, 0, "utf8");
+			fs.fsyncSync(fd);
+			console.log("✅ Updated Cargo.toml");
+		}
+	} finally {
+		try {
+			fs.closeSync(fd);
+		} catch (e) {
+			/* best-effort close */
+		}
+	}
+} catch (err) {
+	if (err && err.code === "ENOENT") {
+		// File doesn't exist; nothing to do
+	} else if (err) {
+		console.error("❌ Failed updating Cargo.toml:", err.message || err);
 		hadErrors = true;
-	} else {
-		fs.writeFileSync(cargoPath, updatedCargo);
-		console.log("✅ Updated Cargo.toml");
 	}
 }
 
-// 2. Update root package.json
+// 2. Update root package.json (use file descriptor to avoid TOCTOU)
 const rootPkgPath = path.join(rootDir, "package.json");
-if (fs.existsSync(rootPkgPath)) {
-	const rootPkg = JSON.parse(fs.readFileSync(rootPkgPath, "utf8"));
-	rootPkg.version = nextVersion;
-	fs.writeFileSync(rootPkgPath, JSON.stringify(rootPkg, null, 2) + "\n");
-	console.log("✅ Updated root package.json");
+try {
+	const fd = fs.openSync(rootPkgPath, "r+");
+	try {
+		const current = fs.readFileSync(fd, "utf8");
+		const rootPkg = JSON.parse(current);
+		rootPkg.version = nextVersion;
+		const newContents = JSON.stringify(rootPkg, null, 2) + "\n";
+
+		fs.ftruncateSync(fd, 0);
+		fs.writeSync(fd, newContents, 0, "utf8");
+		fs.fsyncSync(fd);
+		console.log("✅ Updated root package.json");
+	} finally {
+		try {
+			fs.closeSync(fd);
+		} catch (e) {
+			/* best-effort close */
+		}
+	}
+} catch (err) {
+	if (err && err.code === "ENOENT") {
+		// File doesn't exist; skip
+	} else if (err) {
+		console.error("❌ Failed updating root package.json:", err.message || err);
+		hadErrors = true;
+	}
 }
 
-// 3. Update npm/agentsync/package.json
+// 3. Update npm/agentsync/package.json (use file descriptor to avoid TOCTOU)
 const npmPkgPath = path.join(rootDir, "npm/agentsync/package.json");
 const npmPkgDir = path.join(rootDir, "npm/agentsync");
-if (fs.existsSync(npmPkgPath)) {
-	const npmPkg = JSON.parse(fs.readFileSync(npmPkgPath, "utf8"));
-	npmPkg.version = nextVersion;
-	fs.writeFileSync(npmPkgPath, JSON.stringify(npmPkg, null, 2) + "\n");
-	console.log("✅ Updated npm/agentsync/package.json");
+try {
+	const fd = fs.openSync(npmPkgPath, "r+");
+	try {
+		const current = fs.readFileSync(fd, "utf8");
+		const npmPkg = JSON.parse(current);
+		npmPkg.version = nextVersion;
+		const newContents = JSON.stringify(npmPkg, null, 2) + "\n";
+
+		fs.ftruncateSync(fd, 0);
+		fs.writeSync(fd, newContents, 0, "utf8");
+		fs.fsyncSync(fd);
+		console.log("✅ Updated npm/agentsync/package.json");
+	} finally {
+		try {
+			fs.closeSync(fd);
+		} catch (e) {
+			/* best-effort close */
+		}
+	}
+} catch (err) {
+	if (err && err.code === "ENOENT") {
+		// File doesn't exist; skip
+	} else if (err) {
+		console.error(
+			"❌ Failed updating npm/agentsync/package.json:",
+			err.message || err,
+		);
+		hadErrors = true;
+	}
 }
 
 // 4. Run sync-optional-deps.js if it exists
