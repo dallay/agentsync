@@ -1,3 +1,9 @@
+## [1.14.5](https://github.com/dallay/agentsync/compare/v1.14.4...v1.14.5) (2026-01-24)
+
+### 🐛 Bug Fixes
+
+* **sync-optional-deps:** handle missing package.json and safely update file in place ([ad95603](https://github.com/dallay/agentsync/commit/ad95603d041f04d709876ac26006cf6b8c9e7aee))
+
 ## [1.14.4](https://github.com/dallay/agentsync/compare/v1.14.3...v1.14.4) (2026-01-24)
 
 ### 🐛 Bug Fixes
