@@ -47,7 +47,13 @@
 		[
 			"@semantic-release/git",
 			{
-				"assets": ["CHANGELOG.md", "npm/agentsync/package.json", "Cargo.toml", "Cargo.lock", "pnpm-lock.yaml"],
+				"assets": [
+					"CHANGELOG.md",
+					"npm/agentsync/package.json",
+					"Cargo.toml",
+					"Cargo.lock",
+					"pnpm-lock.yaml"
+				],
 				"message": "chore(release): 🔖 ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
 			}
 		],
