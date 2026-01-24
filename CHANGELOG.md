@@ -1,3 +1,15 @@
+## [1.14.3](https://github.com/dallay/agentsync/compare/v1.14.2...v1.14.3) (2026-01-24)
+
+### 🐛 Bug Fixes
+
+* **scripts:** avoid TOCTOU by updating files via file descriptor ([#68](https://github.com/dallay/agentsync/issues/68)) ([b130af5](https://github.com/dallay/agentsync/commit/b130af516d59b7cbb06ba999f57483abea01a824))
+
+### 📝 Documentation
+
+* Add clean command to README usage section ([bea06cf](https://github.com/dallay/agentsync/commit/bea06cf17a65fd4bbfd449f53ecd4d18a96912f2))
+* add project logo to README; update favicon with new design ([b099034](https://github.com/dallay/agentsync/commit/b099034294025020b8fe661c0cb0ae025a426c51))
+* Audit and update all project documentation ([e8ba33e](https://github.com/dallay/agentsync/commit/e8ba33e8ddd8e38217a902eca0d3ab9898a6d9f3))
+
 ## [1.14.2](https://github.com/dallay/agentsync/compare/v1.14.1...v1.14.2) (2026-01-23)
 
 ### 🐛 Bug Fixes
