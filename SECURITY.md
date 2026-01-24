@@ -24,8 +24,7 @@ ensure timely handling and clear expectations.
     "Security" → "Advisories" → "Create new draft advisory" and follow the
     prompts. This lets us track the issue privately and (optionally) request a
     CVE.
-  - Email: security@profiletailors.com (you may send a GPG‑encrypted message if you
-    prefer).
+  - Email: [security@profiletailors.com](mailto:security@profiletailors.com) (you may send a GPG‑encrypted message if you prefer).
 
 - What to include in your report:
   - Affected version(s) or commit SHAs.
@@ -55,7 +54,7 @@ ensure timely handling and clear expectations.
   - CVE assignment: we will request CVEs when appropriate.
   - Bounties: we do not operate a formal vulnerability bounty program at this
     time; however, we may consider discretionary rewards on a case‑by‑case
-    basis. Contact security@profiletailors.com to discuss.
+    basis. Contact [security@profiletailors.com](mailto:security@profiletailors.com) to discuss.
 
 - Confidentiality and safe harbor:
   - Please avoid public disclosure (including posting PoCs) until a fix is
