@@ -79,8 +79,8 @@ rust-run:
 # Formatting
 fmt:
 	@echo "Formatting Rust + JS..."
-	@command -v rustfmt >/dev/null 2>&1 && $(CARGO) fmt || echo "rustfmt not found; skipping"
-	@command -v pnpm >/dev/null 2>&1 && pnpm exec biome format --write . || echo "biome not found; skipping"
+	`@command` -v rustfmt >/dev/null 2>&1 && $(CARGO) fmt || echo "rustfmt not found; skipping"
+	`@pnpm` exec biome format --write . 2>/dev/null || echo "biome not available; skipping"
 
 # Docs
 docs-dev:
