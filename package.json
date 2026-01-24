@@ -11,6 +11,7 @@
 		"preinstall": "npx only-allow pnpm",
 		"prepare": "node scripts/setup.js",
 		"agents:sync": "pnpm exec agentsync apply",
+		"agents:sync:clean": "pnpm --filter agentsync run clean",
 		"biome:fix": "pnpm exec biome check --write .",
 		"biome:check": "pnpm exec biome check",
 		"precommit": "pnpm exec agentsync apply --dry-run",
