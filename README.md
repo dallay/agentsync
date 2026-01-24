@@ -16,9 +16,6 @@ Different AI coding tools expect configuration files in various locations:
 |--------------------|-----------------------------------|----------------------|--------------------|
 | **Claude Code**    | `CLAUDE.md`                       | `.claude/commands/`  | `.claude/skills/`  |
 | **GitHub Copilot** | `.github/copilot-instructions.md` | `.github/agents/`    | -                  |
-| **Cursor**         | `.cursor/rules/`                  | -                    | -                  |
-| **Codex CLI**      | `AGENTS.md`                       | -                    | `.codex/skills/`   |
-| **Gemini CLI**     | `GEMINI.md`                       | `.gemini/commands/`  | `.gemini/skills/`  |
 | **OpenCode**       | `AGENTS.md`                       | `.opencode/command/` | `.opencode/skill/` |
 
 AgentSync maintains a **single source of truth** in `.agents/` and creates symlinks to all required
@@ -205,7 +202,7 @@ args = ["-y", "@modelcontextprotocol/server-git", "--repository", "."]
 - **GitHub Copilot**: `.copilot/mcp-config.json`
 - **Gemini CLI**: `.gemini/settings.json` (automatically adds `trust: true`)
 - **VS Code**: `.vscode/mcp.json`
-- **OpenCode**: `.opencode/mcp.json`
+- **OpenCode**: `opencode.json`
 
 #### Merge Behavior
 
@@ -267,8 +264,8 @@ AgentSync gracefully handles CI environments where the binary isn't available:
 ```json
 {
   "scripts": {
-    "agents:sync": "agentsync apply || echo 'agentsync not installed, skipping'",
-    "prepare": "lefthook install && npm run agents:sync"
+    "agents:sync": "pnpm exec agentsync apply",
+    "prepare": "lefthook install && pnpm run agents:sync"
   }
 }
 ```
@@ -294,7 +291,7 @@ This project is a monorepo containing a Rust core and a JavaScript/TypeScript wr
 ### Prerequisites
 
 - [**Rust**](https://www.rust-lang.org/tools/install) (1.85+ recommended)
-- [**Node.js**](https://nodejs.org/) (v18+)
+- [**Node.js**](https://nodejs.org/) (v24+)
 - [**pnpm**](https://pnpm.io/installation)
 
 ### Setup
