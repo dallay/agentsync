@@ -2,27 +2,29 @@
 # Adjust labels to match your repository's label names
 
 backend:
-  - "src/**"
-  - "Cargo.toml"
-  - "Cargo.lock"
-
-  - "npm/**"
-  - "package.json"
-  - "package-lock.json"
-
-  - "scripts/**"
+- changed-files:
+  - any-glob-to-any-file:
+    - "src/**"
+    - "Cargo.toml"
+    - "Cargo.lock"
+    - "npm/**"
+    - "package.json"
+    - "package-lock.json"
+    - "scripts/**"
 
 ci:
-  - ".github/**"
-
-  - "docs/**"
-  - "README.md"
-
-  - "tests/**"
+- changed-files:
+  - any-glob-to-any-file:
+    - ".github/**"
+    - "docs/**"
+    - "README.md"
+    - "tests/**"
 
 chore:
-  - "scripts/**"
-  - "*.md"
+- changed-files:
+  - any-glob-to-any-file:
+    - "scripts/**"
+    - "*.md"
 
 # Note: labels must already exist in the repository. If you want me to create
 # missing labels via the GitHub API, tell me and I will do that as a follow-up.
