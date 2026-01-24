@@ -34,7 +34,12 @@ node_modules/
 .pnpm-store/
 pnpm-debug.log
 # START AI Agent Symlinks
+.github/agents
 .github/copilot-instructions.md
+.github/prompts
+.github/skills
+.opencode/command
+.opencode/skill
 AGENTS.md
 CLAUDE.md
 # END AI Agent Symlinks

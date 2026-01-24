@@ -14,27 +14,27 @@ JS_WORKSPACE := $(PNPM) --filter agentsync
         agents-sync agents-sync-clean clean verify-all
 
 help:
-	@echo "Makefile para agentsync"
+	@echo "Makefile for agentsync"
 	@echo ""
-	@echo "Targets principales:"
+	@echo "Main targets:"
 	@echo "  make all             -> install + build (js + rust)"
 	@echo "  make verify-all      -> run all tests and linters"
-	@echo "  make install         -> instalar dependencias (pnpm + cargo build deps)"
+	@echo "  make install         -> install dependencies (pnpm + cargo build deps)"
 	@echo "  make js-install      -> pnpm install (workspace root)"
-	@echo "  make js-test         -> ejecutar tests JS (pnpm test)"
-	@echo "  make js-build        -> build JS packages (si existe script \"build\")"
+	@echo "  make js-test         -> run JS tests (pnpm test)"
+	@echo "  make js-build        -> build JS packages (if 'build' script exists)"
 	@echo "  make js-release      -> release JS (pnpm run release)"
 	@echo "  make rust-build      -> cargo build"
 	@echo "  make rust-test       -> cargo test"
 	@echo "  make rust-run        -> cargo run"
-	@echo "  make fmt             -> rustfmt + prettier (si está instalado)"
-	@echo "  make docs-dev        -> iniciar docs en modo dev"
+	`@echo` "  make fmt             -> rustfmt + biome (if installed)"
+	@echo "  make docs-dev        -> start docs in dev mode"
 	@echo "  make docs-build      -> build docs"
 	@echo "  make agents-sync     -> pnpm run agents:sync"
 	@echo "  make agents-sync-clean -> pnpm run agents:sync:clean"
-	@echo "  make clean           -> limpia artefactos comunes"
+	@echo "  make clean           -> cleans common artifacts"
 	@echo ""
-	@echo "Ejemplos:"
+	@echo "Examples:"
 	@echo "  make js-test"
 	@echo "  make rust-test"
 
@@ -78,9 +78,9 @@ rust-run:
 
 # Formatting
 fmt:
-	@echo "Formateando Rust + JS..."
-	@command -v rustfmt >/dev/null 2>&1 && $(CARGO) fmt || echo "rustfmt no encontrado; saltando"
-	@command -v npx >/dev/null 2>&1 && npx prettier --write . || echo "prettier/npx no encontrado; saltando"
+	@echo "Formatting Rust + JS..."
+	`@command` -v rustfmt >/dev/null 2>&1 && $(CARGO) fmt || echo "rustfmt not found; skipping"
+	`@pnpm` exec biome format --write . 2>/dev/null || echo "biome not available; skipping"
 
 # Docs
 docs-dev:

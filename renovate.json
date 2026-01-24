@@ -1,135 +1,80 @@
 {
-  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:recommended"
-  ],
-  "automergeType": "branch",
-  "automerge": true,
-  "automergeStrategy": "auto",
-  "dependencyDashboard": true,
-  "platformAutomerge": true,
-  "prConcurrentLimit": 5,
-  "prHourlyLimit": 2,
-  "packageRules": [
-    {
-      "matchUpdateTypes": [
-        "major"
-      ],
-      "groupName": "major upgrades",
-      "automerge": false
-    },
-    {
-      "matchDepTypes": [
-        "devDependencies"
-      ],
-      "groupName": "devDependencies",
-      "automerge": true,
-      "automergeType": "branch",
-      "semanticCommitType": "chore",
-      "matchUpdateTypes": [
-        "minor",
-        "patch"
-      ],
-      "matchManagers": [
-        "npm",
-        "pnpm"
-      ],
-      "schedule": [
-        "after 5pm",
-        "every weekend"
-      ]
-    },
-    {
-      "matchManagers": [
-        "cargo"
-      ],
-      "groupName": "cargo dependencies",
-      "matchUpdateTypes": [
-        "minor",
-        "patch"
-      ],
-      "automerge": true,
-      "automergeType": "branch",
-      "semanticCommitType": "chore",
-      "schedule": [
-        "after 5pm",
-        "every weekend"
-      ]
-    },
-    {
-      "matchManagers": [
-        "github-actions"
-      ],
-      "groupName": "GitHub Actions",
-      "automerge": true,
-      "matchUpdateTypes": [
-        "minor",
-        "patch"
-      ],
-      "schedule": [
-        "after 5pm",
-        "every weekend"
-      ]
-    },
-    {
-      "matchManagers": [
-        "pnpm"
-      ],
-      "groupName": "runtime deps",
-      "matchDepTypes": [
-        "dependencies"
-      ],
-      "automerge": false,
-      "matchUpdateTypes": [
-        "patch"
-      ],
-      "minimumReleaseAge": "3 days"
-    },
-    {
-      "matchManagers": [
-        "cargo"
-      ],
-      "groupName": "cargo major upgrades",
-      "matchUpdateTypes": [
-        "major"
-      ],
-      "automerge": false
-    },
-    {
-      "matchManagers": [
-        "pnpm"
-      ],
-      "groupName": "pnpm major upgrades",
-      "matchUpdateTypes": [
-        "major"
-      ],
-      "automerge": false
-    },
-    {
-      "vulnerabilityAlerts": {
-        "enabled": true
-      },
-      "matchUpdateTypes": [
-        "patch"
-      ],
-      "automerge": true,
-      "prPriority": 10,
-      "matchPackageNames": [
-        "*"
-      ]
-    }
-  ],
-  "lockFileMaintenance": {
-    "enabled": true,
-    "automerge": true,
-    "schedule": [
-      "after 5pm",
-      "every weekend"
-    ]
-  },
-  "labels": [
-    "dependencies",
-    "renovate"
-  ],
-  "dependencyDashboardTitle": "🔗 Dependency Dashboard"
+	"$schema": "https://docs.renovatebot.com/renovate-schema.json",
+	"extends": ["config:recommended"],
+	"automergeType": "branch",
+	"automerge": true,
+	"automergeStrategy": "auto",
+	"dependencyDashboard": true,
+	"platformAutomerge": true,
+	"prConcurrentLimit": 5,
+	"prHourlyLimit": 2,
+	"packageRules": [
+		{
+			"matchUpdateTypes": ["major"],
+			"groupName": "major upgrades",
+			"automerge": false
+		},
+		{
+			"matchDepTypes": ["devDependencies"],
+			"groupName": "devDependencies",
+			"automerge": true,
+			"automergeType": "branch",
+			"semanticCommitType": "chore",
+			"matchUpdateTypes": ["minor", "patch"],
+			"matchManagers": ["npm", "pnpm"],
+			"schedule": ["after 5pm", "every weekend"]
+		},
+		{
+			"matchManagers": ["cargo"],
+			"groupName": "cargo dependencies",
+			"matchUpdateTypes": ["minor", "patch"],
+			"automerge": true,
+			"automergeType": "branch",
+			"semanticCommitType": "chore",
+			"schedule": ["after 5pm", "every weekend"]
+		},
+		{
+			"matchManagers": ["github-actions"],
+			"groupName": "GitHub Actions",
+			"automerge": true,
+			"matchUpdateTypes": ["minor", "patch"],
+			"schedule": ["after 5pm", "every weekend"]
+		},
+		{
+			"matchManagers": ["pnpm"],
+			"groupName": "runtime deps",
+			"matchDepTypes": ["dependencies"],
+			"automerge": false,
+			"matchUpdateTypes": ["patch"],
+			"minimumReleaseAge": "3 days"
+		},
+		{
+			"matchManagers": ["cargo"],
+			"groupName": "cargo major upgrades",
+			"matchUpdateTypes": ["major"],
+			"automerge": false
+		},
+		{
+			"matchManagers": ["pnpm"],
+			"groupName": "pnpm major upgrades",
+			"matchUpdateTypes": ["major"],
+			"automerge": false
+		},
+		{
+			"vulnerabilityAlerts": {
+				"enabled": true
+			},
+			"matchUpdateTypes": ["patch"],
+			"automerge": true,
+			"prPriority": 10,
+			"matchPackageNames": ["*"]
+		}
+	],
+	"lockFileMaintenance": {
+		"enabled": true,
+		"automerge": true,
+		"schedule": ["after 5pm", "every weekend"]
+	},
+	"labels": ["dependencies", "renovate"],
+	"dependencyDashboardTitle": "🔗 Dependency Dashboard"
 }

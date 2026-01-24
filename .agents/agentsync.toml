@@ -67,6 +67,17 @@ source = "AGENTS.md"
 destination = "AGENTS.md"
 type = "symlink"
 
+[agents.opencode.targets.skills]
+source = "skills"
+destination = ".opencode/skill"
+type = "symlink-contents"
+
+[agents.opencode.targets.commands]
+source = "command"
+destination = ".opencode/command"
+type = "symlink-contents"
+pattern = "*.md"
+
 # -----------------------------------------------------------------------------
 # GitHub Copilot
 # -----------------------------------------------------------------------------
@@ -79,6 +90,22 @@ source = "AGENTS.md"
 destination = ".github/copilot-instructions.md"
 type = "symlink"
 
+[agents.copilot.targets.skills]
+source = "skills"
+destination = ".github/skills"
+type = "symlink-contents"
+
+[agents.copilot.targets.agents]
+source = "command"
+destination = ".github/agents"
+type = "symlink-contents"
+pattern = "*.agent.md"
+
+[agents.copilot.targets.prompts]
+source = "prompts"
+destination = ".github/prompts"
+type = "symlink-contents"
+pattern = "*.prompt.md"
 # -----------------------------------------------------------------------------
 # Root AGENTS.md
 # -----------------------------------------------------------------------------
