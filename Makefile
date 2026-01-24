@@ -27,7 +27,7 @@ help:
 	@echo "  make rust-build      -> cargo build"
 	@echo "  make rust-test       -> cargo test"
 	@echo "  make rust-run        -> cargo run"
-	@echo "  make fmt             -> rustfmt + prettier (if installed)"
+	`@echo` "  make fmt             -> rustfmt + biome (if installed)"
 	@echo "  make docs-dev        -> start docs in dev mode"
 	@echo "  make docs-build      -> build docs"
 	@echo "  make agents-sync     -> pnpm run agents:sync"
