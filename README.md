@@ -214,7 +214,7 @@ args = ["-y", "@modelcontextprotocol/server-git", "--repository", "."]
 - **GitHub Copilot**: `.copilot/mcp-config.json`
 - **Gemini CLI**: `.gemini/settings.json` (automatically adds `trust: true`)
 - **VS Code**: `.vscode/mcp.json`
-- **OpenCode**: `.opencode/mcp.json`
+- **OpenCode**: `opencode.json`
 
 #### Merge Behavior
 
