@@ -509,16 +509,20 @@ fn matches_pattern(name: &str, pattern: &str) -> bool {
                 star_p_it = Some(pattern_it.clone());
                 star_n_it = Some(name_it.clone());
             }
-            (Some(_), _) => { // Name has chars, but pattern doesn't match and is not '*'
+            (Some(_), _) => {
+                // Name has chars, but pattern doesn't match and is not '*'
                 if let (Some(star_p), Some(star_n)) = (star_p_it.as_mut(), star_n_it.as_mut()) {
-                     if star_n.next().is_none() { return false; }
-                     name_it = star_n.clone();
-                     pattern_it = star_p.clone();
+                    if star_n.next().is_none() {
+                        return false;
+                    }
+                    name_it = star_n.clone();
+                    pattern_it = star_p.clone();
                 } else {
-                     return false; // Mismatch and no star to backtrack to.
+                    return false; // Mismatch and no star to backtrack to.
                 }
             }
-            (None, _) => { // Name is exhausted
+            (None, _) => {
+                // Name is exhausted
                 return pattern_it.all(|c| c == '*');
             }
         }
