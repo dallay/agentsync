@@ -484,45 +484,49 @@ impl Linker {
 }
 
 /// Simple glob pattern matching (supports * and ?)
+/// This is an iterative implementation which is more performant than the previous
+/// recursive one, especially for patterns with '*' since it avoids string
+/// allocations and recursion. It uses backtracking with a stored star position.
+/// This implementation is Unicode-aware.
 fn matches_pattern(name: &str, pattern: &str) -> bool {
-    let mut name_chars = name.chars().peekable();
-    let mut pattern_chars = pattern.chars().peekable();
+    let mut name_it = name.chars();
+    let mut pattern_it = pattern.chars();
 
-    while let Some(p) = pattern_chars.next() {
-        match p {
-            '*' => {
-                // Match zero or more characters
-                if pattern_chars.peek().is_none() {
-                    return true; // * at end matches everything
-                }
-                // Try to match the rest of the pattern
-                while name_chars.peek().is_some() {
-                    let remaining_name: String = name_chars.clone().collect();
-                    let remaining_pattern: String =
-                        std::iter::once(pattern_chars.clone()).flatten().collect();
-                    if matches_pattern(&remaining_name, &remaining_pattern) {
-                        return true;
+    let mut star_p_it = None;
+    let mut star_n_it = None;
+
+    loop {
+        let s_char = name_it.clone().next();
+        let p_char = pattern_it.clone().next();
+
+        match (s_char, p_char) {
+            (Some(s), Some(p)) if p == s || p == '?' => {
+                name_it.next();
+                pattern_it.next();
+            }
+            (_, Some('*')) => {
+                pattern_it.next();
+                star_p_it = Some(pattern_it.clone());
+                star_n_it = Some(name_it.clone());
+            }
+            (Some(_), _) => {
+                // Name has chars, but pattern doesn't match and is not '*'
+                if let (Some(star_p), Some(star_n)) = (star_p_it.as_mut(), star_n_it.as_mut()) {
+                    if star_n.next().is_none() {
+                        return false;
                     }
-                    name_chars.next();
-                }
-                return false;
-            }
-            '?' => {
-                // Match exactly one character
-                if name_chars.next().is_none() {
-                    return false;
+                    name_it = star_n.clone();
+                    pattern_it = star_p.clone();
+                } else {
+                    return false; // Mismatch and no star to backtrack to.
                 }
             }
-            c => {
-                // Match literal character
-                if name_chars.next() != Some(c) {
-                    return false;
-                }
+            (None, _) => {
+                // Name is exhausted
+                return pattern_it.all(|c| c == '*');
             }
         }
     }
-
-    name_chars.next().is_none()
 }
 
 /// Generate a simple timestamp without external dependencies
