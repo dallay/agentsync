@@ -58,7 +58,7 @@ tar xzf agentsync-aarch64-unknown-linux-gnu.tar.gz
 sudo mv agentsync-*/agentsync /usr/local/bin/
 ```
 
-### From Source (requires Rust 1.85+)
+### From Source (requires Rust 1.85)
 
 ```bash
 cargo install --git https://github.com/dallay/agentsync
@@ -113,6 +113,9 @@ agentsync apply
 ```bash
 # Initialize a new configuration
 agentsync init
+
+# Initialize in a specific directory
+agentsync init --path /path/to/project
 
 # Apply configuration (create symlinks)
 agentsync apply
@@ -274,7 +277,7 @@ AgentSync gracefully handles CI environments where the binary isn't available:
 {
   "scripts": {
     "agents:sync": "pnpm exec agentsync apply",
-    "prepare": "lefthook install && pnpm run agents:sync"
+    "prepare": "node scripts/setup.js"
   }
 }
 ```
@@ -300,7 +303,7 @@ This project is a monorepo containing a Rust core and a JavaScript/TypeScript wr
 ### Prerequisites
 
 - [**Rust**](https://www.rust-lang.org/tools/install) (1.85+ recommended)
-- [**Node.js**](https://nodejs.org/) (v24+)
+- [**Node.js**](https://nodejs.org/) (v24.13.0)
 - [**pnpm**](https://pnpm.io/installation)
 
 ### Setup
