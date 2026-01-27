@@ -132,6 +132,15 @@ agentsync apply --config /path/to/config.toml
 # Dry run (show what would be done without making changes)
 agentsync apply --dry-run
 
+# Filter by agent
+agentsync apply --agents claude,copilot
+
+# Disable gitignore updates
+agentsync apply --no-gitignore
+
+# Verbose output
+agentsync apply --verbose
+
 # Show version
 agentsync --version
 ```
@@ -205,7 +214,7 @@ args = ["-y", "@modelcontextprotocol/server-git", "--repository", "."]
 - **GitHub Copilot**: `.copilot/mcp-config.json`
 - **Gemini CLI**: `.gemini/settings.json` (automatically adds `trust: true`)
 - **VS Code**: `.vscode/mcp.json`
-- **OpenCode**: `.opencode/mcp.json`
+- **OpenCode**: `opencode.json`
 
 #### Merge Behavior
 
