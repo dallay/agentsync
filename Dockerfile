@@ -7,7 +7,7 @@
 # Stage 1: Build environment
 # Using official Rust image with Alpine for smaller base
 # -----------------------------------------------------------------------------
-FROM rust:1.92-alpine AS builder
+FROM rust:1.93-alpine AS builder
 
 # Build arguments for flexibility
 ARG TARGETPLATFORM
