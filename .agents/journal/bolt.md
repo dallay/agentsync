@@ -1,3 +1,5 @@
+# Bolt's Engineering Journal
+
 ## 2024-05-20 - Iterative vs. Recursive Glob Matching
 
 **Learning:** A recursive glob pattern matching function with `*` wildcards was causing significant performance issues due to repeated string allocations and deep recursion. Replacing it with an iterative, backtracking algorithm using `char` iterators eliminated these bottlenecks.
