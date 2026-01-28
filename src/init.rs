@@ -24,7 +24,7 @@ marker = "AI Agent Symlinks"
 # MCP (Model Context Protocol) Configuration
 # =============================================================================
 # Define MCP servers once here, and AgentSync will generate the appropriate
-# config files for each AI agent (Claude, Copilot, Gemini, VS Code, OpenCode).
+# config files for each AI agent (Claude, Copilot, Cursor, Gemini, VS Code, OpenCode).
 #
 # [mcp]
 # enabled = true
@@ -75,6 +75,13 @@ description = "GitHub Copilot - VS Code and GitHub integrated AI"
 source = "AGENTS.md"
 destination = ".github/copilot-instructions.md"
 type = "symlink"
+
+# -----------------------------------------------------------------------------
+# Cursor
+# -----------------------------------------------------------------------------
+[agents.cursor]
+enabled = true
+description = "Cursor - AI code editor and CLI"
 
 # -----------------------------------------------------------------------------
 # OpenAI Codex CLI
@@ -222,6 +229,7 @@ mod tests {
         let content = fs::read_to_string(&config_path).unwrap();
         assert!(content.contains("[agents.claude]"));
         assert!(content.contains("[agents.copilot]"));
+        assert!(content.contains("[agents.cursor]"));
         assert!(content.contains("[agents.codex]"));
     }
 
@@ -284,6 +292,7 @@ mod tests {
         // Files SHOULD be overwritten with default content
         let config_content = fs::read_to_string(&config_path).unwrap();
         assert!(config_content.contains("[agents.claude]"));
+        assert!(config_content.contains("[agents.cursor]"));
         assert!(config_content.contains("[agents.codex]"));
 
         let agents_content = fs::read_to_string(&agents_md_path).unwrap();
@@ -336,6 +345,7 @@ mod tests {
 
         assert!(config.agents.contains_key("claude"));
         assert!(config.agents.contains_key("copilot"));
+        assert!(config.agents.contains_key("cursor"));
         assert!(config.agents.contains_key("codex"));
         assert!(config.agents.contains_key("root"));
     }
@@ -346,6 +356,7 @@ mod tests {
 
         assert!(config.agents["claude"].enabled);
         assert!(config.agents["copilot"].enabled);
+        assert!(config.agents["cursor"].enabled);
         assert!(config.agents["codex"].enabled);
         assert!(config.agents["root"].enabled);
     }
