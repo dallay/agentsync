@@ -17,6 +17,8 @@ Different AI coding tools expect configuration files in various locations:
 | **Claude Code**    | `CLAUDE.md`                       | `.claude/commands/`  | `.claude/skills/`  |
 | **GitHub Copilot** | `.github/copilot-instructions.md` | `.github/agents/`    | -                  |
 | **OpenCode**       | `AGENTS.md`                       | `.opencode/command/` | `.opencode/skill/` |
+| **Gemini CLI**     | `GEMINI.md`                       | `.gemini/commands/`  | -                  |
+| **VS Code**        | -                                 | -                    | -                  |
 
 AgentSync maintains a **single source of truth** in `.agents/` and creates symlinks to all required
 locations.
@@ -113,30 +115,21 @@ agentsync apply
 ```bash
 # Initialize a new configuration
 agentsync init
+agentsync init --path <dir> --force       # Overwrite config in a specific directory
 
 # Apply configuration (create symlinks)
 agentsync apply
-
-# Clean existing symlinks before applying
-agentsync apply --clean
+agentsync apply --path <dir>              # Apply in a specific directory
+agentsync apply --config <file>           # Use a custom config file
+agentsync apply --clean                   # Clean before applying
+agentsync apply --dry-run                 # Show what would be done
+agentsync apply --agents claude,copilot   # Filter by agent
+agentsync apply --no-gitignore            # Disable gitignore updates
+agentsync apply --verbose                 # Verbose output
 
 # Remove all managed symlinks
 agentsync clean
-
-# Use a custom config file
-agentsync apply --config /path/to/config.toml
-
-# Dry run (show what would be done without making changes)
-agentsync apply --dry-run
-
-# Filter by agent
-agentsync apply --agents claude,copilot
-
-# Disable gitignore updates
-agentsync apply --no-gitignore
-
-# Verbose output
-agentsync apply --verbose
+agentsync clean --path <dir> --dry-run    # Dry run clean in a specific directory
 
 # Show version
 agentsync --version
@@ -274,7 +267,7 @@ AgentSync gracefully handles CI environments where the binary isn't available:
 {
   "scripts": {
     "agents:sync": "pnpm exec agentsync apply",
-    "prepare": "lefthook install && pnpm run agents:sync"
+    "prepare": "node scripts/setup.js"
   }
 }
 ```
