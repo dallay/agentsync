@@ -16,7 +16,10 @@ Different AI coding tools expect configuration files in various locations:
 |--------------------|-----------------------------------|----------------------|--------------------|
 | **Claude Code**    | `CLAUDE.md`                       | `.claude/commands/`  | `.claude/skills/`  |
 | **GitHub Copilot** | `.github/copilot-instructions.md` | `.github/agents/`    | -                  |
+| **Gemini CLI**     | `.gemini/settings.json` (MCP)     | -                    | -                  |
+| **VS Code**        | `.vscode/mcp.json` (MCP)          | -                    | -                  |
 | **OpenCode**       | `AGENTS.md`                       | `.opencode/command/` | `.opencode/skill/` |
+| **Cursor**         | `AGENTS.md`                       | `.cursor/commands/`  | -                  |
 
 AgentSync maintains a **single source of truth** in `.agents/` and creates symlinks to all required
 locations.
