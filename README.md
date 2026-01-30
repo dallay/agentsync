@@ -51,11 +51,26 @@ pnpm add -g @dallay/agentsync
 # Using yarn (Classic v1)
 yarn global add @dallay/agentsync
 
-# Using yarn (v2+)
-yarn dlx @dallay/agentsync
-
 # Using bun
 bun i -g @dallay/agentsync
+```
+
+#### One-off Execution
+
+If you want to run AgentSync without a permanent global installation:
+
+```bash
+# Using npx (npm)
+npx @dallay/agentsync apply
+
+# Using dlx (pnpm)
+pnpm dlx @dallay/agentsync apply
+
+# Using dlx (yarn v2+)
+yarn dlx @dallay/agentsync apply
+
+# Using bunx (bun)
+bunx @dallay/agentsync apply
 ```
 
 #### Local Installation (Dev Dependency)
