@@ -300,42 +300,49 @@ create_new_agent_file() {
     local language_conventions
     language_conventions=$(get_language_conventions "$NEW_LANG")
     
-    # Perform substitutions with error checking using safer approach
-    # Escape special characters for sed by using a different delimiter or escaping
-    local escaped_lang=$(printf '%s\n' "$NEW_LANG" | sed 's/[\[\.*^$()+{}|]/\\&/g')
-    local escaped_framework=$(printf '%s\n' "$NEW_FRAMEWORK" | sed 's/[\[\.*^$()+{}|]/\\&/g')
-    local escaped_branch=$(printf '%s\n' "$CURRENT_BRANCH" | sed 's/[\[\.*^$()+{}|]/\\&/g')
+    # Function to escape values for sed replacement with | delimiter
+    escape_sed() {
+        printf '%s' "$1" | sed 's/\\/\\\\/g; s/&/\\&/g; s/|/\\|/g'
+    }
+
+    local esc_project_name=$(escape_sed "$project_name")
+    local esc_project_structure=$(escape_sed "$project_structure")
+    local esc_commands=$(escape_sed "$commands")
+    local esc_language_conventions=$(escape_sed "$language_conventions")
+    local esc_lang=$(escape_sed "$NEW_LANG")
+    local esc_framework=$(escape_sed "$NEW_FRAMEWORK")
+    local esc_branch=$(escape_sed "$CURRENT_BRANCH")
     
     # Build technology stack and recent change strings conditionally
     local tech_stack
-    if [[ -n "$escaped_lang" && -n "$escaped_framework" ]]; then
-        tech_stack="- $escaped_lang + $escaped_framework ($escaped_branch)"
-    elif [[ -n "$escaped_lang" ]]; then
-        tech_stack="- $escaped_lang ($escaped_branch)"
-    elif [[ -n "$escaped_framework" ]]; then
-        tech_stack="- $escaped_framework ($escaped_branch)"
+    if [[ -n "$esc_lang" && -n "$esc_framework" ]]; then
+        tech_stack="- $esc_lang + $esc_framework ($esc_branch)"
+    elif [[ -n "$esc_lang" ]]; then
+        tech_stack="- $esc_lang ($esc_branch)"
+    elif [[ -n "$esc_framework" ]]; then
+        tech_stack="- $esc_framework ($esc_branch)"
     else
-        tech_stack="- ($escaped_branch)"
+        tech_stack="- ($esc_branch)"
     fi
 
     local recent_change
-    if [[ -n "$escaped_lang" && -n "$escaped_framework" ]]; then
-        recent_change="- $escaped_branch: Added $escaped_lang + $escaped_framework"
-    elif [[ -n "$escaped_lang" ]]; then
-        recent_change="- $escaped_branch: Added $escaped_lang"
-    elif [[ -n "$escaped_framework" ]]; then
-        recent_change="- $escaped_branch: Added $escaped_framework"
+    if [[ -n "$esc_lang" && -n "$esc_framework" ]]; then
+        recent_change="- $esc_branch: Added $esc_lang + $esc_framework"
+    elif [[ -n "$esc_lang" ]]; then
+        recent_change="- $esc_branch: Added $esc_lang"
+    elif [[ -n "$esc_framework" ]]; then
+        recent_change="- $esc_branch: Added $esc_framework"
     else
-        recent_change="- $escaped_branch: Added"
+        recent_change="- $esc_branch: Added"
     fi
 
     local substitutions=(
-        "s|\[PROJECT NAME\]|$project_name|"
+        "s|\[PROJECT NAME\]|$esc_project_name|"
         "s|\[DATE\]|$current_date|"
         "s|\[EXTRACTED FROM ALL PLAN.MD FILES\]|$tech_stack|"
-        "s|\[ACTUAL STRUCTURE FROM PLANS\]|$project_structure|g"
-        "s|\[ONLY COMMANDS FOR ACTIVE TECHNOLOGIES\]|$commands|"
-        "s|\[LANGUAGE-SPECIFIC, ONLY FOR LANGUAGES IN USE\]|$language_conventions|"
+        "s|\[ACTUAL STRUCTURE FROM PLANS\]|$esc_project_structure|g"
+        "s|\[ONLY COMMANDS FOR ACTIVE TECHNOLOGIES\]|$esc_commands|"
+        "s|\[LANGUAGE-SPECIFIC, ONLY FOR LANGUAGES IN USE\]|$esc_language_conventions|"
         "s|\[LAST 3 FEATURES AND WHAT THEY ADDED\]|$recent_change|"
     )
     
@@ -641,94 +648,145 @@ update_specific_agent() {
 
 update_all_existing_agents() {
     local found_agent=false
+    local had_error=false
     
     # Check each possible agent file and update if it exists
     if [[ -f "$CLAUDE_FILE" ]]; then
-        update_agent_file "$CLAUDE_FILE" "Claude Code"
-        found_agent=true
+        if update_agent_file "$CLAUDE_FILE" "Claude Code"; then
+            found_agent=true
+        else
+            had_error=true
+        fi
     fi
     
     if [[ -f "$GEMINI_FILE" ]]; then
-        update_agent_file "$GEMINI_FILE" "Gemini CLI"
-        found_agent=true
+        if update_agent_file "$GEMINI_FILE" "Gemini CLI"; then
+            found_agent=true
+        else
+            had_error=true
+        fi
     fi
     
     if [[ -f "$COPILOT_FILE" ]]; then
-        update_agent_file "$COPILOT_FILE" "GitHub Copilot"
-        found_agent=true
+        if update_agent_file "$COPILOT_FILE" "GitHub Copilot"; then
+            found_agent=true
+        else
+            had_error=true
+        fi
     fi
     
     if [[ -f "$CURSOR_FILE" ]]; then
-        update_agent_file "$CURSOR_FILE" "Cursor IDE"
-        found_agent=true
+        if update_agent_file "$CURSOR_FILE" "Cursor IDE"; then
+            found_agent=true
+        else
+            had_error=true
+        fi
     fi
     
     if [[ -f "$QWEN_FILE" ]]; then
-        update_agent_file "$QWEN_FILE" "Qwen Code"
-        found_agent=true
+        if update_agent_file "$QWEN_FILE" "Qwen Code"; then
+            found_agent=true
+        else
+            had_error=true
+        fi
     fi
     
     # Avoid updating duplicate file paths multiple times by collecting unique targets
     declare -A _updated_files=()
 
     if [[ -f "$AGENTS_FILE" ]] && [[ -z "${_updated_files[$AGENTS_FILE]:-}" ]]; then
-        update_agent_file "$AGENTS_FILE" "Codex/opencode"
+        if update_agent_file "$AGENTS_FILE" "Codex/opencode"; then
+            found_agent=true
+        else
+            had_error=true
+        fi
         _updated_files[$AGENTS_FILE]=1
-        found_agent=true
     fi
     
     if [[ -f "$WINDSURF_FILE" ]]; then
-        update_agent_file "$WINDSURF_FILE" "Windsurf"
-        found_agent=true
+        if update_agent_file "$WINDSURF_FILE" "Windsurf"; then
+            found_agent=true
+        else
+            had_error=true
+        fi
     fi
     
     if [[ -f "$KILOCODE_FILE" ]]; then
-        update_agent_file "$KILOCODE_FILE" "Kilo Code"
-        found_agent=true
+        if update_agent_file "$KILOCODE_FILE" "Kilo Code"; then
+            found_agent=true
+        else
+            had_error=true
+        fi
     fi
 
     if [[ -f "$AUGGIE_FILE" ]]; then
-        update_agent_file "$AUGGIE_FILE" "Auggie CLI"
-        found_agent=true
+        if update_agent_file "$AUGGIE_FILE" "Auggie CLI"; then
+            found_agent=true
+        else
+            had_error=true
+        fi
     fi
     
     if [[ -f "$ROO_FILE" ]]; then
-        update_agent_file "$ROO_FILE" "Roo Code"
-        found_agent=true
+        if update_agent_file "$ROO_FILE" "Roo Code"; then
+            found_agent=true
+        else
+            had_error=true
+        fi
     fi
 
     if [[ -f "$CODEBUDDY_FILE" ]]; then
-        update_agent_file "$CODEBUDDY_FILE" "CodeBuddy CLI"
-        found_agent=true
+        if update_agent_file "$CODEBUDDY_FILE" "CodeBuddy CLI"; then
+            found_agent=true
+        else
+            had_error=true
+        fi
     fi
 
     if [[ -f "$SHAI_FILE" ]]; then
-        update_agent_file "$SHAI_FILE" "SHAI"
-        found_agent=true
+        if update_agent_file "$SHAI_FILE" "SHAI"; then
+            found_agent=true
+        else
+            had_error=true
+        fi
     fi
 
     if [[ -f "$QODER_FILE" ]]; then
-        update_agent_file "$QODER_FILE" "Qoder CLI"
-        found_agent=true
+        if update_agent_file "$QODER_FILE" "Qoder CLI"; then
+            found_agent=true
+        else
+            had_error=true
+        fi
     fi
 
     if [[ -f "$Q_FILE" ]] && [[ -z "${_updated_files[$Q_FILE]:-}" ]]; then
-        update_agent_file "$Q_FILE" "Amazon Q Developer CLI"
+        if update_agent_file "$Q_FILE" "Amazon Q Developer CLI"; then
+            found_agent=true
+        else
+            had_error=true
+        fi
         _updated_files[$Q_FILE]=1
-        found_agent=true
     fi
     
     if [[ -f "$BOB_FILE" ]] && [[ -z "${_updated_files[$BOB_FILE]:-}" ]]; then
-        update_agent_file "$BOB_FILE" "IBM Bob"
+        if update_agent_file "$BOB_FILE" "IBM Bob"; then
+            found_agent=true
+        else
+            had_error=true
+        fi
         _updated_files[$BOB_FILE]=1
-        found_agent=true
     fi
     
     # If no agent files exist, create a default Claude file
     if [[ "$found_agent" == false ]]; then
         log_info "No existing agent files found, creating default Claude file..."
-        update_agent_file "$CLAUDE_FILE" "Claude Code"
+        if ! update_agent_file "$CLAUDE_FILE" "Claude Code"; then
+            had_error=true
+        fi
     fi
+
+    [[ "$had_error" == true ]] && return 1
+    return 0
 }
 print_summary() {
     echo

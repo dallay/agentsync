@@ -48,7 +48,13 @@ pub fn run_update(args: SkillUpdateArgs, project_root: PathBuf) -> Result<()> {
     let skill_id = &args.skill_id;
     let source = args.source.as_deref().unwrap_or(skill_id);
     let update_source_path = std::path::Path::new(source);
-    let result = {
+    let result = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        handle.block_on(agentsync::skills::update::update_skill_async(
+            skill_id,
+            &target_root,
+            update_source_path,
+        ))
+    } else {
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(agentsync::skills::update::update_skill_async(
             skill_id,

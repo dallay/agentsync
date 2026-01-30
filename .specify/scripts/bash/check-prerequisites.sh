@@ -78,6 +78,21 @@ done
 SCRIPT_DIR="$(CDPATH="" cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
+# Global JSON escape helper
+json_escape() {
+    # read value from stdin and JSON-encode it
+    if command -v python3 >/dev/null 2>&1; then
+        python3 - <<'PY'
+import json,sys
+data = sys.stdin.read()
+print(json.dumps(data))
+PY
+    else
+        # Fallback to jq if python3 not available
+        jq -R -s -c '.'
+    fi
+}
+
 # Get feature paths and validate branch
 eval "$(get_feature_paths)"
 # Harden get_feature_paths output by ensuring it uses single-quoted assignments
@@ -89,19 +104,6 @@ if $PATHS_ONLY; then
     if $JSON_MODE; then
         # Minimal JSON paths payload (no validation performed)
         # Use a safe JSON escape helper to avoid breaking when values contain quotes/backslashes
-        json_escape() {
-            # read value from stdin and JSON-encode it
-            if command -v python3 >/dev/null 2>&1; then
-                python3 - <<'PY'
-import json,sys
-data = sys.stdin.read()
-print(json.dumps(data))
-PY
-            else
-                # Fallback to jq if python3 not available
-                jq -R -s -c '.'
-            fi
-        }
 
         esc_repo_root=$(printf '%s' "$REPO_ROOT" | json_escape)
         esc_branch=$(printf '%s' "$CURRENT_BRANCH" | json_escape)
@@ -189,7 +191,7 @@ if $JSON_MODE; then
     printf '{"FEATURE_DIR":%s,"AVAILABLE_DOCS":%s}\n' "$esc_feature_dir" "$json_docs"
 else
     # Text output
-    echo "FEATURE_DIR:$FEATURE_DIR"
+    echo "FEATURE_DIR: $FEATURE_DIR"
     echo "AVAILABLE_DOCS:"
     
     # Show status of each potential document
