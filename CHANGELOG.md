@@ -1,3 +1,13 @@
+## [1.17.0](https://github.com/dallay/agentsync/compare/v1.16.0...v1.17.0) (2026-01-30)
+
+### ✨ Features
+
+* add status command to cli ([#96](https://github.com/dallay/agentsync/issues/96)) ([8708f8a](https://github.com/dallay/agentsync/commit/8708f8aa58566826d80f50c83b69a435e94b1a37))
+
+### 📝 Documentation
+
+* expand skills documentation and agent support ([#95](https://github.com/dallay/agentsync/issues/95)) ([5beae14](https://github.com/dallay/agentsync/commit/5beae142f951cbb5369a140a99fd346576fd0d26))
+
 ## [1.16.0](https://github.com/dallay/agentsync/compare/v1.15.0...v1.16.0) (2026-01-30)
 
 ### ✨ Features
