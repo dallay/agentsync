@@ -1,3 +1,9 @@
+## [1.19.0](https://github.com/dallay/agentsync/compare/v1.18.0...v1.19.0) (2026-01-30)
+
+### ✨ Features
+
+* **release:** build x86_64-unknown-linux-gnu natively instead of using cross ([ef1a2e7](https://github.com/dallay/agentsync/commit/ef1a2e7b18650ede524d6f9883e0ed7e72d0f2ef))
+
 ## [1.18.0](https://github.com/dallay/agentsync/compare/v1.17.0...v1.18.0) (2026-01-30)
 
 ### ✨ Features
