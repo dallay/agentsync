@@ -10,7 +10,7 @@ PRETTIER := $(shell command -v npx >/dev/null 2>&1 && echo "npx prettier" || ech
 JS_WORKSPACE := $(PNPM) --filter agentsync
 
 .PHONY: help all install js-install js-test js-build js-release \
-        rust-build rust-test rust-run fmt docs-dev docs-build docs-preview \
+        rust-build rust-test rust-run e2e-test fmt docs-dev docs-build docs-preview \
         agents-sync agents-sync-clean clean verify-all
 
 help:
@@ -26,6 +26,7 @@ help:
 	@echo "  make js-release      -> release JS (pnpm run release)"
 	@echo "  make rust-build      -> cargo build"
 	@echo "  make rust-test       -> cargo test"
+	@echo "  make e2e-test         -> run E2E tests in docker"
 	@echo "  make rust-run        -> cargo run"
 	`@echo` "  make fmt             -> rustfmt + biome (if installed)"
 	@echo "  make docs-dev        -> start docs in dev mode"
@@ -75,6 +76,11 @@ rust-test:
 rust-run:
 	@echo "Running Rust project..."
 	$(CARGO) run
+
+# E2E Tests
+e2e-test:
+	@echo "Running E2E tests with Docker Compose..."
+	docker compose -f tests/e2e/docker-compose.yml up --build --exit-code-from test-runner-ubuntu
 
 # Formatting
 fmt:

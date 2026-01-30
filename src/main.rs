@@ -9,6 +9,8 @@ use std::env;
 use std::path::PathBuf;
 
 use agentsync::{Linker, SyncOptions, config::Config, gitignore, init};
+mod commands;
+use commands::skill::{SkillCommand, run_skill};
 
 #[derive(Parser)]
 #[command(name = "agentsync")]
@@ -25,15 +27,18 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Manage installable AI agent skills from skills.sh/other providers
+    Skill {
+        #[command(subcommand)]
+        cmd: SkillCommand,
+        /// Root of the project (defaults to CWD)
+        #[arg(long)]
+        project_root: Option<PathBuf>,
+    },
     /// Initialize a new agentsync configuration in the current or specified directory.
-    /// This creates a default .agents/agentsync.toml file and an AGENTS.md file.
     Init {
-        /// Project root directory where the .agents/ directory will be created.
-        /// Defaults to the current working directory.
         #[arg(short, long, help = "Project root directory (defaults to current dir)")]
         path: Option<PathBuf>,
-
-        /// Overwrite existing agentsync.toml and AGENTS.md files if they already exist.
         #[arg(
             short,
             long,
@@ -41,77 +46,41 @@ enum Commands {
         )]
         force: bool,
     },
-
-    /// Apply the configuration from agentsync.toml to create and manage symlinks.
-    /// This is the main command to synchronize your agent configurations.
+    /// Apply the configuration from agentsync.toml
     Apply {
-        /// The root directory of the project to apply settings for.
-        /// If not specified, agentsync will search for a config file in the current directory and its parents.
-        #[arg(
-            short,
-            long,
-            help = "Project root directory (searches upwards from current dir if not set)"
-        )]
+        #[arg(short, long)]
         path: Option<PathBuf>,
-
-        /// Path to a specific agentsync.toml configuration file.
-        /// Overrides the default search behavior.
-        #[arg(short, long, help = "Path to a custom configuration file")]
+        #[arg(short, long)]
         config: Option<PathBuf>,
-
-        /// Remove all symlinks managed by agentsync before creating new ones.
-        /// Useful for a clean re-application of the configuration.
-        #[arg(long, help = "Remove existing symlinks before creating new ones")]
+        #[arg(long)]
         clean: bool,
-
-        /// Show what changes would be made without actually creating or deleting any files.
-        /// This is useful for testing your configuration.
-        #[arg(long, help = "Show what would be done without making changes")]
+        #[arg(long)]
         dry_run: bool,
-
-        /// Show detailed output of which files are being created, updated, or skipped.
-        #[arg(short, long, help = "Enable detailed, verbose output")]
+        #[arg(short, long)]
         verbose: bool,
-
-        /// Filter the operation to only include specific agents, specified as a comma-separated list.
-        /// Example: `agentsync apply --agents claude,copilot`
-        #[arg(
-            short,
-            long,
-            value_delimiter = ',',
-            help = "Filter to specific agents (e.g., 'claude,copilot')"
-        )]
+        #[arg(short, long, value_delimiter = ',')]
         agents: Option<Vec<String>>,
-
-        /// Disable the automatic update of the .gitignore file.
-        /// By default, agentsync adds generated symlinks to .gitignore.
-        #[arg(long, help = "Disable automatic updates to .gitignore")]
+        #[arg(long)]
         no_gitignore: bool,
     },
-
-    /// Remove all symlinks created by agentsync based on the configuration file.
+    /// Remove all symlinks created by agentsync
     Clean {
-        /// The root directory of the project to clean.
-        /// If not specified, agentsync will search for a config file in the current directory and its parents.
-        #[arg(
-            short,
-            long,
-            help = "Project root directory (searches upwards from current dir if not set)"
-        )]
+        #[arg(short, long)]
         path: Option<PathBuf>,
-
-        /// Path to a specific agentsync.toml configuration file.
-        /// Overrides the default search behavior.
-        #[arg(short, long, help = "Path to a custom configuration file")]
+        #[arg(short, long)]
         config: Option<PathBuf>,
-
-        /// Show which symlinks would be removed without actually deleting them.
-        #[arg(long, help = "Show what would be done without making changes")]
+        #[arg(long)]
         dry_run: bool,
-
-        /// Show detailed output of which symlinks are being removed.
-        #[arg(short, long, help = "Enable detailed, verbose output")]
+        #[arg(short, long)]
         verbose: bool,
+    },
+    /// Developer-only: install a sample skill (dev)
+    #[command(hide = true)]
+    DevInstall {
+        #[arg(help = "skill id to install")]
+        skill_id: String,
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -119,14 +88,15 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
+        Commands::Skill { cmd, project_root } => {
+            let root = project_root.unwrap_or_else(|| env::current_dir().unwrap());
+            run_skill(cmd, root)?;
+        }
         Commands::Init { path, force } => {
             let project_root = path.unwrap_or_else(|| env::current_dir().unwrap());
-
             print_header();
             println!("{}", "Initializing agentsync configuration...\n".cyan());
-
             init::init(&project_root, force)?;
-
             println!("\n{}", "✨ Initialization complete!".green().bold());
             println!(
                 "\nNext steps:\n  1. Edit {} with your project instructions\n  2. Run {} to create symlinks",
@@ -134,7 +104,6 @@ fn main() -> Result<()> {
                 "agentsync apply".cyan()
             );
         }
-
         Commands::Apply {
             path,
             config,
@@ -145,27 +114,19 @@ fn main() -> Result<()> {
             no_gitignore,
         } => {
             let start_dir = path.unwrap_or_else(|| env::current_dir().unwrap());
-
             print_header();
-
-            // Find or use specified config
             let config_path = match config {
                 Some(p) => p,
                 None => Config::find_config(&start_dir)?,
             };
-
             if verbose {
                 println!(
                     "Using config: {}\n",
                     config_path.display().to_string().dimmed()
                 );
             }
-
-            // Load configuration
             let config = Config::load(&config_path)?;
             let linker = Linker::new(config, config_path);
-
-            // Clean first if requested
             if clean {
                 println!("{}", "➤ Cleaning existing symlinks".cyan().bold());
                 let clean_opts = SyncOptions {
@@ -175,8 +136,6 @@ fn main() -> Result<()> {
                 };
                 linker.clean(&clean_opts)?;
             }
-
-            // Sync
             println!("{}", "➤ Syncing agent configurations".cyan().bold());
             let options = SyncOptions {
                 clean: false,
@@ -184,10 +143,7 @@ fn main() -> Result<()> {
                 verbose,
                 agents,
             };
-
             let mut result = linker.sync(&options)?;
-
-            // Update gitignore
             if !no_gitignore && linker.config().gitignore.enabled {
                 println!("\n{}", "➤ Updating .gitignore".cyan().bold());
                 let entries = linker.config().all_gitignore_entries();
@@ -198,8 +154,6 @@ fn main() -> Result<()> {
                     dry_run,
                 )?;
             }
-
-            // Sync MCP configurations
             if linker.config().mcp.enabled && !linker.config().mcp_servers.is_empty() {
                 println!("\n{}", "➤ Syncing MCP configurations".cyan().bold());
                 match linker.sync_mcp(dry_run) {
@@ -208,7 +162,7 @@ fn main() -> Result<()> {
                             println!(
                                 "  MCP configs: Created {}, Updated {}",
                                 mcp_result.created.to_string().green(),
-                                mcp_result.updated.to_string().yellow()
+                                mcp_result.updated.to_string().yellow(),
                             );
                         }
                     }
@@ -218,8 +172,6 @@ fn main() -> Result<()> {
                     }
                 }
             }
-
-            // Summary
             println!("\n{}", "✨ Sync complete!".green().bold());
             println!(
                 "  Created: {}, Updated: {}, Skipped: {}, Errors: {}",
@@ -233,7 +185,6 @@ fn main() -> Result<()> {
                 }
             );
         }
-
         Commands::Clean {
             path,
             config,
@@ -241,30 +192,34 @@ fn main() -> Result<()> {
             verbose,
         } => {
             let start_dir = path.unwrap_or_else(|| env::current_dir().unwrap());
-
             print_header();
-
             let config_path = match config {
                 Some(p) => p,
                 None => Config::find_config(&start_dir)?,
             };
-
             let config = Config::load(&config_path)?;
             let linker = Linker::new(config, config_path);
-
             let options = SyncOptions {
                 dry_run,
                 verbose,
                 ..Default::default()
             };
-
             let result = linker.clean(&options)?;
-
             println!("\n{}", "✨ Clean complete!".green().bold());
             println!("  Removed: {} symlinks", result.removed.to_string().green());
         }
+        Commands::DevInstall { skill_id, json } => {
+            let project_root = env::current_dir().unwrap();
+            use commands::skill::SkillInstallArgs;
+            use commands::skill::run_install;
+            let args = SkillInstallArgs {
+                skill_id,
+                source: None,
+                json,
+            };
+            run_install(args, project_root)?;
+        }
     }
-
     Ok(())
 }
 
