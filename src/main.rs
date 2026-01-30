@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use agentsync::{Linker, SyncOptions, config::Config, gitignore, init};
 mod commands;
 use commands::skill::{SkillCommand, run_skill};
+// tracing_subscriber is used to initialize logging in main
 
 #[derive(Parser)]
 #[command(name = "agentsync")]
@@ -85,6 +86,8 @@ enum Commands {
 }
 
 fn main() -> Result<()> {
+    // Initialize tracing subscriber for structured logging. Respects RUST_LOG env var.
+    tracing_subscriber::fmt::init();
     let cli = Cli::parse();
 
     match cli.command {
@@ -167,7 +170,7 @@ fn main() -> Result<()> {
                         }
                     }
                     Err(e) => {
-                        eprintln!("  {} Error syncing MCP configs: {}", "✘".red(), e);
+                        tracing::error!(%e, "Error syncing MCP configs");
                         result.errors += 1;
                     }
                 }

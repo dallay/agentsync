@@ -119,7 +119,7 @@ impl Linker {
                         result.skipped += target_result.skipped;
                     }
                     Err(e) => {
-                        eprintln!("  {} Error processing {}: {}", "✘".red(), target_name, e);
+                        tracing::error!(target = %target_name, error = %e, "Error processing target");
                         result.errors += 1;
                     }
                 }

@@ -1,7 +1,7 @@
 # AgentSync Constitution
 <!--
   Sync Impact Report
-  - Version change: none → 1.0.0 (initialized constitution)
+  - Version change: none → 1.0.1 (initialized constitution)
   - Modified principles: (created)
     - I. Code Quality (NON-NEGOTIABLE)
     - II. Test-First & Test Standards (NON-NEGOTIABLE)
@@ -13,7 +13,7 @@
   - Templates requiring updates: ✅ .specify/templates/plan-template.md
                                 ✅ .specify/templates/tasks-template.md
                                 ✅ .specify/templates/spec-template.md
-  - Follow-up TODOs: RATIFICATION_DATE unknown (TODO)
+  - Follow-up TODOs: RATIFICATION_DATE 2026-01-20
 -->
 
 ## Core Principles
@@ -134,4 +134,4 @@ Compliance & reviews:
 Use the templates in `.specify/templates/` when preparing plans/specs/tasks to ensure gates are
 applied consistently.
 
-**Version**: 1.0.1 | **Ratified**: 2026-01-20: original adoption date unknown | **Last Amended**: 2026-01-27
+**Version**: 1.0.1 | **Ratified**: 2026-01-20 | **Last Amended**: 2026-01-27

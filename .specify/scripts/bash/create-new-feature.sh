@@ -284,8 +284,17 @@ TEMPLATE="$REPO_ROOT/.specify/templates/spec-template.md"
 SPEC_FILE="$FEATURE_DIR/spec.md"
 if [ -f "$TEMPLATE" ]; then cp "$TEMPLATE" "$SPEC_FILE"; else touch "$SPEC_FILE"; fi
 
-# Set the SPECIFY_FEATURE environment variable for the current session
-export SPECIFY_FEATURE="$BRANCH_NAME"
+# Set SPECIFY_FEATURE for sourced usage only. If the script is being sourced,
+# export SPECIFY_FEATURE so the caller's environment sees it. If run as a
+# standalone script, instruct the user to export it themselves (exporting here
+# would only affect the subshell).
+if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
+    # Script is being sourced
+    export SPECIFY_FEATURE="$BRANCH_NAME"
+    sourced=true
+else
+    sourced=false
+fi
 
 if $JSON_MODE; then
     printf '{"BRANCH_NAME":"%s","SPEC_FILE":"%s","FEATURE_NUM":"%s"}\n' "$BRANCH_NAME" "$SPEC_FILE" "$FEATURE_NUM"
@@ -293,5 +302,11 @@ else
     echo "BRANCH_NAME: $BRANCH_NAME"
     echo "SPEC_FILE: $SPEC_FILE"
     echo "FEATURE_NUM: $FEATURE_NUM"
-    echo "SPECIFY_FEATURE environment variable set to: $BRANCH_NAME"
+    if [[ "$sourced" == true ]]; then
+        echo "SPECIFY_FEATURE environment variable set to: $BRANCH_NAME"
+    else
+        echo "NOTE: To have SPECIFY_FEATURE available in your shell, either re-run this script with 'source' or run:"
+        echo "  export SPECIFY_FEATURE=\"$BRANCH_NAME\""
+        echo "The update-agent-context.sh and other helpers rely on get_current_branch()/SPECIFY_FEATURE when sourcing."
+    fi
 fi

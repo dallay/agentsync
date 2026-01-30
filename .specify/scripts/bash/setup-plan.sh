@@ -4,7 +4,6 @@ set -e
 
 # Parse command line arguments
 JSON_MODE=false
-ARGS=()
 
 for arg in "$@"; do
     case "$arg" in
@@ -18,7 +17,7 @@ for arg in "$@"; do
             exit 0 
             ;;
         *) 
-            ARGS+=("$arg") 
+            # Non-option positional arguments are not used by this script; ignore
             ;;
     esac
 done
@@ -28,7 +27,7 @@ SCRIPT_DIR="$(CDPATH="" cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
 # Get all paths and variables from common functions
-eval $(get_feature_paths)
+eval "$(get_feature_paths)"
 
 # Check if we're on a proper feature branch (only for git repos)
 check_feature_branch "$CURRENT_BRANCH" "$HAS_GIT" || exit 1
@@ -58,4 +57,3 @@ else
     echo "BRANCH: $CURRENT_BRANCH"
     echo "HAS_GIT: $HAS_GIT"
 fi
-

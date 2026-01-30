@@ -53,7 +53,7 @@ SCRIPT_DIR="$(CDPATH="" cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
 # Get all paths and variables from common functions
-eval $(get_feature_paths)
+eval "$(get_feature_paths)"
 
 NEW_PLAN="$IMPL_PLAN"  # Alias for compatibility with existing code
 AGENT_TYPE="${1:-}"
@@ -379,11 +379,11 @@ update_existing_agent_file() {
     local new_change_entry=""
     
     # Prepare new technology entries
-    if [[ -n "$tech_stack" ]] && ! grep -q "$tech_stack" "$target_file"; then
+    if [[ -n "$tech_stack" ]] && ! grep -Fq "$tech_stack" "$target_file"; then
         new_tech_entries+=("- $tech_stack ($CURRENT_BRANCH)")
     fi
     
-    if [[ -n "$NEW_DB" ]] && [[ "$NEW_DB" != "N/A" ]] && [[ "$NEW_DB" != "NEEDS CLARIFICATION" ]] && ! grep -q "$NEW_DB" "$target_file"; then
+    if [[ -n "$NEW_DB" ]] && [[ "$NEW_DB" != "N/A" ]] && [[ "$NEW_DB" != "NEEDS CLARIFICATION" ]] && ! grep -Fq "$NEW_DB" "$target_file"; then
         new_tech_entries+=("- $NEW_DB ($CURRENT_BRANCH)")
     fi
     
@@ -410,9 +410,7 @@ update_existing_agent_file() {
     local in_tech_section=false
     local in_changes_section=false
     local tech_entries_added=false
-    local changes_entries_added=false
     local existing_changes_count=0
-    local file_ended=false
     
     while IFS= read -r line || [[ -n "$line" ]]; do
         # Handle Active Technologies section
@@ -670,8 +668,12 @@ update_all_existing_agents() {
         found_agent=true
     fi
     
-    if [[ -f "$AGENTS_FILE" ]]; then
+    # Avoid updating duplicate file paths multiple times by collecting unique targets
+    declare -A _updated_files=()
+
+    if [[ -f "$AGENTS_FILE" ]] && [[ -z "${_updated_files[$AGENTS_FILE]:-}" ]]; then
         update_agent_file "$AGENTS_FILE" "Codex/opencode"
+        _updated_files[$AGENTS_FILE]=1
         found_agent=true
     fi
     
@@ -710,13 +712,15 @@ update_all_existing_agents() {
         found_agent=true
     fi
 
-    if [[ -f "$Q_FILE" ]]; then
+    if [[ -f "$Q_FILE" ]] && [[ -z "${_updated_files[$Q_FILE]:-}" ]]; then
         update_agent_file "$Q_FILE" "Amazon Q Developer CLI"
+        _updated_files[$Q_FILE]=1
         found_agent=true
     fi
     
-    if [[ -f "$BOB_FILE" ]]; then
+    if [[ -f "$BOB_FILE" ]] && [[ -z "${_updated_files[$BOB_FILE]:-}" ]]; then
         update_agent_file "$BOB_FILE" "IBM Bob"
+        _updated_files[$BOB_FILE]=1
         found_agent=true
     fi
     
@@ -796,4 +800,3 @@ main() {
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     main "$@"
 fi
-

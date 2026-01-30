@@ -903,12 +903,7 @@ impl McpGenerator {
                     total_result.skipped += result.skipped;
                 }
                 Err(e) => {
-                    eprintln!(
-                        "  {} Error generating {} config: {}",
-                        "✘".red(),
-                        agent.name(),
-                        e
-                    );
+                    tracing::error!(agent = %agent.name(), error = %e, "Error generating agent config");
                     total_result.errors += 1;
                 }
             }

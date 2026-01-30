@@ -79,15 +79,40 @@ SCRIPT_DIR="$(CDPATH="" cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
 # Get feature paths and validate branch
-eval $(get_feature_paths)
+eval "$(get_feature_paths)"
+# Harden get_feature_paths output by ensuring it uses single-quoted assignments
+# (common.get_feature_paths already prints single-quoted values)
 check_feature_branch "$CURRENT_BRANCH" "$HAS_GIT" || exit 1
 
 # If paths-only mode, output paths and exit (support JSON + paths-only combined)
 if $PATHS_ONLY; then
     if $JSON_MODE; then
         # Minimal JSON paths payload (no validation performed)
-        printf '{"REPO_ROOT":"%s","BRANCH":"%s","FEATURE_DIR":"%s","FEATURE_SPEC":"%s","IMPL_PLAN":"%s","TASKS":"%s"}\n' \
-            "$REPO_ROOT" "$CURRENT_BRANCH" "$FEATURE_DIR" "$FEATURE_SPEC" "$IMPL_PLAN" "$TASKS"
+        # Use a safe JSON escape helper to avoid breaking when values contain quotes/backslashes
+        json_escape() {
+            # read value from stdin and JSON-encode it
+            if command -v python3 >/dev/null 2>&1; then
+                python3 - <<'PY'
+import json,sys
+data = sys.stdin.read()
+print(json.dumps(data))
+PY
+            else
+                # Fallback to jq if python3 not available
+                jq -R -s -c '.'
+            fi
+        }
+
+        esc_repo_root=$(printf '%s' "$REPO_ROOT" | json_escape)
+        esc_branch=$(printf '%s' "$CURRENT_BRANCH" | json_escape)
+        esc_feature_dir=$(printf '%s' "$FEATURE_DIR" | json_escape)
+        esc_feature_spec=$(printf '%s' "$FEATURE_SPEC" | json_escape)
+        esc_impl_plan=$(printf '%s' "$IMPL_PLAN" | json_escape)
+        esc_tasks=$(printf '%s' "$TASKS" | json_escape)
+
+        # json_escape wraps values in quotes, so we can construct the object safely
+        printf '{"REPO_ROOT":%s,"BRANCH":%s,"FEATURE_DIR":%s,"FEATURE_SPEC":%s,"IMPL_PLAN":%s,"TASKS":%s}\n' \
+            "$esc_repo_root" "$esc_branch" "$esc_feature_dir" "$esc_feature_spec" "$esc_impl_plan" "$esc_tasks"
     else
         echo "REPO_ROOT: $REPO_ROOT"
         echo "BRANCH: $CURRENT_BRANCH"
@@ -144,11 +169,24 @@ if $JSON_MODE; then
     if [[ ${#docs[@]} -eq 0 ]]; then
         json_docs="[]"
     else
-        json_docs=$(printf '"%s",' "${docs[@]}")
-        json_docs="[${json_docs%,}]"
+        # Safely escape each document entry
+        json_docs="["
+        first=true
+        for d in "${docs[@]}"; do
+            if $first; then
+                first=false
+            else
+                json_docs+=",";
+            fi
+            # reuse json_escape helper from earlier
+            esc=$(printf '%s' "$d" | json_escape)
+            json_docs+=$esc
+        done
+        json_docs+="]"
     fi
-    
-    printf '{"FEATURE_DIR":"%s","AVAILABLE_DOCS":%s}\n' "$FEATURE_DIR" "$json_docs"
+
+    esc_feature_dir=$(printf '%s' "$FEATURE_DIR" | json_escape)
+    printf '{"FEATURE_DIR":%s,"AVAILABLE_DOCS":%s}\n' "$esc_feature_dir" "$json_docs"
 else
     # Text output
     echo "FEATURE_DIR:$FEATURE_DIR"

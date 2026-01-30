@@ -3,6 +3,7 @@ use agentsync::skills::registry;
 use anyhow::Result;
 use clap::{Args, Subcommand};
 use std::path::PathBuf;
+use tracing::error;
 
 #[derive(Subcommand, Debug)]
 pub enum SkillCommand {
@@ -102,8 +103,8 @@ pub fn run_update(args: SkillUpdateArgs, project_root: PathBuf) -> Result<()> {
                 println!("{}", serde_json::to_string(&output).unwrap());
                 std::process::exit(1);
             } else {
-                eprintln!("Update failed [{}]: {}", code, err_string);
-                eprintln!("Hint: {}", remediation);
+                error!(%code, %err_string, "Update failed");
+                println!("Hint: {}", remediation);
                 Err(e.into())
             }
         }
@@ -201,8 +202,8 @@ pub fn run_install(args: SkillInstallArgs, project_root: PathBuf) -> Result<()> 
                 println!("{}", serde_json::to_string(&output).unwrap());
                 std::process::exit(1);
             } else {
-                eprintln!("Install failed [{}]: {}", code, err_string);
-                eprintln!("Hint: {}", remediation);
+                error!(%code, %err_string, "Install failed");
+                println!("Hint: {}", remediation);
                 Err(e)
             }
         }
