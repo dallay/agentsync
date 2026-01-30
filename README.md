@@ -17,7 +17,7 @@ Different AI coding tools expect configuration files in various locations:
 | **Claude Code**    | `CLAUDE.md`                       | `.claude/commands/`  | `.claude/skills/`  |
 | **GitHub Copilot** | `.github/copilot-instructions.md` | `.github/agents/`    | -                  |
 | **Gemini CLI**     | `GEMINI.md`                       | `.gemini/commands/`  | `.gemini/skills/`  |
-| **Cursor**         | `CURSOR.md`                       | `.cursor/commands/`  | `.cursor/skills/`  |
+| **Cursor**         | `AGENTS.md`                       | `.cursor/commands/`  | `.cursor/skills/`  |
 | **VS Code**        | `AGENTS.md` (or `.vscode/*`)      | `.vscode/`           | -                  |
 | **OpenCode**       | `AGENTS.md`                       | `.opencode/command/` | `.opencode/skill/` |
 
