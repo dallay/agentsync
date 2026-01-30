@@ -20,6 +20,7 @@ Different AI coding tools expect configuration files in various locations:
 | **Cursor**         | `AGENTS.md`                       | `.cursor/commands/`  | `.cursor/skills/`  |
 | **VS Code**        | `AGENTS.md` (or `.vscode/*`)      | `.vscode/`           | -                  |
 | **OpenCode**       | `AGENTS.md`                       | `.opencode/command/` | `.opencode/skill/` |
+| **OpenAI Codex**   | -                                 | -                    | `.codex/skills/`   |
 
 AgentSync maintains a **single source of truth** in `.agents/` and creates symlinks to all required
 locations.
@@ -175,6 +176,9 @@ agentsync apply
 # Initialize a new configuration
 agentsync init
 
+# Initialize with custom path and force overwrite
+agentsync init --path ./my-project --force
+
 # Apply configuration (create symlinks)
 agentsync apply
 
@@ -183,6 +187,10 @@ agentsync apply --clean
 
 # Remove all managed symlinks
 agentsync clean
+
+# Manage AI agent skills (from skills.sh or custom providers)
+agentsync skill install <skill-id> [--source <source>]
+agentsync skill update <skill-id>
 
 # Use a custom config file
 agentsync apply --config /path/to/config.toml
