@@ -44,8 +44,12 @@ pub fn run_status(json: bool, project_root: PathBuf) -> Result<()> {
                 .source_dir(&config_path)
                 .join(&target.source);
 
-            let exists = dest.exists();
-            let is_symlink = dest.is_symlink();
+            let metadata = std::fs::symlink_metadata(&dest);
+            let exists = metadata.is_ok();
+            let is_symlink = metadata
+                .as_ref()
+                .map(|m| m.file_type().is_symlink())
+                .unwrap_or(false);
             let mut points_to = None;
             if is_symlink && let Ok(link) = std::fs::read_link(&dest) {
                 points_to = Some(link.display().to_string());
