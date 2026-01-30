@@ -1,0 +1,106 @@
+---
+title: Skills
+description: How to install, author, and manage AgentSync skills (skills.sh providers and local skills).
+---
+
+AgentSync supports "skills": small bundles of content, prompts, or helper files that live under `.agents/skills/` and can be installed, updated, and managed with the CLI.
+
+This guide explains the expected layout and manifest format, how to install/update skills from providers (for example skills.sh), and troubleshooting tips.
+
+## Directory structure
+
+AgentSync keeps installable skills under the project `.agents/skills/` directory. Each installed skill has its own subdirectory and a `registry.json` file tracks installed skills.
+
+Example layout (after installing one skill):
+
+```
+.agents/
+└── skills/
+    ├── my-skill/
+    │   ├── SKILL.md
+    │   └── other-files...
+    └── registry.json
+```
+
+The registry is used by the CLI to return metadata when `--json` is requested and to track versions and installed files.
+
+## SKILL.md manifest
+
+Skills must include a `SKILL.md` file with YAML frontmatter describing the skill. At minimum the manifest must provide `name` and may include `version` and `description`.
+
+Example SKILL.md (minimal):
+
+```md
+---
+name: my-skill
+version: 1.0.0
+description: A short description of this skill.
+---
+
+# Usage
+
+Prompts and examples...
+```
+
+### Validation rules
+
+- `name` must match the pattern used in the codebase: lowercase letters and numbers with single dashes between segments (example: `weather-skill`). The implementation enforces this regex; see the manifest parser in the source: https://github.com/dallay/agentsync/blob/main/src/skills/manifest.rs
+- `version` is optional, but if present must be valid semver.
+
+If parsing fails, the CLI will return a validation error indicating the problem.
+
+## CLI: install, update, list
+
+AgentSync exposes skill management via `agentsync skill` subcommands.
+
+- Install a skill (from a provider id, local archive, or directory):
+
+```bash
+agentsync skill install my-skill --source https://example.com/my-skill.zip
+```
+
+- Update a skill to the latest/source provided:
+
+```bash
+agentsync skill update my-skill
+```
+
+- List installed skills (note: list command may be implemented to return structured output in future releases):
+
+```bash
+agentsync skill list
+```
+
+Flags:
+- `--source` — optional. Use a local path, archive URL, or provider-specific identifier.
+- `--json` — output machine-readable JSON with skill metadata from `.agents/skills/registry.json`.
+
+## Providers and sources
+
+AgentSync supports installing skills from multiple providers (for example skills.sh) as well as local archives or directories. The install logic accepts ZIP/tar archives or local paths.
+
+See `specs/001-skills-sh-integration` for the ongoing skills.sh integration work: https://github.com/dallay/agentsync/blob/main/specs/001-skills-sh-integration/README.md
+
+## Errors & remediation
+
+Common error hints the CLI prints (derived from implementation):
+
+- `manifest` errors: "Check the SKILL.md syntax, frontmatter, and ensure the 'name' field matches requirements." — occurs when frontmatter is missing or invalid.
+- `network` / `download` / `HTTP` errors: "Check your network connection and ensure the skill source URL is correct."
+- `archive` errors: "Verify the skill archive is a valid zip or tar.gz. Try re-downloading or using a fresh archive."
+- `registry` errors: "There was a problem updating the registry. Ensure you have write access and the registry file isn't corrupted."
+
+When an install/update fails, re-run with higher verbosity or use `--json` to get structured error output.
+
+## Security & safe usage
+
+- The CLI validates skill identifiers and rejects path traversal (no `/` or `\` and no absolute paths). This protects projects from accidental overwrites. The validation is implemented in the CLI: see `src/commands/skill.rs` (function `validate_skill_id`).
+- Treat third-party skill archives as untrusted input. Review the contents before installing in sensitive environments.
+
+## Links & further reading
+
+- Manifest parser (source): https://github.com/dallay/agentsync/blob/main/src/skills/manifest.rs
+- CLI skill command implementation: https://github.com/dallay/agentsync/blob/main/src/commands/skill.rs
+- Skills spec (work in progress): https://github.com/dallay/agentsync/blob/main/specs/001-skills-sh-integration/README.md
+
+If you want, I can also add an example SKILL.md template file under `website/docs/src/content/docs/examples/` or add a playground page showing install flows. Tell me if you want that and I’ll add it.

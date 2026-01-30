@@ -16,6 +16,9 @@ Different AI coding tools expect configuration files in various locations:
 |--------------------|-----------------------------------|----------------------|--------------------|
 | **Claude Code**    | `CLAUDE.md`                       | `.claude/commands/`  | `.claude/skills/`  |
 | **GitHub Copilot** | `.github/copilot-instructions.md` | `.github/agents/`    | -                  |
+| **Gemini CLI**     | `GEMINI.md`                       | `.gemini/commands/`  | `.gemini/skills/`  |
+| **Cursor**         | `CURSOR.md`                       | `.cursor/commands/`  | `.cursor/skills/`  |
+| **VS Code**        | `AGENTS.md` (or `.vscode/*`)      | `.vscode/`           | -                  |
 | **OpenCode**       | `AGENTS.md`                       | `.opencode/command/` | `.opencode/skill/` |
 
 AgentSync maintains a **single source of truth** in `.agents/` and creates symlinks to all required
@@ -180,7 +183,7 @@ pattern = "*.agent.md"
 ### MCP Support (Model Context Protocol)
 
 AgentSync can automatically generate MCP configuration files for supported agents (Claude Code,
-GitHub Copilot, Gemini CLI, VS Code).
+GitHub Copilot, Gemini CLI, Cursor, VS Code, OpenCode).
 
 This allows you to define MCP servers once in `agentsync.toml` and have them synchronized to all
 agent-specific config files.
@@ -205,14 +208,18 @@ args = ["-y", "@modelcontextprotocol/server-git", "--repository", "."]
 # disabled = false
 ```
 
-#### Supported Agents & File Locations
+#### Supported Agents (canonical)
 
-- **Claude Code**: `.mcp.json`
-- **GitHub Copilot**: `.copilot/mcp-config.json`
-- **Gemini CLI**: `.gemini/settings.json` (automatically adds `trust: true`)
-- **VS Code**: `.vscode/mcp.json`
-- **Cursor**: `.cursor/mcp.json`
-- **OpenCode**: `opencode.json`
+AgentSync supports the following agents and will synchronize corresponding files/locations. This list is canonical — keep it in sync with `src/mcp.rs` (authoritative).
+
+- **Claude Code** — `.mcp.json` (agent id: `claude`)
+- **GitHub Copilot** — `.copilot/mcp-config.json` (agent id: `copilot`)
+- **Gemini CLI** — `.gemini/settings.json` (agent id: `gemini`) — AgentSync will add `trust: true` when generating Gemini configs.
+- **Cursor** — `.cursor/mcp.json` (agent id: `cursor`)
+- **VS Code** — `.vscode/mcp.json` (agent id: `vscode`)
+- **OpenCode** — `opencode.json` (agent id: `opencode`)
+
+See `website/docs/src/content/docs/guides/mcp.mdx` for formatter details and merge behavior.
 
 #### Merge Behavior
 

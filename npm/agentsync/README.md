@@ -17,6 +17,8 @@ Effortlessly synchronize AI agent configurations across tools like Copilot, Clau
 
 - **Simple CLI**: Manage symbolic links with minimal setup.
 - **Multi-assistant support**: Compatible across Copilot, Claude, Gemini, and more.
+ - **Multi-assistant support**: Compatible across Copilot, Claude, Gemini, Cursor, VS Code and OpenCode.
+    See the full list and file locations in the main documentation: https://dallay.github.io/agentsync/ (or the repo README).
 - **Cross-platform binaries**: Available for Linux, MacOS, and Windows.
 - **Node.js integration**: Use programmatically within your applications.
 
@@ -94,6 +96,12 @@ agentsync clean
    ```
 
 - For complex workflows, see the [detailed API documentation](https://dallay.github.io/agentsync/).
+- For complex workflows, see the [detailed API documentation](https://dallay.github.io/agentsync/).
+
+MCP & Skills
+
+- AgentSync supports MCP generation for multiple agents (Claude, Copilot, Gemini, Cursor, VS Code, OpenCode). The canonical list and file locations live in the repo README and in the docs site (guides/mcp).
+- Skills live under `.agents/skills/` in the project. See the repository README for an example SKILL.md path and the `specs/001-skills-sh-integration` directory for ongoing work around skills integrations.
 
 ---
 
