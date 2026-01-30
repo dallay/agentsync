@@ -56,3 +56,43 @@ agentsync apply --help
 
 - `-v, --verbose`: Enable verbose logging for debugging purposes.
 - `-q, --quiet`: Only output errors.
+
+---
+
+### `status`
+Verify the status of symlinks managed by AgentSync and report drift.
+
+```bash
+agentsync status [--project-root <path>] [--json]
+```
+
+**Flags**:
+- `--project-root <path>`: Optional. Path to the project root to locate the agentsync config. If omitted, the current working directory is used.
+- `--json`: Output machine-readable JSON (pretty-printed) describing each managed target. Useful for CI.
+
+**Behavior**:
+- Iterates over all enabled agents and their targets from your `agentsync.toml`.
+- For each target it reports:
+  - `destination`: Path in the project where the symlink should exist
+  - `exists`: Whether the destination path exists
+  - `is_symlink`: Whether the destination is a symlink
+  - `points_to`: The symlink target (if any)
+  - `expected_source`: The resolved expected source path if the source exists
+
+Human-friendly output uses colors and statuses:
+- `✔ OK` — symlink exists and points to the expected source
+- `✗ Incorrect link` — symlink exists but points somewhere else
+- `! Missing` — destination does not exist
+- `· Exists but not a symlink` — a regular file or directory exists at the destination
+
+Exit codes
+- `0` — no problems detected
+- `1` — one or more issues found (suitable to fail CI builds)
+
+Examples
+- Human readable:
+  - `agentsync status`
+- JSON for CI:
+  - `agentsync status --json`
+- With custom project root:
+  - `agentsync status --project-root /path/to/repo --json`

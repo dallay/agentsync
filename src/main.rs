@@ -11,6 +11,8 @@ use std::path::PathBuf;
 use agentsync::{Linker, SyncOptions, config::Config, gitignore, init};
 mod commands;
 use commands::skill::{SkillCommand, run_skill};
+use commands::status::{StatusArgs, run_status};
+
 // tracing_subscriber is used to initialize logging in main
 
 #[derive(Parser)]
@@ -33,6 +35,14 @@ enum Commands {
         #[command(subcommand)]
         cmd: SkillCommand,
         /// Root of the project (defaults to CWD)
+        #[arg(long)]
+        project_root: Option<PathBuf>,
+    },
+    /// Show status of managed symlinks
+    Status {
+        #[command(flatten)]
+        args: StatusArgs,
+        /// Project root (defaults to CWD)
         #[arg(long)]
         project_root: Option<PathBuf>,
     },
@@ -94,6 +104,10 @@ fn main() -> Result<()> {
         Commands::Skill { cmd, project_root } => {
             let root = project_root.unwrap_or_else(|| env::current_dir().unwrap());
             run_skill(cmd, root)?;
+        }
+        Commands::Status { args, project_root } => {
+            let project_root = project_root.unwrap_or_else(|| env::current_dir().unwrap());
+            run_status(args.json, project_root)?;
         }
         Commands::Init { path, force } => {
             let project_root = path.unwrap_or_else(|| env::current_dir().unwrap());
@@ -230,11 +244,11 @@ fn print_header() {
     println!(
         "{}",
         r#"
-╔═══════════════════════════════════════════════════════════════════╗
-║                         AgentSync                                 ║
-║           AI Agent Configuration Synchronization                  ║
-╚═══════════════════════════════════════════════════════════════════╝
-"#
+ ╔═══════════════════════════════════════════════════════════════════╗
+ ║                         AgentSync                                 ║
+ ║           AI Agent Configuration Synchronization                  ║
+ ╚═══════════════════════════════════════════════════════════════════╝
+ "#
         .cyan()
         .bold()
     );
