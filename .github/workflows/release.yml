@@ -125,6 +125,16 @@ jobs:
         with:
           ref: ${{ needs.semantic-release.outputs.new_release_git_tag }}
 
+      - name: Install and configure gcc-12 (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-12 g++-12
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 60
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 60
+          gcc --version
+          g++ --version
+
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@f7ccc83f9ed1e5b9c81d8a67d7ad1a747e22a561
         with:
@@ -285,6 +295,16 @@ jobs:
         with:
           ref: ${{ needs.semantic-release.outputs.new_release_git_tag }}
 
+      - name: Install and configure gcc-12 (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-12 g++-12
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 60
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 60
+          gcc --version
+          g++ --version
+
       - name: Download artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
@@ -438,6 +458,16 @@ jobs:
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
         with:
           ref: ${{ needs.semantic-release.outputs.new_release_git_tag }}
+
+      - name: Install and configure gcc-12 (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-12 g++-12
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 60
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 60
+          gcc --version
+          g++ --version
 
       - name: Setup Node.js
         uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
