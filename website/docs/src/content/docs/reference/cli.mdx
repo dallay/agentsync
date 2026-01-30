@@ -66,11 +66,11 @@ Verify the status of symlinks managed by AgentSync and report drift.
 agentsync status [--project-root <path>] [--json]
 ```
 
-Flags
+**Flags**:
 - `--project-root <path>`: Optional. Path to the project root to locate the agentsync config. If omitted, the current working directory is used.
 - `--json`: Output machine-readable JSON (pretty-printed) describing each managed target. Useful for CI.
 
-Behavior
+**Behavior**:
 - Iterates over all enabled agents and their targets from your `agentsync.toml`.
 - For each target it reports:
   - `destination`: Path in the project where the symlink should exist

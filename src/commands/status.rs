@@ -3,36 +3,29 @@ use anyhow::Result;
 use clap::Args;
 use colored::Colorize;
 use serde::Serialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Arguments for the status command
 #[derive(Args, Debug)]
 pub struct StatusArgs {
-    /// Project root (defaults to CWD)
-    #[arg(long)]
-    pub project_root: Option<PathBuf>,
-
     /// Output machine-readable JSON
     #[arg(long)]
     pub json: bool,
 }
 
-#[derive(Serialize)]
-struct StatusEntry {
-    destination: String,
-    exists: bool,
-    is_symlink: bool,
-    points_to: Option<String>,
-    expected_source: Option<String>,
+#[derive(Serialize, Debug, Clone)]
+pub struct StatusEntry {
+    pub destination: String,
+    pub exists: bool,
+    pub is_symlink: bool,
+    pub points_to: Option<String>,
+    pub expected_source: Option<String>,
 }
 
-pub fn run_status(args: StatusArgs, project_root: PathBuf) -> Result<()> {
+pub fn run_status(json: bool, project_root: PathBuf) -> Result<()> {
     // Find and load config
-    let config_path = if let Some(p) = args.project_root.as_ref() {
-        agentsync::config::Config::find_config(p)?
-    } else {
-        agentsync::config::Config::find_config(&project_root)?
-    };
+    // project_root is already resolved by the caller
+    let config_path = agentsync::config::Config::find_config(&project_root)?;
 
     let config = agentsync::config::Config::load(&config_path)?;
     let linker = Linker::new(config, config_path.clone());
@@ -74,8 +67,34 @@ pub fn run_status(args: StatusArgs, project_root: PathBuf) -> Result<()> {
         }
     }
 
-    if args.json {
+    // helper to canonicalize with a sensible fallback
+    // exposed at module level for unit testing
+    fn canonicalize_fallback_local(p: &Path, base: Option<&Path>) -> Option<PathBuf> {
+        let candidate = if p.is_absolute() {
+            p.to_path_buf()
+        } else if let Some(b) = base {
+            b.join(p)
+        } else if let Ok(cwd) = std::env::current_dir() {
+            cwd.join(p)
+        } else {
+            p.to_path_buf()
+        };
+
+        // Prefer canonicalized path; if that fails, fall back to the candidate path
+        Some(std::fs::canonicalize(&candidate).unwrap_or(candidate))
+    }
+
+    // predicate to determine whether an entry represents a problem
+    let is_problematic =
+        |e: &StatusEntry| -> bool { entry_is_problematic(e, canonicalize_fallback_local) };
+
+    if json {
+        let has_problems = entries.iter().any(is_problematic);
         println!("{}", serde_json::to_string_pretty(&entries)?);
+        if has_problems {
+            // exit with non-zero to indicate problems when JSON output is requested
+            std::process::exit(1);
+        }
     } else {
         let mut problems = 0usize;
         for e in &entries {
@@ -85,7 +104,20 @@ pub fn run_status(args: StatusArgs, project_root: PathBuf) -> Result<()> {
             } else if e.is_symlink {
                 if let Some(expected) = &e.expected_source {
                     if let Some(points) = &e.points_to {
-                        if !points.contains(expected) {
+                        // canonicalize both sides and compare for equality
+                        let dest_path = PathBuf::from(&e.destination);
+                        let expected_pb = PathBuf::from(expected);
+                        let points_pb = PathBuf::from(points);
+                        let expected_canon = canonicalize_fallback_local(&expected_pb, None);
+                        let points_canon =
+                            canonicalize_fallback_local(&points_pb, dest_path.parent());
+
+                        let equal = match (expected_canon, points_canon) {
+                            (Some(a), Some(b)) => a == b,
+                            _ => false,
+                        };
+
+                        if !equal {
                             println!(
                                 "{} Incorrect link: {} -> {} (expected: {})",
                                 "✗".red(),
@@ -128,4 +160,36 @@ pub fn run_status(args: StatusArgs, project_root: PathBuf) -> Result<()> {
     }
 
     Ok(())
+}
+
+// Extracted logic for testability: determines whether an entry is problematic
+pub fn entry_is_problematic<F>(e: &StatusEntry, canonicalize: F) -> bool
+where
+    F: Fn(&Path, Option<&Path>) -> Option<PathBuf>,
+{
+    if !e.exists {
+        return true;
+    }
+    if e.is_symlink {
+        if let Some(expected) = &e.expected_source {
+            if let Some(points) = &e.points_to {
+                // canonicalize both sides and compare equality
+                let dest_path = PathBuf::from(&e.destination);
+                let expected_pb = PathBuf::from(expected);
+                let points_pb = PathBuf::from(points);
+                let expected_canon = canonicalize(&expected_pb, None);
+                let points_canon = canonicalize(&points_pb, dest_path.parent());
+                match (expected_canon, points_canon) {
+                    (Some(a), Some(b)) => return a != b,
+                    // if we couldn't canonicalize, treat as problematic
+                    _ => return true,
+                }
+            } else {
+                return true; // unknown link target
+            }
+        } else {
+            return true; // link points to missing source
+        }
+    }
+    false
 }

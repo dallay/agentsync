@@ -42,6 +42,9 @@ enum Commands {
     Status {
         #[command(flatten)]
         args: StatusArgs,
+        /// Project root (defaults to CWD)
+        #[arg(long)]
+        project_root: Option<PathBuf>,
     },
     /// Initialize a new agentsync configuration in the current or specified directory.
     Init {
@@ -102,12 +105,9 @@ fn main() -> Result<()> {
             let root = project_root.unwrap_or_else(|| env::current_dir().unwrap());
             run_skill(cmd, root)?;
         }
-        Commands::Status { args } => {
-            let project_root = args
-                .project_root
-                .clone()
-                .unwrap_or_else(|| env::current_dir().unwrap());
-            run_status(args, project_root)?;
+        Commands::Status { args, project_root } => {
+            let project_root = project_root.unwrap_or_else(|| env::current_dir().unwrap());
+            run_status(args.json, project_root)?;
         }
         Commands::Init { path, force } => {
             let project_root = path.unwrap_or_else(|| env::current_dir().unwrap());
