@@ -40,6 +40,7 @@ locations.
 If you have Node.js installed, the easiest way to install AgentSync is through a package manager.
 
 #### Global Installation
+
 ```bash
 # Using npm
 npm install -g @dallay/agentsync
@@ -55,6 +56,7 @@ bun add -g @dallay/agentsync
 ```
 
 #### Local Installation (Dev Dependency)
+
 ```bash
 # Using npm
 npm install --save-dev @dallay/agentsync
