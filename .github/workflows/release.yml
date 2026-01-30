@@ -156,8 +156,12 @@ jobs:
         if: runner.os == 'Linux'
         run: cargo install cross --git https://github.com/cross-rs/cross
 
+      - name: Build binary (Linux native GNU)
+        if: runner.os == 'Linux' && matrix.target == 'x86_64-unknown-linux-gnu'
+        run: cargo build --release --target x86_64-unknown-linux-gnu
+
       - name: Build binary (Linux with cross)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.target != 'x86_64-unknown-linux-gnu'
         run: cross build --release --target ${{ matrix.target }}
 
       - name: Build binary (macOS/Windows)
