@@ -1,3 +1,9 @@
+## [1.18.0](https://github.com/dallay/agentsync/compare/v1.17.0...v1.18.0) (2026-01-30)
+
+### ✨ Features
+
+* **ci:** install gcc-12 on ubuntu runners to avoid aws-lc-sys gcc bug ([0847d01](https://github.com/dallay/agentsync/commit/0847d0119b6ccf0d94bd983a978dc18d4d7d14ec))
+
 ## [1.17.0](https://github.com/dallay/agentsync/compare/v1.16.0...v1.17.0) (2026-01-30)
 
 ### ✨ Features
