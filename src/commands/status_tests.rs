@@ -50,7 +50,7 @@ mod tests {
     }
 
     #[test]
-    fn test_non_symlink_exists_not_problematic() {
+    fn test_non_symlink_exists_is_problematic() {
         let e = StatusEntry {
             destination: "/tmp/dest".into(),
             exists: true,
