@@ -35,9 +35,71 @@ locations.
 
 ## Installation
 
-### From GitHub Releases (Recommended)
+### Node.js Package Managers (Recommended)
 
-Download the latest release for your platform:
+If you have Node.js installed, the easiest way to install AgentSync is through a package manager.
+
+#### Global Installation
+
+```bash
+# Using npm
+npm install -g @dallay/agentsync
+
+# Using pnpm
+pnpm add -g @dallay/agentsync
+
+# Using yarn (Classic v1)
+yarn global add @dallay/agentsync
+
+# Using bun
+bun i -g @dallay/agentsync
+```
+
+#### One-off Execution
+
+If you want to run AgentSync without a permanent global installation:
+
+```bash
+# Using npx (npm)
+npx @dallay/agentsync apply
+
+# Using dlx (pnpm)
+pnpm dlx @dallay/agentsync apply
+
+# Using dlx (yarn v2+)
+yarn dlx @dallay/agentsync apply
+
+# Using bunx (bun)
+bunx @dallay/agentsync apply
+```
+
+#### Local Installation (Dev Dependency)
+
+```bash
+# Using npm
+npm install --save-dev @dallay/agentsync
+
+# Using pnpm
+pnpm add -D @dallay/agentsync
+
+# Using yarn
+yarn add -D @dallay/agentsync
+
+# Using bun
+bun add -d @dallay/agentsync
+```
+
+### From crates.io (Rust)
+
+If you have Rust installed, you can install AgentSync directly from [crates.io](https://crates.io/crates/agentsync):
+
+```bash
+cargo install agentsync
+```
+
+### From GitHub Releases (Pre-built Binaries)
+
+Download the latest release for your platform from the [GitHub Releases](https://github.com/dallay/agentsync/releases) page:
 
 ```bash
 # macOS (Apple Silicon)
@@ -61,25 +123,21 @@ tar xzf agentsync-aarch64-unknown-linux-gnu.tar.gz
 sudo mv agentsync-*/agentsync /usr/local/bin/
 ```
 
-### From Source (requires Rust 1.89+)
+### From Source (Requires Rust 1.89+)
+
+Install directly from the GitHub repository:
 
 ```bash
 cargo install --git https://github.com/dallay/agentsync
 ```
 
-Or clone and build:
+Or clone and build manually:
 
 ```bash
 git clone https://github.com/dallay/agentsync
 cd agentsync
 cargo build --release
-# Binary at ./target/release/agentsync
-```
-
-### From crates.io
-
-```bash
-cargo install agentsync
+# The binary will be available at ./target/release/agentsync
 ```
 
 ## Quick Start
