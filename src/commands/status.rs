@@ -72,7 +72,8 @@ pub fn run_status(json: bool, project_root: PathBuf) -> Result<()> {
     }
 
     // helper to canonicalize with a sensible fallback
-    // exposed at module level for unit testing
+    // local helper inside run_status (used to canonicalize paths for comparison);
+    // tests use a separate fake_canonicalize mock injected into entry_is_problematic
     fn canonicalize_fallback_local(p: &Path, base: Option<&Path>) -> Option<PathBuf> {
         let candidate = if p.is_absolute() {
             p.to_path_buf()
@@ -175,30 +176,29 @@ where
     if !e.exists {
         return true;
     }
-    if e.is_symlink {
-        if let Some(expected) = &e.expected_source {
-            if let Some(points) = &e.points_to {
-                // canonicalize both sides and compare equality
-                let dest_path = PathBuf::from(&e.destination);
-                let expected_pb = PathBuf::from(expected);
-                let points_pb = PathBuf::from(points);
-                let expected_canon = canonicalize(&expected_pb, None);
-                let points_canon = canonicalize(&points_pb, dest_path.parent());
-                match (expected_canon, points_canon) {
-                    (Some(a), Some(b)) => return a != b,
-                    // if we couldn't canonicalize, treat as problematic
-                    _ => return true,
-                }
-            } else {
-                return true; // unknown link target
-            }
-        } else {
-            return true; // link points to missing source
-        }
-    } else {
-        return true; // exists but not a symlink
+
+    if !e.is_symlink {
+        // File exists but is not a symlink: that's drift
+        return true;
     }
-    // unreachable
-    #[allow(unreachable_code)]
-    false
+
+    if let Some(expected) = &e.expected_source {
+        if let Some(points) = &e.points_to {
+            // canonicalize both sides and compare equality
+            let dest_path = PathBuf::from(&e.destination);
+            let expected_pb = PathBuf::from(expected);
+            let points_pb = PathBuf::from(points);
+            let expected_canon = canonicalize(&expected_pb, None);
+            let points_canon = canonicalize(&points_pb, dest_path.parent());
+            return match (expected_canon, points_canon) {
+                (Some(a), Some(b)) => a != b,
+                // if we couldn't canonicalize, treat as problematic
+                _ => true,
+            };
+        }
+        // symlink exists but we couldn't read its target
+        return true;
+    }
+    // expected missing
+    true
 }
