@@ -1,3 +1,9 @@
+## [1.16.0](https://github.com/dallay/agentsync/compare/v1.15.0...v1.16.0) (2026-01-30)
+
+### ✨ Features
+
+* add Cursor MCP support ([#90](https://github.com/dallay/agentsync/issues/90)) ([c49235e](https://github.com/dallay/agentsync/commit/c49235e08a1c7a215847551090226236758abdff))
+
 ## [1.15.0](https://github.com/dallay/agentsync/compare/v1.14.5...v1.15.0) (2026-01-30)
 
 ### ✨ Features
