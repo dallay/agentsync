@@ -28,7 +28,7 @@ help:
 	@echo "  make rust-test       -> cargo test"
 	@echo "  make e2e-test         -> run E2E tests in docker"
 	@echo "  make rust-run        -> cargo run"
-	`@echo` "  make fmt             -> rustfmt + biome (if installed)"
+	@echo "  make fmt             -> rustfmt + biome (if installed)"
 	@echo "  make docs-dev        -> start docs in dev mode"
 	@echo "  make docs-build      -> build docs"
 	@echo "  make agents-sync     -> pnpm run agents:sync"
@@ -41,8 +41,32 @@ help:
 
 all: install js-build
 
-verify-all: js-test rust-test
-	@echo "All checks passed."
+verify-all: fmt
+	@echo "\n========================================"
+	@echo " Running full verification suite"
+	@echo "========================================\n"
+	@set -e; \
+	# 1. JS: Build + Test
+	echo "→ Verifying JS workspace (build + test)..."; \
+	$(JS_WORKSPACE) run build; \
+	$(JS_WORKSPACE) run test; \
+	\
+	# 2. Docs: Build verification
+	echo "→ Verifying Docs build..."; \
+	$(MAKE) docs-build; \
+	\
+	# 3. Rust: Clippy + Test
+	echo "→ Running cargo clippy..."; \
+	$(CARGO) clippy --all-targets --all-features -- -D warnings; \
+	echo "→ Running cargo test..."; \
+	$(CARGO) test; \
+	\
+	# 4. E2E (Opcional)
+	if [ "${RUN_E2E}" = "1" ]; then \
+		echo "→ Running E2E tests (docker)..."; \
+		$(MAKE) e2e-test; \
+	fi; \
+	echo "\nAll verification checks passed. ✅"
 
 install: js-install rust-build
 	@echo "Instalación completa."
@@ -85,8 +109,8 @@ e2e-test:
 # Formatting
 fmt:
 	@echo "Formatting Rust + JS..."
-	`@command` -v rustfmt >/dev/null 2>&1 && $(CARGO) fmt || echo "rustfmt not found; skipping"
-	`@pnpm` exec biome format --write . 2>/dev/null || echo "biome not available; skipping"
+	@command -v rustfmt >/dev/null 2>&1 && $(CARGO) fmt || echo "rustfmt not found; skipping"
+	@$(PNPM) exec biome format --write . 2>/dev/null || echo "biome not available; skipping"
 
 # Docs
 docs-dev:
