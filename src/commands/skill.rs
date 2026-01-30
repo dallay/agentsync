@@ -147,11 +147,11 @@ pub fn run_install(args: SkillInstallArgs, project_root: PathBuf) -> Result<()> 
     let _is_zip = source.ends_with(".zip");
     let _is_targz = source.ends_with(".tar.gz") || source.ends_with(".tgz");
     // Unified logic: install from archive, URL, or local directory
-    eprintln!(
-        "[DEBUG CLI] install skill_id={} source={} target_root={}",
-        skill_id,
-        &source,
-        &target_root.display()
+    tracing::debug!(
+        skill_id = %skill_id,
+        source = %source,
+        target_root = %target_root.display(),
+        "install"
     );
     let result = agentsync::skills::install::blocking_fetch_and_install_skill(
         skill_id,
