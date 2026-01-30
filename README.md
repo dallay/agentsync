@@ -48,11 +48,14 @@ npm install -g @dallay/agentsync
 # Using pnpm
 pnpm add -g @dallay/agentsync
 
-# Using yarn
+# Using yarn (Classic v1)
 yarn global add @dallay/agentsync
 
+# Using yarn (v2+)
+yarn dlx @dallay/agentsync
+
 # Using bun
-bun add -g @dallay/agentsync
+bun i -g @dallay/agentsync
 ```
 
 #### Local Installation (Dev Dependency)
