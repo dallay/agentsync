@@ -89,13 +89,13 @@ impl Linker {
             }
 
             // Filter by agent name if specified
-            if let Some(ref filter) = options.agents {
-                if !filter.iter().any(|f| agent_name.contains(f)) {
-                    if options.verbose {
-                        println!("  {} Skipping filtered agent: {}", "○".yellow(), agent_name);
-                    }
-                    continue;
+            if let Some(ref filter) = options.agents
+                && !filter.iter().any(|f| agent_name.contains(f))
+            {
+                if options.verbose {
+                    println!("  {} Skipping filtered agent: {}", "○".yellow(), agent_name);
                 }
+                continue;
             }
 
             // Print agent header
@@ -119,7 +119,7 @@ impl Linker {
                         result.skipped += target_result.skipped;
                     }
                     Err(e) => {
-                        eprintln!("  {} Error processing {}: {}", "✘".red(), target_name, e);
+                        tracing::error!(target = %target_name, error = %e, "Error processing target");
                         result.errors += 1;
                     }
                 }
@@ -166,23 +166,22 @@ impl Linker {
         }
 
         // Create parent directory if needed
-        if let Some(parent) = dest.parent() {
-            if !parent.exists() {
-                if options.dry_run {
-                    if options.verbose {
-                        println!(
-                            "  {} Would create directory: {}",
-                            "→".cyan(),
-                            parent.display()
-                        );
-                    }
-                } else {
-                    fs::create_dir_all(parent).with_context(|| {
-                        format!("Failed to create directory: {}", parent.display())
-                    })?;
-                    if options.verbose {
-                        println!("  {} Created directory: {}", "✔".green(), parent.display());
-                    }
+        if let Some(parent) = dest.parent()
+            && !parent.exists()
+        {
+            if options.dry_run {
+                if options.verbose {
+                    println!(
+                        "  {} Would create directory: {}",
+                        "→".cyan(),
+                        parent.display()
+                    );
+                }
+            } else {
+                fs::create_dir_all(parent)
+                    .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
+                if options.verbose {
+                    println!("  {} Created directory: {}", "✔".green(), parent.display());
                 }
             }
         }
@@ -331,10 +330,10 @@ impl Linker {
             let item_name = entry.file_name().to_string_lossy();
 
             // Apply pattern filter if specified
-            if let Some(pat) = pattern {
-                if !matches_pattern(&item_name, pat) {
-                    continue;
-                }
+            if let Some(pat) = pattern
+                && !matches_pattern(&item_name, pat)
+            {
+                continue;
             }
 
             let source_path = entry.path();
