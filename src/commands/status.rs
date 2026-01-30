@@ -152,6 +152,7 @@ pub fn run_status(json: bool, project_root: PathBuf) -> Result<()> {
                     "·".dimmed(),
                     e.destination
                 );
+                problems += 1;
             }
         }
 
@@ -194,6 +195,10 @@ where
         } else {
             return true; // link points to missing source
         }
+    } else {
+        return true; // exists but not a symlink
     }
+    // unreachable
+    #[allow(unreachable_code)]
     false
 }

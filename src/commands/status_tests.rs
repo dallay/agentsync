@@ -58,7 +58,8 @@ mod tests {
             points_to: None,
             expected_source: None,
         };
-        assert!(!entry_is_problematic(&e, fake_canonicalize));
+        // Non-symlink destinations are considered problematic (drift)
+        assert!(entry_is_problematic(&e, fake_canonicalize));
     }
 
     #[test]
