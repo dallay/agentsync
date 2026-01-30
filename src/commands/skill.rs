@@ -69,8 +69,13 @@ pub fn run_update(args: SkillUpdateArgs, project_root: PathBuf) -> Result<()> {
                     .join(".agents")
                     .join("skills")
                     .join("registry.json");
-                let reg = registry::read_registry(&registry_path)?;
-                let entry = reg.skills.as_ref().and_then(|s| s.get(skill_id));
+                let reg_res = registry::read_registry(&registry_path);
+                let entry = reg_res
+                    .as_ref()
+                    .ok()
+                    .and_then(|reg| reg.skills.as_ref())
+                    .and_then(|s| s.get(skill_id));
+
                 if let Some(skill) = entry {
                     let output = serde_json::json!({
                         "id": skill_id,
@@ -84,6 +89,9 @@ pub fn run_update(args: SkillUpdateArgs, project_root: PathBuf) -> Result<()> {
                     });
                     println!("{}", serde_json::to_string(&output)?);
                 } else {
+                    if let Err(ref e) = reg_res {
+                        tracing::warn!(?e, "Failed to read registry after update, falling back to minimal response");
+                    }
                     let output = serde_json::json!({
                         "id": skill_id,
                         "status": "updated"
@@ -157,8 +165,13 @@ pub fn run_install(args: SkillInstallArgs, project_root: PathBuf) -> Result<()> 
                     .join(".agents")
                     .join("skills")
                     .join("registry.json");
-                let reg = registry::read_registry(&registry_path)?;
-                let entry = reg.skills.as_ref().and_then(|s| s.get(&args.skill_id));
+                let reg_res = registry::read_registry(&registry_path);
+                let entry = reg_res
+                    .as_ref()
+                    .ok()
+                    .and_then(|reg| reg.skills.as_ref())
+                    .and_then(|s| s.get(&args.skill_id));
+
                 if let Some(skill) = entry {
                     let output = serde_json::json!({
                         "id": &args.skill_id,
@@ -172,6 +185,9 @@ pub fn run_install(args: SkillInstallArgs, project_root: PathBuf) -> Result<()> 
                     });
                     println!("{}", serde_json::to_string(&output)?);
                 } else {
+                    if let Err(ref e) = reg_res {
+                        tracing::warn!(?e, "Failed to read registry after install, falling back to minimal response");
+                    }
                     let output = serde_json::json!({
                         "id": &args.skill_id,
                         "status": "installed"
