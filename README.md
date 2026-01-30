@@ -145,6 +145,19 @@ agentsync apply --verbose
 agentsync --version
 ```
 
+### Status
+
+Verify the state of symlinks managed by AgentSync. Useful for local verification and CI.
+
+```bash
+agentsync status [--project-root <path>] [--json]
+```
+
+- `--project-root <path>`: Optional. Path to the project root to locate the agentsync config.
+- `--json`: Output machine-readable JSON (pretty-printed).
+
+Exit codes: 0 = no problems, 1 = problems detected (CI-friendly)
+
 ## Configuration
 
 Configuration is stored in `.agents/agentsync.toml`:
