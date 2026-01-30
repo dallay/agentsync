@@ -1,3 +1,19 @@
+## [1.15.0](https://github.com/dallay/agentsync/compare/v1.14.5...v1.15.0) (2026-01-30)
+
+### ✨ Features
+
+* skills sh integration ([#94](https://github.com/dallay/agentsync/issues/94)) ([051908f](https://github.com/dallay/agentsync/commit/051908f88c6c4aa092b1dce74809df2b391ccae8))
+
+### 🚀 Performance
+
+* Optimize glob pattern matching in `linker.rs` ([#76](https://github.com/dallay/agentsync/issues/76)) ([5b48c0a](https://github.com/dallay/agentsync/commit/5b48c0a14a66e26f6319ee9b864371b2da678d73)), closes [#87](https://github.com/dallay/agentsync/issues/87) [#78](https://github.com/dallay/agentsync/issues/78) [#83](https://github.com/dallay/agentsync/issues/83) [#84](https://github.com/dallay/agentsync/issues/84) [#81](https://github.com/dallay/agentsync/issues/81) [#77](https://github.com/dallay/agentsync/issues/77) [#75](https://github.com/dallay/agentsync/issues/75)
+
+### 📝 Documentation
+
+* Correct OpenCode MCP path in README ([#77](https://github.com/dallay/agentsync/issues/77)) ([8783592](https://github.com/dallay/agentsync/commit/8783592bcb7ead428d9c0fc2468926937ac04136))
+* update README.md for accuracy ([#75](https://github.com/dallay/agentsync/issues/75)) ([278372e](https://github.com/dallay/agentsync/commit/278372e90292fbcdf88013a2938f8c289835a6e4))
+* Update README.md with accurate CLI usage ([#84](https://github.com/dallay/agentsync/issues/84)) ([7f3306b](https://github.com/dallay/agentsync/commit/7f3306bbb9fa64c11bbc6ea881c44230e8624eac))
+
 ## [1.14.5](https://github.com/dallay/agentsync/compare/v1.14.4...v1.14.5) (2026-01-24)
 
 ### 🐛 Bug Fixes

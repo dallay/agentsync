@@ -1,0 +1,56 @@
+ARG BASE_IMAGE=ubuntu:24.04
+
+# --- 1. GLIBC BUILDER (Debian-based) ---
+FROM rust:1.89-slim AS builder-glibc
+RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+WORKDIR /usr/src/agentsync
+COPY . .
+RUN cargo build --release
+
+# --- 2. MUSL BUILDER (Alpine-based) ---
+FROM rust:1.89-alpine AS builder-musl
+RUN apk add --no-cache musl-dev openssl-dev perl make g++
+WORKDIR /usr/src/agentsync
+COPY . .
+RUN cargo build --release --features reqwest/native-tls-vendored
+
+# --- 3. FINAL RUNNER ---
+FROM ${BASE_IMAGE}
+
+# Build-time argument to select which binary to use
+ARG BUILD_TYPE=glibc
+
+# Avoid prompts during package installation (for Debian/Ubuntu)
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install essential utilities for testing based on the distribution
+RUN if command -v apt-get >/dev/null; then \
+        apt-get update && apt-get install -y bash curl ca-certificates tree jq && rm -rf /var/lib/apt/lists/*; \
+    elif command -v apk >/dev/null; then \
+        apk add --no-cache bash curl ca-certificates tree jq shadow; \
+    elif command -v pacman >/dev/null; then \
+        pacman -Sy --noconfirm bash curl ca-certificates tree jq shadow && pacman -Scc --noconfirm; \
+    fi
+
+# Copy the binary from the selected builder stage
+# We use a trick to copy from different stages based on BUILD_TYPE
+COPY --from=builder-glibc /usr/src/agentsync/target/release/agentsync /tmp/agentsync.glibc
+COPY --from=builder-musl /usr/src/agentsync/target/release/agentsync /tmp/agentsync.musl
+RUN if [ "$BUILD_TYPE" = "musl" ]; then \
+        mv /tmp/agentsync.musl /usr/local/bin/agentsync; \
+    else \
+        mv /tmp/agentsync.glibc /usr/local/bin/agentsync; \
+    fi && rm -f /tmp/agentsync.* && chmod +x /usr/local/bin/agentsync
+
+# Create a non-root user (handling distribution differences)
+RUN if command -v useradd >/dev/null; then \
+        useradd -m -s /bin/bash tester; \
+    elif command -v adduser >/dev/null; then \
+        adduser -D -s /bin/bash tester; \
+    fi
+
+USER tester
+WORKDIR /home/tester/app
+ENV PATH="/usr/local/bin:${PATH}"
+
+ENTRYPOINT ["/bin/bash"]

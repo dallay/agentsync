@@ -1,0 +1,54 @@
+services:
+  # 1. Mock Skill Provider (Nginx)
+  mock-provider:
+    image: nginx:alpine
+    volumes:
+      - ./fixtures:/usr/share/nginx/html:ro
+    ports:
+      - "8080:80"
+
+  # 2. Test Runner (Ubuntu)
+  test-runner-ubuntu:
+    build:
+      context: ../..
+      dockerfile: tests/e2e/Dockerfile.e2e
+    depends_on:
+      - mock-provider
+    volumes:
+      - ./test_suite.sh:/test_suite.sh:ro
+    environment:
+      - PROVIDER_URL=http://mock-provider
+    command: /test_suite.sh
+
+  # 3. Test Runner (Alpine)
+  test-runner-alpine:
+    # Use a build block to ensure agentsync is installed
+    build:
+      context: ../..
+      dockerfile: tests/e2e/Dockerfile.e2e
+      args:
+        BASE_IMAGE: alpine:3.19
+        BUILD_TYPE: musl
+    depends_on:
+      - mock-provider
+    volumes:
+      - ./test_suite.sh:/test_suite.sh:ro
+    environment:
+      - PROVIDER_URL=http://mock-provider
+    command: /test_suite.sh
+
+  # 4. Test Runner (Arch)
+  test-runner-arch:
+    platform: linux/amd64
+    build:
+      context: ../..
+      dockerfile: tests/e2e/Dockerfile.e2e
+      args:
+        BASE_IMAGE: archlinux:latest
+    depends_on:
+      - mock-provider
+    volumes:
+      - ./test_suite.sh:/test_suite.sh:ro
+    environment:
+      - PROVIDER_URL=http://mock-provider
+    command: /test_suite.sh
