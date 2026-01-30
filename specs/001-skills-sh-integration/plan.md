@@ -9,7 +9,7 @@ Implement `agentsync skill install <skill-id>` and related commands to fetch and
 
 ## Technical Context
 
-**Language/Version**: Rust 1.85 (Edition 2024)
+**Language/Version**: Rust 1.89 (Edition 2024)
 **Primary Dependencies**: 
 - Existing: `clap`, `serde`, `serde_json`, `anyhow`, `thiserror`
 - New: `reqwest` (HTTP client), `tokio` (Async runtime)
@@ -31,7 +31,7 @@ Implement `agentsync skill install <skill-id>` and related commands to fetch and
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-- **Code Quality (v1.0.1)**: Rust 1.85 ensures strong typing. `rustfmt` and `clippy` will be used for linting/formatting. CI is already configured (assumed).
+- **Code Quality (v1.0.1)**: Rust 1.89 ensures strong typing. `rustfmt` and `clippy` will be used for linting/formatting. CI is already configured (assumed).
 - **Testing Discipline**: 
   - Unit tests for manifest parsing and registry logic.
   - Integration tests for CLI commands using `assert_cmd` or similar (mocking HTTP).
@@ -49,7 +49,7 @@ Implement `agentsync skill install <skill-id>` and related commands to fetch and
 - **Security & Compatibility**: 
   - Validates all downloaded manifests.
   - No executable assets installed without warnings (NEEDS CLARIFICATION on asset types).
-  - Rust 1.85 compatibility.
+  - Rust 1.89 compatibility.
 
 ## Project Structure
 

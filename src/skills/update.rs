@@ -63,25 +63,22 @@ pub async fn update_skill_async(
     }
     let mut current_version: Option<String> = None;
     // Try registry first
-    if registry_path.exists() {
-        if let Ok(reg) = crate::skills::registry::read_registry(&registry_path) {
-            if let Some(skills) = reg.skills {
-                if let Some(entry) = skills.get(skill_id) {
-                    current_version = entry.version.clone();
-                }
-            }
-        }
+    if registry_path.exists()
+        && let Ok(reg) = crate::skills::registry::read_registry(&registry_path)
+        && let Some(skills) = reg.skills
+        && let Some(entry) = skills.get(skill_id)
+    {
+        current_version = entry.version.clone();
     }
     // Fallback: If not in registry, try SKILL.md in existing skill_dir
     if current_version.is_none() && skill_dir.exists() {
         let manifest_path = skill_dir.join("SKILL.md");
-        if manifest_path.exists() {
-            if let Ok(existing_manifest) =
+        if manifest_path.exists()
+            && let Ok(existing_manifest) =
                 crate::skills::manifest::parse_skill_manifest(&manifest_path)
-            {
-                // existing_manifest.version is Option<String>; propagate directly
-                current_version = existing_manifest.version.clone();
-            }
+        {
+            // existing_manifest.version is Option<String>; propagate directly
+            current_version = existing_manifest.version.clone();
         }
     }
     // Parse update candidate version from local_dir/SKILL.md
@@ -144,14 +141,12 @@ pub async fn update_skill_async(
     // Save previous registry entry for this skill if exists
     let mut old_registry_entry: Option<crate::skills::registry::SkillEntry> = None;
     let registry_path = target_root.join("registry.json");
-    if registry_path.exists() {
-        if let Ok(reg) = crate::skills::registry::read_registry(&registry_path) {
-            if let Some(skills) = reg.skills {
-                if let Some(entry) = skills.get(skill_id) {
-                    old_registry_entry = Some(entry.clone());
-                }
-            }
-        }
+    if registry_path.exists()
+        && let Ok(reg) = crate::skills::registry::read_registry(&registry_path)
+        && let Some(skills) = reg.skills
+        && let Some(entry) = skills.get(skill_id)
+    {
+        old_registry_entry = Some(entry.clone());
     }
     // Build a new skill entry for registry update
     let new_entry = crate::skills::registry::SkillEntry {

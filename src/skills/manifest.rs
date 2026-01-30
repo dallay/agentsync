@@ -49,10 +49,10 @@ pub fn parse_skill_manifest(path: &Path) -> Result<SkillManifest, SkillInstallEr
     }
 
     // Validate version if present
-    if let Some(ver) = &manifest.version {
-        if semver::Version::parse(ver).is_err() {
-            return Err(SkillInstallError::Validation("invalid semver".into()));
-        }
+    if let Some(ver) = &manifest.version
+        && semver::Version::parse(ver).is_err()
+    {
+        return Err(SkillInstallError::Validation("invalid semver".into()));
     }
 
     Ok(manifest)

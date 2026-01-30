@@ -829,17 +829,17 @@ impl McpGenerator {
         };
 
         // Create parent directories if needed
-        if let Some(parent) = config_path.parent() {
-            if !parent.exists() {
-                if dry_run {
-                    println!(
-                        "  {} Would create directory: {}",
-                        "→".cyan(),
-                        parent.display()
-                    );
-                } else {
-                    fs::create_dir_all(parent)?;
-                }
+        if let Some(parent) = config_path.parent()
+            && !parent.exists()
+        {
+            if dry_run {
+                println!(
+                    "  {} Would create directory: {}",
+                    "→".cyan(),
+                    parent.display()
+                );
+            } else {
+                fs::create_dir_all(parent)?;
             }
         }
 
