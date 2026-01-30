@@ -1,4 +1,3 @@
-// use agentsync::skills::install::SkillInstallError; (unused)
 use agentsync::skills::registry;
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
@@ -120,8 +119,8 @@ pub fn run_update(args: SkillUpdateArgs, project_root: PathBuf) -> Result<()> {
                     "code": code,
                     "remediation": remediation
                 });
-                println!("{}", serde_json::to_string(&output).unwrap());
-                std::process::exit(1);
+                println!("{}", serde_json::to_string(&output)?);
+                Err(e.into())
             } else {
                 error!(%code, %err_string, "Update failed");
                 println!("Hint: {}", remediation);
@@ -152,8 +151,6 @@ pub fn run_install(args: SkillInstallArgs, project_root: PathBuf) -> Result<()> 
     // Validate skill_id to prevent path traversal or invalid path segments
     validate_skill_id(skill_id)?;
     let source = args.source.clone().unwrap_or_else(|| skill_id.clone());
-    let _is_zip = source.ends_with(".zip");
-    let _is_targz = source.ends_with(".tar.gz") || source.ends_with(".tgz");
     // Unified logic: install from archive, URL, or local directory
     tracing::debug!(
         skill_id = %skill_id,
@@ -214,17 +211,9 @@ pub fn run_install(args: SkillInstallArgs, project_root: PathBuf) -> Result<()> 
             let e: anyhow::Error = e.into();
             // Try to downcast to SkillInstallError to extract code/remediation
             let (err_string, code, remediation);
-            if let Some(_skill_err) =
-                e.downcast_ref::<agentsync::skills::install::SkillInstallError>()
-            {
-                err_string = e.to_string();
-                code = "install_error";
-                remediation = remediation_for_error(&err_string);
-            } else {
-                err_string = e.to_string();
-                code = "unknown";
-                remediation = remediation_for_error(&err_string);
-            }
+            err_string = e.to_string();
+            code = "install_error";
+            remediation = remediation_for_error(&err_string);
 
             if args.json {
                 let output = serde_json::json!({
@@ -232,8 +221,8 @@ pub fn run_install(args: SkillInstallArgs, project_root: PathBuf) -> Result<()> 
                     "code": code,
                     "remediation": remediation
                 });
-                println!("{}", serde_json::to_string(&output).unwrap());
-                std::process::exit(1);
+                println!("{}", serde_json::to_string(&output)?);
+                Err(e)
             } else {
                 error!(%code, %err_string, "Install failed");
                 println!("Hint: {}", remediation);
@@ -287,10 +276,10 @@ fn validate_skill_id(skill_id: &str) -> Result<()> {
             Component::Normal(_) => count_normal += 1,
             // Any other component is invalid (RootDir, Prefix, CurDir, ParentDir)
             other => {
-                return Err(anyhow::anyhow!(format!(
+                return Err(anyhow::anyhow!(
                     "invalid skill id: contains invalid path component: {:?}",
                     other
-                )));
+                ));
             }
         }
     }
@@ -332,6 +321,10 @@ mod tests {
 
         // absolute path (unix)
         assert!(validate_skill_id("/abs/path").is_err());
+
+        // absolute path (windows)
+        assert!(validate_skill_id("C:\\path").is_err());
+        assert!(validate_skill_id("C:/path").is_err());
     }
 
     #[test]

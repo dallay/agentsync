@@ -1,6 +1,6 @@
 SHELL := /usr/bin/env bash
 
-# Herramientas
+# Tools
 PNPM := pnpm
 CARGO := cargo
 RUSTFMT := rustfmt
@@ -31,6 +31,7 @@ help:
 	@echo "  make fmt             -> rustfmt + biome (if installed)"
 	@echo "  make docs-dev        -> start docs in dev mode"
 	@echo "  make docs-build      -> build docs"
+	@echo "  make docs-preview    -> preview docs"
 	@echo "  make agents-sync     -> pnpm run agents:sync"
 	@echo "  make agents-sync-clean -> pnpm run agents:sync:clean"
 	@echo "  make clean           -> cleans common artifacts"
@@ -48,8 +49,8 @@ verify-all: fmt
 	@set -e; \
 	# 1. JS: Build + Test
 	echo "→ Verifying JS workspace (build + test)..."; \
-	$(JS_WORKSPACE) run build; \
-	$(JS_WORKSPACE) run test; \
+	$(MAKE) js-build; \
+	$(MAKE) js-test; \
 	\
 	# 2. Docs: Build verification
 	echo "→ Verifying Docs build..."; \
@@ -61,7 +62,7 @@ verify-all: fmt
 	echo "→ Running cargo test..."; \
 	$(CARGO) test; \
 	\
-	# 4. E2E (Opcional)
+	# 4. E2E (Optional)
 	if [ "${RUN_E2E}" = "1" ]; then \
 		echo "→ Running E2E tests (docker)..."; \
 		$(MAKE) e2e-test; \
@@ -69,7 +70,7 @@ verify-all: fmt
 	echo "\nAll verification checks passed. ✅"
 
 install: js-install rust-build
-	@echo "Instalación completa."
+	@echo "Installation complete."
 
 # JavaScript / pnpm targets
 js-install:
@@ -104,17 +105,28 @@ rust-run:
 # E2E Tests
 e2e-test:
 	@echo "Running E2E tests with Docker Compose..."
-	docker compose -f tests/e2e/docker-compose.yml up --build --exit-code-from test-runner-ubuntu
+	@status=0; \
+	docker compose -f tests/e2e/docker-compose.yml up --build --exit-code-from test-runner-ubuntu || status=$$?; \
+	docker compose -f tests/e2e/docker-compose.yml down --volumes --remove-orphans; \
+	exit $$status
 
 # Formatting
 fmt:
 	@echo "Formatting Rust + JS..."
-	@command -v rustfmt >/dev/null 2>&1 && $(CARGO) fmt || echo "rustfmt not found; skipping"
-	@$(PNPM) exec biome format --write . 2>/dev/null || echo "biome not available; skipping"
+	@if command -v rustfmt >/dev/null 2>&1; then \
+		$(CARGO) fmt; \
+	else \
+		echo "rustfmt not found; skipping"; \
+	fi
+	@if command -v biome >/dev/null 2>&1; then \
+		$(PNPM) exec biome format --write .; \
+	else \
+		echo "biome not available; skipping"; \
+	fi
 
 # Docs
 docs-dev:
-	@echo "Iniciando docs (dev)..."
+	@echo "Starting docs (dev)..."
 	$(PNPM) run docs:dev
 
 docs-build:
@@ -125,7 +137,7 @@ docs-preview:
 	@echo "Preview docs..."
 	$(PNPM) run docs:preview
 
-# Agentsync shortcuts (desde package.json)
+# Agentsync shortcuts (from package.json)
 agents-sync:
 	@echo "Running agents:sync..."
 	$(PNPM) run agents:sync
@@ -135,8 +147,8 @@ agents-sync-clean:
 	$(PNPM) run agents:sync:clean
 
 clean:
-	@echo "Limpiando artefactos..."
+	@echo "Cleaning artifacts..."
 	-$(CARGO) clean
 	-$(PNPM) run -w --silent clean 2>/dev/null || true
 	@rm -rf target
-	@echo "Listo."
+	@echo "Done."
