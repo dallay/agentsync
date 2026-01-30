@@ -53,6 +53,8 @@ pub enum McpAgent {
     GeminiCli,
     /// VS Code (.vscode/mcp.json)
     VsCode,
+    /// Cursor (.cursor/mcp.json)
+    Cursor,
     /// OpenCode (opencode.json)
     OpenCode,
 }
@@ -65,6 +67,7 @@ impl McpAgent {
             McpAgent::GithubCopilot,
             McpAgent::GeminiCli,
             McpAgent::VsCode,
+            McpAgent::Cursor,
             McpAgent::OpenCode,
         ]
     }
@@ -76,6 +79,7 @@ impl McpAgent {
             McpAgent::GithubCopilot => "copilot",
             McpAgent::GeminiCli => "gemini",
             McpAgent::VsCode => "vscode",
+            McpAgent::Cursor => "cursor",
             McpAgent::OpenCode => "opencode",
         }
     }
@@ -87,6 +91,7 @@ impl McpAgent {
             McpAgent::GithubCopilot => "GitHub Copilot",
             McpAgent::GeminiCli => "Gemini CLI",
             McpAgent::VsCode => "VS Code",
+            McpAgent::Cursor => "Cursor",
             McpAgent::OpenCode => "OpenCode",
         }
     }
@@ -98,6 +103,7 @@ impl McpAgent {
             McpAgent::GithubCopilot => ".copilot/mcp-config.json",
             McpAgent::GeminiCli => ".gemini/settings.json",
             McpAgent::VsCode => ".vscode/mcp.json",
+            McpAgent::Cursor => ".cursor/mcp.json",
             McpAgent::OpenCode => "opencode.json",
         }
     }
@@ -109,6 +115,7 @@ impl McpAgent {
             McpAgent::GithubCopilot => Box::new(GithubCopilotFormatter),
             McpAgent::GeminiCli => Box::new(GeminiCliFormatter),
             McpAgent::VsCode => Box::new(VsCodeFormatter),
+            McpAgent::Cursor => Box::new(CursorFormatter),
             McpAgent::OpenCode => Box::new(OpenCodeFormatter),
         }
     }
@@ -120,6 +127,7 @@ impl McpAgent {
             "copilot" | "github-copilot" | "github_copilot" => Some(McpAgent::GithubCopilot),
             "gemini" | "gemini-cli" | "gemini_cli" => Some(McpAgent::GeminiCli),
             "vscode" | "vs-code" | "vs_code" => Some(McpAgent::VsCode),
+            "cursor" => Some(McpAgent::Cursor),
             "opencode" | "open-code" | "open_code" => Some(McpAgent::OpenCode),
             _ => None,
         }
@@ -530,6 +538,66 @@ impl McpFormatter for VsCodeFormatter {
 }
 
 // =============================================================================
+// Cursor Formatter
+// =============================================================================
+
+/// Formatter for Cursor (.cursor/mcp.json)
+/// Format: { "mcpServers": { ... } }
+#[derive(Debug)]
+pub struct CursorFormatter;
+
+impl McpFormatter for CursorFormatter {
+    fn format(&self, servers: &HashMap<String, &McpServerConfig>) -> Value {
+        format_standard_mcp(servers)
+    }
+
+    fn parse_existing(&self, content: &str) -> Result<HashMap<String, Value>> {
+        parse_standard_mcp(
+            content,
+            "Failed to parse existing Cursor MCP config as JSON",
+        )
+    }
+
+    fn merge(
+        &self,
+        existing_content: &str,
+        new_servers: &HashMap<String, &McpServerConfig>,
+    ) -> Result<String> {
+        merge_standard_mcp(
+            existing_content,
+            new_servers,
+            "Failed to parse existing Cursor MCP config as JSON",
+        )
+    }
+
+    fn cleanup_removed_servers(
+        &self,
+        existing_content: &str,
+        new_servers: &HashMap<String, McpServerConfig>,
+    ) -> Result<String> {
+        // Same logic as Claude Code - use standard MCP format
+        let existing = parse_standard_mcp(
+            existing_content,
+            "Failed to parse existing Cursor MCP config as JSON",
+        )?;
+
+        let filtered_existing: HashMap<String, Value> = existing
+            .into_iter()
+            .filter(|(name, _)| new_servers.contains_key(name))
+            .collect();
+
+        let refs: HashMap<String, &McpServerConfig> =
+            new_servers.iter().map(|(k, v)| (k.clone(), v)).collect();
+
+        merge_standard_mcp_filtered(
+            &filtered_existing,
+            &refs,
+            "Failed to parse existing Cursor MCP config as JSON",
+        )
+    }
+}
+
+// =============================================================================
 // OpenCode Formatter
 // =============================================================================
 
@@ -829,17 +897,17 @@ impl McpGenerator {
         };
 
         // Create parent directories if needed
-        if let Some(parent) = config_path.parent() {
-            if !parent.exists() {
-                if dry_run {
-                    println!(
-                        "  {} Would create directory: {}",
-                        "→".cyan(),
-                        parent.display()
-                    );
-                } else {
-                    fs::create_dir_all(parent)?;
-                }
+        if let Some(parent) = config_path.parent()
+            && !parent.exists()
+        {
+            if dry_run {
+                println!(
+                    "  {} Would create directory: {}",
+                    "→".cyan(),
+                    parent.display()
+                );
+            } else {
+                fs::create_dir_all(parent)?;
             }
         }
 
@@ -903,12 +971,7 @@ impl McpGenerator {
                     total_result.skipped += result.skipped;
                 }
                 Err(e) => {
-                    eprintln!(
-                        "  {} Error generating {} config: {}",
-                        "✘".red(),
-                        agent.name(),
-                        e
-                    );
+                    tracing::error!(agent = %agent.name(), error = %e, "Error generating agent config");
                     total_result.errors += 1;
                 }
             }
@@ -951,11 +1014,12 @@ mod tests {
     #[test]
     fn test_agent_all_returns_all_agents() {
         let agents = McpAgent::all();
-        assert_eq!(agents.len(), 5);
+        assert_eq!(agents.len(), 6);
         assert!(agents.contains(&McpAgent::ClaudeCode));
         assert!(agents.contains(&McpAgent::GithubCopilot));
         assert!(agents.contains(&McpAgent::GeminiCli));
         assert!(agents.contains(&McpAgent::VsCode));
+        assert!(agents.contains(&McpAgent::Cursor));
         assert!(agents.contains(&McpAgent::OpenCode));
     }
 
@@ -972,6 +1036,7 @@ mod tests {
         assert_eq!(McpAgent::from_id("gemini"), Some(McpAgent::GeminiCli));
         assert_eq!(McpAgent::from_id("vscode"), Some(McpAgent::VsCode));
         assert_eq!(McpAgent::from_id("vs-code"), Some(McpAgent::VsCode));
+        assert_eq!(McpAgent::from_id("cursor"), Some(McpAgent::Cursor));
         assert_eq!(McpAgent::from_id("opencode"), Some(McpAgent::OpenCode));
         assert_eq!(McpAgent::from_id("open-code"), Some(McpAgent::OpenCode));
         assert_eq!(McpAgent::from_id("unknown"), None);
@@ -986,6 +1051,7 @@ mod tests {
         );
         assert_eq!(McpAgent::GeminiCli.config_path(), ".gemini/settings.json");
         assert_eq!(McpAgent::VsCode.config_path(), ".vscode/mcp.json");
+        assert_eq!(McpAgent::Cursor.config_path(), ".cursor/mcp.json");
         assert_eq!(McpAgent::OpenCode.config_path(), "opencode.json");
     }
 

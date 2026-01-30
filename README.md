@@ -58,7 +58,7 @@ tar xzf agentsync-aarch64-unknown-linux-gnu.tar.gz
 sudo mv agentsync-*/agentsync /usr/local/bin/
 ```
 
-### From Source (requires Rust 1.85+)
+### From Source (requires Rust 1.89+)
 
 ```bash
 cargo install --git https://github.com/dallay/agentsync
@@ -211,6 +211,7 @@ args = ["-y", "@modelcontextprotocol/server-git", "--repository", "."]
 - **GitHub Copilot**: `.copilot/mcp-config.json`
 - **Gemini CLI**: `.gemini/settings.json` (automatically adds `trust: true`)
 - **VS Code**: `.vscode/mcp.json`
+- **Cursor**: `.cursor/mcp.json`
 - **OpenCode**: `opencode.json`
 
 #### Merge Behavior
@@ -299,7 +300,7 @@ This project is a monorepo containing a Rust core and a JavaScript/TypeScript wr
 
 ### Prerequisites
 
-- [**Rust**](https://www.rust-lang.org/tools/install) (1.85+ recommended)
+- [**Rust**](https://www.rust-lang.org/tools/install) (1.89+ recommended)
 - [**Node.js**](https://nodejs.org/) (v24+)
 - [**pnpm**](https://pnpm.io/installation)
 
