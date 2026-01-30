@@ -44,7 +44,17 @@ Prompts and examples...
 
 ### Validation rules
 
-- `name` must match the pattern used in the codebase: lowercase letters and numbers with single dashes between segments (example: `weather-skill`). The implementation enforces this regex; see the manifest parser in the source: https://github.com/dallay/agentsync/blob/main/src/skills/manifest.rs
+- `name` must match the following regular expression (enforced by the manifest parser):
+
+  ```text
+  ^[a-z0-9]+(-[a-z0-9]+)*$
+  ```
+
+  This means:
+  - One or more lowercase letters or digits, optionally followed by groups of a single dash and one or more lowercase letters or digits.
+  - Examples: `weather-skill`, `my2-skill`, `a`.
+  - Disallowed: uppercase letters, spaces, leading/trailing dashes, consecutive dashes (e.g., `bad--name`).
+
 - `version` is optional, but if present must be valid semver.
 
 If parsing fails, the CLI will return a validation error indicating the problem.
