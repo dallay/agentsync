@@ -22,8 +22,9 @@ jobs:
 
             const mappings = {
               'backend': ['backend', 'rust', 'cli'],
-              'ci': ['ci', 'workflow', 'github action'],
-              'chore': ['chore', 'maintenance', 'dependencies']
+              'ci': ['ci', 'workflow', 'github action', 'github actions'],
+              'chore': ['chore', 'maintenance'],
+              'dependencies': ['dependencies']
             };
 
             for (const [label, keywords] of Object.entries(mappings)) {
