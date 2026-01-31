@@ -12,7 +12,9 @@ Add the `[mcp]` section to your `agentsync.toml`:
 ```toml
 [mcp]
 enabled = true
+
 # Strategy for existing files: "merge" (default) or "overwrite"
+
 merge_strategy = "merge"
 ```
 
@@ -38,9 +40,12 @@ env = { "DEBUG" = "true" }
 
 ### Server Fields
 
-- **`command`**: The executable to run.
+- **`command`**: The executable to run (for stdio transport).
 - **`args`**: List of arguments for the command.
 - **`env`**: (Optional) Key-value pairs for environment variables.
+- **`url`**: (Optional) The URL for the MCP server (for HTTP/SSE transport).
+- **`headers`**: (Optional) Key-value pairs for HTTP headers.
+- **`type`**: (Optional) The transport type (e.g., `stdio`, `http`, `sse`).
 - **`disabled`**: (Optional) Set to `true` to temporarily disable a server without removing it.
 
 ## Supported Agents

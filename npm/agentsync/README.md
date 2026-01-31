@@ -4,7 +4,7 @@
 [![license](https://img.shields.io/npm/l/@dallay/agentsync.svg)](https://github.com/dallay/agentsync/blob/main/LICENSE)  
 [![repository](https://img.shields.io/badge/repo-dallay%2Fagentsync-blue)](https://github.com/dallay/agentsync)  
 
-**Version:** 1.14.2  
+**Version:** 1.19.0
 **License:** MIT  
 
 Effortlessly synchronize AI agent configurations across tools like Copilot, Claude, Cursor, and other MCP-compatible servers using symbolic links and an intuitive CLI.
@@ -28,26 +28,31 @@ Effortlessly synchronize AI agent configurations across tools like Copilot, Clau
 Make sure you have Node.js (>=18) installed.
 
 ### Using `pnpm` (recommended):
+
 ```bash
 pnpm install -g @dallay/agentsync
 ```
 
 ### Using `npm`:
+
 ```bash
 npm install -g @dallay/agentsync
 ```
 
 ### Using `yarn`:
+
 ```bash
 yarn global add @dallay/agentsync
 ```
 
 ### Using `bun`:
+
 ```bash
 bun add -g @dallay/agentsync
 ```
 
 Verify installation:
+
 ```bash
 agentsync --help
 ```
@@ -59,13 +64,17 @@ agentsync --help
 ### Managing Configurations
 
 #### Sync Configurations:
+
 Run the following to create symbolic links across your AI coding assistants:
+
 ```bash
 agentsync apply
 ```
 
 #### Clean Configurations:
+
 Remove previously created symbolic links:
+
 ```bash
 agentsync clean
 ```
@@ -73,6 +82,7 @@ agentsync clean
 🎯 **Example Workflows**:
 
 - **Programmatic Usage in Node.js**:
+
    ```javascript
    const { main } = require('@dallay/agentsync');
 
@@ -85,6 +95,7 @@ agentsync clean
 - **Integrate with npm scripts**:
    Add configuration syncing to your npm scripts to automate process workflows.
    For example, in your `package.json`:
+
    ```json
    {
      "scripts": {
@@ -105,31 +116,66 @@ agentsync clean
 
 ## 👷 Development
 
+This package is part of the [AgentSync mono-repo](https://github.com/dallay/agentsync). It serves as a Node.js wrapper for the high-performance Rust core.
+
 ### Prerequisites
+
 - [pnpm](https://pnpm.io/): Dependency manager.
-- [Node.js](https://nodejs.org/) >= 18.
+- [Node.js](https://nodejs.org/) >= 24.13.0 (for development).
+- [Rust](https://www.rust-lang.org/): For building the core CLI.
 
 ### Steps
+
 1. Clone the repository:
+
    ```bash
    git clone https://github.com/dallay/agentsync.git
    cd agentsync
    ```
 
 2. Install dependencies:
+
    ```bash
    pnpm install
    ```
 
 3. Build:
+
    ```bash
+   make js-build
+   # or
    pnpm run build
    ```
 
-4. Run type checks:
+4. Run tests and type checks:
+
    ```bash
+   make js-test
+   # or
    pnpm run typecheck
    ```
+
+5. Format:
+
+   ```bash
+   make fmt
+   ```
+
+---
+
+## 🛠️ Troubleshooting
+
+### `PNPM_NO_MATURE_MATCHING_VERSION`
+
+If `pnpm install` fails with this error, it's likely due to a strict package release age policy. You can try installing with `--ignore-scripts` or wait for the package to "mature" in the registry.
+
+### Lefthook installation failure
+
+If `pnpm install` fails during the `lefthook` setup, you can try:
+
+```bash
+pnpm install --ignore-scripts
+```
 
 ---
 

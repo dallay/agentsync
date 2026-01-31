@@ -8,11 +8,16 @@ description: Detailed documentation for all agentsync commands.
 ## Commands
 
 ### `init`
+
 Initializes a new AgentSync configuration in the current directory.
 
 ```bash
-agentsync init
+agentsync init [FLAGS]
 ```
+
+**Flags**:
+- `-p, --path <PATH>`: Project root directory (defaults to current dir).
+- `-f, --force`: Overwrite existing configuration without prompting.
 
 **Actions**:
 - Creates the `.agents/` directory if it doesn't exist.
@@ -22,6 +27,7 @@ agentsync init
 ---
 
 ### `apply`
+
 Applies the configuration defined in `agentsync.toml` by creating symbolic links and updating `.gitignore`.
 
 ```bash
@@ -29,13 +35,84 @@ agentsync apply [FLAGS]
 ```
 
 **Flags**:
-- `-c, --clean`: Deletes existing symbolic links before applying. Useful for fixing broken links or cleaning up old configurations.
-- `-d, --dry-run`: Shows what actions would be taken without actually making any changes to the filesystem.
-- `--config <PATH>`: Use a custom configuration file path instead of the default `.agents/agentsync.toml`.
+- `-p, --path <PATH>`: Path to the project root.
+- `-c, --config <PATH>`: Use a custom configuration file path instead of the default `.agents/agentsync.toml`.
+- `--clean`: Deletes existing symbolic links before applying. Useful for fixing broken links or cleaning up old configurations.
+- `--dry-run`: Shows what actions would be taken without actually making any changes to the filesystem.
+- `-v, --verbose`: Enable verbose logging.
+- `-a, --agents <AGENTS>`: Filter by agent (comma-separated list, e.g., `claude,copilot`).
+- `--no-gitignore`: Disable automatic `.gitignore` updates.
+
+---
+
+### `clean`
+
+Removes all symbolic links managed by AgentSync.
+
+```bash
+agentsync clean [FLAGS]
+```
+
+**Flags**:
+- `-p, --path <PATH>`: Path to the project root.
+- `-c, --config <PATH>`: Path to a custom configuration file.
+- `--dry-run`: Shows what would be removed without actually deleting anything.
+- `-v, --verbose`: Enable verbose logging.
+
+---
+
+### `skill`
+
+Manage installable AI agent skills.
+
+```bash
+agentsync skill [FLAGS] <COMMAND>
+```
+
+**Global Flags**:
+- `--project-root <PATH>`: Root of the project (defaults to current directory).
+
+#### `install`
+
+Install a skill from a provider, local archive, or directory.
+
+```bash
+agentsync skill install [FLAGS] <SKILL_ID>
+```
+
+- `--source <SOURCE>`: Optional. Source directory, archive URL, or provider-specific identifier.
+- `--json`: Output machine-readable JSON.
+
+#### `update`
+
+Update an existing skill.
+
+```bash
+agentsync skill update [FLAGS] <SKILL_ID>
+```
+
+- `--source <SOURCE>`: Optional. New source for the update.
+- `--json`: Output machine-readable JSON.
+
+#### `list`
+
+List all installed skills.
+
+:::note
+The `list` command is currently under development and not yet implemented.
+:::
+
+```bash
+agentsync skill list
+
+# Error: list command not implemented
+
+```
 
 ---
 
 ### `--version`
+
 Shows the current version of the AgentSync CLI.
 
 ```bash
@@ -45,6 +122,7 @@ agentsync --version
 ---
 
 ### `--help`
+
 Shows help information for the CLI or a specific command.
 
 ```bash
@@ -60,6 +138,7 @@ agentsync apply --help
 ---
 
 ### `status`
+
 Verify the status of symlinks managed by AgentSync and report drift.
 
 ```bash
