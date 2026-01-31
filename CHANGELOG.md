@@ -1,3 +1,19 @@
+## [1.20.0](https://github.com/dallay/agentsync/compare/v1.19.0...v1.20.0) (2026-01-31)
+
+### ✨ Features
+
+* add GitHub Actions for label management and synchronization ([77e0e08](https://github.com/dallay/agentsync/commit/77e0e08e8708542f9b925266be635c113c84870b))
+* enhance issue labeler with word-boundary regex matching ([1341a0d](https://github.com/dallay/agentsync/commit/1341a0df9a7939aeb5a2d3a90cfa970feb829907))
+* refine GitHub label management and labeling rules ([90d07e6](https://github.com/dallay/agentsync/commit/90d07e6384451d50bdf66b80c77d0579fa5c4609))
+
+### 📝 Documentation
+
+* add comprehensive installation instructions to README ([3459052](https://github.com/dallay/agentsync/commit/34590521ceb82a5a2548c675f60382d85d39adae))
+* add comprehensive installation instructions with MD022/MD031 fixes ([f7d7f19](https://github.com/dallay/agentsync/commit/f7d7f19cf7d4cf15fb06397a8b049c39eab70a88))
+* audit and update documentation for CLI accuracy and mono-repo structure ([#104](https://github.com/dallay/agentsync/issues/104)) ([cd04aec](https://github.com/dallay/agentsync/commit/cd04aec45bbeec8fe13780913518ac419dbc824a))
+* refine Bun and Yarn installation instructions in README ([0baabb1](https://github.com/dallay/agentsync/commit/0baabb18fc5835066755e7f7b3c14184664d9ca1))
+* separate global install from one-off execution in README ([8fcb5ce](https://github.com/dallay/agentsync/commit/8fcb5ce2a989b0504a64d49166151bd6222b70de))
+
 ## [1.19.0](https://github.com/dallay/agentsync/compare/v1.18.0...v1.19.0) (2026-01-30)
 
 ### ✨ Features
