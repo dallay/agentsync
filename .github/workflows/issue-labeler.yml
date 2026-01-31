@@ -15,9 +15,13 @@ jobs:
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
         with:
           script: |
+            const escapeRegex = (string) => {
+              return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            };
+
             const issue = context.payload.issue;
-            const title = issue.title.toLowerCase();
-            const body = (issue.body || "").toLowerCase();
+            const title = issue.title;
+            const body = issue.body || "";
             const labelsToAdd = [];
 
             const mappings = {
@@ -28,7 +32,10 @@ jobs:
             };
 
             for (const [label, keywords] of Object.entries(mappings)) {
-              if (keywords.some(keyword => title.includes(keyword) || body.includes(keyword))) {
+              if (keywords.some(keyword => {
+                const regex = new RegExp(`\\b${escapeRegex(keyword)}\\b`, 'i');
+                return regex.test(title) || regex.test(body);
+              })) {
                 labelsToAdd.push(label);
               }
             }
