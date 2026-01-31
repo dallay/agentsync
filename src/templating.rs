@@ -107,7 +107,7 @@ mod tests {
 
         // Initialize a git repo
         Command::new("git")
-            .arg("init")
+            .args(["init", "-b", "main"])
             .current_dir(temp_dir.path())
             .output()
             .unwrap();
@@ -138,6 +138,6 @@ mod tests {
 
         let branch = get_git_branch(temp_dir.path()).unwrap();
         // The default branch name can be master or main
-        assert!(branch == "master" || branch == "main");
+        assert_eq!(branch, "main");
     }
 }
