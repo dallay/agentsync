@@ -140,11 +140,9 @@ impl Linker {
         let mut source = self.source_dir.join(&target.source);
         let dest = self.project_root.join(&target.destination);
 
-        // Apply templating for direct symlinks if source is a file
-        if target.sync_type == SyncType::Symlink && source.is_file() {
-            if let Some(cached_path) = self.apply_templating(&source, options)? {
-                source = cached_path;
-            }
+        // Apply templating if possible
+        if let Some(cached_path) = self.apply_templating(&source, options)? {
+            source = cached_path;
         }
 
         match target.sync_type {
@@ -351,11 +349,9 @@ impl Linker {
 
             let mut source_path = entry.path().to_path_buf();
 
-            // Apply templating if source is a file
-            if source_path.is_file() {
-                if let Some(cached_path) = self.apply_templating(&source_path, options)? {
-                    source_path = cached_path;
-                }
+            // Apply templating if possible
+            if let Some(cached_path) = self.apply_templating(&source_path, options)? {
+                source_path = cached_path;
             }
 
             let dest_path = dest_dir.join(entry.file_name());
@@ -423,7 +419,11 @@ impl Linker {
             } else {
                 fs::remove_dir_all(&self.cache_dir)?;
                 if options.verbose {
-                    println!("  {} Removed cache: {}", "✔".green(), self.cache_dir.display());
+                    println!(
+                        "  {} Removed cache: {}",
+                        "✔".green(),
+                        self.cache_dir.display()
+                    );
                 }
             }
         }
@@ -490,9 +490,16 @@ impl Linker {
         }
 
         // Determine cache path - maintain relative structure within .agents
-        let relative_source = source
-            .strip_prefix(&self.source_dir)
-            .unwrap_or(source);
+        let relative_source = match source.strip_prefix(&self.source_dir) {
+            Ok(p) => p.to_path_buf(),
+            Err(_) => source.file_name().map(PathBuf::from).unwrap_or_else(|| {
+                use std::collections::hash_map::DefaultHasher;
+                use std::hash::{Hash, Hasher};
+                let mut hasher = DefaultHasher::new();
+                source.as_os_str().hash(&mut hasher);
+                PathBuf::from(format!("{:x}", hasher.finish()))
+            }),
+        };
         let cache_path = self.cache_dir.join(relative_source);
 
         if options.dry_run {
@@ -504,6 +511,7 @@ impl Linker {
                     cache_path.display()
                 );
             }
+            return Ok(None);
         } else {
             // Create cache parent directory
             if let Some(parent) = cache_path.parent() {

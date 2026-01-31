@@ -304,7 +304,7 @@ When you run `agentsync apply`, placeholders are replaced with project-specific 
 #### Supported Variables
 
 | Variable | Description | Source |
-|----------|-------------|--------|
+| :--- | :--- | :--- |
 | `project_name` | The name of the project | `name` field in `package.json` |
 | `git_branch` | The current active git branch | `git rev-parse --abbrev-ref HEAD` |
 | *custom* | Any custom variable you define | `[vars]` section in `agentsync.toml` |

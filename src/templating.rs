@@ -1,9 +1,12 @@
 use anyhow::Result;
+use regex::Regex;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
-use regex::Regex;
+use std::sync::LazyLock;
+
+static TEMPLATE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\{\{([^}]+)\}\}").unwrap());
 
 /// Resolves all variables for substitution
 pub fn resolve_variables(
@@ -32,12 +35,14 @@ pub fn resolve_variables(
 
 /// Substitutes placeholders in the content with variable values
 pub fn substitute(content: &str, vars: &HashMap<String, String>) -> String {
-    let re = Regex::new(r"\{\{([^}]+)\}\}").unwrap();
-
-    re.replace_all(content, |caps: &regex::Captures| {
-        let key = caps.get(1).unwrap().as_str().trim();
-        vars.get(key).cloned().unwrap_or_else(|| caps.get(0).unwrap().as_str().to_string())
-    }).to_string()
+    TEMPLATE_RE
+        .replace_all(content, |caps: &regex::Captures| {
+            let key = caps.get(1).unwrap().as_str().trim();
+            vars.get(key)
+                .cloned()
+                .unwrap_or_else(|| caps.get(0).unwrap().as_str().to_string())
+        })
+        .to_string()
 }
 
 fn get_project_name(project_root: &Path) -> Result<String> {
@@ -80,7 +85,10 @@ mod tests {
         let content = "Project: {{project_name}}, Branch: {{git_branch}}, Unknown: {{unknown}}";
         let result = substitute(content, &vars);
 
-        assert_eq!(result, "Project: my-project, Branch: main, Unknown: {{unknown}}");
+        assert_eq!(
+            result,
+            "Project: my-project, Branch: main, Unknown: {{unknown}}"
+        );
     }
 
     #[test]
@@ -98,14 +106,35 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
 
         // Initialize a git repo
-        Command::new("git").arg("init").current_dir(temp_dir.path()).output().unwrap();
-        Command::new("git").args(["config", "user.email", "you@example.com"]).current_dir(temp_dir.path()).output().unwrap();
-        Command::new("git").args(["config", "user.name", "Your Name"]).current_dir(temp_dir.path()).output().unwrap();
+        Command::new("git")
+            .arg("init")
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "you@example.com"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Your Name"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
 
         // Need a commit to have a branch in some git versions, but usually rev-parse works
         fs::write(temp_dir.path().join("README"), "test").unwrap();
-        Command::new("git").arg("add").arg(".").current_dir(temp_dir.path()).output().unwrap();
-        Command::new("git").args(["commit", "-m", "initial"]).current_dir(temp_dir.path()).output().unwrap();
+        Command::new("git")
+            .arg("add")
+            .arg(".")
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
 
         let branch = get_git_branch(temp_dir.path()).unwrap();
         // The default branch name can be master or main
