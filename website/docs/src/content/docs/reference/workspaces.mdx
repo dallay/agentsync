@@ -19,14 +19,16 @@ description: Detailed guide to the repository structure and polyglot development
 
 The core logic is written in Rust for speed, safety, and easy distribution as a single binary.
 
-- **Tools**: Cargo
+- **Tools**: Cargo, Make
 - **Version**: Rust 1.89+ (Edition 2024)
 - **Key Commands**:
+
   ```bash
   cargo build    # Build debug binary
   cargo test     # Run unit and integration tests
   cargo run      # Run the CLI locally
   ```
+
 - **Error Handling**: Uses `thiserror` for custom errors and `anyhow` for application-level error handling.
 
 ---
@@ -35,20 +37,30 @@ The core logic is written in Rust for speed, safety, and easy distribution as a 
 
 The JS workspace acts as a wrapper to provide an easy installation path via `pnpm/npm`. It manages platform-specific binary downloads.
 
-- **Tools**: pnpm, TypeScript
+- **Tools**: pnpm, TypeScript, Make
 - **Location**: `npm/agentsync/`
 - **Key Commands**:
+
   ```bash
   pnpm run typecheck  # Verify types
   pnpm run build      # Compile TypeScript to JS
   ```
+
 - **Strictness**: We enforce strict TypeScript configurations. Avoid `any` at all costs.
 
 ---
 
 ## Modern Tooling
 
-We enforce the use of modern CLI tools for development. If you don't have them, we recommend installing them:
+We use a **Makefile** to orchestrate tasks across both Rust and JavaScript stacks.
+
+- **`make install`**: Install all dependencies (JS and Rust).
+- **`make verify-all`**: Run the full verification suite (tests, linters, docs build).
+- **`make rust-test`**: Run Rust unit tests.
+- **`make js-test`**: Run JavaScript unit tests.
+- **`make fmt`**: Format all code (Rust and JS).
+
+We also recommend these modern CLI tools:
 - `bat`: Syntax-highlighted file viewing (replaces `cat`).
 - `rg` (ripgrep): Fast recursive search (replaces `grep`).
 - `fd`: Simple and fast alternative to `find`.
