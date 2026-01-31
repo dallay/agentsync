@@ -1,0 +1,28 @@
+name: Sync Labels
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/labels.yml'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    name: Synchronize Labels
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@60edb5dd545a775178f525247ffadca4fe053039 # v4
+        with:
+          node-version: '20'
+
+      - name: Sync labels
+        run: |
+          npx github-label-sync --access-token ${{ secrets.GITHUB_TOKEN }} --labels .github/labels.yml --allow-added-labels ${{ github.repository }}

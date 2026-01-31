@@ -6,10 +6,8 @@ backend:
       - any-glob-to-any-file:
           - "src/**"
           - "Cargo.toml"
-          - "Cargo.lock"
           - "npm/**"
           - "package.json"
-          - "pnpm-lock.yaml"
           - "scripts/**"
 
 ci:
@@ -25,5 +23,13 @@ chore:
       - any-glob-to-any-file:
           - "scripts/**"
           - "*.md"
+
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/Cargo.lock"
+          - "**/pnpm-lock.yaml"
+          - "**/package-lock.json"
+          - "**/yarn.lock"
 
 # Note: labels must already exist in the repository.
