@@ -26,4 +26,11 @@ chore:
           - "scripts/**"
           - "*.md"
 
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/Cargo.lock"
+          - "**/pnpm-lock.yaml"
+          - "**/package-lock.json"
+
 # Note: labels must already exist in the repository.

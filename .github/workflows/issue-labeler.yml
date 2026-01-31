@@ -1,0 +1,42 @@
+name: Issue Labeler
+
+on:
+  issues:
+    types: [opened, edited]
+
+jobs:
+  label:
+    name: Auto-label issues
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Label issue based on content
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const title = issue.title.toLowerCase();
+            const body = (issue.body || "").toLowerCase();
+            const labelsToAdd = [];
+
+            const mappings = {
+              'backend': ['backend', 'rust', 'cli'],
+              'ci': ['ci', 'workflow', 'github action'],
+              'chore': ['chore', 'maintenance', 'dependencies']
+            };
+
+            for (const [label, keywords] of Object.entries(mappings)) {
+              if (keywords.some(keyword => title.includes(keyword) || body.includes(keyword))) {
+                labelsToAdd.push(label);
+              }
+            }
+
+            if (labelsToAdd.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: labelsToAdd
+              });
+            }
