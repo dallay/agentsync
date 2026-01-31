@@ -67,7 +67,9 @@ fn get_git_branch(project_root: &Path) -> Result<String> {
         let branch = String::from_utf8(output.stdout)?.trim().to_string();
         Ok(branch)
     } else {
-        anyhow::bail!("Failed to get git branch")
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stderr = stderr.trim();
+        anyhow::bail!("Failed to get git branch: {stderr}")
     }
 }
 
