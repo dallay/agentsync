@@ -46,28 +46,26 @@ verify-all: fmt
 	@echo "\n========================================"
 	@echo " Running full verification suite"
 	@echo "========================================\n"
-	@set -e; \
-	# 1. JS: Build + Test
-	echo "→ Verifying JS workspace (build + test)..."; \
-	$(MAKE) js-build; \
-	$(MAKE) js-test; \
-	\
-	# 2. Docs: Build verification
-	echo "→ Verifying Docs build..."; \
-	$(MAKE) docs-build; \
-	\
-	# 3. Rust: Clippy + Test
-	echo "→ Running cargo clippy..."; \
-	$(CARGO) clippy --all-targets --all-features -- -D warnings; \
-	echo "→ Running cargo test..."; \
-	$(CARGO) test; \
-	\
-	# 4. E2E (Optional)
-	if [ "${RUN_E2E}" = "1" ]; then \
+	@echo "→ Verifying JS workspace (build + test)..."
+	@$(MAKE) js-build
+	@$(MAKE) js-test
+	@echo "→ Verifying Docs build..."
+	@$(MAKE) docs-build
+	@echo "→ Running JS lint (biome)..."
+	@if command -v biome >/dev/null 2>&1; then \
+		$(PNPM) exec biome check .; \
+	else \
+		echo "biome not available; skipping"; \
+	fi
+	@echo "→ Running cargo clippy..."
+	@$(CARGO) clippy --all-targets --all-features -- -D warnings
+	@echo "→ Running cargo test..."
+	@$(CARGO) test
+	@if [ "${RUN_E2E}" = "1" ]; then \
 		echo "→ Running E2E tests (docker)..."; \
 		$(MAKE) e2e-test; \
-	fi; \
-	echo "\nAll verification checks passed. ✅"
+	fi
+	@echo "\nAll verification checks passed. ✅"
 
 install: js-install rust-build
 	@echo "Installation complete."
