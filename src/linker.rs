@@ -44,6 +44,8 @@ pub struct Linker {
     project_root: PathBuf,
     source_dir: PathBuf,
     path_cache: RefCell<HashMap<PathBuf, PathBuf>>,
+    resolved_vars: HashMap<String, String>,
+    cache_dir: PathBuf,
 }
 
 impl Linker {
@@ -51,6 +53,8 @@ impl Linker {
     pub fn new(config: Config, config_path: PathBuf) -> Self {
         let project_root = Config::project_root(&config_path);
         let source_dir = config.source_dir(&config_path);
+        let cache_dir = project_root.join(".agents").join(".cache");
+        let resolved_vars = crate::templating::resolve_variables(&project_root, &config.vars);
 
         Self {
             config,
@@ -58,6 +62,8 @@ impl Linker {
             project_root,
             source_dir,
             path_cache: RefCell::new(HashMap::new()),
+            resolved_vars,
+            cache_dir,
         }
     }
 
@@ -131,8 +137,13 @@ impl Linker {
 
     /// Process a single target configuration
     fn process_target(&self, target: &TargetConfig, options: &SyncOptions) -> Result<SyncResult> {
-        let source = self.source_dir.join(&target.source);
+        let mut source = self.source_dir.join(&target.source);
         let dest = self.project_root.join(&target.destination);
+
+        // Apply templating if possible
+        if let Some(cached_path) = self.apply_templating(&source, options)? {
+            source = cached_path;
+        }
 
         match target.sync_type {
             SyncType::Symlink => self.create_symlink(&source, &dest, options),
@@ -336,10 +347,16 @@ impl Linker {
                 continue;
             }
 
-            let source_path = entry.path();
+            let mut source_path = entry.path().to_path_buf();
+
+            // Apply templating if possible
+            if let Some(cached_path) = self.apply_templating(&source_path, options)? {
+                source_path = cached_path;
+            }
+
             let dest_path = dest_dir.join(entry.file_name());
 
-            let item_result = self.create_symlink(source_path, &dest_path, options)?;
+            let item_result = self.create_symlink(&source_path, &dest_path, options)?;
             result.created += item_result.created;
             result.updated += item_result.updated;
             result.skipped += item_result.skipped;
@@ -391,6 +408,26 @@ impl Linker {
 
         println!("{}", "Cleaning managed symlinks...".cyan());
 
+        // Remove cache directory if it exists
+        if self.cache_dir.exists() {
+            if options.dry_run {
+                println!(
+                    "  {} Would remove cache: {}",
+                    "→".cyan(),
+                    self.cache_dir.display()
+                );
+            } else {
+                fs::remove_dir_all(&self.cache_dir)?;
+                if options.verbose {
+                    println!(
+                        "  {} Removed cache: {}",
+                        "✔".green(),
+                        self.cache_dir.display()
+                    );
+                }
+            }
+        }
+
         for agent_config in self.config.agents.values() {
             for target_config in agent_config.targets.values() {
                 let dest = self.project_root.join(&target_config.destination);
@@ -430,6 +467,68 @@ impl Linker {
         }
 
         Ok(result)
+    }
+
+    /// Apply templating to a source file and return the path to the cached processed file
+    fn apply_templating(&self, source: &Path, options: &SyncOptions) -> Result<Option<PathBuf>> {
+        // Only process if it's a file and can be read as UTF-8
+        let content = match fs::read_to_string(source) {
+            Ok(c) => c,
+            Err(_) => return Ok(None),
+        };
+
+        // Quick check for placeholders
+        if !content.contains("{{") {
+            return Ok(None);
+        }
+
+        let substituted = crate::templating::substitute(&content, &self.resolved_vars);
+
+        // If no substitutions were made, don't use cache
+        if substituted == content {
+            return Ok(None);
+        }
+
+        // Determine cache path - maintain relative structure within .agents
+        let relative_source = match source.strip_prefix(&self.source_dir) {
+            Ok(p) => p.to_path_buf(),
+            Err(_) => source.file_name().map(PathBuf::from).unwrap_or_else(|| {
+                use std::collections::hash_map::DefaultHasher;
+                use std::hash::{Hash, Hasher};
+                let mut hasher = DefaultHasher::new();
+                source.as_os_str().hash(&mut hasher);
+                PathBuf::from(format!("{:x}", hasher.finish()))
+            }),
+        };
+        let cache_path = self.cache_dir.join(relative_source);
+
+        if options.dry_run {
+            if options.verbose {
+                println!(
+                    "  {} Would apply templating: {} -> {}",
+                    "→".cyan(),
+                    source.display(),
+                    cache_path.display()
+                );
+            }
+            return Ok(None);
+        } else {
+            // Create cache parent directory
+            if let Some(parent) = cache_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::write(&cache_path, substituted)?;
+            if options.verbose {
+                println!(
+                    "  {} Applied templating: {} -> {}",
+                    "✔".green(),
+                    source.display(),
+                    cache_path.display()
+                );
+            }
+        }
+
+        Ok(Some(cache_path))
     }
 
     /// Sync MCP configurations for all enabled agents
@@ -1211,6 +1310,55 @@ mod tests {
         // Should be a reasonable Unix timestamp (after year 2020)
         let ts_num: u64 = ts.parse().unwrap();
         assert!(ts_num > 1577836800); // 2020-01-01
+    }
+
+    // ==========================================================================
+    // TEMPLATING INTEGRATION TESTS
+    // ==========================================================================
+
+    #[test]
+    #[cfg(unix)]
+    fn test_sync_with_templating() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        // Create source file with placeholder
+        let source_file = agents_dir.join("AGENTS.md");
+        fs::write(&source_file, "Project: {{project_name}}").unwrap();
+
+        // Create package.json to provide project_name
+        let package_json = r#"{ "name": "test-project" }"#;
+        fs::write(temp_dir.path().join("package.json"), package_json).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            [agents.test]
+            enabled = true
+            [agents.test.targets.main]
+            source = "AGENTS.md"
+            destination = "TEST.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        linker.sync(&SyncOptions::default()).unwrap();
+
+        // Verify symlink was created
+        let dest = temp_dir.path().join("TEST.md");
+        assert!(dest.is_symlink());
+
+        // Verify the content of the linked file
+        let content = fs::read_to_string(&dest).unwrap();
+        assert_eq!(content, "Project: test-project");
+
+        // Verify it's linked to the cache
+        let target = fs::read_link(&dest).unwrap();
+        assert!(target.to_string_lossy().contains(".cache"));
     }
 
     // ==========================================================================

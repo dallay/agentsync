@@ -295,6 +295,46 @@ type = "symlink-contents"
 pattern = "*.agent.md"
 ```
 
+### Variable Substitution (Templating)
+
+AgentSync supports dynamic variables in instruction files (e.g., `AGENTS.md`) using `{{variable}}` syntax.
+
+When you run `agentsync apply`, placeholders are replaced with project-specific data. Since symbolic links require physical files, AgentSync generates processed versions in `.agents/.cache/` and links to those instead of the originals.
+
+#### Supported Variables
+
+| Variable | Description | Source |
+| :--- | :--- | :--- |
+| `project_name` | The name of the project | `name` field in `package.json` |
+| `git_branch` | The current active git branch | `git rev-parse --abbrev-ref HEAD` |
+| *custom* | Any custom variable you define | `[vars]` section in `agentsync.toml` |
+
+#### Example
+
+**1. Define variables in `agentsync.toml`:**
+
+```toml
+[vars]
+team_name = "Platform Engineering"
+```
+
+**2. Use variables in `.agents/AGENTS.md`:**
+
+```markdown
+# Project Instructions for {{project_name}}
+
+Current Branch: {{git_branch}}
+Maintaining Team: {{team_name}}
+```
+
+**3. Apply the configuration:**
+
+```bash
+agentsync apply
+```
+
+The resulting `CLAUDE.md` (or other linked destinations) will contain the substituted values.
+
 ### MCP Support (Model Context Protocol)
 
 AgentSync can automatically generate MCP configuration files for supported agents (Claude Code,
