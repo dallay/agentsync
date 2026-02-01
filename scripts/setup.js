@@ -11,7 +11,7 @@ function runCommand(command) {
 	try {
 		console.log(`> ${command}`);
 		execSync(command, { stdio: "inherit", cwd: ROOT_DIR });
-	} catch (error) {
+	} catch (_error) {
 		console.error(`Command failed: ${command}`);
 		process.exit(1);
 	}

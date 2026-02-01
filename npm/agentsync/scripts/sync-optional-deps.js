@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-const fs = require("fs");
-const path = require("path");
+const fs = require("node:fs");
+const path = require("node:path");
 
 /**
  * Syncs optionalDependencies with a target version.
@@ -45,7 +45,7 @@ try {
 	}
 
 	if (changed) {
-		const newContent = JSON.stringify(packageJson, null, 2) + "\n";
+		const newContent = `${JSON.stringify(packageJson, null, 2)}\n`;
 		// Truncate file to 0 length to remove old content
 		fs.ftruncateSync(fd, 0);
 		// Write new content starting at position 0

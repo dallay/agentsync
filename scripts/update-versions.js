@@ -1,10 +1,10 @@
-const fs = require("fs");
-const path = require("path");
-const { execFileSync } = require("child_process");
+const fs = require("node:fs");
+const path = require("node:path");
+const { execFileSync } = require("node:child_process");
 
 const SEMVER_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 const rawNextVersion = process.argv[2];
-const nextVersion = rawNextVersion && rawNextVersion.trim();
+const nextVersion = rawNextVersion?.trim();
 
 if (!nextVersion || !SEMVER_RE.test(nextVersion)) {
 	console.error(
@@ -29,7 +29,7 @@ try {
 		// Robust regex to find version inside [package] or [workspace.package]
 		const updatedCargo = cargoContent.replace(
 			/(\[(?:workspace\.)?package\][\s\S]*?^\s*version\s*=\s*")([^"]*)(")/m,
-			(match, prefix, oldVersion, suffix) => {
+			(_match, prefix, oldVersion, suffix) => {
 				versionUpdated = true;
 				console.log(
 					`  Found Cargo.toml version: ${oldVersion} inside package section`,
@@ -57,7 +57,7 @@ try {
 	} finally {
 		try {
 			fs.closeSync(fd);
-		} catch (e) {
+		} catch (_e) {
 			/* best-effort close */
 		}
 	}
@@ -78,7 +78,7 @@ try {
 		const current = fs.readFileSync(fd, "utf8");
 		const rootPkg = JSON.parse(current);
 		rootPkg.version = nextVersion;
-		const newContents = JSON.stringify(rootPkg, null, 2) + "\n";
+		const newContents = `${JSON.stringify(rootPkg, null, 2)}\n`;
 
 		fs.ftruncateSync(fd, 0);
 		fs.writeSync(fd, newContents, 0, "utf8");
@@ -87,7 +87,7 @@ try {
 	} finally {
 		try {
 			fs.closeSync(fd);
-		} catch (e) {
+		} catch (_e) {
 			/* best-effort close */
 		}
 	}
@@ -109,7 +109,7 @@ try {
 		const current = fs.readFileSync(fd, "utf8");
 		const npmPkg = JSON.parse(current);
 		npmPkg.version = nextVersion;
-		const newContents = JSON.stringify(npmPkg, null, 2) + "\n";
+		const newContents = `${JSON.stringify(npmPkg, null, 2)}\n`;
 
 		fs.ftruncateSync(fd, 0);
 		fs.writeSync(fd, newContents, 0, "utf8");
@@ -118,7 +118,7 @@ try {
 	} finally {
 		try {
 			fs.closeSync(fd);
-		} catch (e) {
+		} catch (_e) {
 			/* best-effort close */
 		}
 	}

@@ -106,37 +106,37 @@
 
 /* --- Header Overrides --- */
 header.header {
-	background: var(--as-bg-elevated) !important;
-	border-bottom: 1px solid var(--as-border) !important;
+	background: var(--as-bg-elevated);
+	border-bottom: 1px solid var(--as-border);
 	backdrop-filter: blur(12px);
 	-webkit-backdrop-filter: blur(12px);
 }
 
 .site-title {
-	font-weight: 700 !important;
-	background: var(--as-gradient-primary) !important;
-	-webkit-background-clip: text !important;
-	-webkit-text-fill-color: transparent !important;
-	background-clip: text !important;
+	font-weight: 700;
+	background: var(--as-gradient-primary);
+	-webkit-background-clip: text;
+	-webkit-text-fill-color: transparent;
+	background-clip: text;
 }
 
 /* Search box styling */
 site-search button {
-	background: var(--as-bg-surface) !important;
-	border: 1px solid var(--as-border) !important;
-	border-radius: var(--as-radius-md) !important;
+	background: var(--as-bg-surface);
+	border: 1px solid var(--as-border);
+	border-radius: var(--as-radius-md);
 }
 
 /* Theme toggle and social icons */
 starlight-theme-select select,
 .social-icons a {
-	color: var(--as-text-secondary) !important;
-	transition: color var(--as-transition-fast) !important;
+	color: var(--as-text-secondary);
+	transition: color var(--as-transition-fast);
 }
 
 starlight-theme-select select:hover,
 .social-icons a:hover {
-	color: var(--as-primary) !important;
+	color: var(--as-primary);
 }
 
 /* --- Global Resets & Base Styles --- */
@@ -198,15 +198,15 @@ body {
 
 /* Cards styling */
 .card {
-	background: var(--as-bg-card) !important;
+	background: var(--as-bg-card);
 	backdrop-filter: blur(12px);
-	border: 1px solid var(--as-border) !important;
-	border-radius: var(--as-radius-lg) !important;
+	border: 1px solid var(--as-border);
+	border-radius: var(--as-radius-lg);
 	transition: all var(--as-transition-base);
 }
 
 .card:hover {
-	border-color: var(--as-border-hover) !important;
+	border-color: var(--as-border-hover);
 	transform: translateY(-2px);
 	box-shadow: var(--as-shadow-md);
 }
@@ -218,11 +218,11 @@ body {
 
 /* Code blocks */
 pre {
-	background: var(--as-bg-surface) !important;
-	border: 1px solid var(--as-border) !important;
-	border-radius: var(--as-radius-md) !important;
-	padding: 16px !important;
-	box-shadow: var(--as-shadow-sm) !important;
+	background: var(--as-bg-surface);
+	border: 1px solid var(--as-border);
+	border-radius: var(--as-radius-md);
+	padding: 16px;
+	box-shadow: var(--as-shadow-sm);
 }
 
 /* Inline code */
@@ -246,12 +246,12 @@ pre code {
 [data-theme="light"] pre,
 [data-theme="light"] pre code,
 [data-theme="light"] pre code span {
-	color: #1e293b !important;
+	color: #1e293b;
 }
 
 /* Force readable text color in inline code for light mode */
 [data-theme="light"] code {
-	color: #334155 !important;
+	color: #334155;
 }
 
 /* Links */
@@ -303,6 +303,6 @@ a:hover {
 
 @media (prefers-reduced-motion: reduce) {
 	html {
-		scroll-behavior: auto !important;
+		scroll-behavior: auto;
 	}
 }
