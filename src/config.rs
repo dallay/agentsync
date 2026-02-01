@@ -38,10 +38,6 @@ pub struct Config {
     /// A map of MCP server configurations, where the key is a unique server name.
     #[serde(default)]
     pub mcp_servers: HashMap<String, McpServerConfig>,
-
-    /// Custom variables for substitution in instruction files.
-    #[serde(default)]
-    pub vars: HashMap<String, String>,
 }
 
 fn default_source_dir() -> String {
@@ -283,12 +279,6 @@ impl Config {
             }
         }
 
-        // Add cache directory
-        let cache_entry = format!("{}/.cache", DEFAULT_SOURCE_DIR);
-        if !entries.contains(&cache_entry) {
-            entries.push(cache_entry);
-        }
-
         entries.sort();
         entries.dedup();
         entries
@@ -326,10 +316,6 @@ mod tests {
         let toml = r#"
             source_dir = "."
 
-            [vars]
-            project_name = "test-project"
-            custom_var = "custom-value"
-
             [gitignore]
             enabled = true
             marker = "Test Marker"
@@ -363,8 +349,6 @@ mod tests {
             config.agents["copilot"].targets["skills"].sync_type,
             SyncType::SymlinkContents
         );
-        assert_eq!(config.vars["project_name"], "test-project");
-        assert_eq!(config.vars["custom_var"], "custom-value");
     }
 
     #[test]
@@ -625,7 +609,6 @@ mod tests {
         assert!(entries.contains(&"manual-entry.md".to_string()));
         assert!(entries.contains(&"CLAUDE.md".to_string()));
         assert!(entries.contains(&".github/copilot-instructions.md".to_string()));
-        assert!(entries.contains(&".agents/.cache".to_string()));
     }
 
     #[test]

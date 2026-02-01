@@ -121,26 +121,26 @@ Download the latest release for your platform from the [GitHub Releases](https:/
 
 # macOS (Apple Silicon)
 
-curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-<version>-aarch64-apple-darwin.tar.gz
-tar xzf agentsync-<version>-aarch64-apple-darwin.tar.gz
+curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-aarch64-apple-darwin.tar.gz
+tar xzf agentsync-aarch64-apple-darwin.tar.gz
 sudo mv agentsync-*/agentsync /usr/local/bin/
 
 # macOS (Intel)
 
-curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-<version>-x86_64-apple-darwin.tar.gz
-tar xzf agentsync-<version>-x86_64-apple-darwin.tar.gz
+curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-x86_64-apple-darwin.tar.gz
+tar xzf agentsync-x86_64-apple-darwin.tar.gz
 sudo mv agentsync-*/agentsync /usr/local/bin/
 
 # Linux (x86_64)
 
-curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-<version>-x86_64-unknown-linux-gnu.tar.gz
-tar xzf agentsync-<version>-x86_64-unknown-linux-gnu.tar.gz
+curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-x86_64-unknown-linux-gnu.tar.gz
+tar xzf agentsync-x86_64-unknown-linux-gnu.tar.gz
 sudo mv agentsync-*/agentsync /usr/local/bin/
 
 # Linux (ARM64)
 
-curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-<version>-aarch64-unknown-linux-gnu.tar.gz
-tar xzf agentsync-<version>-aarch64-unknown-linux-gnu.tar.gz
+curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-aarch64-unknown-linux-gnu.tar.gz
+tar xzf agentsync-aarch64-unknown-linux-gnu.tar.gz
 sudo mv agentsync-*/agentsync /usr/local/bin/
 ```
 
@@ -241,10 +241,6 @@ agentsync --version
 agentsync skill install <skill-id>
 agentsync skill update <skill-id>
 agentsync skill list
-
-# Show status
-
-agentsync status
 ```
 
 ### Status
@@ -298,46 +294,6 @@ destination = ".claude/commands"
 type = "symlink-contents"
 pattern = "*.agent.md"
 ```
-
-### Variable Substitution (Templating)
-
-AgentSync supports dynamic variables in instruction files (e.g., `AGENTS.md`) using `{{variable}}` syntax.
-
-When you run `agentsync apply`, placeholders are replaced with project-specific data. Since symbolic links require physical files, AgentSync generates processed versions in `.agents/.cache/` and links to those instead of the originals.
-
-#### Supported Variables
-
-| Variable | Description | Source |
-| :--- | :--- | :--- |
-| `project_name` | The name of the project | `name` field in `package.json` |
-| `git_branch` | The current active git branch | `git rev-parse --abbrev-ref HEAD` |
-| *custom* | Any custom variable you define | `[vars]` section in `agentsync.toml` |
-
-#### Example
-
-**1. Define variables in `agentsync.toml`:**
-
-```toml
-[vars]
-team_name = "Platform Engineering"
-```
-
-**2. Use variables in `.agents/AGENTS.md`:**
-
-```markdown
-# Project Instructions for {{project_name}}
-
-Current Branch: {{git_branch}}
-Maintaining Team: {{team_name}}
-```
-
-**3. Apply the configuration:**
-
-```bash
-agentsync apply
-```
-
-The resulting `CLAUDE.md` (or other linked destinations) will contain the substituted values.
 
 ### MCP Support (Model Context Protocol)
 
@@ -413,6 +369,7 @@ filter which files to link.
 .agents/
 ├── agentsync.toml      # Configuration file
 ├── AGENTS.md           # Main agent instructions (single source)
+├── .mcp.json           # MCP server configurations
 ├── command/            # Agent commands
 │   ├── review.agent.md
 │   └── test.agent.md
@@ -430,7 +387,7 @@ project-root/
 ├── CLAUDE.md           → .agents/AGENTS.md
 ├── GEMINI.md           → .agents/AGENTS.md
 ├── AGENTS.md           → .agents/AGENTS.md
-├── .mcp.json           (generated from agentsync.toml)
+├── .mcp.json           → .agents/.mcp.json
 ├── .claude/
 │   └── commands/       → symlinks to .agents/command/*.agent.md
 ├── .gemini/
@@ -462,8 +419,8 @@ If you need agentsync in CI, add it to your workflow:
 ```yaml
 - name: Install agentsync
   run: |
-    curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-<version>-x86_64-unknown-linux-gnu.tar.gz
-    tar xzf agentsync-<version>-x86_64-unknown-linux-gnu.tar.gz
+    curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-x86_64-unknown-linux-gnu.tar.gz
+    tar xzf agentsync-x86_64-unknown-linux-gnu.tar.gz
     sudo mv agentsync-*/agentsync /usr/local/bin/
 ```
 

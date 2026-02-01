@@ -43,16 +43,16 @@ help:
 all: install js-build
 
 verify-all: fmt
-	@echo "\n========================================"
+	@printf "\n========================================\n"
 	@echo " Running full verification suite"
-	@echo "========================================\n"
+	@printf "========================================\n\n"
 	@echo "→ Verifying JS workspace (build + test)..."
 	@$(MAKE) js-build
 	@$(MAKE) js-test
 	@echo "→ Verifying Docs build..."
 	@$(MAKE) docs-build
 	@echo "→ Running JS lint (biome)..."
-	@if command -v biome >/dev/null 2>&1; then \
+	@if $(PNPM) exec biome --version >/dev/null 2>&1; then \
 		$(PNPM) exec biome check .; \
 	else \
 		echo "biome not available; skipping"; \
@@ -65,7 +65,7 @@ verify-all: fmt
 		echo "→ Running E2E tests (docker)..."; \
 		$(MAKE) e2e-test; \
 	fi
-	@echo "\nAll verification checks passed. ✅"
+	@printf "\nAll verification checks passed. ✅\n"
 
 install: js-install rust-build
 	@echo "Installation complete."
@@ -116,7 +116,7 @@ fmt:
 	else \
 		echo "rustfmt not found; skipping"; \
 	fi
-	@if command -v biome >/dev/null 2>&1; then \
+	@if $(PNPM) exec biome --version >/dev/null 2>&1; then \
 		$(PNPM) exec biome format --write .; \
 	else \
 		echo "biome not available; skipping"; \
