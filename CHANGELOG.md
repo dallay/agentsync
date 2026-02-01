@@ -1,3 +1,21 @@
+## [1.21.1](https://github.com/dallay/agentsync/compare/v1.21.0...v1.21.1) (2026-02-01)
+
+### 🐛 Bug Fixes
+
+* use stable version tags for GitHub Actions ([#112](https://github.com/dallay/agentsync/issues/112)) ([753f88c](https://github.com/dallay/agentsync/commit/753f88c72da79b4286a392b819cad02ffcd4ebe6))
+
+### 📝 Documentation
+
+* update README.md for CLI accuracy and supported agents ([#111](https://github.com/dallay/agentsync/issues/111)) ([fec5ad3](https://github.com/dallay/agentsync/commit/fec5ad3d3e6f563b296196bc97322b3b2757e1d4))
+
+## [1.21.0](https://github.com/dallay/agentsync/compare/v1.20.0...v1.21.0) (2026-01-31)
+
+### ✨ Features
+
+* enhance variable substitution with logging and robust tests ([30b1025](https://github.com/dallay/agentsync/commit/30b102521c4aa7c7dc9e2ff8259681bdf7a68b44))
+* implement variable substitution (templating) for instruction files ([375aabb](https://github.com/dallay/agentsync/commit/375aabb4d022cc55123eaabad61df8434e72e0b7))
+* implement variable substitution (templating) for instruction files ([d370f16](https://github.com/dallay/agentsync/commit/d370f167117513d07f8bc1bdf50d44823e37cb2c))
+
 ## [1.20.0](https://github.com/dallay/agentsync/compare/v1.19.0...v1.20.0) (2026-01-31)
 
 ### ✨ Features
