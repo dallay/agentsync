@@ -30,6 +30,7 @@ locations.
 - 🔗 **Symlinks over copies** - Changes propagate instantly
 - 📝 **TOML configuration** - Human-readable, easy to maintain
 - 📋 **Gitignore management** - Automatically updates `.gitignore`
+- 🛡️ **Safety first** - Automatically backs up existing files (e.g., `config.json` → `config.json.bak.<timestamp>`) before replacing them with symlinks
 - 🖥️ **Cross-platform** - Linux, macOS, Windows
 - 🚀 **CI-friendly** - Gracefully skips when binary unavailable
 - ⚡ **Fast** - Single static binary, no runtime dependencies
@@ -198,11 +199,11 @@ agentsync apply
 
 # Initialize a new configuration
 
-agentsync init
+agentsync init [--path <path>] [--force]
 
 # Apply configuration (create symlinks)
 
-agentsync apply
+agentsync apply [--path <path>]
 
 # Clean existing symlinks before applying
 
@@ -238,9 +239,9 @@ agentsync --version
 
 # Manage skills
 
-agentsync skill install <skill-id>
-agentsync skill update <skill-id>
-agentsync skill list
+agentsync skill [--project-root <path>] install <skill-id> [--source <source>]
+agentsync skill [--project-root <path>] update <skill-id> [--source <source>]
+agentsync skill [--project-root <path>] list
 ```
 
 ### Status
@@ -369,7 +370,6 @@ filter which files to link.
 .agents/
 ├── agentsync.toml      # Configuration file
 ├── AGENTS.md           # Main agent instructions (single source)
-├── .mcp.json           # MCP server configurations
 ├── command/            # Agent commands
 │   ├── review.agent.md
 │   └── test.agent.md
@@ -387,7 +387,7 @@ project-root/
 ├── CLAUDE.md           → .agents/AGENTS.md
 ├── GEMINI.md           → .agents/AGENTS.md
 ├── AGENTS.md           → .agents/AGENTS.md
-├── .mcp.json           → .agents/.mcp.json
+├── .mcp.json           (generated from agentsync.toml)
 ├── .claude/
 │   └── commands/       → symlinks to .agents/command/*.agent.md
 ├── .gemini/
