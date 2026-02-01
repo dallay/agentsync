@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout your repository using git
-        uses: actions/checkout@v4
+        uses: actions/checkout@ee0669bd1cc03ffab3e33abe40f8905af6d6c06f  # v4
 
       - name: Setup pnpm
         uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061  # v4
@@ -27,7 +27,7 @@ jobs:
           version: 10
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@1a4442caab129478691007994fbb59b749e3cc7a  # v4
         with:
           node-version: 24
           cache: 'pnpm'
