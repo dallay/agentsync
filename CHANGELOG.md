@@ -1,3 +1,13 @@
+## [1.21.1](https://github.com/dallay/agentsync/compare/v1.21.0...v1.21.1) (2026-02-01)
+
+### 🐛 Bug Fixes
+
+* use stable version tags for GitHub Actions ([#112](https://github.com/dallay/agentsync/issues/112)) ([753f88c](https://github.com/dallay/agentsync/commit/753f88c72da79b4286a392b819cad02ffcd4ebe6))
+
+### 📝 Documentation
+
+* update README.md for CLI accuracy and supported agents ([#111](https://github.com/dallay/agentsync/issues/111)) ([fec5ad3](https://github.com/dallay/agentsync/commit/fec5ad3d3e6f563b296196bc97322b3b2757e1d4))
+
 ## [1.21.0](https://github.com/dallay/agentsync/compare/v1.20.0...v1.21.0) (2026-01-31)
 
 ### ✨ Features

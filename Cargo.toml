@@ -1,6 +1,6 @@
 [package]
 name = "agentsync"
-version = "1.21.0"
+version = "1.21.1"
 edition = "2024"
 rust-version = "1.89"
 description = "A fast CLI tool to sync AI agent configurations and MCP servers across Claude, Copilot, Cursor, and more using symbolic links."
