@@ -5,7 +5,7 @@
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -264,24 +264,20 @@ impl Config {
     }
 
     /// Get all gitignore entries (from config + auto-generated from targets)
+    /// Uses a BTreeSet for efficient deduplication and automatic sorting.
     pub fn all_gitignore_entries(&self) -> Vec<String> {
-        let mut entries = self.gitignore.entries.clone();
+        let mut entries: BTreeSet<String> = self.gitignore.entries.iter().cloned().collect();
 
         // Add destinations from all enabled agents
         for agent in self.agents.values() {
             if agent.enabled {
                 for target in agent.targets.values() {
-                    let dest = &target.destination;
-                    if !entries.contains(dest) {
-                        entries.push(dest.clone());
-                    }
+                    entries.insert(target.destination.clone());
                 }
             }
         }
 
-        entries.sort();
-        entries.dedup();
-        entries
+        entries.into_iter().collect()
     }
 }
 
