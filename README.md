@@ -121,26 +121,26 @@ Download the latest release for your platform from the [GitHub Releases](https:/
 
 # macOS (Apple Silicon)
 
-curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-aarch64-apple-darwin.tar.gz
-tar xzf agentsync-aarch64-apple-darwin.tar.gz
+curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-<version>-aarch64-apple-darwin.tar.gz
+tar xzf agentsync-<version>-aarch64-apple-darwin.tar.gz
 sudo mv agentsync-*/agentsync /usr/local/bin/
 
 # macOS (Intel)
 
-curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-x86_64-apple-darwin.tar.gz
-tar xzf agentsync-x86_64-apple-darwin.tar.gz
+curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-<version>-x86_64-apple-darwin.tar.gz
+tar xzf agentsync-<version>-x86_64-apple-darwin.tar.gz
 sudo mv agentsync-*/agentsync /usr/local/bin/
 
 # Linux (x86_64)
 
-curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-x86_64-unknown-linux-gnu.tar.gz
-tar xzf agentsync-x86_64-unknown-linux-gnu.tar.gz
+curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-<version>-x86_64-unknown-linux-gnu.tar.gz
+tar xzf agentsync-<version>-x86_64-unknown-linux-gnu.tar.gz
 sudo mv agentsync-*/agentsync /usr/local/bin/
 
 # Linux (ARM64)
 
-curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-aarch64-unknown-linux-gnu.tar.gz
-tar xzf agentsync-aarch64-unknown-linux-gnu.tar.gz
+curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-<version>-aarch64-unknown-linux-gnu.tar.gz
+tar xzf agentsync-<version>-aarch64-unknown-linux-gnu.tar.gz
 sudo mv agentsync-*/agentsync /usr/local/bin/
 ```
 
@@ -241,6 +241,10 @@ agentsync --version
 agentsync skill install <skill-id>
 agentsync skill update <skill-id>
 agentsync skill list
+
+# Show status
+
+agentsync status
 ```
 
 ### Status
@@ -409,7 +413,6 @@ filter which files to link.
 .agents/
 ├── agentsync.toml      # Configuration file
 ├── AGENTS.md           # Main agent instructions (single source)
-├── .mcp.json           # MCP server configurations
 ├── command/            # Agent commands
 │   ├── review.agent.md
 │   └── test.agent.md
@@ -427,7 +430,7 @@ project-root/
 ├── CLAUDE.md           → .agents/AGENTS.md
 ├── GEMINI.md           → .agents/AGENTS.md
 ├── AGENTS.md           → .agents/AGENTS.md
-├── .mcp.json           → .agents/.mcp.json
+├── .mcp.json           (generated from agentsync.toml)
 ├── .claude/
 │   └── commands/       → symlinks to .agents/command/*.agent.md
 ├── .gemini/
@@ -459,8 +462,8 @@ If you need agentsync in CI, add it to your workflow:
 ```yaml
 - name: Install agentsync
   run: |
-    curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-x86_64-unknown-linux-gnu.tar.gz
-    tar xzf agentsync-x86_64-unknown-linux-gnu.tar.gz
+    curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-<version>-x86_64-unknown-linux-gnu.tar.gz
+    tar xzf agentsync-<version>-x86_64-unknown-linux-gnu.tar.gz
     sudo mv agentsync-*/agentsync /usr/local/bin/
 ```
 
