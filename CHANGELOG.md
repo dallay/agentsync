@@ -1,3 +1,9 @@
+## [1.21.2](https://github.com/dallay/agentsync/compare/v1.21.1...v1.21.2) (2026-02-01)
+
+### 🚀 Performance
+
+* optimize gitignore entry generation ([#115](https://github.com/dallay/agentsync/issues/115)) ([9b82489](https://github.com/dallay/agentsync/commit/9b8248944a79e69c8f00ac286ef4b5df8646f27c))
+
 ## [1.21.1](https://github.com/dallay/agentsync/compare/v1.21.0...v1.21.1) (2026-02-01)
 
 ### 🐛 Bug Fixes
