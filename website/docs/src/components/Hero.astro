@@ -1,6 +1,7 @@
 ---
 import { Icon } from "@astrojs/starlight/components";
 import Rust from "~icons/devicon-plain/rust";
+
 const heroFromProps = Astro.props?.hero;
 const heroFromRoute = Astro.locals?.starlightRoute?.entry?.data?.hero;
 const hero = heroFromProps ?? heroFromRoute ?? {};
