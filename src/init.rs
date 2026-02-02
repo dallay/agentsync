@@ -268,7 +268,7 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
 /// Interactive wizard for initializing agentsync with file migration
 pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
     use colored::Colorize;
-    use dialoguer::{theme::ColorfulTheme, Confirm, MultiSelect};
+    use dialoguer::{Confirm, MultiSelect, theme::ColorfulTheme};
 
     // Scan for existing agent files
     println!("{}", "🔍 Scanning for existing agent files...".cyan());
@@ -283,11 +283,7 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
         return init(project_root, force);
     }
 
-    println!(
-        "  {} Found {} file(s)",
-        "✔".green(),
-        discovered_files.len()
-    );
+    println!("  {} Found {} file(s)", "✔".green(), discovered_files.len());
 
     // Display found files
     println!("\n{}", "Detected files:".bold());
@@ -320,12 +316,7 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
                 .map(|f| f.display_name.as_str())
                 .collect::<Vec<_>>(),
         )
-        .defaults(
-            &discovered_files
-                .iter()
-                .map(|_| true)
-                .collect::<Vec<_>>(),
-        )
+        .defaults(&discovered_files.iter().map(|_| true).collect::<Vec<_>>())
         .interact()?;
 
     let files_to_migrate: Vec<_> = selections
@@ -375,7 +366,9 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
             AgentFileType::ClaudeInstructions | AgentFileType::RootAgentsFile => {
                 // Capture content from first instructions file to use in AGENTS.md
                 // We only take the first file's content to avoid confusion
-                if migrated_content.is_none() && let Ok(content) = fs::read_to_string(&src_path) {
+                if migrated_content.is_none()
+                    && let Ok(content) = fs::read_to_string(&src_path)
+                {
                     migrated_content = Some(content);
                 }
                 agents_dir.join("AGENTS.md")
@@ -395,7 +388,9 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
             AgentFileType::CopilotInstructions => {
                 // Copilot instructions will be handled by symlinks from AGENTS.md
                 // Capture content from first instructions file to use in AGENTS.md
-                if migrated_content.is_none() && let Ok(content) = fs::read_to_string(&src_path) {
+                if migrated_content.is_none()
+                    && let Ok(content) = fs::read_to_string(&src_path)
+                {
                     migrated_content = Some(content);
                 }
                 continue;
@@ -464,7 +459,10 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
 
     // Provide migration summary
     println!("\n{}", "📋 Migration Summary:".bold());
-    println!("  • Migrated {} file(s) to .agents/", files_to_migrate.len());
+    println!(
+        "  • Migrated {} file(s) to .agents/",
+        files_to_migrate.len()
+    );
     println!(
         "  • Configuration saved to {}",
         ".agents/agentsync.toml".cyan()
@@ -472,7 +470,9 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
 
     // Ask if user wants to back up original files
     let should_backup = Confirm::with_theme(&ColorfulTheme::default())
-        .with_prompt("Would you like to back up the original files? (They will be moved to .agents/backup/)")
+        .with_prompt(
+            "Would you like to back up the original files? (They will be moved to .agents/backup/)",
+        )
         .default(true)
         .interact()?;
 
@@ -481,12 +481,13 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
         fs::create_dir_all(&backup_dir)?;
 
         for file in &files_to_migrate {
-            if file.file_type == AgentFileType::McpConfig 
-                || file.file_type == AgentFileType::CopilotInstructions {
+            if file.file_type == AgentFileType::McpConfig
+                || file.file_type == AgentFileType::CopilotInstructions
+            {
                 // Skip files that weren't actually migrated
                 continue;
             }
-            
+
             let src_path = project_root.join(&file.path);
             if !src_path.exists() {
                 continue;

@@ -115,11 +115,18 @@ fn main() -> Result<()> {
             let project_root = project_root.unwrap_or_else(|| env::current_dir().unwrap());
             run_status(args.json, project_root)?;
         }
-        Commands::Init { path, force, wizard } => {
+        Commands::Init {
+            path,
+            force,
+            wizard,
+        } => {
             let project_root = path.unwrap_or_else(|| env::current_dir().unwrap());
             print_header();
             if wizard {
-                println!("{}", "Starting interactive configuration wizard...\n".cyan());
+                println!(
+                    "{}",
+                    "Starting interactive configuration wizard...\n".cyan()
+                );
                 init::init_wizard(&project_root, force)?;
             } else {
                 println!("{}", "Initializing agentsync configuration...\n".cyan());
