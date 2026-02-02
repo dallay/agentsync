@@ -198,6 +198,7 @@ struct DiscoveredFile {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)] // Other variant is reserved for future use
 enum AgentFileType {
     ClaudeInstructions,
     CursorDirectory,
@@ -373,10 +374,8 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
         let dest_path = match file.file_type {
             AgentFileType::ClaudeInstructions | AgentFileType::RootAgentsFile => {
                 // Merge content into AGENTS.md if it exists
-                if migrated_content.is_none() {
-                    if let Ok(content) = fs::read_to_string(&src_path) {
-                        migrated_content = Some(content);
-                    }
+                if migrated_content.is_none() && let Ok(content) = fs::read_to_string(&src_path) {
+                    migrated_content = Some(content);
                 }
                 agents_dir.join("AGENTS.md")
             }
@@ -394,26 +393,22 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
             }
             AgentFileType::CopilotInstructions => {
                 // This will be handled by symlinks from AGENTS.md
-                if migrated_content.is_none() {
-                    if let Ok(content) = fs::read_to_string(&src_path) {
-                        migrated_content = Some(content);
-                    }
+                if migrated_content.is_none() && let Ok(content) = fs::read_to_string(&src_path) {
+                    migrated_content = Some(content);
                 }
                 continue;
             }
-            AgentFileType::Other => continue,
+            AgentFileType::Other => {
+                // Skip unknown file types
+                continue;
+            }
         };
 
-        // Perform migration
-        match file.file_type {
-            AgentFileType::CursorDirectory => {
-                if src_path.exists() {
-                    // Copy directory recursively
-                    copy_dir_all(&src_path, &dest_path)?;
-                    println!("  {} Copied: {} → {}", "✔".green(), file.path.display(), dest_path.strip_prefix(project_root).unwrap_or(&dest_path).display());
-                }
-            }
-            _ => {}
+        // Perform migration for CursorDirectory
+        if file.file_type == AgentFileType::CursorDirectory && src_path.exists() {
+            // Copy directory recursively
+            copy_dir_all(&src_path, &dest_path)?;
+            println!("  {} Copied: {} → {}", "✔".green(), file.path.display(), dest_path.strip_prefix(project_root).unwrap_or(&dest_path).display());
         }
     }
 
@@ -482,19 +477,21 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
             }
             
             let src_path = project_root.join(&file.path);
-            if src_path.exists() {
-                let backup_path = backup_dir.join(&file.path);
-                if let Some(parent) = backup_path.parent() {
-                    fs::create_dir_all(parent)?;
-                }
-
-                if src_path.is_dir() {
-                    copy_dir_all(&src_path, &backup_path)?;
-                } else {
-                    fs::copy(&src_path, &backup_path)?;
-                }
-                println!("  {} Backed up: {}", "✔".green(), file.path.display());
+            if !src_path.exists() {
+                continue;
             }
+
+            let backup_path = backup_dir.join(&file.path);
+            if let Some(parent) = backup_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+
+            if src_path.is_dir() {
+                copy_dir_all(&src_path, &backup_path)?;
+            } else {
+                fs::copy(&src_path, &backup_path)?;
+            }
+            println!("  {} Backed up: {}", "✔".green(), file.path.display());
         }
     }
 
