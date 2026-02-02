@@ -92,7 +92,35 @@ else
     exit 1
 fi
 
-# --- 5. TEST: CLEAN ---
+# --- 5. TEST: SKILL INSTALL (Real from skills.sh source) ---
+echo "▶️ Testing: agentsync skill install (Real GitHub ZIP)"
+# Use a real skill from skills.sh (we use the GitHub source directly)
+REAL_SKILL_URL="https://github.com/anthropics/skills/archive/refs/heads/main.zip"
+agentsync skill install --source "$REAL_SKILL_URL" frontend-design
+
+# Verify skill installation from monorepo/GitHub ZIP
+SKILL_DIR=".agents/skills/frontend-design"
+if [ -f "$SKILL_DIR/SKILL.md" ]; then
+    echo "✅ Success: frontend-design skill installed from GitHub ZIP."
+    # Check that it found the right subdirectory by looking for the name in the manifest
+    # The manifest uses YAML frontmatter
+    if grep -q "name: frontend-design" "$SKILL_DIR/SKILL.md"; then
+        echo "✅ Success: Found correct SKILL.md content."
+    else
+        echo "❌ Failure: SKILL.md content does not match expected skill name."
+        cat "$SKILL_DIR/SKILL.md"
+        exit 1
+    fi
+else
+    echo "❌ Failure: Skill manifest not found at $SKILL_DIR/SKILL.md"
+    if [ -d "$SKILL_DIR" ]; then
+        echo "Contents of $SKILL_DIR:"
+        tree "$SKILL_DIR" || ls -R "$SKILL_DIR"
+    fi
+    exit 1
+fi
+
+# --- 6. TEST: CLEAN ---
 echo "▶️ Testing: agentsync clean"
 agentsync clean
 
