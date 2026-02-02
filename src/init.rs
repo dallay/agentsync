@@ -198,7 +198,7 @@ struct DiscoveredFile {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)] // Other variant is reserved for future use
+#[allow(dead_code)] // Some variants like Other are reserved for future extensibility
 enum AgentFileType {
     ClaudeInstructions,
     CursorDirectory,
@@ -373,7 +373,8 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
         let src_path = project_root.join(&file.path);
         let dest_path = match file.file_type {
             AgentFileType::ClaudeInstructions | AgentFileType::RootAgentsFile => {
-                // Merge content into AGENTS.md if it exists
+                // Capture content from first instructions file to use in AGENTS.md
+                // We only take the first file's content to avoid confusion
                 if migrated_content.is_none() && let Ok(content) = fs::read_to_string(&src_path) {
                     migrated_content = Some(content);
                 }
@@ -392,7 +393,8 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
                 continue;
             }
             AgentFileType::CopilotInstructions => {
-                // This will be handled by symlinks from AGENTS.md
+                // Copilot instructions will be handled by symlinks from AGENTS.md
+                // Capture content from first instructions file to use in AGENTS.md
                 if migrated_content.is_none() && let Ok(content) = fs::read_to_string(&src_path) {
                     migrated_content = Some(content);
                 }
@@ -408,7 +410,16 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
         if file.file_type == AgentFileType::CursorDirectory && src_path.exists() {
             // Copy directory recursively
             copy_dir_all(&src_path, &dest_path)?;
-            println!("  {} Copied: {} → {}", "✔".green(), file.path.display(), dest_path.strip_prefix(project_root).unwrap_or(&dest_path).display());
+            let dest_display = dest_path
+                .strip_prefix(project_root)
+                .unwrap_or(&dest_path)
+                .display();
+            println!(
+                "  {} Copied: {} → {}",
+                "✔".green(),
+                file.path.display(),
+                dest_display
+            );
         }
     }
 
