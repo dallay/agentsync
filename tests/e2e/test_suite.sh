@@ -5,8 +5,10 @@ echo "🚀 Starting AgentSync E2E Suite..."
 
 # --- 1. SETUP SIMULATED ENVIRONMENT ---
 echo "📂 Setting up simulated paths..."
-export HOME="/home/tester/fake_home"
-export PROJECT_ROOT="/home/tester/app/my-project"
+# Use a configurable base directory for simulated paths, defaulting to /home/tester
+E2E_BASE_DIR="${E2E_BASE_DIR:-/home/tester}"
+export HOME="${E2E_BASE_DIR}/fake_home"
+export PROJECT_ROOT="${E2E_BASE_DIR}/app/my-project"
 export CURSOR_CONFIG="$HOME/.config/Cursor/User/globalStorage"
 
 mkdir -p "$CURSOR_CONFIG"
@@ -93,31 +95,46 @@ else
 fi
 
 # --- 5. TEST: SKILL INSTALL (Real from skills.sh source) ---
-echo "▶️ Testing: agentsync skill install (Real GitHub ZIP)"
-# Use a real skill from skills.sh (we use the GitHub source directly)
-REAL_SKILL_URL="https://github.com/anthropics/skills/archive/refs/heads/main.zip"
-agentsync skill install --source "$REAL_SKILL_URL" frontend-design
+if [ "${RUN_REAL_SKILL_TEST}" = "1" ]; then
+    echo "▶️ Testing: agentsync skill install (Real GitHub ZIP)"
 
-# Verify skill installation from monorepo/GitHub ZIP
-SKILL_DIR=".agents/skills/frontend-design"
-if [ -f "$SKILL_DIR/SKILL.md" ]; then
-    echo "✅ Success: frontend-design skill installed from GitHub ZIP."
-    # Check that it found the right subdirectory by looking for the name in the manifest
-    # The manifest uses YAML frontmatter
-    if grep -q "name: frontend-design" "$SKILL_DIR/SKILL.md"; then
-        echo "✅ Success: Found correct SKILL.md content."
+    # Use a real skill from skills.sh (pinned to a specific commit)
+    REAL_SKILL_URL="https://github.com/anthropics/skills/archive/69c0b1a0674149f27b61b2635f935524b6add202.zip"
+    GITHUB_DOMAIN="github.com"
+
+    # Preflight network check
+    echo "⏳ Checking connectivity to ${GITHUB_DOMAIN}..."
+    if ! curl -s --head --request GET "https://${GITHUB_DOMAIN}" | grep "200 OK" > /dev/null; then
+        echo "❌ Failure: GitHub is unreachable. Aborting real skill test."
+        exit 1
+    fi
+    echo "✅ GitHub is reachable."
+
+    agentsync skill install --source "$REAL_SKILL_URL" frontend-design
+
+    # Verify skill installation from monorepo/GitHub ZIP
+    SKILL_DIR=".agents/skills/frontend-design"
+    if [ -f "$SKILL_DIR/SKILL.md" ]; then
+        echo "✅ Success: frontend-design skill installed from GitHub ZIP."
+        # Check that it found the right subdirectory by looking for the name in the manifest
+        # The manifest uses YAML frontmatter
+        if grep -q "name: frontend-design" "$SKILL_DIR/SKILL.md"; then
+            echo "✅ Success: Found correct SKILL.md content."
+        else
+            echo "❌ Failure: SKILL.md content does not match expected skill name."
+            cat "$SKILL_DIR/SKILL.md"
+            exit 1
+        fi
     else
-        echo "❌ Failure: SKILL.md content does not match expected skill name."
-        cat "$SKILL_DIR/SKILL.md"
+        echo "❌ Failure: Skill manifest not found at $SKILL_DIR/SKILL.md"
+        if [ -d "$SKILL_DIR" ]; then
+            echo "Contents of $SKILL_DIR:"
+            tree "$SKILL_DIR" || ls -R "$SKILL_DIR"
+        fi
         exit 1
     fi
 else
-    echo "❌ Failure: Skill manifest not found at $SKILL_DIR/SKILL.md"
-    if [ -d "$SKILL_DIR" ]; then
-        echo "Contents of $SKILL_DIR:"
-        tree "$SKILL_DIR" || ls -R "$SKILL_DIR"
-    fi
-    exit 1
+    echo "⏭️ Skipping real skill test (RUN_REAL_SKILL_TEST not set to 1)."
 fi
 
 # --- 6. TEST: CLEAN ---

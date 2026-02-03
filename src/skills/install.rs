@@ -102,7 +102,12 @@ pub fn blocking_fetch_and_install_skill(
     Ok(())
 }
 
-/// Fetch a skill archive (HTTP, file://, or local file path) and unpack to a temp directory, returning the directory path.
+/// Find the best directory within the unpacked archive to install as a skill.
+///
+/// It takes `temp_path` and `skill_id`, checks for `SKILL.md` at the root,
+/// searches subdirectories for `SKILL.md`, prioritizes a manifest whose parent
+/// directory name matches `skill_id`, returns the sole manifest directory if
+/// only one is found, and falls back to returning `temp_path`.
 fn find_best_skill_dir(temp_path: &Path, skill_id: &str) -> PathBuf {
     // 1. Check if SKILL.md is at the root
     if temp_path.join("SKILL.md").exists() {
