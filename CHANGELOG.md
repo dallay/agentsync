@@ -1,3 +1,9 @@
+## [1.23.0](https://github.com/dallay/agentsync/compare/v1.22.0...v1.23.0) (2026-02-03)
+
+### ✨ Features
+
+* Add interactive wizard for migrating existing agent configurations ([#117](https://github.com/dallay/agentsync/issues/117)) ([fa33554](https://github.com/dallay/agentsync/commit/fa3355434e93e72a8a418b1bef1839acf7447309))
+
 ## [1.22.0](https://github.com/dallay/agentsync/compare/v1.21.2...v1.22.0) (2026-02-03)
 
 ### ✨ Features
