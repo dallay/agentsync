@@ -1,9 +1,12 @@
+use agentsync::skills::provider::{Provider, SkillsShProvider};
 use agentsync::skills::registry;
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
 use std::path::PathBuf;
 use std::path::{Component, Path};
 use tracing::error;
+
+// ... (keep the rest)
 
 #[derive(Subcommand, Debug)]
 pub enum SkillCommand {
@@ -48,8 +51,25 @@ pub fn run_update(args: SkillUpdateArgs, project_root: PathBuf) -> Result<()> {
     let skill_id = &args.skill_id;
     // Validate skill_id to prevent path traversal or invalid path segments
     validate_skill_id(skill_id)?;
-    let source = args.source.as_deref().unwrap_or(skill_id);
-    let update_source_path = std::path::Path::new(source);
+
+    let source = if let Some(s) = args.source.clone() {
+        s
+    } else {
+        // If it doesn't look like a URL or a path, try to resolve via skills.sh
+        if !skill_id.contains("://") && !skill_id.starts_with('/') && !skill_id.starts_with('.') {
+            let provider = SkillsShProvider;
+            match provider.resolve(skill_id) {
+                Ok(info) => info.download_url,
+                Err(e) => {
+                    tracing::warn!(%skill_id, ?e, "Failed to resolve skill via skills.sh, falling back to id as source");
+                    skill_id.clone()
+                }
+            }
+        } else {
+            skill_id.clone()
+        }
+    };
+    let update_source_path = std::path::Path::new(&source);
     let result = if let Ok(handle) = tokio::runtime::Handle::try_current() {
         handle.block_on(agentsync::skills::update::update_skill_async(
             skill_id,
@@ -150,7 +170,25 @@ pub fn run_install(args: SkillInstallArgs, project_root: PathBuf) -> Result<()> 
     let skill_id = &args.skill_id;
     // Validate skill_id to prevent path traversal or invalid path segments
     validate_skill_id(skill_id)?;
-    let source = args.source.clone().unwrap_or_else(|| skill_id.clone());
+
+    let source = if let Some(s) = args.source.clone() {
+        s
+    } else {
+        // If it doesn't look like a URL or a path, try to resolve via skills.sh
+        if !skill_id.contains("://") && !skill_id.starts_with('/') && !skill_id.starts_with('.') {
+            let provider = SkillsShProvider;
+            match provider.resolve(skill_id) {
+                Ok(info) => info.download_url,
+                Err(e) => {
+                    tracing::warn!(%skill_id, ?e, "Failed to resolve skill via skills.sh, falling back to id as source");
+                    skill_id.clone()
+                }
+            }
+        } else {
+            skill_id.clone()
+        }
+    };
+
     // Unified logic: install from archive, URL, or local directory
     tracing::debug!(
         skill_id = %skill_id,
