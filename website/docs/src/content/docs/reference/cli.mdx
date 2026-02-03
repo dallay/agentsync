@@ -18,11 +18,21 @@ agentsync init [FLAGS]
 **Flags**:
 - `-p, --path <PATH>`: Project root directory (defaults to current dir).
 - `-f, --force`: Overwrite existing configuration without prompting.
+- `-w, --wizard`: Run interactive configuration wizard to migrate existing agent files.
 
 **Actions**:
 - Creates the `.agents/` directory if it doesn't exist.
 - Creates a default `.agents/agentsync.toml` file.
 - Creates a template `.agents/AGENTS.md` file.
+
+**Wizard Mode**:
+When using the `--wizard` flag, AgentSync will:
+1. Scan your project for existing agent-related files (CLAUDE.md, .cursor/, .mcp.json, .github/copilot-instructions.md, etc.)
+2. Interactively prompt you to select which files to migrate
+3. For instruction files (.mcp.json, Copilot instructions): Read their content and merge into `.agents/AGENTS.md` (files are not copied or backed up)
+4. For other agent files (e.g., .cursor/): Copy to the `.agents/` directory
+5. Optionally create backups of original files (after user confirmation, only for files that were copied)
+6. Generate a configuration (`.agents/agentsync.toml`) that manages these files with symlinks
 
 ---
 

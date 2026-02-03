@@ -165,6 +165,8 @@ cargo build --release
 
 ## Quick Start
 
+### New Projects
+
 1. **Initialize configuration** in your project:
 
 ```bash
@@ -173,6 +175,19 @@ agentsync init
 ```
 
 This creates `.agents/agentsync.toml` with a default configuration.
+
+### Existing Projects with Agent Files
+
+If you already have agent configuration files scattered across your project (like `CLAUDE.md`, `.cursor/`, or `.github/copilot-instructions.md`), use the interactive wizard:
+
+```bash
+cd your-project
+agentsync init --wizard
+```
+
+The wizard will scan for existing files, let you select which to migrate, and set up everything automatically.
+
+---
 
 2. **Edit the configuration** to match your needs (see [Configuration](#configuration))
 
@@ -197,11 +212,12 @@ agentsync apply
 ```bash
 
 # Initialize a new configuration
-
 agentsync init
 
-# Apply configuration (create symlinks)
+# Initialize with interactive wizard (for existing projects with agent files)
+agentsync init --wizard
 
+# Apply configuration (create symlinks)
 agentsync apply
 
 # Clean existing symlinks before applying
