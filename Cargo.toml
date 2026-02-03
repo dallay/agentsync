@@ -50,7 +50,7 @@ walkdir = "2.5"
 pathdiff = "0.2"
 
 # HTTP + async runtime (added for skills.sh integration feature)
-reqwest = { version = "0.13.1", features = ["json", "gzip", "stream"] }
+reqwest = { version = "0.13.1", features = ["json", "gzip", "stream", "blocking"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
@@ -62,6 +62,7 @@ semver = "1.0"
 
 # Temp directories for skill archive extraction
 tempfile = "3.15"
+urlencoding = "2.1"
 
 [dev-dependencies]
 rand = "0.9"

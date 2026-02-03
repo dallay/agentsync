@@ -1,10 +1,23 @@
 use std::fs;
-use std::path::PathBuf;
+use std::io::Write;
 use tempfile::TempDir;
 
 /// Utility: copy fixture skill to a temp location (simulates a downloaded or unpacked skill)
 fn prepare_fixture_skill(dest_dir: &std::path::Path) {
-    let fixture_root = std::path::Path::new("tests/fixtures/sample-skill");
+    let fixture_root = std::env::current_dir()
+        .unwrap()
+        .join("tests/fixtures/sample-skill");
+
+    assert!(
+        fixture_root.exists(),
+        "fixture_root {} does not exist",
+        fixture_root.display()
+    );
+    assert!(
+        fixture_root.join("SKILL.md").exists(),
+        "SKILL.md does not exist in fixture_root"
+    );
+
     let dest_skill = dest_dir.join("sample-skill");
     fs::create_dir_all(dest_skill.join("assets")).unwrap();
 
@@ -66,8 +79,24 @@ fn integration_skill_install_invalid_manifest_rollback() {
     let target_root = temp.path().join(".agents/skills");
     fs::create_dir_all(&target_root).unwrap();
 
-    // Prepare fixture, but intentionally keep the invalid SKILL.md name field
-    prepare_fixture_skill(&target_root);
+    // Prepare fixture, but intentionally use an invalid manifest name (not matching folder name is one thing, but let's make it fail regex)
+    let fixture_root = std::env::current_dir()
+        .unwrap()
+        .join("tests/fixtures/sample-skill");
+    let dest_skill = target_root.join("sample-skill");
+    fs::create_dir_all(dest_skill.join("assets")).unwrap();
+
+    // Write invalid SKILL.md (invalid name for regex)
+    fs::write(
+        dest_skill.join("SKILL.md"),
+        "---\nname: \"Invalid Name!\"\n---\n# body",
+    )
+    .unwrap();
+    fs::copy(
+        fixture_root.join("assets/icon.png"),
+        dest_skill.join("assets/icon.png"),
+    )
+    .unwrap();
 
     // Try to install via ZIP logic, expect error and cleanup
     // Create a zip
@@ -76,8 +105,7 @@ fn integration_skill_install_invalid_manifest_rollback() {
     {
         let file = fs::File::create(&zipfile).unwrap();
         let mut zip = zip::ZipWriter::new(file);
-        use zip::write::FileOptions;
-        let options = FileOptions::default();
+        let options = zip::write::FileOptions::<()>::default();
         // Add SKILL.md
         let manifest_bytes = fs::read(skill_path.join("SKILL.md")).unwrap();
         zip.start_file("SKILL.md", options).unwrap();
