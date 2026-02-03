@@ -1,6 +1,6 @@
 ---
 id: "sample-skill"
-name: "Sample Skill"
+name: "sample-skill"
 version: "0.1.0"
 description: "A test skill fixture for integration testing."
 ---
