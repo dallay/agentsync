@@ -2,10 +2,12 @@ use flate2::read::GzDecoder;
 // futures_util::StreamExt is used locally where needed
 use anyhow::Error as AnyhowError;
 use reqwest::{Client, Error as ReqwestError};
+use std::path::{Path, PathBuf};
 use tar::Archive;
 use tempfile::TempDir;
 use thiserror::Error;
 use tracing::debug;
+use walkdir::WalkDir;
 use zip::read::ZipArchive;
 use zip::result::ZipError;
 
@@ -62,20 +64,21 @@ pub fn blocking_fetch_and_install_skill(
             rt.block_on(fetch_and_unpack_to_tempdir(source))?
         }
     };
+
+    let best_dir = find_best_skill_dir(tempdir.path(), skill_id);
+    debug!(
+        skill_id = %skill_id,
+        temp_path = %tempdir.path().display(),
+        best_dir = %best_dir.display(),
+        "found best skill directory"
+    );
+
     let skill_dir = target_root.join(skill_id);
     debug!(skill_id = %skill_id, target_root = %target_root.display(), source = %source, "install");
-    let temp_entries = std::fs::read_dir(tempdir.path())
-        .map(|rd| {
-            rd.filter_map(|e| e.ok())
-                .map(|e| e.file_name().to_string_lossy().into_owned())
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_else(|_| vec![]);
-    debug!(tempdir_contents = ?temp_entries, "install tempdir contents");
     if skill_dir.exists() {
         std::fs::remove_dir_all(&skill_dir).map_err(SkillInstallError::Io)?;
     }
-    copy_dir_recursively(tempdir.path(), &skill_dir)?;
+    copy_dir_recursively(&best_dir, &skill_dir)?;
     // Validate manifest
     let manifest_path = skill_dir.join("SKILL.md");
     let parsed = crate::skills::manifest::parse_skill_manifest(&manifest_path)?;
@@ -99,7 +102,40 @@ pub fn blocking_fetch_and_install_skill(
     Ok(())
 }
 
-/// Fetch a skill archive (HTTP, file://, or local file path) and unpack to a temp directory, returning the directory path.
+/// Find the best directory within the unpacked archive to install as a skill.
+///
+/// It takes `temp_path` and `skill_id`, checks for `SKILL.md` at the root,
+/// searches subdirectories for `SKILL.md`, prioritizes a manifest whose parent
+/// directory name matches `skill_id`, returns the sole manifest directory if
+/// only one is found, and falls back to returning `temp_path`.
+fn find_best_skill_dir(temp_path: &Path, skill_id: &str) -> PathBuf {
+    // 1. Check if SKILL.md is at the root
+    if temp_path.join("SKILL.md").exists() {
+        return temp_path.to_path_buf();
+    }
+
+    // 2. Search for SKILL.md in subdirectories
+    let mut all_manifests = Vec::new();
+    for entry in WalkDir::new(temp_path).into_iter().filter_map(|e| e.ok()) {
+        if entry.file_name() == "SKILL.md" {
+            let parent = entry.path().parent().unwrap().to_path_buf();
+            // If the parent directory name matches the skill_id, we prioritize it
+            if parent.file_name().and_then(|n| n.to_str()) == Some(skill_id) {
+                return parent;
+            }
+            all_manifests.push(parent);
+        }
+    }
+
+    // If there's only one manifest found, use its directory
+    if all_manifests.len() == 1 {
+        return all_manifests.remove(0);
+    }
+
+    // Fallback to original path
+    temp_path.to_path_buf()
+}
+
 pub async fn fetch_and_unpack_to_tempdir(url: &str) -> Result<TempDir, SkillInstallError> {
     use std::io::Cursor;
     use std::path::Path;
