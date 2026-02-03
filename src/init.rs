@@ -358,24 +358,84 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
 
     // Migrate selected files
     println!("\n{}", "🔄 Migrating files...".cyan());
+
+    // Collect all instruction files first
+    let instruction_files: Vec<_> = files_to_migrate
+        .iter()
+        .filter(|f| {
+            matches!(
+                f.file_type,
+                AgentFileType::ClaudeInstructions
+                    | AgentFileType::RootAgentsFile
+                    | AgentFileType::CopilotInstructions
+            )
+        })
+        .collect();
+
+    // Determine how to handle instruction files
     let mut migrated_content: Option<String> = None;
+    let mut instruction_files_merged = 0;
+
+    if instruction_files.len() > 1 {
+        // Multiple instruction files - merge them with section headings
+        let mut merged = String::new();
+        for file in &instruction_files {
+            let src_path = project_root.join(&file.path);
+            if let Ok(content) = fs::read_to_string(&src_path) {
+                if !merged.is_empty() {
+                    merged.push_str("\n\n---\n\n");
+                }
+                merged.push_str(&format!(
+                    "# Instructions from {}\n\n{}",
+                    file.path.display(),
+                    content
+                ));
+                instruction_files_merged += 1;
+            }
+        }
+        if !merged.is_empty() {
+            migrated_content = Some(merged);
+        }
+    } else if instruction_files.len() == 1 {
+        // Single instruction file - use its content directly
+        let src_path = project_root.join(&instruction_files[0].path);
+        if let Ok(content) = fs::read_to_string(&src_path) {
+            migrated_content = Some(content);
+            instruction_files_merged = 1;
+        }
+    }
+
+    // Track migration counts
+    let mut files_actually_migrated = 0;
+    let mut files_skipped = 0;
 
     for file in &files_to_migrate {
         let src_path = project_root.join(&file.path);
-        let dest_path = match file.file_type {
-            AgentFileType::ClaudeInstructions | AgentFileType::RootAgentsFile => {
-                // Capture content from first instructions file to use in AGENTS.md
-                // We only take the first file's content to avoid confusion
-                if migrated_content.is_none()
-                    && let Ok(content) = fs::read_to_string(&src_path)
-                {
-                    migrated_content = Some(content);
-                }
-                agents_dir.join("AGENTS.md")
+
+        match file.file_type {
+            AgentFileType::ClaudeInstructions
+            | AgentFileType::RootAgentsFile
+            | AgentFileType::CopilotInstructions => {
+                // Already handled above - content merged into AGENTS.md
+                continue;
             }
             AgentFileType::CursorDirectory => {
                 // Copy .cursor directory to .agents/.cursor
-                agents_dir.join(".cursor")
+                if src_path.exists() {
+                    let dest_path = agents_dir.join(".cursor");
+                    copy_dir_all(&src_path, &dest_path)?;
+                    let dest_display = dest_path
+                        .strip_prefix(project_root)
+                        .unwrap_or(&dest_path)
+                        .display();
+                    println!(
+                        "  {} Copied: {} → {}",
+                        "✔".green(),
+                        file.path.display(),
+                        dest_display
+                    );
+                    files_actually_migrated += 1;
+                }
             }
             AgentFileType::McpConfig => {
                 // Note: MCP config will be handled by agentsync.toml
@@ -383,38 +443,11 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
                     "  {} Note: .mcp.json detected. You can configure MCP servers in agentsync.toml",
                     "ℹ".blue()
                 );
-                continue;
-            }
-            AgentFileType::CopilotInstructions => {
-                // Copilot instructions will be handled by symlinks from AGENTS.md
-                // Capture content from first instructions file to use in AGENTS.md
-                if migrated_content.is_none()
-                    && let Ok(content) = fs::read_to_string(&src_path)
-                {
-                    migrated_content = Some(content);
-                }
-                continue;
+                files_skipped += 1;
             }
             AgentFileType::Other => {
-                // Skip unknown file types
-                continue;
+                files_skipped += 1;
             }
-        };
-
-        // Perform migration for CursorDirectory
-        if file.file_type == AgentFileType::CursorDirectory && src_path.exists() {
-            // Copy directory recursively
-            copy_dir_all(&src_path, &dest_path)?;
-            let dest_display = dest_path
-                .strip_prefix(project_root)
-                .unwrap_or(&dest_path)
-                .display();
-            println!(
-                "  {} Copied: {} → {}",
-                "✔".green(),
-                file.path.display(),
-                dest_display
-            );
         }
     }
 
@@ -428,11 +461,20 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
             );
         } else {
             fs::write(&agents_md_path, &content)?;
-            println!(
-                "  {} Created: {} (with migrated content)",
-                "✔".green(),
-                agents_md_path.display()
-            );
+            if instruction_files_merged > 1 {
+                println!(
+                    "  {} Created: {} (merged {} instruction files)",
+                    "✔".green(),
+                    agents_md_path.display(),
+                    instruction_files_merged
+                );
+            } else {
+                println!(
+                    "  {} Created: {} (with migrated content)",
+                    "✔".green(),
+                    agents_md_path.display()
+                );
+            }
         }
     } else {
         // Use default template if no content migrated
@@ -459,10 +501,24 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
 
     // Provide migration summary
     println!("\n{}", "📋 Migration Summary:".bold());
-    println!(
-        "  • Migrated {} file(s) to .agents/",
-        files_to_migrate.len()
-    );
+    if instruction_files_merged > 0 {
+        println!(
+            "  • Merged {} instruction file(s) into AGENTS.md",
+            instruction_files_merged
+        );
+    }
+    if files_actually_migrated > 0 {
+        println!(
+            "  • Migrated {} file(s) to .agents/",
+            files_actually_migrated
+        );
+    }
+    if files_skipped > 0 {
+        println!(
+            "  • Skipped {} file(s) (content noted in configuration)",
+            files_skipped
+        );
+    }
     println!(
         "  • Configuration saved to {}",
         ".agents/agentsync.toml".cyan()
@@ -498,12 +554,23 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
                 fs::create_dir_all(parent)?;
             }
 
-            if src_path.is_dir() {
-                copy_dir_all(&src_path, &backup_path)?;
-            } else {
-                fs::copy(&src_path, &backup_path)?;
+            // Try to move the file/directory first (rename)
+            match fs::rename(&src_path, &backup_path) {
+                Ok(_) => {
+                    println!("  {} Moved: {}", "✔".green(), file.path.display());
+                }
+                Err(_) => {
+                    // Cross-filesystem or other error - fall back to copy then delete
+                    if src_path.is_dir() {
+                        copy_dir_all(&src_path, &backup_path)?;
+                        fs::remove_dir_all(&src_path)?;
+                    } else {
+                        fs::copy(&src_path, &backup_path)?;
+                        fs::remove_file(&src_path)?;
+                    }
+                    println!("  {} Moved: {}", "✔".green(), file.path.display());
+                }
             }
-            println!("  {} Backed up: {}", "✔".green(), file.path.display());
         }
     }
 
@@ -515,11 +582,32 @@ fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
     fs::create_dir_all(dst)?;
     for entry in fs::read_dir(src)? {
         let entry = entry?;
-        let file_type = entry.file_type()?;
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
 
-        if file_type.is_dir() {
+        // Use symlink_metadata to detect symlinks without following them
+        let metadata = entry.path().symlink_metadata()?;
+
+        if metadata.is_symlink() {
+            // Handle symlinks: recreate them at destination
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs as unix_fs;
+                let link_target = fs::read_link(&src_path)?;
+                unix_fs::symlink(&link_target, &dst_path)?;
+            }
+            #[cfg(windows)]
+            {
+                use std::os::windows::fs as windows_fs;
+                let link_target = fs::read_link(&src_path)?;
+                // On Windows, we need to know if target is dir or file
+                if link_target.is_dir() {
+                    windows_fs::symlink_dir(&link_target, &dst_path)?;
+                } else {
+                    windows_fs::symlink_file(&link_target, &dst_path)?;
+                }
+            }
+        } else if metadata.is_dir() {
             copy_dir_all(&src_path, &dst_path)?;
         } else {
             fs::copy(&src_path, &dst_path)?;

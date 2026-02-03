@@ -29,9 +29,10 @@ agentsync init [FLAGS]
 When using the `--wizard` flag, AgentSync will:
 1. Scan your project for existing agent-related files (CLAUDE.md, .cursor/, .mcp.json, .github/copilot-instructions.md, etc.)
 2. Interactively prompt you to select which files to migrate
-3. Copy selected files to the `.agents/` directory
-4. Optionally create backups of original files
-5. Generate a configuration that manages these files with symlinks
+3. For instruction files (.mcp.json, Copilot instructions): Read their content and merge into `.agents/AGENTS.md` (files are not copied or backed up)
+4. For other agent files (e.g., .cursor/): Copy to the `.agents/` directory
+5. Optionally create backups of original files (after user confirmation, only for files that were copied)
+6. Generate a configuration (`.agents/agentsync.toml`) that manages these files with symlinks
 
 ---
 
