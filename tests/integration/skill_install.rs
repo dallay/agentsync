@@ -8,11 +8,14 @@ fn prepare_fixture_skill(dest_dir: &std::path::Path) {
         .unwrap()
         .join("tests/fixtures/sample-skill");
 
-    // Debug output to see what's happening
-    println!("DEBUG: fixture_root: {}", fixture_root.display());
-    println!(
-        "DEBUG: SKILL.md exists? {}",
-        fixture_root.join("SKILL.md").exists()
+    assert!(
+        fixture_root.exists(),
+        "fixture_root {} does not exist",
+        fixture_root.display()
+    );
+    assert!(
+        fixture_root.join("SKILL.md").exists(),
+        "SKILL.md does not exist in fixture_root"
     );
 
     let dest_skill = dest_dir.join("sample-skill");

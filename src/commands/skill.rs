@@ -6,8 +6,6 @@ use std::path::PathBuf;
 use std::path::{Component, Path};
 use tracing::error;
 
-// ... (keep the rest)
-
 #[derive(Subcommand, Debug)]
 pub enum SkillCommand {
     /// Install a skill from skills.sh or a custom provider
@@ -52,23 +50,7 @@ pub fn run_update(args: SkillUpdateArgs, project_root: PathBuf) -> Result<()> {
     // Validate skill_id to prevent path traversal or invalid path segments
     validate_skill_id(skill_id)?;
 
-    let source = if let Some(s) = args.source.clone() {
-        s
-    } else {
-        // If it doesn't look like a URL or a path, try to resolve via skills.sh
-        if !skill_id.contains("://") && !skill_id.starts_with('/') && !skill_id.starts_with('.') {
-            let provider = SkillsShProvider;
-            match provider.resolve(skill_id) {
-                Ok(info) => info.download_url,
-                Err(e) => {
-                    tracing::warn!(%skill_id, ?e, "Failed to resolve skill via skills.sh, falling back to id as source");
-                    skill_id.clone()
-                }
-            }
-        } else {
-            skill_id.clone()
-        }
-    };
+    let source = resolve_source(skill_id, args.source.clone())?;
     let update_source_path = std::path::Path::new(&source);
     let result = if let Ok(handle) = tokio::runtime::Handle::try_current() {
         handle.block_on(agentsync::skills::update::update_skill_async(
@@ -171,23 +153,7 @@ pub fn run_install(args: SkillInstallArgs, project_root: PathBuf) -> Result<()> 
     // Validate skill_id to prevent path traversal or invalid path segments
     validate_skill_id(skill_id)?;
 
-    let source = if let Some(s) = args.source.clone() {
-        s
-    } else {
-        // If it doesn't look like a URL or a path, try to resolve via skills.sh
-        if !skill_id.contains("://") && !skill_id.starts_with('/') && !skill_id.starts_with('.') {
-            let provider = SkillsShProvider;
-            match provider.resolve(skill_id) {
-                Ok(info) => info.download_url,
-                Err(e) => {
-                    tracing::warn!(%skill_id, ?e, "Failed to resolve skill via skills.sh, falling back to id as source");
-                    skill_id.clone()
-                }
-            }
-        } else {
-            skill_id.clone()
-        }
-    };
+    let source = resolve_source(skill_id, args.source.clone())?;
 
     // Unified logic: install from archive, URL, or local directory
     tracing::debug!(
@@ -267,6 +233,30 @@ pub fn run_install(args: SkillInstallArgs, project_root: PathBuf) -> Result<()> 
                 Err(e)
             }
         }
+    }
+}
+
+fn resolve_source(skill_id: &str, source_arg: Option<String>) -> Result<String> {
+    if let Some(s) = source_arg {
+        return Ok(s);
+    }
+
+    // If it doesn't look like a URL or a path, try to resolve via skills.sh
+    if !skill_id.contains("://") && !skill_id.starts_with('/') && !skill_id.starts_with('.') {
+        let provider = SkillsShProvider;
+        match provider.resolve(skill_id) {
+            Ok(info) => Ok(info.download_url),
+            Err(e) => {
+                tracing::warn!(%skill_id, ?e, "Failed to resolve skill via skills.sh");
+                Err(anyhow::anyhow!(
+                    "failed to resolve skill '{}' via skills.sh: {}",
+                    skill_id,
+                    e
+                ))
+            }
+        }
+    } else {
+        Ok(skill_id.to_string())
     }
 }
 

@@ -33,9 +33,11 @@ impl Provider for SkillsShProvider {
 
     fn resolve(&self, id: &str) -> Result<SkillInstallInfo> {
         // Use tokio runtime to call API
-        let url = format!("https://skills.sh/api/search?q={}", id);
+        let url = format!("https://skills.sh/api/search?q={}", urlencoding::encode(id));
 
-        let client = reqwest::blocking::Client::new();
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()?;
         let resp = client.get(url).send()?.json::<SearchResponse>()?;
 
         // Find the best match (exact id match preferred)
@@ -81,7 +83,7 @@ impl Provider for SkillsShProvider {
             subpath
         };
 
-        let mut final_url = format!("{}/archive/refs/heads/main.zip", download_url);
+        let mut final_url = format!("{}/archive/HEAD.zip", download_url);
         if !final_subpath.is_empty() {
             final_url.push('#');
             final_url.push_str(&final_subpath);

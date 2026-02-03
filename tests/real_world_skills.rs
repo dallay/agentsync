@@ -30,7 +30,12 @@ fn test_install_real_skill_vitest_from_skills_sh() {
     println!("STDOUT: {}", stdout);
     println!("STDERR: {}", stderr);
 
-    assert!(status.success());
+    assert!(
+        output.status.success(),
+        "Install failed.\nSTDOUT: {}\nSTDERR: {}",
+        stdout,
+        stderr
+    );
 
     // 3. Verify files
     let skill_dir = root.join(".agents/skills/vitest");
@@ -52,11 +57,15 @@ fn test_install_real_skill_astro_from_skills_sh() {
     let root = temp.path();
 
     // 1. Init
-    Command::new("cargo")
+    let init_status = Command::new("cargo")
         .args(["run", "--", "init", "--path"])
         .arg(root)
         .status()
         .unwrap();
+    assert!(
+        init_status.success(),
+        "Init failed in test_install_real_skill_astro_from_skills_sh"
+    );
 
     // 2. Install astro
     let status = Command::new("cargo")

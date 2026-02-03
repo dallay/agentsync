@@ -69,11 +69,35 @@ pub fn install_from_dir(
     let parsed = crate::skills::manifest::parse_skill_manifest(&manifest_path)?;
 
     // If validation passes, move to final location
+    let mut backup_path: Option<PathBuf> = None;
     if skill_dir.exists() {
-        std::fs::remove_dir_all(&skill_dir).map_err(SkillInstallError::Io)?;
+        let backup = target_root.join(format!("{}.backup", skill_id));
+        if backup.exists() {
+            std::fs::remove_dir_all(&backup).map_err(SkillInstallError::Io)?;
+        }
+        std::fs::rename(&skill_dir, &backup).map_err(SkillInstallError::Io)?;
+        backup_path = Some(backup);
     }
-    std::fs::create_dir_all(&skill_dir).map_err(SkillInstallError::Io)?;
-    copy_dir_recursively(staging_dir, &skill_dir)?;
+
+    if let Err(e) = (|| {
+        std::fs::create_dir_all(&skill_dir).map_err(SkillInstallError::Io)?;
+        copy_dir_recursively(staging_dir, &skill_dir)
+    })() {
+        // Rollback: restore backup if it exists
+        if let Some(backup) = backup_path {
+            if skill_dir.exists() {
+                let _ = std::fs::remove_dir_all(&skill_dir);
+            }
+            let _ = std::fs::rename(backup, &skill_dir);
+        }
+        return Err(e);
+    }
+
+    // Success: cleanup backup
+    if let Some(backup) = backup_path {
+        let _ = std::fs::remove_dir_all(backup);
+    }
+
     let entry = crate::skills::registry::SkillEntry {
         name: Some(parsed.name.clone()),
         description: parsed.description.clone(),

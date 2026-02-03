@@ -61,6 +61,7 @@ semver = "1.0"
 
 # Temp directories for skill archive extraction
 tempfile = "3.15"
+urlencoding = "2.1"
 
 [dev-dependencies]
 rand = "0.9"
