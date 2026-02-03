@@ -1,3 +1,9 @@
+## [1.22.0](https://github.com/dallay/agentsync/compare/v1.21.2...v1.22.0) (2026-02-03)
+
+### ✨ Features
+
+* skills sh integration ([#123](https://github.com/dallay/agentsync/issues/123)) ([3a2a7ef](https://github.com/dallay/agentsync/commit/3a2a7efde50ea592f01ec31deca67d4fd82b50b8))
+
 ## [1.21.2](https://github.com/dallay/agentsync/compare/v1.21.1...v1.21.2) (2026-02-01)
 
 ### 🚀 Performance
