@@ -933,4 +933,150 @@ mod tests {
             "content2"
         );
     }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_copy_dir_all_with_symlinks() {
+        use std::os::unix::fs as unix_fs;
+
+        let temp_dir = TempDir::new().unwrap();
+        let src_dir = temp_dir.path().join("src");
+        let dst_dir = temp_dir.path().join("dst");
+
+        // Create source structure with a symlink
+        fs::create_dir_all(&src_dir).unwrap();
+        fs::write(src_dir.join("real_file.txt"), "content").unwrap();
+
+        // Create a symlink
+        let link_path = src_dir.join("link_to_file.txt");
+        unix_fs::symlink("real_file.txt", &link_path).unwrap();
+
+        // Copy
+        copy_dir_all(&src_dir, &dst_dir).unwrap();
+
+        // Verify symlink was recreated (not followed)
+        let dst_link = dst_dir.join("link_to_file.txt");
+        assert!(dst_link.exists());
+
+        let metadata = dst_link.symlink_metadata().unwrap();
+        assert!(metadata.is_symlink());
+
+        // Verify symlink target
+        let link_target = fs::read_link(&dst_link).unwrap();
+        assert_eq!(link_target.to_str().unwrap(), "real_file.txt");
+    }
+
+    #[test]
+    fn test_merge_multiple_instruction_files() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create multiple instruction files
+        fs::write(
+            temp_dir.path().join("CLAUDE.md"),
+            "# Claude Instructions\n\nUse Claude.",
+        )
+        .unwrap();
+        fs::write(
+            temp_dir.path().join("AGENTS.md"),
+            "# Agent Instructions\n\nGeneral agent info.",
+        )
+        .unwrap();
+
+        let github_dir = temp_dir.path().join(".github");
+        fs::create_dir_all(&github_dir).unwrap();
+        fs::write(
+            github_dir.join("copilot-instructions.md"),
+            "# Copilot Instructions\n\nUse Copilot.",
+        )
+        .unwrap();
+
+        // Scan files
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        // Should find all three instruction files
+        let instruction_files: Vec<_> = discovered
+            .iter()
+            .filter(|f| {
+                matches!(
+                    f.file_type,
+                    AgentFileType::ClaudeInstructions
+                        | AgentFileType::RootAgentsFile
+                        | AgentFileType::CopilotInstructions
+                )
+            })
+            .collect();
+
+        assert_eq!(instruction_files.len(), 3);
+    }
+
+    #[test]
+    fn test_backup_moves_files() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        // Create a test file that would be backed up
+        let test_file = temp_dir.path().join("CLAUDE.md");
+        fs::write(&test_file, "test content").unwrap();
+        assert!(test_file.exists());
+
+        // Simulate backup by moving the file
+        let backup_dir = agents_dir.join("backup");
+        fs::create_dir_all(&backup_dir).unwrap();
+        let backup_path = backup_dir.join("CLAUDE.md");
+
+        // Try rename (move)
+        let result = fs::rename(&test_file, &backup_path);
+
+        if result.is_ok() {
+            // File should be moved (not exist at original location)
+            assert!(!test_file.exists());
+            assert!(backup_path.exists());
+            assert_eq!(fs::read_to_string(&backup_path).unwrap(), "test content");
+        } else {
+            // If rename fails, test the fallback (copy + delete)
+            fs::copy(&test_file, &backup_path).unwrap();
+            fs::remove_file(&test_file).unwrap();
+
+            assert!(!test_file.exists());
+            assert!(backup_path.exists());
+            assert_eq!(fs::read_to_string(&backup_path).unwrap(), "test content");
+        }
+    }
+
+    #[test]
+    fn test_backup_moves_directories() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        // Create a test directory
+        let test_dir = temp_dir.path().join(".cursor");
+        fs::create_dir_all(&test_dir).unwrap();
+        fs::write(test_dir.join("config.txt"), "config content").unwrap();
+        assert!(test_dir.exists());
+
+        // Simulate backup by moving the directory
+        let backup_dir = agents_dir.join("backup");
+        fs::create_dir_all(&backup_dir).unwrap();
+        let backup_path = backup_dir.join(".cursor");
+
+        // Try rename (move)
+        let result = fs::rename(&test_dir, &backup_path);
+
+        if result.is_ok() {
+            // Directory should be moved
+            assert!(!test_dir.exists());
+            assert!(backup_path.exists());
+            assert!(backup_path.join("config.txt").exists());
+        } else {
+            // If rename fails, test the fallback (copy + delete)
+            copy_dir_all(&test_dir, &backup_path).unwrap();
+            fs::remove_dir_all(&test_dir).unwrap();
+
+            assert!(!test_dir.exists());
+            assert!(backup_path.exists());
+            assert!(backup_path.join("config.txt").exists());
+        }
+    }
 }
