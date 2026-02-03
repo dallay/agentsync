@@ -256,7 +256,6 @@ agentsync --version
 
 agentsync skill install <skill-id>
 agentsync skill update <skill-id>
-agentsync skill list
 ```
 
 ### Status
