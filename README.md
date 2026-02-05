@@ -5,8 +5,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub release](https://img.shields.io/github/v/release/dallay/agentsync)](https://github.com/dallay/agentsync/releases)
 
-A fast, portable CLI tool for synchronizing AI agent configurations across multiple AI coding
-assistants using symbolic links.
+A fast, portable CLI tool for synchronizing AI agent configurations and MCP servers across multiple
+AI coding assistants using symbolic links.
 ![synchro.webp](website/docs/src/assets/synchro.webp)
 
 ## Why AgentSync?
@@ -21,6 +21,7 @@ Different AI coding tools expect configuration files in various locations:
 | **Cursor**         | `AGENTS.md`                       | `.cursor/commands/`  | `.cursor/skills/`  |
 | **VS Code**        | `AGENTS.md` (or `.vscode/*`)      | `.vscode/`           | -                  |
 | **OpenCode**       | `AGENTS.md`                       | `.opencode/command/` | `.opencode/skill/` |
+| **OpenAI Codex**   | -                                 | -                    | `.codex/skills/`   |
 
 AgentSync maintains a **single source of truth** in `.agents/` and creates symlinks to all required
 locations.
@@ -121,26 +122,26 @@ Download the latest release for your platform from the [GitHub Releases](https:/
 
 # macOS (Apple Silicon)
 
-curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-aarch64-apple-darwin.tar.gz
-tar xzf agentsync-aarch64-apple-darwin.tar.gz
+curl -LO https://github.com/dallay/agentsync/releases/download/<version>/agentsync-<version>-aarch64-apple-darwin.tar.gz
+tar xzf agentsync-<version>-aarch64-apple-darwin.tar.gz
 sudo mv agentsync-*/agentsync /usr/local/bin/
 
 # macOS (Intel)
 
-curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-x86_64-apple-darwin.tar.gz
-tar xzf agentsync-x86_64-apple-darwin.tar.gz
+curl -LO https://github.com/dallay/agentsync/releases/download/<version>/agentsync-<version>-x86_64-apple-darwin.tar.gz
+tar xzf agentsync-<version>-x86_64-apple-darwin.tar.gz
 sudo mv agentsync-*/agentsync /usr/local/bin/
 
 # Linux (x86_64)
 
-curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-x86_64-unknown-linux-gnu.tar.gz
-tar xzf agentsync-x86_64-unknown-linux-gnu.tar.gz
+curl -LO https://github.com/dallay/agentsync/releases/download/<version>/agentsync-<version>-x86_64-unknown-linux-gnu.tar.gz
+tar xzf agentsync-<version>-x86_64-unknown-linux-gnu.tar.gz
 sudo mv agentsync-*/agentsync /usr/local/bin/
 
 # Linux (ARM64)
 
-curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-aarch64-unknown-linux-gnu.tar.gz
-tar xzf agentsync-aarch64-unknown-linux-gnu.tar.gz
+curl -LO https://github.com/dallay/agentsync/releases/download/<version>/agentsync-<version>-aarch64-unknown-linux-gnu.tar.gz
+tar xzf agentsync-<version>-aarch64-unknown-linux-gnu.tar.gz
 sudo mv agentsync-*/agentsync /usr/local/bin/
 ```
 
@@ -281,11 +282,16 @@ Configuration is stored in `.agents/agentsync.toml`:
 
 source_dir = "."
 
+# Default agents to run when --agents is not specified.
+# If empty, all enabled agents will be processed.
+default_agents = ["claude", "copilot"]
+
 # Gitignore management
 
 [gitignore]
 enabled = true
 marker = "AI Agent Symlinks"
+# Additional entries to add to .gitignore (target destinations are added automatically)
 entries = [
     "CLAUDE.md",
     "GEMINI.md",
