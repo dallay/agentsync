@@ -89,14 +89,37 @@ impl Linker {
             }
 
             // Filter by agent name if specified
-            if let Some(ref filter) = options.agents
-                && !filter.iter().any(|f| agent_name.contains(f))
-            {
-                if options.verbose {
-                    println!("  {} Skipping filtered agent: {}", "○".yellow(), agent_name);
+            // Priority: CLI --agents flag > default_agents config > all enabled agents
+            if let Some(ref filter) = options.agents {
+                // Use CLI-provided agents (case-insensitive substring matching)
+                if !filter
+                    .iter()
+                    .any(|f| agent_name.to_lowercase().contains(&f.to_lowercase()))
+                {
+                    if options.verbose {
+                        println!("  {} Skipping filtered agent: {}", "○".yellow(), agent_name);
+                    }
+                    continue;
                 }
-                continue;
+            } else if !self.config.default_agents.is_empty() {
+                // Use default_agents from config (case-insensitive substring matching)
+                if !self
+                    .config
+                    .default_agents
+                    .iter()
+                    .any(|f| agent_name.to_lowercase().contains(&f.to_lowercase()))
+                {
+                    if options.verbose {
+                        println!(
+                            "  {} Skipping agent (not in default_agents): {}",
+                            "○".yellow(),
+                            agent_name
+                        );
+                    }
+                    continue;
+                }
             }
+            // If neither --agents nor default_agents, process all enabled agents
 
             // Print agent header
             let desc = if agent_config.description.is_empty() {
@@ -432,9 +455,17 @@ impl Linker {
         Ok(result)
     }
 
-    /// Sync MCP configurations for all enabled agents
-    pub fn sync_mcp(&self, dry_run: bool) -> Result<crate::mcp::McpSyncResult> {
-        use crate::mcp::{McpAgent, McpGenerator};
+    /// Sync MCP configurations for enabled agents
+    ///
+    /// # Arguments
+    /// * `dry_run` - Show what would be done without making changes
+    /// * `agents_filter` - Optional filter for specific agents (from CLI --agents or default_agents)
+    pub fn sync_mcp(
+        &self,
+        dry_run: bool,
+        agents_filter: Option<&Vec<String>>,
+    ) -> Result<crate::mcp::McpSyncResult> {
+        use crate::mcp::McpGenerator;
 
         if !self.config.mcp.enabled {
             return Ok(crate::mcp::McpSyncResult::default());
@@ -445,40 +476,48 @@ impl Linker {
         }
 
         // Determine which agents should receive MCP configs
+        // Only generate MCP configs for agents explicitly configured AND enabled
         let enabled_agents = McpGenerator::get_enabled_agents_from_config(&self.config.agents);
 
-        // If no agents map to MCP agents, skip
+        // If no agents are explicitly configured for MCP, return early
         if enabled_agents.is_empty() {
-            // Fall back to generating for all known MCP agents that are not explicitly disabled
-            let all_agents: Vec<McpAgent> = McpAgent::all()
-                .iter()
+            return Ok(crate::mcp::McpSyncResult::default());
+        }
+
+        // Apply agent filtering (from CLI --agents or default_agents config)
+        let filtered_agents: Vec<_> = if let Some(filter) = agents_filter {
+            enabled_agents
+                .into_iter()
                 .filter(|agent| {
-                    // Check if this agent is NOT explicitly disabled in config
-                    self.config
-                        .agents
-                        .get(agent.id())
-                        .map(|a| a.enabled)
-                        .unwrap_or(true) // Default to enabled if not configured
+                    filter
+                        .iter()
+                        .any(|f| agent.id().to_lowercase().contains(&f.to_lowercase()))
                 })
-                .copied()
-                .collect();
+                .collect()
+        } else if !self.config.default_agents.is_empty() {
+            // Apply default_agents filtering
+            enabled_agents
+                .into_iter()
+                .filter(|agent| {
+                    self.config
+                        .default_agents
+                        .iter()
+                        .any(|f| agent.id().to_lowercase().contains(&f.to_lowercase()))
+                })
+                .collect()
+        } else {
+            enabled_agents
+        };
 
-            if all_agents.is_empty() {
-                return Ok(crate::mcp::McpSyncResult::default());
-            }
-
-            let generator = McpGenerator::new(
-                self.config.mcp_servers.clone(),
-                self.config.mcp.merge_strategy,
-            );
-            return generator.generate_all(&self.project_root, &all_agents, dry_run);
+        if filtered_agents.is_empty() {
+            return Ok(crate::mcp::McpSyncResult::default());
         }
 
         let generator = McpGenerator::new(
             self.config.mcp_servers.clone(),
             self.config.mcp.merge_strategy,
         );
-        generator.generate_all(&self.project_root, &enabled_agents, dry_run)
+        generator.generate_all(&self.project_root, &filtered_agents, dry_run)
     }
 }
 
@@ -813,6 +852,225 @@ mod tests {
         assert_eq!(result.created, 1);
         assert!(temp_dir.path().join("CLAUDE.md").exists());
         assert!(!temp_dir.path().join("COPILOT.md").exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_sync_filters_by_agent_name_case_insensitive() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let source_file = agents_dir.join("AGENTS.md");
+        fs::write(&source_file, "# Test").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            
+            [agents.GitHub-Copilot]
+            enabled = true
+            [agents.GitHub-Copilot.targets.main]
+            source = "AGENTS.md"
+            destination = "COPILOT.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        // Should match case-insensitively
+        let options = SyncOptions {
+            agents: Some(vec!["copilot".to_string()]),
+            ..Default::default()
+        };
+        let result = linker.sync(&options).unwrap();
+
+        assert_eq!(result.created, 1);
+        assert!(temp_dir.path().join("COPILOT.md").exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_sync_uses_default_agents_when_no_cli_filter() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let source_file = agents_dir.join("AGENTS.md");
+        fs::write(&source_file, "# Test").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            default_agents = ["claude", "copilot"]
+            
+            [agents.claude]
+            enabled = true
+            [agents.claude.targets.main]
+            source = "AGENTS.md"
+            destination = "CLAUDE.md"
+            type = "symlink"
+            
+            [agents.copilot]
+            enabled = true
+            [agents.copilot.targets.main]
+            source = "AGENTS.md"
+            destination = "COPILOT.md"
+            type = "symlink"
+            
+            [agents.cursor]
+            enabled = true
+            [agents.cursor.targets.main]
+            source = "AGENTS.md"
+            destination = "CURSOR.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        // No CLI filter - should use default_agents
+        let options = SyncOptions::default();
+        let result = linker.sync(&options).unwrap();
+
+        assert_eq!(result.created, 2);
+        assert!(temp_dir.path().join("CLAUDE.md").exists());
+        assert!(temp_dir.path().join("COPILOT.md").exists());
+        assert!(!temp_dir.path().join("CURSOR.md").exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_sync_cli_agents_overrides_default_agents() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let source_file = agents_dir.join("AGENTS.md");
+        fs::write(&source_file, "# Test").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            default_agents = ["claude"]
+            
+            [agents.claude]
+            enabled = true
+            [agents.claude.targets.main]
+            source = "AGENTS.md"
+            destination = "CLAUDE.md"
+            type = "symlink"
+            
+            [agents.copilot]
+            enabled = true
+            [agents.copilot.targets.main]
+            source = "AGENTS.md"
+            destination = "COPILOT.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        // CLI filter should override default_agents
+        let options = SyncOptions {
+            agents: Some(vec!["copilot".to_string()]),
+            ..Default::default()
+        };
+        let result = linker.sync(&options).unwrap();
+
+        assert_eq!(result.created, 1);
+        assert!(!temp_dir.path().join("CLAUDE.md").exists());
+        assert!(temp_dir.path().join("COPILOT.md").exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_sync_default_agents_case_insensitive() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let source_file = agents_dir.join("AGENTS.md");
+        fs::write(&source_file, "# Test").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            default_agents = ["CLAUDE", "COPILOT"]
+            
+            [agents.claude-code]
+            enabled = true
+            [agents.claude-code.targets.main]
+            source = "AGENTS.md"
+            destination = "CLAUDE.md"
+            type = "symlink"
+            
+            [agents.GitHub-Copilot]
+            enabled = true
+            [agents.GitHub-Copilot.targets.main]
+            source = "AGENTS.md"
+            destination = "COPILOT.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        // Should match case-insensitively using default_agents
+        let options = SyncOptions::default();
+        let result = linker.sync(&options).unwrap();
+
+        assert_eq!(result.created, 2);
+        assert!(temp_dir.path().join("CLAUDE.md").exists());
+        assert!(temp_dir.path().join("COPILOT.md").exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_sync_all_enabled_when_no_default_agents_and_no_cli() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let source_file = agents_dir.join("AGENTS.md");
+        fs::write(&source_file, "# Test").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            
+            [agents.claude]
+            enabled = true
+            [agents.claude.targets.main]
+            source = "AGENTS.md"
+            destination = "CLAUDE.md"
+            type = "symlink"
+            
+            [agents.copilot]
+            enabled = true
+            [agents.copilot.targets.main]
+            source = "AGENTS.md"
+            destination = "COPILOT.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        // No default_agents and no CLI filter - should process all enabled
+        let options = SyncOptions::default();
+        let result = linker.sync(&options).unwrap();
+
+        assert_eq!(result.created, 2);
+        assert!(temp_dir.path().join("CLAUDE.md").exists());
+        assert!(temp_dir.path().join("COPILOT.md").exists());
     }
 
     #[test]
@@ -1245,7 +1503,7 @@ mod tests {
         let config = Config::load(&config_path).unwrap();
         let linker = Linker::new(config, config_path);
 
-        let result = linker.sync_mcp(false).unwrap();
+        let result = linker.sync_mcp(false, None).unwrap();
 
         // Should return empty result when MCP is disabled
         assert_eq!(result.created, 0);
@@ -1277,7 +1535,7 @@ mod tests {
         let config = Config::load(&config_path).unwrap();
         let linker = Linker::new(config, config_path);
 
-        let result = linker.sync_mcp(false).unwrap();
+        let result = linker.sync_mcp(false, None).unwrap();
 
         // Should return empty when no MCP servers defined
         assert_eq!(result.created, 0);
@@ -1312,7 +1570,7 @@ mod tests {
         let config = Config::load(&config_path).unwrap();
         let linker = Linker::new(config, config_path);
 
-        let result = linker.sync_mcp(false).unwrap();
+        let result = linker.sync_mcp(false, None).unwrap();
 
         // Should create MCP config for Claude
         assert!(result.created > 0);
@@ -1338,5 +1596,120 @@ mod tests {
             "@modelcontextprotocol/server-filesystem"
         );
         assert_eq!(args[2].as_str().unwrap(), ".");
+    }
+
+    #[test]
+    fn test_sync_mcp_only_creates_for_configured_agents() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        // Only configure claude and copilot - cursor, gemini, vscode, opencode should NOT get configs
+        let config_content = r#"
+            source_dir = "."
+
+            [mcp]
+            enabled = true
+
+            [mcp_servers.filesystem]
+            command = "npx"
+            args = ["-y", "@modelcontextprotocol/server-filesystem", "."]
+
+            [agents.claude]
+            enabled = true
+            [agents.claude.targets.main]
+            source = "AGENTS.md"
+            destination = "CLAUDE.md"
+            type = "symlink"
+
+            [agents.copilot]
+            enabled = true
+            [agents.copilot.targets.main]
+            source = "AGENTS.md"
+            destination = "COPILOT.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker.sync_mcp(false, None).unwrap();
+
+        // Should create exactly 2 MCP configs (claude and copilot)
+        assert_eq!(result.created, 2);
+        assert_eq!(result.updated, 0);
+
+        // Verify claude config exists
+        let claude_config = temp_dir.path().join(".mcp.json");
+        assert!(claude_config.exists(), "Claude MCP config should exist");
+
+        // Verify copilot config exists (now at .vscode/mcp.json per GitHub docs)
+        let copilot_config = temp_dir.path().join(".vscode/mcp.json");
+        assert!(
+            copilot_config.exists(),
+            "Copilot MCP config should exist at .vscode/mcp.json"
+        );
+
+        // Note: VS Code shares the same config path as Copilot (.vscode/mcp.json)
+        // So if Copilot is configured, the file will exist at that path
+
+        // Verify cursor config does NOT exist (not configured)
+        let cursor_config = temp_dir.path().join(".cursor/mcp.json");
+        assert!(
+            !cursor_config.exists(),
+            "Cursor MCP config should NOT exist for unconfigured agent"
+        );
+
+        // Verify gemini config does NOT exist (not configured)
+        let gemini_config = temp_dir.path().join(".gemini/settings.json");
+        assert!(
+            !gemini_config.exists(),
+            "Gemini MCP config should NOT exist for unconfigured agent"
+        );
+
+        // Verify opencode config does NOT exist (not configured)
+        let opencode_config = temp_dir.path().join("opencode.json");
+        assert!(
+            !opencode_config.exists(),
+            "OpenCode MCP config should NOT exist for unconfigured agent"
+        );
+    }
+
+    #[test]
+    fn test_sync_mcp_no_agents_configured_returns_empty() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        // No agents configured at all - only MCP servers
+        let config_content = r#"
+            source_dir = "."
+            
+            [mcp]
+            enabled = true
+            
+            [mcp_servers.filesystem]
+            command = "npx"
+            args = ["-y", "@modelcontextprotocol/server-filesystem", "."]
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker.sync_mcp(false, None).unwrap();
+
+        // Should return empty result when no agents are configured
+        assert_eq!(result.created, 0);
+        assert_eq!(result.updated, 0);
+        assert_eq!(result.skipped, 0);
+
+        // Verify no MCP configs were created
+        assert!(!temp_dir.path().join(".mcp.json").exists());
+        assert!(!temp_dir.path().join(".vscode/mcp.json").exists());
+        assert!(!temp_dir.path().join(".cursor/mcp.json").exists());
     }
 }

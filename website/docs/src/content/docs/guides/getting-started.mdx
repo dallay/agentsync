@@ -92,6 +92,8 @@ cargo install --git https://github.com/dallay/agentsync
 
 ### 1. Initialize Configuration
 
+#### New Projects
+
 Run `init` in your project root to create the default structure:
 
 ```bash
@@ -99,6 +101,22 @@ agentsync init
 ```
 
 This creates a `.agents/` directory with an initial `agentsync.toml` and an `AGENTS.md` file.
+
+#### Existing Projects with Agent Files
+
+If you already have agent configuration files (like `CLAUDE.md`, `.cursor/`, or `.github/copilot-instructions.md`), use the interactive wizard:
+
+```bash
+agentsync init --wizard
+```
+
+The wizard will:
+1. Scan your project for existing agent-related files
+2. Let you select which files to migrate to `.agents/`
+3. Optionally create backups of your original files (with confirmation)
+4. Generate a configuration that manages everything with symlinks
+
+This makes it easy to transition from manual file management to AgentSync!
 
 ### 2. Configure your Agents
 
@@ -111,6 +129,26 @@ enabled = true
 # ... configuration ...
 
 ```
+
+**Optional: Limit default agents**
+
+If you work with many agents but only want a subset to run by default, add the `default_agents` field:
+
+```toml
+# Only these agents will run when using 'agentsync apply' without --agents
+default_agents = ["copilot", "claude"]
+
+[agents.copilot]
+enabled = true
+
+[agents.claude]
+enabled = true
+
+[agents.gemini]
+enabled = true  # Enabled, but won't run by default
+```
+
+See [Configuration Reference](/reference/configuration/) for more options.
 
 ### 3. Apply Symlinks
 

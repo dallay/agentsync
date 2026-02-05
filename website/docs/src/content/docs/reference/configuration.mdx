@@ -13,24 +13,66 @@ By default, `agentsync` looks for this file at `.agents/agentsync.toml`.
 The base directory for your source files, relative to the configuration file.
 - **Default**: `"."`
 
+### `default_agents`
+A list of agent names to run when `--agents` is not specified on the CLI. Uses case-insensitive substring matching.
+- **Default**: `[]` (empty, meaning all enabled agents will run)
+
+```toml
+# Only run these agents by default
+# When running 'agentsync apply' without --agents, only copilot, claude, and gemini will be processed
+default_agents = ["copilot", "claude", "gemini"]
+
+[agents.copilot]
+enabled = true
+
+[agents.claude]
+enabled = true
+
+[agents.gemini]
+enabled = true
+
+[agents.cursor]
+enabled = true  # Enabled, but won't run unless explicitly specified with --agents cursor
+```
+
+**Behavior:**
+- If `default_agents` is set and no `--agents` flag is provided → runs only agents matching `default_agents`
+- If `--agents` flag is provided → uses CLI filter (overrides `default_agents`)
+- If `default_agents` is empty → runs all enabled agents (backward compatible)
+
 ## Gitignore Management
 
-AgentSync can automatically manage your `.gitignore` file to ensure that generated symbolic links are not accidentally committed to version control.
+AgentSync can automatically manage your `.gitignore` file to ensure that generated symbolic links and agent-specific files are not accidentally committed to version control.
 
 ```toml
 [gitignore]
 enabled = true
 marker = "AI Agent Symlinks"
-entries = [
-    "CLAUDE.md",
-    "GEMINI.md",
-    ".github/copilot-instructions.md",
-]
+# Additional entries only - AgentSync automatically adds known patterns for enabled agents
+entries = []
 ```
 
 - **`enabled`**: If `true`, AgentSync will update `.gitignore`.
 - **`marker`**: The text used in comments to identify the AgentSync section in `.gitignore`.
-- **`entries`**: A list of file paths to add to the ignore list.
+- **`entries`**: A list of additional file paths to add to the ignore list. This is only needed for files not covered by AgentSync's known patterns.
+
+### Known Ignore Patterns
+
+AgentSync automatically adds the following patterns to `.gitignore` based on which agents are **enabled**:
+
+| Agent | Automatically Added Patterns |
+| :--- | :--- |
+| **claude** | `.mcp.json`, `.claude/commands/`, `.claude/skills/` |
+| **copilot** | `.vscode/mcp.json` |
+| **gemini** | `GEMINI.md`, `.gemini/settings.json`, `.gemini/commands/`, `.gemini/skills/` |
+| **cursor** | `.cursor/mcp.json`, `.cursor/skills/` |
+| **vscode** | `.vscode/mcp.json` |
+| **opencode** | `opencode.json`, `.opencode/command/`, `.opencode/skill/` |
+
+**Notes:**
+- The `entries` field in your config is only needed for additional files not covered by the patterns above
+- All symlink destination paths are also automatically added to `.gitignore`
+- Duplicate entries are automatically deduplicated
 
 ## Agent Definitions
 

@@ -165,6 +165,8 @@ cargo build --release
 
 ## Quick Start
 
+### New Projects
+
 1. **Initialize configuration** in your project:
 
 ```bash
@@ -173,6 +175,19 @@ agentsync init
 ```
 
 This creates `.agents/agentsync.toml` with a default configuration.
+
+### Existing Projects with Agent Files
+
+If you already have agent configuration files scattered across your project (like `CLAUDE.md`, `.cursor/`, or `.github/copilot-instructions.md`), use the interactive wizard:
+
+```bash
+cd your-project
+agentsync init --wizard
+```
+
+The wizard will scan for existing files, let you select which to migrate, and set up everything automatically.
+
+---
 
 2. **Edit the configuration** to match your needs (see [Configuration](#configuration))
 
@@ -197,11 +212,12 @@ agentsync apply
 ```bash
 
 # Initialize a new configuration
-
 agentsync init
 
-# Apply configuration (create symlinks)
+# Initialize with interactive wizard (for existing projects with agent files)
+agentsync init --wizard
 
+# Apply configuration (create symlinks)
 agentsync apply
 
 # Clean existing symlinks before applying
@@ -240,7 +256,6 @@ agentsync --version
 
 agentsync skill install <skill-id>
 agentsync skill update <skill-id>
-agentsync skill list
 ```
 
 ### Status
@@ -336,7 +351,7 @@ args = ["-y", "@modelcontextprotocol/server-git", "--repository", "."]
 AgentSync supports the following agents and will synchronize corresponding files/locations. This list is canonical — keep it in sync with `src/mcp.rs` (authoritative).
 
 - **Claude Code** — `.mcp.json` (agent id: `claude`)
-- **GitHub Copilot** — `.copilot/mcp-config.json` (agent id: `copilot`)
+- **GitHub Copilot** — `.vscode/mcp.json` (agent id: `copilot`)
 - **Gemini CLI** — `.gemini/settings.json` (agent id: `gemini`) — AgentSync will add `trust: true` when generating Gemini configs.
 - **Cursor** — `.cursor/mcp.json` (agent id: `cursor`)
 - **VS Code** — `.vscode/mcp.json` (agent id: `vscode`)

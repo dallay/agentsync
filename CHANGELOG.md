@@ -1,3 +1,31 @@
+## [1.24.0](https://github.com/dallay/agentsync/compare/v1.23.1...v1.24.0) (2026-02-05)
+
+### ✨ Features
+
+* add ASCII banner to CLI output ([#129](https://github.com/dallay/agentsync/issues/129)) ([b58b28f](https://github.com/dallay/agentsync/commit/b58b28fc4ec42f63ce44bc45b03ac4277fe90e50))
+
+### 📝 Documentation
+
+* remove unimplemented agentsync skill list command ([#126](https://github.com/dallay/agentsync/issues/126)) ([2b090c7](https://github.com/dallay/agentsync/commit/2b090c76b017e4e518c5f440a75c0f6969dec0cb))
+
+## [1.23.1](https://github.com/dallay/agentsync/compare/v1.23.0...v1.23.1) (2026-02-05)
+
+### 🐛 Bug Fixes
+
+* update bytes crate to v1.11.1 to resolve security vulnerability ([#128](https://github.com/dallay/agentsync/issues/128)) ([dc863ea](https://github.com/dallay/agentsync/commit/dc863ea43ca5ba9cebb7da567c5673d0810e7732))
+
+## [1.23.0](https://github.com/dallay/agentsync/compare/v1.22.0...v1.23.0) (2026-02-03)
+
+### ✨ Features
+
+* Add interactive wizard for migrating existing agent configurations ([#117](https://github.com/dallay/agentsync/issues/117)) ([fa33554](https://github.com/dallay/agentsync/commit/fa3355434e93e72a8a418b1bef1839acf7447309))
+
+## [1.22.0](https://github.com/dallay/agentsync/compare/v1.21.2...v1.22.0) (2026-02-03)
+
+### ✨ Features
+
+* skills sh integration ([#123](https://github.com/dallay/agentsync/issues/123)) ([3a2a7ef](https://github.com/dallay/agentsync/commit/3a2a7efde50ea592f01ec31deca67d4fd82b50b8))
+
 ## [1.21.2](https://github.com/dallay/agentsync/compare/v1.21.1...v1.21.2) (2026-02-01)
 
 ### 🚀 Performance

@@ -56,6 +56,12 @@ enum Commands {
             help = "Overwrite existing configuration without prompting"
         )]
         force: bool,
+        #[arg(
+            short,
+            long,
+            help = "Run interactive configuration wizard to migrate existing files"
+        )]
+        wizard: bool,
     },
     /// Apply the configuration from agentsync.toml
     Apply {
@@ -109,11 +115,23 @@ fn main() -> Result<()> {
             let project_root = project_root.unwrap_or_else(|| env::current_dir().unwrap());
             run_status(args.json, project_root)?;
         }
-        Commands::Init { path, force } => {
+        Commands::Init {
+            path,
+            force,
+            wizard,
+        } => {
             let project_root = path.unwrap_or_else(|| env::current_dir().unwrap());
             print_header();
-            println!("{}", "Initializing agentsync configuration...\n".cyan());
-            init::init(&project_root, force)?;
+            if wizard {
+                println!(
+                    "{}",
+                    "Starting interactive configuration wizard...\n".cyan()
+                );
+                init::init_wizard(&project_root, force)?;
+            } else {
+                println!("{}", "Initializing agentsync configuration...\n".cyan());
+                init::init(&project_root, force)?;
+            }
             println!("\n{}", "✨ Initialization complete!".green().bold());
             println!(
                 "\nNext steps:\n  1. Edit {} with your project instructions\n  2. Run {} to create symlinks",
@@ -173,7 +191,7 @@ fn main() -> Result<()> {
             }
             if linker.config().mcp.enabled && !linker.config().mcp_servers.is_empty() {
                 println!("\n{}", "➤ Syncing MCP configurations".cyan().bold());
-                match linker.sync_mcp(dry_run) {
+                match linker.sync_mcp(dry_run, options.agents.as_ref()) {
                     Ok(mcp_result) => {
                         if mcp_result.created > 0 || mcp_result.updated > 0 {
                             println!(
@@ -241,15 +259,6 @@ fn main() -> Result<()> {
 }
 
 fn print_header() {
-    println!(
-        "{}",
-        r#"
- ╔═══════════════════════════════════════════════════════════════════╗
- ║                         AgentSync                                 ║
- ║           AI Agent Configuration Synchronization                  ║
- ╚═══════════════════════════════════════════════════════════════════╝
- "#
-        .cyan()
-        .bold()
-    );
+    let banner = include_str!("banner.txt");
+    println!("{}", banner.cyan().bold());
 }

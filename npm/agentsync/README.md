@@ -2,10 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/@dallay/agentsync.svg)](https://www.npmjs.com/package/@dallay/agentsync)  
 [![license](https://img.shields.io/npm/l/@dallay/agentsync.svg)](https://github.com/dallay/agentsync/blob/main/LICENSE)  
-[![repository](https://img.shields.io/badge/repo-dallay%2Fagentsync-blue)](https://github.com/dallay/agentsync)  
-
-**Version:** 1.19.0
-**License:** MIT  
+[![repository](https://img.shields.io/badge/repo-dallay%2Fagentsync-blue)](https://github.com/dallay/agentsync)
 
 Effortlessly synchronize AI agent configurations across tools like Copilot, Claude, Cursor, and other MCP-compatible servers using symbolic links and an intuitive CLI.
 
@@ -110,7 +107,7 @@ agentsync clean
 ## MCP & Skills
 
 - AgentSync supports MCP generation for multiple agents (Claude, Copilot, Gemini, Cursor, VS Code, OpenCode). The canonical list and file locations live in the repo README and in the docs site (guides/mcp).
-- Skills live under `.agents/skills/` in the project. See the repository README for an example SKILL.md path and the `specs/001-skills-sh-integration` directory for ongoing work around skills integrations.
+- Skills live under `.agents/skills/` in the project. 
 
 ---
 
