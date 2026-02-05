@@ -230,8 +230,14 @@ jobs:
             alpine) export ALPINE_IMAGE="$IMAGE" ;;
             arch)   export ARCH_IMAGE="$IMAGE" ;;
           esac
+          # Cleanup function to ensure Docker resources are always removed
+          cleanup_docker() {
+            docker compose down --volumes --remove-orphans 2>/dev/null || true
+          }
+          trap cleanup_docker EXIT
           timeout 25m docker compose up --build --exit-code-from test-runner-$DISTRO test-runner-$DISTRO || {
             exit_code=$?
+            cleanup_docker
             if [ $exit_code -eq 124 ]; then
               echo "❌ E2E tests timed out after 25 minutes"
             fi
