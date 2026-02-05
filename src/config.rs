@@ -23,6 +23,12 @@ pub struct Config {
     #[serde(default = "default_source_dir")]
     pub source_dir: String,
 
+    /// Default agents to run when --agents is not specified.
+    /// Uses case-insensitive substring matching.
+    /// If empty, all enabled agents will be processed.
+    #[serde(default)]
+    pub default_agents: Vec<String>,
+
     /// A map of agent configurations, where the key is the agent's name (e.g., "claude").
     #[serde(default)]
     pub agents: HashMap<String, AgentConfig>,
@@ -263,21 +269,46 @@ impl Config {
         config_dir.join(&self.source_dir)
     }
 
-    /// Get all gitignore entries (from config + auto-generated from targets)
+    /// Get all gitignore entries (from config + auto-generated from targets + known patterns)
     /// Uses a BTreeSet for efficient deduplication and automatic sorting.
     pub fn all_gitignore_entries(&self) -> Vec<String> {
         let mut entries: BTreeSet<String> = self.gitignore.entries.iter().cloned().collect();
 
-        // Add destinations from all enabled agents
-        for agent in self.agents.values() {
+        // Add destinations from all enabled agents and their known patterns
+        for (agent_name, agent) in &self.agents {
             if agent.enabled {
+                // Add target destinations
                 for target in agent.targets.values() {
                     entries.insert(target.destination.clone());
+                }
+
+                // Add known ignore patterns for this agent
+                for pattern in Self::known_ignore_patterns(agent_name) {
+                    entries.insert(pattern.to_string());
                 }
             }
         }
 
         entries.into_iter().collect()
+    }
+
+    /// Get known gitignore patterns for a specific agent.
+    /// These are files/directories that agents generate but are not direct symlink targets.
+    pub fn known_ignore_patterns(agent_name: &str) -> &'static [&'static str] {
+        match agent_name.to_lowercase().as_str() {
+            "claude" => &[".mcp.json", ".claude/commands/", ".claude/skills/"],
+            "copilot" => &[".vscode/mcp.json"],
+            "gemini" => &[
+                "GEMINI.md",
+                ".gemini/settings.json",
+                ".gemini/commands/",
+                ".gemini/skills/",
+            ],
+            "opencode" => &["opencode.json"],
+            "cursor" => &[".cursor/mcp.json", ".cursor/skills/"],
+            "vscode" => &[".vscode/mcp.json"],
+            _ => &[],
+        }
     }
 }
 
@@ -683,6 +714,168 @@ mod tests {
     }
 
     // ==========================================================================
+    // KNOWN IGNORE PATTERNS TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_known_ignore_patterns_claude() {
+        let patterns = Config::known_ignore_patterns("claude");
+        assert!(patterns.contains(&".mcp.json"));
+        assert!(patterns.contains(&".claude/commands/"));
+        assert!(patterns.contains(&".claude/skills/"));
+    }
+
+    #[test]
+    fn test_known_ignore_patterns_copilot() {
+        let patterns = Config::known_ignore_patterns("copilot");
+        assert!(patterns.contains(&".vscode/mcp.json"));
+    }
+
+    #[test]
+    fn test_known_ignore_patterns_gemini() {
+        let patterns = Config::known_ignore_patterns("gemini");
+        assert!(patterns.contains(&"GEMINI.md"));
+        assert!(patterns.contains(&".gemini/settings.json"));
+        assert!(patterns.contains(&".gemini/commands/"));
+        assert!(patterns.contains(&".gemini/skills/"));
+    }
+
+    #[test]
+    fn test_known_ignore_patterns_opencode() {
+        let patterns = Config::known_ignore_patterns("opencode");
+        assert!(patterns.contains(&"opencode.json"));
+    }
+
+    #[test]
+    fn test_known_ignore_patterns_cursor() {
+        let patterns = Config::known_ignore_patterns("cursor");
+        assert!(patterns.contains(&".cursor/mcp.json"));
+        assert!(patterns.contains(&".cursor/skills/"));
+    }
+
+    #[test]
+    fn test_known_ignore_patterns_vscode() {
+        let patterns = Config::known_ignore_patterns("vscode");
+        assert!(patterns.contains(&".vscode/mcp.json"));
+    }
+
+    #[test]
+    fn test_known_ignore_patterns_case_insensitive() {
+        // Should work with different cases
+        assert_eq!(
+            Config::known_ignore_patterns("CLAUDE"),
+            Config::known_ignore_patterns("claude")
+        );
+        assert_eq!(
+            Config::known_ignore_patterns("Claude"),
+            Config::known_ignore_patterns("claude")
+        );
+        assert_eq!(
+            Config::known_ignore_patterns("CoPiLoT"),
+            Config::known_ignore_patterns("copilot")
+        );
+    }
+
+    #[test]
+    fn test_known_ignore_patterns_unknown_agent() {
+        let patterns = Config::known_ignore_patterns("unknown-agent");
+        assert!(patterns.is_empty());
+    }
+
+    #[test]
+    fn test_all_gitignore_entries_includes_known_patterns() {
+        let toml = r#"
+            [agents.claude]
+            enabled = true
+            
+            [agents.claude.targets.instructions]
+            source = "AGENTS.md"
+            destination = "CLAUDE.md"
+            type = "symlink"
+
+            [agents.opencode]
+            enabled = true
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        let entries = config.all_gitignore_entries();
+
+        // Should include target destinations
+        assert!(entries.contains(&"CLAUDE.md".to_string()));
+
+        // Should include known patterns for Claude
+        assert!(entries.contains(&".mcp.json".to_string()));
+        assert!(entries.contains(&".claude/commands/".to_string()));
+        assert!(entries.contains(&".claude/skills/".to_string()));
+
+        // Should include known patterns for OpenCode
+        assert!(entries.contains(&"opencode.json".to_string()));
+    }
+
+    #[test]
+    fn test_all_gitignore_entries_disabled_agents_no_known_patterns() {
+        let toml = r#"
+            [agents.claude]
+            enabled = false
+
+            [agents.opencode]
+            enabled = true
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        let entries = config.all_gitignore_entries();
+
+        // Should NOT include Claude patterns (disabled)
+        assert!(!entries.contains(&".mcp.json".to_string()));
+        assert!(!entries.contains(&".claude/commands/".to_string()));
+
+        // Should include OpenCode patterns (enabled)
+        assert!(entries.contains(&"opencode.json".to_string()));
+    }
+
+    #[test]
+    fn test_all_gitignore_entries_deduplicates_known_patterns() {
+        let toml = r#"
+            [gitignore]
+            entries = [".mcp.json", "opencode.json"]
+
+            [agents.claude]
+            enabled = true
+
+            [agents.opencode]
+            enabled = true
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        let entries = config.all_gitignore_entries();
+
+        // Should only appear once even though in both manual entries and known patterns
+        assert_eq!(entries.iter().filter(|e| *e == ".mcp.json").count(), 1);
+        assert_eq!(entries.iter().filter(|e| *e == "opencode.json").count(), 1);
+    }
+
+    #[test]
+    fn test_all_gitignore_entries_manual_entries_plus_known() {
+        let toml = r#"
+            [gitignore]
+            entries = ["custom-file.txt", "another-file.md"]
+
+            [agents.claude]
+            enabled = true
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        let entries = config.all_gitignore_entries();
+
+        // Should include manual entries
+        assert!(entries.contains(&"custom-file.txt".to_string()));
+        assert!(entries.contains(&"another-file.md".to_string()));
+
+        // Should include known patterns
+        assert!(entries.contains(&".mcp.json".to_string()));
+    }
+
+    // ==========================================================================
     // SYNC TYPE TESTS
     // ==========================================================================
 
@@ -945,5 +1138,82 @@ mod tests {
         assert!(!json.contains("\"headers\""));
         // Should NOT serialize disabled=false
         assert!(!json.contains("\"disabled\""));
+    }
+
+    // ==========================================================================
+    // DEFAULT AGENTS TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_default_agents_empty_by_default() {
+        let toml = "";
+        let config: Config = toml::from_str(toml).unwrap();
+
+        assert!(config.default_agents.is_empty());
+    }
+
+    #[test]
+    fn test_default_agents_parsing() {
+        let toml = r#"
+            default_agents = ["copilot", "claude", "gemini"]
+
+            [agents.copilot]
+            enabled = true
+
+            [agents.claude]
+            enabled = true
+
+            [agents.gemini]
+            enabled = true
+
+            [agents.cursor]
+            enabled = true
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+
+        assert_eq!(config.default_agents.len(), 3);
+        assert!(config.default_agents.contains(&"copilot".to_string()));
+        assert!(config.default_agents.contains(&"claude".to_string()));
+        assert!(config.default_agents.contains(&"gemini".to_string()));
+        assert!(!config.default_agents.contains(&"cursor".to_string()));
+    }
+
+    #[test]
+    fn test_default_agents_single_agent() {
+        let toml = r#"
+            default_agents = ["claude"]
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+
+        assert_eq!(config.default_agents.len(), 1);
+        assert_eq!(config.default_agents[0], "claude");
+    }
+
+    #[test]
+    fn test_default_agents_with_other_config() {
+        let toml = r#"
+            source_dir = "."
+            default_agents = ["copilot", "claude"]
+
+            [gitignore]
+            enabled = true
+
+            [agents.copilot]
+            enabled = true
+            description = "GitHub Copilot"
+
+            [agents.claude]
+            enabled = true
+            description = "Claude Code"
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+
+        assert_eq!(config.default_agents.len(), 2);
+        assert_eq!(config.source_dir, ".");
+        assert!(config.gitignore.enabled);
+        assert_eq!(config.agents["copilot"].description, "GitHub Copilot");
     }
 }

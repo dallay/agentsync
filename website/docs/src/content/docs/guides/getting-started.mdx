@@ -130,6 +130,26 @@ enabled = true
 
 ```
 
+**Optional: Limit default agents**
+
+If you work with many agents but only want a subset to run by default, add the `default_agents` field:
+
+```toml
+# Only these agents will run when using 'agentsync apply' without --agents
+default_agents = ["copilot", "claude"]
+
+[agents.copilot]
+enabled = true
+
+[agents.claude]
+enabled = true
+
+[agents.gemini]
+enabled = true  # Enabled, but won't run by default
+```
+
+See [Configuration Reference](/reference/configuration/) for more options.
+
 ### 3. Apply Symlinks
 
 Create the symbolic links in your project root:

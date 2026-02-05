@@ -55,7 +55,7 @@ AgentSync automatically knows where to place the MCP configuration for these ass
 | Assistant | Destination File | Notes |
 | :--- | :--- | :--- |
 | **Claude Code** | `.mcp.json` | Standard format |
-| **GitHub Copilot** | `.copilot/mcp-config.json` | Copilot specific |
+| **GitHub Copilot** | `.vscode/mcp.json` | Shared with VS Code |
 | **Gemini CLI** | `.gemini/settings.json` | Automatically adds `"trust": true` |
 | **VS Code** | `.vscode/mcp.json` | For VS Code extensions |
 | **Cursor** | `.cursor/mcp.json` | Standard format |
@@ -65,15 +65,36 @@ AgentSync automatically knows where to place the MCP configuration for these ass
 
 The Model Context Protocol (MCP) allows you to define backend servers for AI assistants in one place and sync those configurations automatically across all supported agents. This reduces duplication and mistake-prone manual steps.
 
+### Which Agents Get MCP Configs?
+
+**Important:** MCP configuration files are only generated for agents that are:
+1. **Explicitly configured** in your `agentsync.toml` (`[agents.<name>]` section exists)
+2. **Enabled** (`enabled = true`)
+3. **Included in the current run** (matches `--agents` filter or `default_agents`)
+
+Agents not defined in your config will not receive MCP configuration files, even if they are supported.
+
+```toml
+# Example: Only claude, copilot, and gemini will get MCP configs
+[agents.claude]
+enabled = true
+
+[agents.copilot]
+enabled = true
+
+# Cursor is NOT configured, so it won't get an MCP config
+# Even though AgentSync supports cursor, no .cursor/mcp.json will be created
+```
+
 ### Setup instructions
 
 1. Add the `[mcp]` block to your `.agents/agentsync.toml` and set `enabled = true`. Optionally set `merge_strategy = "merge" | "overwrite"`.
 2. Under `[mcp_servers]`, define one block per MCP backend server (see example below).
 3. Run `agentsync apply`. AgentSync will:
-   - Gather all servers defined in `mcp_servers`.
-   - For each supported agent, check if an MCP config file should exist.
-   - Perform the chosen `merge` (default) or `overwrite` strategy for existing config files.
-   - Write new configuration files in the correct location.
-   - Ensure parent directories exist before writing.
+    - Gather all servers defined in `mcp_servers`.
+    - For each **configured and enabled** agent, generate the MCP config file.
+    - Perform the chosen `merge` (default) or `overwrite` strategy for existing config files.
+    - Write new configuration files in the correct location.
+    - Ensure parent directories exist before writing.
 
 > **Best Practice:** Use the `merge` strategy for the least surprise—existing server entries not present in your TOML will be preserved.

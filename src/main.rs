@@ -191,7 +191,7 @@ fn main() -> Result<()> {
             }
             if linker.config().mcp.enabled && !linker.config().mcp_servers.is_empty() {
                 println!("\n{}", "➤ Syncing MCP configurations".cyan().bold());
-                match linker.sync_mcp(dry_run) {
+                match linker.sync_mcp(dry_run, options.agents.as_ref()) {
                     Ok(mcp_result) => {
                         if mcp_result.created > 0 || mcp_result.updated > 0 {
                             println!(

@@ -351,7 +351,7 @@ args = ["-y", "@modelcontextprotocol/server-git", "--repository", "."]
 AgentSync supports the following agents and will synchronize corresponding files/locations. This list is canonical — keep it in sync with `src/mcp.rs` (authoritative).
 
 - **Claude Code** — `.mcp.json` (agent id: `claude`)
-- **GitHub Copilot** — `.copilot/mcp-config.json` (agent id: `copilot`)
+- **GitHub Copilot** — `.vscode/mcp.json` (agent id: `copilot`)
 - **Gemini CLI** — `.gemini/settings.json` (agent id: `gemini`) — AgentSync will add `trust: true` when generating Gemini configs.
 - **Cursor** — `.cursor/mcp.json` (agent id: `cursor`)
 - **VS Code** — `.vscode/mcp.json` (agent id: `vscode`)
