@@ -50,8 +50,25 @@ agentsync apply [FLAGS]
 - `--clean`: Deletes existing symbolic links before applying. Useful for fixing broken links or cleaning up old configurations.
 - `--dry-run`: Shows what actions would be taken without actually making any changes to the filesystem.
 - `-v, --verbose`: Enable verbose logging.
-- `-a, --agents <AGENTS>`: Filter by agent (comma-separated list, e.g., `claude,copilot`).
+- `-a, --agents <AGENTS>`: Filter by agent (comma-separated list, e.g., `claude,copilot`). **Overrides** `default_agents` in config.
 - `--no-gitignore`: Disable automatic `.gitignore` updates.
+
+**Agent Selection Priority**:
+When running `agentsync apply`, agents are selected in this order:
+1. **`--agents` flag** (if provided) → runs only specified agents
+2. **`default_agents` in config** (if set and no `--agents`) → runs only agents in the list
+3. **All enabled agents** (if neither above is set) → runs all agents with `enabled = true`
+
+Examples:
+```bash
+# With default_agents = ["copilot", "claude"] in config:
+agentsync apply              # Runs only copilot and claude
+agentsync apply --agents gemini  # Runs only gemini (CLI overrides config)
+agentsync apply --agents copilot,claude,gemini  # Runs all three
+
+# Without default_agents in config:
+agentsync apply              # Runs all enabled agents
+```
 
 ---
 

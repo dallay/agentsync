@@ -47,7 +47,7 @@ impl McpOutput {
 pub enum McpAgent {
     /// Claude Code (.mcp.json)
     ClaudeCode,
-    /// GitHub Copilot (.copilot/mcp-config.json)
+    /// GitHub Copilot (.vscode/mcp.json)
     GithubCopilot,
     /// Gemini CLI (.gemini/settings.json)
     GeminiCli,
@@ -100,7 +100,7 @@ impl McpAgent {
     pub fn config_path(&self) -> &'static str {
         match self {
             McpAgent::ClaudeCode => ".mcp.json",
-            McpAgent::GithubCopilot => ".copilot/mcp-config.json",
+            McpAgent::GithubCopilot => ".vscode/mcp.json",
             McpAgent::GeminiCli => ".gemini/settings.json",
             McpAgent::VsCode => ".vscode/mcp.json",
             McpAgent::Cursor => ".cursor/mcp.json",
@@ -307,7 +307,7 @@ impl McpFormatter for ClaudeCodeFormatter {
 // GitHub Copilot Formatter
 // =============================================================================
 
-/// Formatter for GitHub Copilot (.copilot/mcp-config.json)
+/// Formatter for GitHub Copilot (.vscode/mcp.json)
 /// Format: { "mcpServers": { ... } }
 #[derive(Debug)]
 pub struct GithubCopilotFormatter;
@@ -1040,10 +1040,7 @@ mod tests {
     #[test]
     fn test_agent_config_paths() {
         assert_eq!(McpAgent::ClaudeCode.config_path(), ".mcp.json");
-        assert_eq!(
-            McpAgent::GithubCopilot.config_path(),
-            ".copilot/mcp-config.json"
-        );
+        assert_eq!(McpAgent::GithubCopilot.config_path(), ".vscode/mcp.json");
         assert_eq!(McpAgent::GeminiCli.config_path(), ".gemini/settings.json");
         assert_eq!(McpAgent::VsCode.config_path(), ".vscode/mcp.json");
         assert_eq!(McpAgent::Cursor.config_path(), ".cursor/mcp.json");
@@ -1727,7 +1724,7 @@ mod tests {
             .unwrap();
 
         // Verify .copilot directory was created
-        let config_path = temp_dir.path().join(".copilot/mcp-config.json");
+        let config_path = temp_dir.path().join(".vscode/mcp.json");
         assert!(config_path.exists());
     }
 
@@ -1764,7 +1761,7 @@ mod tests {
 
         assert_eq!(result.created, 2);
         assert!(temp_dir.path().join(".mcp.json").exists());
-        assert!(temp_dir.path().join(".copilot/mcp-config.json").exists());
+        assert!(temp_dir.path().join(".vscode/mcp.json").exists());
     }
 
     // ==========================================================================
