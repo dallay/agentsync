@@ -1,11 +1,13 @@
 services:
-  # 1. Mock Skill Provider (Nginx)
+  # 1. Mock Skill Provider (Python)
   mock-provider:
-    image: nginx:alpine
+    image: python:3.11-alpine
+    working_dir: /web
     volumes:
-      - ./fixtures:/usr/share/nginx/html:ro
+      - ./fixtures:/web:ro
     ports:
       - "8080:80"
+    command: python3 -m http.server 80
 
   # 2. Test Runner (Ubuntu)
   test-runner-ubuntu:

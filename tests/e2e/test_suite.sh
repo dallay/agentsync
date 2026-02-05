@@ -73,10 +73,10 @@ echo "▶️ Testing: agentsync skill install (Remote Mock)"
 # We use the PROVIDER_URL env var from docker-compose
 SKILL_URL="${PROVIDER_URL}/sample-skill.zip"
 
-echo "⏳ Waiting for mock provider at $PROVIDER_URL..."
-for i in {1..10}; do
-    if curl -s -f "$PROVIDER_URL" > /dev/null; then
-        echo "✅ Mock provider is up!"
+echo "⏳ Waiting for mock provider at ${PROVIDER_URL}/sample-skill.zip..."
+for i in {1..20}; do
+    if curl -s -f "${PROVIDER_URL}/sample-skill.zip" > /dev/null; then
+        echo "✅ Mock provider is up and serving the ZIP!"
         break
     fi
     echo "..."
