@@ -16,3 +16,4 @@ minimumReleaseAge: 4320 # 3 days
 
 minimumReleaseAgeExclude:
   - '@dallay/*'
+  - '@biomejs/*'
