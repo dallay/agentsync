@@ -1,3 +1,14 @@
+## [1.25.0](https://github.com/dallay/agentsync/compare/v1.24.0...v1.25.0) (2026-02-05)
+
+### ✨ Features
+
+* add '@biomejs/*' to minimumReleaseAgeExclude in pnpm workspace configuration ([76d7da1](https://github.com/dallay/agentsync/commit/76d7da1cb5f49868b4f8159f463515a6e61d4b65))
+* add interactive configuration wizard and default agents support ([#133](https://github.com/dallay/agentsync/issues/133)) ([2f3d290](https://github.com/dallay/agentsync/commit/2f3d290343db2cbfc5ee1dcf97ce092c6d48a960))
+
+### 🚀 Performance
+
+* optimize MCP config generation by avoiding redundant deep clones ([#132](https://github.com/dallay/agentsync/issues/132)) ([067bee8](https://github.com/dallay/agentsync/commit/067bee80547ba4893a32c45ee945d735297d2589))
+
 ## [1.24.0](https://github.com/dallay/agentsync/compare/v1.23.1...v1.24.0) (2026-02-05)
 
 ### ✨ Features
