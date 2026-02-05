@@ -13,7 +13,7 @@ services:
       context: ../..
       dockerfile: tests/e2e/Dockerfile.e2e
       args:
-        BASE_IMAGE: ${UBUNTU_IMAGE:-ubuntu:24.04}
+        BASE_IMAGE: ${UBUNTU_IMAGE:-ubuntu:22.04}
     depends_on:
       - mock-provider
     volumes:
@@ -46,7 +46,7 @@ services:
       context: ../..
       dockerfile: tests/e2e/Dockerfile.e2e
       args:
-        BASE_IMAGE: ${ARCH_IMAGE:-archlinux:latest}
+        BASE_IMAGE: ${ARCH_IMAGE:-archlinux:base-20250205}
     depends_on:
       - mock-provider
     volumes:
