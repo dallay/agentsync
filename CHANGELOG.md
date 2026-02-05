@@ -1,3 +1,9 @@
+## [1.23.1](https://github.com/dallay/agentsync/compare/v1.23.0...v1.23.1) (2026-02-05)
+
+### 🐛 Bug Fixes
+
+* update bytes crate to v1.11.1 to resolve security vulnerability ([#128](https://github.com/dallay/agentsync/issues/128)) ([dc863ea](https://github.com/dallay/agentsync/commit/dc863ea43ca5ba9cebb7da567c5673d0810e7732))
+
 ## [1.23.0](https://github.com/dallay/agentsync/compare/v1.22.0...v1.23.0) (2026-02-03)
 
 ### ✨ Features
