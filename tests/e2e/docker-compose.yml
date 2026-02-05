@@ -12,6 +12,8 @@ services:
     build:
       context: ../..
       dockerfile: tests/e2e/Dockerfile.e2e
+      args:
+        BASE_IMAGE: ${UBUNTU_IMAGE:-ubuntu:24.04}
     depends_on:
       - mock-provider
     volumes:
@@ -27,7 +29,7 @@ services:
       context: ../..
       dockerfile: tests/e2e/Dockerfile.e2e
       args:
-        BASE_IMAGE: alpine:3.19
+        BASE_IMAGE: ${ALPINE_IMAGE:-alpine:3.19}
         BUILD_TYPE: musl
     depends_on:
       - mock-provider
@@ -44,7 +46,7 @@ services:
       context: ../..
       dockerfile: tests/e2e/Dockerfile.e2e
       args:
-        BASE_IMAGE: archlinux:latest
+        BASE_IMAGE: ${ARCH_IMAGE:-archlinux:latest}
     depends_on:
       - mock-provider
     volumes:
