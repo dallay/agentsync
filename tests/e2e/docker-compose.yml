@@ -46,7 +46,7 @@ services:
       context: ../..
       dockerfile: tests/e2e/Dockerfile.e2e
       args:
-        BASE_IMAGE: ${ARCH_IMAGE:-archlinux:latest}
+        BASE_IMAGE: ${ARCH_IMAGE:-archlinux:base-20250119.0.299596}
     depends_on:
       - mock-provider
     volumes:

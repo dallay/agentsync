@@ -207,11 +207,11 @@ jobs:
       matrix:
         include:
           - distro: ubuntu
-            image: ubuntu:22.04
+            image: ubuntu:24.04
           - distro: alpine
             image: alpine:3.19
           - distro: arch
-            image: archlinux:latest
+            image: archlinux:base-20250119.0.299596
     steps:
       - name: Checkout repository
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
