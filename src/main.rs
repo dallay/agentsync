@@ -259,15 +259,6 @@ fn main() -> Result<()> {
 }
 
 fn print_header() {
-    println!(
-        "{}",
-        r#"
- ╔═══════════════════════════════════════════════════════════════════╗
- ║                         AgentSync                                 ║
- ║           AI Agent Configuration Synchronization                  ║
- ╚═══════════════════════════════════════════════════════════════════╝
- "#
-        .cyan()
-        .bold()
-    );
+    let banner = include_str!("banner.txt");
+    println!("{}", banner.cyan().bold());
 }
