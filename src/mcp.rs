@@ -158,12 +158,9 @@ pub trait McpFormatter: Send + Sync {
     fn cleanup_removed_servers(
         &self,
         existing_content: &str,
-        new_servers: &HashMap<String, McpServerConfig>,
+        new_servers: &HashMap<String, &McpServerConfig>,
     ) -> Result<String> {
-        // Default implementation - adapt owned map to refs and call merge
-        let refs: HashMap<String, &McpServerConfig> =
-            new_servers.iter().map(|(k, v)| (k.clone(), v)).collect();
-        self.merge(existing_content, &refs)
+        self.merge(existing_content, new_servers)
     }
 
     /// Whether this formatter wraps mcpServers in another key
@@ -282,7 +279,7 @@ impl McpFormatter for ClaudeCodeFormatter {
     fn cleanup_removed_servers(
         &self,
         existing_content: &str,
-        new_servers: &HashMap<String, McpServerConfig>,
+        new_servers: &HashMap<String, &McpServerConfig>,
     ) -> Result<String> {
         // For standard MCP format, we can use the same merge function
         // but with a clean slate - only keep servers that are in new_servers
@@ -297,14 +294,10 @@ impl McpFormatter for ClaudeCodeFormatter {
             .filter(|(name, _)| new_servers.contains_key(name))
             .collect();
 
-        // Convert owned new_servers to a refs map for merge helper
-        let refs: HashMap<String, &McpServerConfig> =
-            new_servers.iter().map(|(k, v)| (k.clone(), v)).collect();
-
         // Now merge with new servers (this will override any matching ones)
         merge_standard_mcp_filtered(
             &filtered_existing,
-            &refs,
+            new_servers,
             "Failed to parse existing MCP config as JSON",
         )
     }
@@ -346,7 +339,7 @@ impl McpFormatter for GithubCopilotFormatter {
     fn cleanup_removed_servers(
         &self,
         existing_content: &str,
-        new_servers: &HashMap<String, McpServerConfig>,
+        new_servers: &HashMap<String, &McpServerConfig>,
     ) -> Result<String> {
         // Same logic as Claude Code - use standard MCP format
         let existing = parse_standard_mcp(
@@ -359,12 +352,9 @@ impl McpFormatter for GithubCopilotFormatter {
             .filter(|(name, _)| new_servers.contains_key(name))
             .collect();
 
-        let refs: HashMap<String, &McpServerConfig> =
-            new_servers.iter().map(|(k, v)| (k.clone(), v)).collect();
-
         merge_standard_mcp_filtered(
             &filtered_existing,
-            &refs,
+            new_servers,
             "Failed to parse existing Copilot MCP config as JSON",
         )
     }
@@ -440,7 +430,7 @@ impl McpFormatter for GeminiCliFormatter {
     fn cleanup_removed_servers(
         &self,
         existing_content: &str,
-        new_servers: &HashMap<String, McpServerConfig>,
+        new_servers: &HashMap<String, &McpServerConfig>,
     ) -> Result<String> {
         // For Gemini, we need to preserve other settings but clean up removed servers
         let mut existing_doc: Value =
@@ -513,7 +503,7 @@ impl McpFormatter for VsCodeFormatter {
     fn cleanup_removed_servers(
         &self,
         existing_content: &str,
-        new_servers: &HashMap<String, McpServerConfig>,
+        new_servers: &HashMap<String, &McpServerConfig>,
     ) -> Result<String> {
         // Same logic as Claude Code - use standard MCP format
         let existing = parse_standard_mcp(
@@ -526,12 +516,9 @@ impl McpFormatter for VsCodeFormatter {
             .filter(|(name, _)| new_servers.contains_key(name))
             .collect();
 
-        let refs: HashMap<String, &McpServerConfig> =
-            new_servers.iter().map(|(k, v)| (k.clone(), v)).collect();
-
         merge_standard_mcp_filtered(
             &filtered_existing,
-            &refs,
+            new_servers,
             "Failed to parse existing VS Code MCP config as JSON",
         )
     }
@@ -573,7 +560,7 @@ impl McpFormatter for CursorFormatter {
     fn cleanup_removed_servers(
         &self,
         existing_content: &str,
-        new_servers: &HashMap<String, McpServerConfig>,
+        new_servers: &HashMap<String, &McpServerConfig>,
     ) -> Result<String> {
         // Same logic as Claude Code - use standard MCP format
         let existing = parse_standard_mcp(
@@ -586,12 +573,9 @@ impl McpFormatter for CursorFormatter {
             .filter(|(name, _)| new_servers.contains_key(name))
             .collect();
 
-        let refs: HashMap<String, &McpServerConfig> =
-            new_servers.iter().map(|(k, v)| (k.clone(), v)).collect();
-
         merge_standard_mcp_filtered(
             &filtered_existing,
-            &refs,
+            new_servers,
             "Failed to parse existing Cursor MCP config as JSON",
         )
     }
@@ -672,7 +656,7 @@ impl McpFormatter for OpenCodeFormatter {
     fn cleanup_removed_servers(
         &self,
         existing_content: &str,
-        new_servers: &HashMap<String, McpServerConfig>,
+        new_servers: &HashMap<String, &McpServerConfig>,
     ) -> Result<String> {
         // For OpenCode, preserve other settings but clean up removed servers
         let mut existing_doc: Value =
@@ -823,17 +807,21 @@ impl McpGenerator {
         project_root: &Path,
         dry_run: bool,
     ) -> Result<McpSyncResult> {
+        let enabled_servers = self.get_enabled_servers();
+        self.generate_for_agent_with_servers(agent, project_root, &enabled_servers, dry_run)
+    }
+
+    /// Internal method to generate config using pre-calculated enabled servers
+    fn generate_for_agent_with_servers(
+        &self,
+        agent: McpAgent,
+        project_root: &Path,
+        enabled_servers: &HashMap<String, &McpServerConfig>,
+        dry_run: bool,
+    ) -> Result<McpSyncResult> {
         let mut result = McpSyncResult::default();
         let formatter = agent.formatter();
         let config_path = project_root.join(agent.config_path());
-
-        // Get enabled servers only
-        let enabled_servers: HashMap<String, &McpServerConfig> = self
-            .servers
-            .iter()
-            .filter(|(_, config)| !config.disabled)
-            .map(|(name, config)| (name.clone(), config))
-            .collect();
 
         if enabled_servers.is_empty() {
             result.skipped += 1;
@@ -853,26 +841,20 @@ impl McpGenerator {
                 .filter(|name| !enabled_servers.contains_key(*name))
                 .collect();
 
-            // Build owned map of enabled servers for cleanup
-            let owned_enabled: HashMap<String, McpServerConfig> = enabled_servers
-                .iter()
-                .map(|(k, v)| (k.clone(), (*v).clone()))
-                .collect();
-
             if !removed_servers.is_empty() {
                 // Only perform cleanup if the existing and enabled server counts differ.
                 // This prevents clobbering unrelated existing entries in simple merge cases
                 // where the counts match but names differ (keep existing entries).
                 if existing_servers.len() != enabled_servers.len() {
                     // Use cleanup method to remove servers that are no longer in config
-                    formatter.cleanup_removed_servers(&existing, &owned_enabled)?
+                    formatter.cleanup_removed_servers(&existing, enabled_servers)?
                 } else {
                     // Counts equal - prefer a simple merge to retain existing entries
-                    formatter.merge(&existing, &enabled_servers)?
+                    formatter.merge(&existing, enabled_servers)?
                 }
             } else {
                 // No servers removed, use normal merge
-                formatter.merge(&existing, &enabled_servers)?
+                formatter.merge(&existing, enabled_servers)?
             }
         } else if config_path.exists()
             && self.merge_strategy == McpMergeStrategy::Overwrite
@@ -884,15 +866,9 @@ impl McpGenerator {
             })?;
 
             // Use cleanup_removed_servers to replace mcp sections while preserving other keys
-            // Build owned map of enabled servers for cleanup
-            let owned_enabled: HashMap<String, McpServerConfig> = enabled_servers
-                .iter()
-                .map(|(k, v)| (k.clone(), (*v).clone()))
-                .collect();
-
-            formatter.cleanup_removed_servers(&existing, &owned_enabled)?
+            formatter.cleanup_removed_servers(&existing, enabled_servers)?
         } else {
-            let output = formatter.format(&enabled_servers);
+            let output = formatter.format(enabled_servers);
             serde_json::to_string_pretty(&output)?
         };
 
@@ -962,9 +938,19 @@ impl McpGenerator {
         dry_run: bool,
     ) -> Result<McpSyncResult> {
         let mut total_result = McpSyncResult::default();
+        let enabled_servers = self.get_enabled_servers();
+
+        if enabled_servers.is_empty() {
+            return Ok(total_result);
+        }
 
         for agent in enabled_agents {
-            match self.generate_for_agent(*agent, project_root, dry_run) {
+            match self.generate_for_agent_with_servers(
+                *agent,
+                project_root,
+                &enabled_servers,
+                dry_run,
+            ) {
                 Ok(result) => {
                     total_result.created += result.created;
                     total_result.updated += result.updated;
@@ -978,6 +964,15 @@ impl McpGenerator {
         }
 
         Ok(total_result)
+    }
+
+    /// Helper to get enabled servers as references to avoid clones
+    fn get_enabled_servers(&self) -> HashMap<String, &McpServerConfig> {
+        self.servers
+            .iter()
+            .filter(|(_, config)| !config.disabled)
+            .map(|(name, config)| (name.clone(), config))
+            .collect()
     }
 
     /// Get the list of agents that should receive MCP configs based on config
@@ -1532,11 +1527,10 @@ mod tests {
         server.command = Some("keep-cmd".to_string());
 
         let servers = HashMap::from([("keep".to_string(), server)]);
+        let refs = servers.iter().map(|(k, v)| (k.clone(), v)).collect();
 
         let formatter = OpenCodeFormatter;
-        let result = formatter
-            .cleanup_removed_servers(existing, &servers)
-            .unwrap();
+        let result = formatter.cleanup_removed_servers(existing, &refs).unwrap();
 
         let parsed: Value = serde_json::from_str(&result).unwrap();
 
@@ -1577,11 +1571,10 @@ mod tests {
         server.command = Some("node".to_string());
 
         let servers = HashMap::from([("keep".to_string(), server)]);
+        let refs = servers.iter().map(|(k, v)| (k.clone(), v)).collect();
 
         let formatter = GeminiCliFormatter;
-        let result = formatter
-            .cleanup_removed_servers(existing, &servers)
-            .unwrap();
+        let result = formatter.cleanup_removed_servers(existing, &refs).unwrap();
 
         let parsed: Value = serde_json::from_str(&result).unwrap();
 
