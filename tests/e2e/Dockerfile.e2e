@@ -2,7 +2,8 @@ ARG BASE_IMAGE=ubuntu:22.04
 ARG BUILD_TYPE=glibc
 
 # --- 1. GLIBC BUILDER (Debian-based) ---
-FROM rust:1.89-slim AS builder-glibc
+# We use Bullseye (Debian 11) to ensure compatibility with older glibc versions like Ubuntu 22.04
+FROM rust:1.89-slim-bullseye AS builder-glibc
 RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 WORKDIR /usr/src/agentsync
 COPY . .
