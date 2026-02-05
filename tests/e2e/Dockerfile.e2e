@@ -2,14 +2,14 @@ ARG BASE_IMAGE=ubuntu:24.04
 ARG BUILD_TYPE=glibc
 
 # --- 1. GLIBC BUILDER (Debian-based) ---
-FROM rust:1.84-slim AS builder-glibc
-RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+FROM rust:1.89-slim AS builder-glibc
+RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 WORKDIR /usr/src/agentsync
 COPY . .
 RUN cargo build --release
 
 # --- 2. MUSL BUILDER (Alpine-based) ---
-FROM rust:1.84-alpine AS builder-musl
+FROM rust:1.89-alpine AS builder-musl
 RUN apk add --no-cache musl-dev openssl-dev perl make g++
 WORKDIR /usr/src/agentsync
 COPY . .
