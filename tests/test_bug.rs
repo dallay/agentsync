@@ -41,9 +41,8 @@ fn test_merge_cleanup_bug() -> Result<()> {
     let formatter = ClaudeCodeFormatter;
 
     // This should call cleanup and remove server1 and server2
-    let result = formatter
-        .cleanup_removed_servers(existing, &new_servers)
-        .unwrap();
+    let refs = new_servers.iter().map(|(k, v)| (k.clone(), v)).collect();
+    let result = formatter.cleanup_removed_servers(existing, &refs).unwrap();
 
     // Parse result and verify
     let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
