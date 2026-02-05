@@ -122,27 +122,37 @@ Download the latest release for your platform from the [GitHub Releases](https:/
 
 # macOS (Apple Silicon)
 
-curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-<version>-aarch64-apple-darwin.tar.gz
-tar xzf agentsync-*-aarch64-apple-darwin.tar.gz
-sudo mv agentsync-*/agentsync /usr/local/bin/
+curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-1.23.0-aarch64-apple-darwin.tar.gz
+tar xzf agentsync-1.23.0-aarch64-apple-darwin.tar.gz
+sudo mv agentsync-1.23.0-aarch64-apple-darwin/agentsync /usr/local/bin/
 
 # macOS (Intel)
 
-curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-<version>-x86_64-apple-darwin.tar.gz
-tar xzf agentsync-*-x86_64-apple-darwin.tar.gz
-sudo mv agentsync-*/agentsync /usr/local/bin/
+curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-1.23.0-x86_64-apple-darwin.tar.gz
+tar xzf agentsync-1.23.0-x86_64-apple-darwin.tar.gz
+sudo mv agentsync-1.23.0-x86_64-apple-darwin/agentsync /usr/local/bin/
 
 # Linux (x86_64)
 
-curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-<version>-x86_64-unknown-linux-gnu.tar.gz
-tar xzf agentsync-*-x86_64-unknown-linux-gnu.tar.gz
-sudo mv agentsync-*/agentsync /usr/local/bin/
+curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-1.23.0-x86_64-unknown-linux-gnu.tar.gz
+tar xzf agentsync-1.23.0-x86_64-unknown-linux-gnu.tar.gz
+sudo mv agentsync-1.23.0-x86_64-unknown-linux-gnu/agentsync /usr/local/bin/
 
 # Linux (ARM64)
 
-curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-<version>-aarch64-unknown-linux-gnu.tar.gz
-tar xzf agentsync-*-aarch64-unknown-linux-gnu.tar.gz
-sudo mv agentsync-*/agentsync /usr/local/bin/
+curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-1.23.0-aarch64-unknown-linux-gnu.tar.gz
+tar xzf agentsync-1.23.0-aarch64-unknown-linux-gnu.tar.gz
+sudo mv agentsync-1.23.0-aarch64-unknown-linux-gnu/agentsync /usr/local/bin/
+```
+
+### Programmatic Asset Resolution
+
+To automatically fetch the latest release version and download the correct asset for your platform:
+
+```bash
+# Example for Linux x86_64
+VERSION=$(curl -s https://api.github.com/repos/dallay/agentsync/releases/latest | grep '"tag_name":' | sed -E 's/.*"v?([^"]+)".*/\1/')
+curl -LO "https://github.com/dallay/agentsync/releases/latest/download/agentsync-${VERSION}-x86_64-unknown-linux-gnu.tar.gz"
 ```
 
 ### From Source (Requires Rust 1.89+)
@@ -434,9 +444,11 @@ If you need agentsync in CI, add it to your workflow:
 ```yaml
 - name: Install agentsync
   run: |
-    curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-<version>-x86_64-unknown-linux-gnu.tar.gz
-    tar xzf agentsync-*-x86_64-unknown-linux-gnu.tar.gz
-    sudo mv agentsync-*/agentsync /usr/local/bin/
+    # Resolve latest version and download
+    VERSION=$(curl -s https://api.github.com/repos/dallay/agentsync/releases/latest | grep '"tag_name":' | sed -E 's/.*"v?([^"]+)".*/\1/')
+    curl -LO "https://github.com/dallay/agentsync/releases/latest/download/agentsync-${VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+    tar xzf agentsync-${VERSION}-x86_64-unknown-linux-gnu.tar.gz
+    sudo mv agentsync-${VERSION}-x86_64-unknown-linux-gnu/agentsync /usr/local/bin/
 ```
 
 ## Getting Started (Development)
