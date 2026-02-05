@@ -1,3 +1,13 @@
+## [1.24.0](https://github.com/dallay/agentsync/compare/v1.23.1...v1.24.0) (2026-02-05)
+
+### ✨ Features
+
+* add ASCII banner to CLI output ([#129](https://github.com/dallay/agentsync/issues/129)) ([b58b28f](https://github.com/dallay/agentsync/commit/b58b28fc4ec42f63ce44bc45b03ac4277fe90e50))
+
+### 📝 Documentation
+
+* remove unimplemented agentsync skill list command ([#126](https://github.com/dallay/agentsync/issues/126)) ([2b090c7](https://github.com/dallay/agentsync/commit/2b090c76b017e4e518c5f440a75c0f6969dec0cb))
+
 ## [1.23.1](https://github.com/dallay/agentsync/compare/v1.23.0...v1.23.1) (2026-02-05)
 
 ### 🐛 Bug Fixes
