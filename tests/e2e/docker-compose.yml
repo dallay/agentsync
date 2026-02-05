@@ -1,13 +1,11 @@
 services:
-  # 1. Mock Skill Provider (Python)
+  # 1. Mock Skill Provider (Nginx)
   mock-provider:
-    image: python:3.11-alpine
-    working_dir: /web
+    image: nginx:alpine
     volumes:
-      - ./fixtures:/web:ro
+      - ./fixtures:/usr/share/nginx/html:ro
     ports:
       - "8080:80"
-    command: python3 -m http.server 80
 
   # 2. Test Runner (Ubuntu)
   test-runner-ubuntu:
@@ -15,7 +13,7 @@ services:
       context: ../..
       dockerfile: tests/e2e/Dockerfile.e2e
       args:
-        BASE_IMAGE: ${UBUNTU_IMAGE:-ubuntu:22.04}
+        BASE_IMAGE: ${UBUNTU_IMAGE:-ubuntu:24.04}
     depends_on:
       - mock-provider
     volumes:
@@ -48,7 +46,7 @@ services:
       context: ../..
       dockerfile: tests/e2e/Dockerfile.e2e
       args:
-        BASE_IMAGE: ${ARCH_IMAGE:-archlinux:base}
+        BASE_IMAGE: ${ARCH_IMAGE:-archlinux:latest}
     depends_on:
       - mock-provider
     volumes:
