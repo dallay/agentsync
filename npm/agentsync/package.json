@@ -1,61 +1,61 @@
 {
-  "name": "@dallay/agentsync",
-  "version": "1.23.1",
-  "description": "A fast CLI tool to sync AI agent configurations and MCP servers across Claude, Copilot, Cursor, and more using symbolic links.",
-  "author": "Yuniel Acosta <yunielacosta738@gmail.com>",
-  "license": "MIT",
-  "publishConfig": {
-    "access": "public"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/dallay/agentsync.git"
-  },
-  "homepage": "https://github.com/dallay/agentsync#readme",
-  "bugs": {
-    "url": "https://github.com/dallay/agentsync/issues"
-  },
-  "keywords": [
-    "ai",
-    "agents",
-    "symlink",
-    "configuration",
-    "cli",
-    "claude",
-    "copilot",
-    "gemini",
-    "cursor",
-    "opencode",
-    "mcp",
-    "mcp-server"
-  ],
-  "bin": {
-    "agentsync": "lib/index.js"
-  },
-  "main": "lib/index.js",
-  "files": [
-    "lib"
-  ],
-  "scripts": {
-    "test": "pnpm run typecheck",
-    "typecheck": "tsc --noEmit",
-    "build": "tsc",
-    "clean": "node -e \"require('fs').rmSync('lib', {recursive: true, force: true})\"",
-    "prepublishOnly": "npm run build"
-  },
-  "devDependencies": {
-    "@types/node": "^24.1.0",
-    "typescript": "^5.9.3"
-  },
-  "optionalDependencies": {
-    "@dallay/agentsync-linux-x64": "1.23.1",
-    "@dallay/agentsync-linux-arm64": "1.23.1",
-    "@dallay/agentsync-darwin-x64": "1.23.1",
-    "@dallay/agentsync-darwin-arm64": "1.23.1",
-    "@dallay/agentsync-windows-x64": "1.23.1",
-    "@dallay/agentsync-windows-arm64": "1.23.1"
-  },
-  "engines": {
-    "node": ">=18"
-  }
+	"name": "@dallay/agentsync",
+	"version": "1.23.1",
+	"description": "A fast CLI tool to sync AI agent configurations and MCP servers across Claude, Copilot, Cursor, and more using symbolic links.",
+	"author": "Yuniel Acosta <yunielacosta738@gmail.com>",
+	"license": "MIT",
+	"publishConfig": {
+		"access": "public"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/dallay/agentsync.git"
+	},
+	"homepage": "https://github.com/dallay/agentsync#readme",
+	"bugs": {
+		"url": "https://github.com/dallay/agentsync/issues"
+	},
+	"keywords": [
+		"ai",
+		"agents",
+		"symlink",
+		"configuration",
+		"cli",
+		"claude",
+		"copilot",
+		"gemini",
+		"cursor",
+		"opencode",
+		"mcp",
+		"mcp-server"
+	],
+	"bin": {
+		"agentsync": "lib/index.js"
+	},
+	"main": "lib/index.js",
+	"files": [
+		"lib"
+	],
+	"scripts": {
+		"test": "pnpm run typecheck",
+		"typecheck": "tsc --noEmit",
+		"build": "tsc",
+		"clean": "node -e \"require('fs').rmSync('lib', {recursive: true, force: true})\"",
+		"prepublishOnly": "npm run build"
+	},
+	"devDependencies": {
+		"@types/node": "^24.1.0",
+		"typescript": "^5.9.3"
+	},
+	"optionalDependencies": {
+		"@dallay/agentsync-linux-x64": "1.23.1",
+		"@dallay/agentsync-linux-arm64": "1.23.1",
+		"@dallay/agentsync-darwin-x64": "1.23.1",
+		"@dallay/agentsync-darwin-arm64": "1.23.1",
+		"@dallay/agentsync-windows-x64": "1.23.1",
+		"@dallay/agentsync-windows-arm64": "1.23.1"
+	},
+	"engines": {
+		"node": ">=18"
+	}
 }
