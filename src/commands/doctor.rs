@@ -308,26 +308,38 @@ pub fn validate_destinations(destinations: &[(String, String, String)]) -> Vec<C
     }
 
     // Check for overlapping paths (one is parent of another)
-    let mut seen_overlaps = HashSet::new();
-    for (i, (d1, a1, t1)) in destinations.iter().enumerate() {
-        if duplicated_dests.contains(d1) {
-            continue;
+    // To avoid repeated overlaps and handle duplicates gracefully:
+    // 1. Get a deduplicated list of unique destinations for overlap checking
+    let mut unique_dests_info = std::collections::HashMap::new();
+    for (dest, agent, target) in destinations {
+        if !unique_dests_info.contains_key(dest) {
+            unique_dests_info.insert(dest, format!("{}/{}", agent, target));
         }
+    }
+    let unique_dests: Vec<_> = unique_dests_info.keys().cloned().collect();
 
-        for (j, (d2, a2, t2)) in destinations.iter().enumerate() {
-            if i == j || duplicated_dests.contains(d2) {
+    let mut seen_overlaps = HashSet::new();
+    for (i, d1) in unique_dests.iter().enumerate() {
+        let info1 = &unique_dests_info[d1];
+
+        for (j, d2) in unique_dests.iter().enumerate() {
+            if i == j {
                 continue;
             }
+            let info2 = &unique_dests_info[d2];
 
             let p1 = Path::new(d1);
             let p2 = Path::new(d2);
 
-            if p2.starts_with(p1) && p1 != p2 && seen_overlaps.insert((d1.clone(), d2.clone())) {
+            if p2.starts_with(p1)
+                && p1 != p2
+                && seen_overlaps.insert(((*d1).clone(), (*d2).clone()))
+            {
                 conflicts.push(Conflict::Overlap(
-                    d1.clone(),
-                    d2.clone(),
-                    format!("{}/{}", a1, t1),
-                    format!("{}/{}", a2, t2),
+                    (*d1).clone(),
+                    (*d2).clone(),
+                    info1.clone(),
+                    info2.clone(),
                 ));
             }
         }
