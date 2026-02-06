@@ -13,6 +13,9 @@ pub const DEFAULT_CONFIG: &str = r#"# AgentSync Configuration
 # Source directory (relative to this config file)
 source_dir = "."
 
+# Optional: compress AGENTS.md and point symlinks to the compressed file
+# compress_agents_md = false
+
 # Gitignore management
 [gitignore]
 enabled = true
