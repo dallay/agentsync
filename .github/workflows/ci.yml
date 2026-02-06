@@ -194,3 +194,45 @@ jobs:
         uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+
+  # ==========================================================================
+  # End-to-End Tests
+  # ==========================================================================
+  e2e:
+    name: E2E Tests (${{ matrix.distro }})
+    needs: audit
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: ubuntu
+            image: ubuntu@sha256:cd1dba651b3080c3686ecf4e3c4220f026b521fb76978881737d24f200828b2b
+          - distro: alpine
+            image: alpine@sha256:6baf43584bcb78f2e5847d1de515f23499913ac9f12bdf834811a3145eb11ca1
+          - distro: arch
+            image: archlinux@sha256:9b8e02df0f0a08fa8144d901932bd85d751257f83e00314053314a27ff87884f
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Prepare E2E fixtures
+        run: |
+          cd tests/e2e/fixtures
+          zip -r sample-skill.zip sample-skill/
+
+      - name: Build and run E2E tests
+        env:
+          DISTRO: ${{ matrix.distro }}
+          IMAGE: ${{ matrix.image }}
+        run: |
+          cd tests/e2e
+          case "$DISTRO" in
+            ubuntu) export UBUNTU_IMAGE="$IMAGE" ;;
+            alpine) export ALPINE_IMAGE="$IMAGE" ;;
+            arch)   export ARCH_IMAGE="$IMAGE" ;;
+          esac
+          docker compose up --build --exit-code-from test-runner-$DISTRO test-runner-$DISTRO
