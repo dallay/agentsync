@@ -57,6 +57,7 @@ pub fn run_doctor(project_root: PathBuf) -> Result<()> {
     }
 
     // 3. Target Source Existence Check
+    let mut missing_targets = 0;
     for (agent_name, agent) in &linker.config().agents {
         if !agent.enabled {
             continue;
@@ -72,8 +73,12 @@ pub fn run_doctor(project_root: PathBuf) -> Result<()> {
                     target_source.display()
                 );
                 issues += 1;
+                missing_targets += 1;
             }
         }
+    }
+    if missing_targets == 0 {
+        println!("  {} All target sources exist", "✔".green());
     }
 
     // 4. Destination Path Conflict Check
@@ -291,19 +296,12 @@ pub enum Conflict {
 pub fn validate_destinations(destinations: &[(String, String, String)]) -> Vec<Conflict> {
     let mut conflicts = Vec::new();
     let mut seen_dests = HashSet::new();
-    let mut duplicated_dests = HashSet::new();
+    let mut reported_dups = HashSet::new();
 
     // Check for exact duplicates
     for (dest, _, _) in destinations {
-        if !seen_dests.insert(dest) {
-            duplicated_dests.insert(dest.clone());
-            // We only want to report each duplicate once
-            if conflicts.iter().all(|c| match c {
-                Conflict::Duplicate(d) => d != dest,
-                _ => true,
-            }) {
-                conflicts.push(Conflict::Duplicate(dest.clone()));
-            }
+        if !seen_dests.insert(dest) && reported_dups.insert(dest.clone()) {
+            conflicts.push(Conflict::Duplicate(dest.clone()));
         }
     }
 
@@ -312,11 +310,12 @@ pub fn validate_destinations(destinations: &[(String, String, String)]) -> Vec<C
     // 1. Get a deduplicated list of unique destinations for overlap checking
     let mut unique_dests_info = std::collections::HashMap::new();
     for (dest, agent, target) in destinations {
-        if !unique_dests_info.contains_key(dest) {
-            unique_dests_info.insert(dest, format!("{}/{}", agent, target));
-        }
+        unique_dests_info
+            .entry(dest)
+            .or_insert_with(|| format!("{}/{}", agent, target));
     }
-    let unique_dests: Vec<_> = unique_dests_info.keys().cloned().collect();
+    let mut unique_dests: Vec<_> = unique_dests_info.keys().cloned().collect();
+    unique_dests.sort();
 
     let mut seen_overlaps = HashSet::new();
     for (i, d1) in unique_dests.iter().enumerate() {
@@ -354,7 +353,11 @@ pub fn normalize_path(path_str: &str) -> String {
         match component {
             std::path::Component::CurDir => {}
             std::path::Component::ParentDir => {
-                components.pop();
+                if components.is_empty() {
+                    components.push(component.as_os_str());
+                } else {
+                    components.pop();
+                }
             }
             std::path::Component::Normal(c) => {
                 components.push(c);

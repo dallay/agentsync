@@ -191,5 +191,9 @@ entry1
         assert_eq!(normalize_path("a//b"), expected(&["a", "b"]));
         #[cfg(unix)]
         assert_eq!(normalize_path("/a/b"), "/a/b");
+
+        // ParentDir handling
+        assert_eq!(normalize_path("a/../b"), expected(&["b"]));
+        assert_eq!(normalize_path("../a"), expected(&["..", "a"]));
     }
 }
