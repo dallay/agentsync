@@ -1,8 +1,9 @@
 ARG BASE_IMAGE=ubuntu:24.04
+ARG BUILD_TYPE=glibc
 
 # --- 1. GLIBC BUILDER (Debian-based) ---
 FROM rust:1.89-slim AS builder-glibc
-RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 WORKDIR /usr/src/agentsync
 COPY . .
 RUN cargo build --release
@@ -17,8 +18,8 @@ RUN cargo build --release --features reqwest/native-tls-vendored
 # --- 3. FINAL RUNNER ---
 FROM ${BASE_IMAGE}
 
-# Build-time argument to select which binary to use
-ARG BUILD_TYPE=glibc
+# Redeclare the arg in this stage to use it
+ARG BUILD_TYPE
 
 # Avoid prompts during package installation (for Debian/Ubuntu)
 ENV DEBIAN_FRONTEND=noninteractive
