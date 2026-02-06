@@ -22,7 +22,7 @@ pub fn run_doctor(project_root: PathBuf) -> Result<()> {
         }
         Err(e) => {
             println!("  {} Could not find config: {}", "✗".red(), e);
-            return Err(e);
+            return Ok(());
         }
     };
 
@@ -33,7 +33,7 @@ pub fn run_doctor(project_root: PathBuf) -> Result<()> {
         }
         Err(e) => {
             println!("  {} Failed to parse config: {}", "✗".red(), e);
-            return Err(e);
+            return Ok(());
         }
     };
 
@@ -83,11 +83,8 @@ pub fn run_doctor(project_root: PathBuf) -> Result<()> {
             continue;
         }
         for (target_name, target) in &agent.targets {
-            destinations.push((
-                target.destination.clone(),
-                agent_name.clone(),
-                target_name.clone(),
-            ));
+            let normalized = normalize_path(&target.destination);
+            destinations.push((normalized, agent_name.clone(), target_name.clone()));
         }
     }
 
@@ -139,6 +136,12 @@ pub fn run_doctor(project_root: PathBuf) -> Result<()> {
                         cmd.dimmed()
                     );
                 }
+            } else {
+                println!(
+                    "  {} MCP server {} has no command configured (not audited)",
+                    "ℹ".blue(),
+                    name.bold()
+                );
             }
         }
     }
@@ -288,10 +291,12 @@ pub enum Conflict {
 pub fn validate_destinations(destinations: &[(String, String, String)]) -> Vec<Conflict> {
     let mut conflicts = Vec::new();
     let mut seen_dests = HashSet::new();
+    let mut duplicated_dests = HashSet::new();
 
     // Check for exact duplicates
     for (dest, _, _) in destinations {
         if !seen_dests.insert(dest) {
+            duplicated_dests.insert(dest.clone());
             // We only want to report each duplicate once
             if conflicts.iter().all(|c| match c {
                 Conflict::Duplicate(d) => d != dest,
@@ -303,18 +308,21 @@ pub fn validate_destinations(destinations: &[(String, String, String)]) -> Vec<C
     }
 
     // Check for overlapping paths (one is parent of another)
-    for i in 0..destinations.len() {
-        for j in 0..destinations.len() {
-            if i == j {
+    let mut seen_overlaps = HashSet::new();
+    for (i, (d1, a1, t1)) in destinations.iter().enumerate() {
+        if duplicated_dests.contains(d1) {
+            continue;
+        }
+
+        for (j, (d2, a2, t2)) in destinations.iter().enumerate() {
+            if i == j || duplicated_dests.contains(d2) {
                 continue;
             }
-            let (d1, a1, t1) = &destinations[i];
-            let (d2, a2, t2) = &destinations[j];
 
             let p1 = Path::new(d1);
             let p2 = Path::new(d2);
 
-            if p2.starts_with(p1) && p1 != p2 {
+            if p2.starts_with(p1) && p1 != p2 && seen_overlaps.insert((d1.clone(), d2.clone())) {
                 conflicts.push(Conflict::Overlap(
                     d1.clone(),
                     d2.clone(),
@@ -328,6 +336,29 @@ pub fn validate_destinations(destinations: &[(String, String, String)]) -> Vec<C
     conflicts
 }
 
+pub fn normalize_path(path_str: &str) -> String {
+    let mut components = Vec::new();
+    for component in Path::new(path_str).components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                components.pop();
+            }
+            std::path::Component::Normal(c) => {
+                components.push(c);
+            }
+            _ => {
+                components.push(component.as_os_str());
+            }
+        }
+    }
+    let mut res = PathBuf::new();
+    for c in components {
+        res.push(c);
+    }
+    res.to_string_lossy().to_string()
+}
+
 pub fn extract_managed_entries(content: &str, start_marker: &str, end_marker: &str) -> Vec<String> {
     let mut entries = Vec::new();
     let mut in_section = false;
@@ -338,7 +369,7 @@ pub fn extract_managed_entries(content: &str, start_marker: &str, end_marker: &s
             in_section = true;
             continue;
         }
-        if trimmed == end_marker {
+        if in_section && trimmed == end_marker {
             break;
         }
         if in_section && !trimmed.is_empty() && !trimmed.starts_with('#') {
