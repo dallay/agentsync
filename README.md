@@ -118,7 +118,7 @@ cargo install agentsync
 
 Download the latest release for your platform from the [GitHub Releases](https://github.com/dallay/agentsync/releases) page.
 
-Note: Replace `<version>` with the desired release tag (e.g., `v1.25.0`). See the [GitHub Releases](https://github.com/dallay/agentsync/releases) page for available versions.
+Note: Replace `<version>` with the desired release tag (e.g., `v1.26.0`). See the [GitHub Releases](https://github.com/dallay/agentsync/releases) page for available versions.
 
 ```bash
 
@@ -217,6 +217,9 @@ agentsync apply
 # Initialize a new configuration
 agentsync init
 
+# Initialize in a specific directory
+agentsync init --path ./my-project
+
 # Initialize with interactive wizard (for existing projects with agent files)
 agentsync init --wizard
 
@@ -254,6 +257,14 @@ agentsync apply --verbose
 # Show version
 
 agentsync --version
+
+# Show status of managed symlinks
+
+agentsync status
+
+# Run diagnostic and health check
+
+agentsync doctor
 
 # Manage skills
 
@@ -390,9 +401,8 @@ filter which files to link.
 
 ```
 .agents/
-├── agentsync.toml      # Configuration file
+├── agentsync.toml      # Configuration file (source of truth for MCP)
 ├── AGENTS.md           # Main agent instructions (single source)
-├── .mcp.json           # MCP server configurations
 ├── command/            # Agent commands
 │   ├── review.agent.md
 │   └── test.agent.md
@@ -410,7 +420,7 @@ project-root/
 ├── CLAUDE.md           → .agents/AGENTS.md
 ├── GEMINI.md           → .agents/AGENTS.md
 ├── AGENTS.md           → .agents/AGENTS.md
-├── .mcp.json           → .agents/.mcp.json
+├── .mcp.json           (Generated from agentsync.toml)
 ├── .claude/
 │   └── commands/       → symlinks to .agents/command/*.agent.md
 ├── .gemini/
