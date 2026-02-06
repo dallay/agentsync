@@ -492,7 +492,7 @@ impl Linker {
 
         let to_abs = match self.canonicalize_cached(to) {
             Ok(path) => path,
-            Err(err) if allow_missing => {
+            Err(_) if allow_missing => {
                 if to.is_absolute() {
                     to.to_path_buf()
                 } else {
@@ -633,23 +633,47 @@ fn compressed_agents_md_path(path: &Path) -> PathBuf {
 
 fn compress_agents_md_content(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
-    let mut in_code_block = false;
+    // Track the exact fence delimiter so only a matching fence closes the block.
+    let mut fence_delim: Option<String> = None;
     let mut previous_blank = false;
 
     for line in input.lines() {
         let trimmed_end = line.trim_end_matches([' ', '\t']);
         let trimmed_start = trimmed_end.trim_start();
-        let is_fence = trimmed_start.starts_with("```") || trimmed_start.starts_with("~~~");
+        let fence_delim_match = if trimmed_start.starts_with("```") {
+            Some(
+                trimmed_start
+                    .chars()
+                    .take_while(|c| *c == '`')
+                    .collect::<String>(),
+            )
+        } else if trimmed_start.starts_with("~~~") {
+            Some(
+                trimmed_start
+                    .chars()
+                    .take_while(|c| *c == '~')
+                    .collect::<String>(),
+            )
+        } else {
+            None
+        };
+        let is_fence = fence_delim_match.is_some();
 
         if is_fence {
-            in_code_block = !in_code_block;
+            if let Some(delim) = fence_delim_match {
+                if fence_delim.is_none() {
+                    fence_delim = Some(delim);
+                } else if fence_delim.as_ref() == Some(&delim) {
+                    fence_delim = None;
+                }
+            }
             out.push_str(trimmed_end);
             out.push('\n');
             previous_blank = false;
             continue;
         }
 
-        if in_code_block {
+        if fence_delim.is_some() {
             out.push_str(trimmed_end);
             out.push('\n');
             previous_blank = false;
