@@ -1,3 +1,13 @@
+## [1.26.0](https://github.com/dallay/agentsync/compare/v1.25.0...v1.26.0) (2026-02-06)
+
+### ✨ Features
+
+* add agentsync doctor command for advanced diagnostics ([#137](https://github.com/dallay/agentsync/issues/137)) ([cc9f040](https://github.com/dallay/agentsync/commit/cc9f040eb57350b6af4ee9549f1f82ddc29ff511))
+
+### 📝 Documentation
+
+* update README.md for accuracy and include MCP servers ([#136](https://github.com/dallay/agentsync/issues/136)) ([a7a90c6](https://github.com/dallay/agentsync/commit/a7a90c6021ff9eb3a1c2676e5925539cddf9051c))
+
 ## [1.25.0](https://github.com/dallay/agentsync/compare/v1.24.0...v1.25.0) (2026-02-05)
 
 ### ✨ Features
