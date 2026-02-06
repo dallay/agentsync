@@ -116,7 +116,9 @@ cargo install agentsync
 
 ### From GitHub Releases (Pre-built Binaries)
 
-Download the latest release for your platform from the [GitHub Releases](https://github.com/dallay/agentsync/releases) page:
+Download the latest release for your platform from the [GitHub Releases](https://github.com/dallay/agentsync/releases) page.
+
+Note: Replace `<version>` with the desired release tag (e.g., `v1.25.0`). See the [GitHub Releases](https://github.com/dallay/agentsync/releases) page for available versions.
 
 ```bash
 
