@@ -55,23 +55,23 @@ importers:
         version: 5.9.3
     optionalDependencies:
       '@dallay/agentsync-darwin-arm64':
-        specifier: 1.23.1
-        version: 1.23.1
+        specifier: 1.25.0
+        version: 1.25.0
       '@dallay/agentsync-darwin-x64':
-        specifier: 1.23.1
-        version: 1.23.1
+        specifier: 1.25.0
+        version: 1.25.0
       '@dallay/agentsync-linux-arm64':
-        specifier: 1.23.1
-        version: 1.23.1
+        specifier: 1.25.0
+        version: 1.25.0
       '@dallay/agentsync-linux-x64':
-        specifier: 1.23.1
-        version: 1.23.1
+        specifier: 1.25.0
+        version: 1.25.0
       '@dallay/agentsync-windows-arm64':
-        specifier: 1.23.1
-        version: 1.23.1
+        specifier: 1.25.0
+        version: 1.25.0
       '@dallay/agentsync-windows-x64':
-        specifier: 1.23.1
-        version: 1.23.1
+        specifier: 1.25.0
+        version: 1.25.0
 
   website/docs:
     dependencies:
@@ -242,13 +242,6 @@ packages:
     resolution: {integrity: sha512-kzyuwOAQnXJNLS9PSyrk0CWk35nWJW/zl/6KvnTBMFK65gm7U1/Z5BqjxeapjZCIhQcM/DsrEmcbRwDyXyXK4A==}
     engines: {node: '>=14'}
 
-  '@dallay/agentsync-darwin-arm64@1.23.1':
-    resolution: {integrity: sha512-+04sAetuYyv5/s/Oo8EcRAvY4bxgTROXSVDksI2BtDvxL+393hdF9OUvA0q93g6qI1OfQri+ZyBNRVuTYuQmIQ==}
-    engines: {node: '>=18'}
-    cpu: [arm64]
-    os: [darwin]
-    hasBin: true
-
   '@dallay/agentsync-darwin-arm64@1.24.0':
     resolution: {integrity: sha512-LMZRlsPZNk4wvpjnfZX+/vM1ajSrUE4E9ztAD/o155x42ZpElSe4v1KUaUqLHMwfocS02SlvTUN/NqSiGfnAQg==}
     engines: {node: '>=18'}
@@ -256,10 +249,10 @@ packages:
     os: [darwin]
     hasBin: true
 
-  '@dallay/agentsync-darwin-x64@1.23.1':
-    resolution: {integrity: sha512-RSn4DCSS2pvoomCK5/XhrVs6XgoyOPe5WF763QHe+2QTdwEIVLtmAdgBaJS4mEMkHdddai6N6u4Cce6pZtYieg==}
+  '@dallay/agentsync-darwin-arm64@1.25.0':
+    resolution: {integrity: sha512-/bHWGBdmoPXTXKL7nDkliGPpJjhjipW4938p89iVemV486npMaMxUyyfGstbpfN/hNHy+lylSvIsrUYRsVwKBA==}
     engines: {node: '>=18'}
-    cpu: [x64]
+    cpu: [arm64]
     os: [darwin]
     hasBin: true
 
@@ -270,11 +263,11 @@ packages:
     os: [darwin]
     hasBin: true
 
-  '@dallay/agentsync-linux-arm64@1.23.1':
-    resolution: {integrity: sha512-EXRt4eHcvx8ymF90aJySBZOaKj1DbYpO82ICSgtalVzwWVtDZvzurDn0nKwfir3dHABjWb4pgZ/7UpDn/gGZiQ==}
+  '@dallay/agentsync-darwin-x64@1.25.0':
+    resolution: {integrity: sha512-Lm74Wb4JEcCmpTHkBVMNAihU834u8CvN0xDQAgJQ1+WXt6sFJIWyGWYG/RUn2J1ITbQYsfUC9pEH8spgQpBV9Q==}
     engines: {node: '>=18'}
-    cpu: [arm64]
-    os: [linux]
+    cpu: [x64]
+    os: [darwin]
     hasBin: true
 
   '@dallay/agentsync-linux-arm64@1.24.0':
@@ -284,10 +277,10 @@ packages:
     os: [linux]
     hasBin: true
 
-  '@dallay/agentsync-linux-x64@1.23.1':
-    resolution: {integrity: sha512-yUEuQLXe0EOpF0o+vNrBR1O3t6/D+cd4RSFJ9ujhJG6rwvniqWWm06+u+HGTYYnAQ5LhPGkhctIZwWmT+5GBJA==}
+  '@dallay/agentsync-linux-arm64@1.25.0':
+    resolution: {integrity: sha512-q5svOqIWCKkqDeMPbQkIYV19bUBlIb6Mzt22rBdG8dLYslPYqT+/SIIbF84ODTKvVpw+E8zCsFxS8uQxYTWtHw==}
     engines: {node: '>=18'}
-    cpu: [x64]
+    cpu: [arm64]
     os: [linux]
     hasBin: true
 
@@ -298,11 +291,11 @@ packages:
     os: [linux]
     hasBin: true
 
-  '@dallay/agentsync-windows-arm64@1.23.1':
-    resolution: {integrity: sha512-wj82HHDUEaNeJNdmAmBuobznqmdCPj6b9gJlz1YkT+ZYuXrhnPRjwkE16WqPPh/cJMCDb5M+BmVHHkCsCXYrxA==}
+  '@dallay/agentsync-linux-x64@1.25.0':
+    resolution: {integrity: sha512-+nmXzHuzAZqVn56UJQW6GwauWWePyJXAz4SrEMxSsfcNNIupkAafnyNJbF3C7VHBMUSm1gCJbcT+oYUnurUiUw==}
     engines: {node: '>=18'}
-    cpu: [arm64]
-    os: [win32]
+    cpu: [x64]
+    os: [linux]
     hasBin: true
 
   '@dallay/agentsync-windows-arm64@1.24.0':
@@ -312,15 +305,22 @@ packages:
     os: [win32]
     hasBin: true
 
-  '@dallay/agentsync-windows-x64@1.23.1':
-    resolution: {integrity: sha512-1z9iHRh2JtvZTvaHda9LnppQN+vK3+y+I3T8wI4M8cMMzg/iw8XzEQo4IkpI4VPQe64vmy56vGAKYZACdg+Ltw==}
+  '@dallay/agentsync-windows-arm64@1.25.0':
+    resolution: {integrity: sha512-AiM2zKulGuMNXH+yLow0rUwKwNBgTb4208i5LcO4ps3eg/1Hrp8gEhTXewppTVpCH4R1vAY6Ab/V3nSH9vcwtA==}
     engines: {node: '>=18'}
-    cpu: [x64]
+    cpu: [arm64]
     os: [win32]
     hasBin: true
 
   '@dallay/agentsync-windows-x64@1.24.0':
     resolution: {integrity: sha512-jNSiOZPrsZrjylrbxndwbeX5fruP3+dlio6yKCdtc0F5/woXrEpN/ogt4higiDtung6RsqxtmHMRiv8RS3uNsQ==}
+    engines: {node: '>=18'}
+    cpu: [x64]
+    os: [win32]
+    hasBin: true
+
+  '@dallay/agentsync-windows-x64@1.25.0':
+    resolution: {integrity: sha512-Xc8xr4sFIsKrzHCLDsuJvmKfyjAKTLkrx1Uey6bJFc2CZI4tHUqyEsyoxn3CMPU8fbT9KyBlYBoY/UGYNAMRrg==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
@@ -3522,40 +3522,40 @@ snapshots:
 
   '@ctrl/tinycolor@4.2.0': {}
 
-  '@dallay/agentsync-darwin-arm64@1.23.1':
-    optional: true
-
   '@dallay/agentsync-darwin-arm64@1.24.0':
     optional: true
 
-  '@dallay/agentsync-darwin-x64@1.23.1':
+  '@dallay/agentsync-darwin-arm64@1.25.0':
     optional: true
 
   '@dallay/agentsync-darwin-x64@1.24.0':
     optional: true
 
-  '@dallay/agentsync-linux-arm64@1.23.1':
+  '@dallay/agentsync-darwin-x64@1.25.0':
     optional: true
 
   '@dallay/agentsync-linux-arm64@1.24.0':
     optional: true
 
-  '@dallay/agentsync-linux-x64@1.23.1':
+  '@dallay/agentsync-linux-arm64@1.25.0':
     optional: true
 
   '@dallay/agentsync-linux-x64@1.24.0':
     optional: true
 
-  '@dallay/agentsync-windows-arm64@1.23.1':
+  '@dallay/agentsync-linux-x64@1.25.0':
     optional: true
 
   '@dallay/agentsync-windows-arm64@1.24.0':
     optional: true
 
-  '@dallay/agentsync-windows-x64@1.23.1':
+  '@dallay/agentsync-windows-arm64@1.25.0':
     optional: true
 
   '@dallay/agentsync-windows-x64@1.24.0':
+    optional: true
+
+  '@dallay/agentsync-windows-x64@1.25.0':
     optional: true
 
   '@dallay/agentsync@1.24.0':

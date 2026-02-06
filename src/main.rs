@@ -10,6 +10,7 @@ use std::path::PathBuf;
 
 use agentsync::{Linker, SyncOptions, config::Config, gitignore, init};
 mod commands;
+use commands::doctor::run_doctor;
 use commands::skill::{SkillCommand, run_skill};
 use commands::status::{StatusArgs, run_status};
 
@@ -35,6 +36,12 @@ enum Commands {
         #[command(subcommand)]
         cmd: SkillCommand,
         /// Root of the project (defaults to CWD)
+        #[arg(long)]
+        project_root: Option<PathBuf>,
+    },
+    /// Run diagnostic and health check
+    Doctor {
+        /// Project root (defaults to CWD)
         #[arg(long)]
         project_root: Option<PathBuf>,
     },
@@ -114,6 +121,10 @@ fn main() -> Result<()> {
         Commands::Status { args, project_root } => {
             let project_root = project_root.unwrap_or_else(|| env::current_dir().unwrap());
             run_status(args.json, project_root)?;
+        }
+        Commands::Doctor { project_root } => {
+            let project_root = project_root.unwrap_or_else(|| env::current_dir().unwrap());
+            run_doctor(project_root)?;
         }
         Commands::Init {
             path,
