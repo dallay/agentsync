@@ -9,20 +9,5 @@ on:
 
 jobs:
   sync:
-    name: Synchronize Labels
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      issues: write
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
-        with:
-          node-version: '24'
-
-      - name: Sync labels
-        run: |
-          npx github-label-sync --access-token ${{ secrets.GITHUB_TOKEN }} --labels .github/labels.yml --allow-added-labels ${{ github.repository }}
+    uses: dallay/common-actions/.github/workflows/labels-sync.yml@v1
+    secrets: inherit

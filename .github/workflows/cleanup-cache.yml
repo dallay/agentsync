@@ -1,0 +1,10 @@
+name: Cleanup caches
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  cleanup:
+    uses: dallay/common-actions/.github/workflows/cleanup-cache.yml@v1
+    secrets: inherit

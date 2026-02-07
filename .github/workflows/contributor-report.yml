@@ -1,0 +1,10 @@
+name: Contributor Report
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited]
+
+jobs:
+  report:
+    uses: dallay/common-actions/.github/workflows/contributor-report.yml@v1
+    secrets: inherit
