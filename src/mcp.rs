@@ -1123,22 +1123,25 @@ mod tests {
         }
     }
 
-    fn assert_keys_in_order(content: &str, keys: &[&str]) {
-        let mut last_pos = 0;
+    fn assert_object_keys_in_order(object: &Map<String, Value>, keys: &[&str]) {
+        let actual_keys: Vec<&str> = object.keys().map(|key| key.as_str()).collect();
+        assert_eq!(actual_keys, keys);
+    }
 
-        for key in keys {
-            let needle = format!("\"{}\"", key);
-            let pos = content
-                .find(&needle)
-                .unwrap_or_else(|| panic!("Missing key '{}' in output: {}", key, content));
-            assert!(
-                pos >= last_pos,
-                "Expected keys in order {:?}, got output: {}",
-                keys,
-                content
-            );
-            last_pos = pos;
+    fn assert_nested_object_keys_in_order(content: &str, path: &[&str], keys: &[&str]) {
+        let parsed: Value = serde_json::from_str(content).unwrap();
+        let mut current = &parsed;
+
+        for segment in path {
+            current = current
+                .get(*segment)
+                .unwrap_or_else(|| panic!("Missing path segment '{}' in output", segment));
         }
+
+        let object = current
+            .as_object()
+            .unwrap_or_else(|| panic!("Path {:?} did not resolve to an object", path));
+        assert_object_keys_in_order(object, keys);
     }
 
     #[test]
@@ -1231,7 +1234,7 @@ mod tests {
         ]);
 
         let output = serde_json::to_string_pretty(&formatter.format(&servers)).unwrap();
-        assert_keys_in_order(&output, &["alpha", "mid", "zeta"]);
+        assert_nested_object_keys_in_order(&output, &["mcpServers"], &["alpha", "mid", "zeta"]);
     }
 
     // ==========================================================================
@@ -1369,7 +1372,7 @@ mod tests {
             HashMap::from([("mid".to_string(), &server)]);
 
         let merged = formatter.merge(existing, &servers).unwrap();
-        assert_keys_in_order(&merged, &["alpha", "mid", "zeta"]);
+        assert_nested_object_keys_in_order(&merged, &["mcp"], &["alpha", "mid", "zeta"]);
     }
 
     // ==========================================================================
