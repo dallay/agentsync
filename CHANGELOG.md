@@ -1,3 +1,13 @@
+## [1.27.0](https://github.com/dallay/agentsync/compare/v1.26.2...v1.27.0) (2026-02-07)
+
+### ✨ Features
+
+* **mcp:** add Codex MCP support and unify agent alias resolution ([#140](https://github.com/dallay/agentsync/issues/140)) ([0013d71](https://github.com/dallay/agentsync/commit/0013d7116630686d5efa7fe283fa937d2c6f67a1))
+
+### 🐛 Bug Fixes
+
+* make JSON MCP output ordering deterministic ([#141](https://github.com/dallay/agentsync/issues/141)) ([f308f2f](https://github.com/dallay/agentsync/commit/f308f2f880b73bcba77b75da538efcad059035d2))
+
 ## [1.26.2](https://github.com/dallay/agentsync/compare/v1.26.1...v1.26.2) (2026-02-07)
 
 ### ♻️ Refactors
