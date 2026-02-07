@@ -284,6 +284,9 @@ Configuration is stored in `.agents/agentsync.toml`:
 
 source_dir = "."
 
+# Optional: compress AGENTS.md and point symlinks to the compressed file
+# compress_agents_md = false
+
 # Default agents to run when --agents is not specified.
 # If empty, all enabled agents will be processed.
 default_agents = ["claude", "copilot"]
