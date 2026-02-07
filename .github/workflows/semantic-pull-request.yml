@@ -4,6 +4,9 @@ on:
   pull_request_target:
     types: [opened, edited, synchronize]
 
+permissions:
+  pull-requests: write
+
 jobs:
   lint:
     uses: dallay/common-actions/.github/workflows/semantic-pr.yml@v1

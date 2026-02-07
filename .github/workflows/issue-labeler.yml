@@ -4,6 +4,9 @@ on:
   issues:
     types: [opened, edited]
 
+permissions:
+  issues: write
+
 jobs:
   label:
     uses: dallay/common-actions/.github/workflows/issue-labeler.yml@v1

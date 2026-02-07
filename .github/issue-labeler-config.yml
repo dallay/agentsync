@@ -2,7 +2,7 @@
 # Matches keywords in issue title and body using regex patterns
 
 backend:
-  - "(\\b)(backend|rust|cli)(\\b)"
+  - "(\\b)(backend|rust)(\\b)"
 
 ci:
   - "(\\b)(ci|workflow|github action|github actions)(\\b)"
@@ -11,4 +11,4 @@ chore:
   - "(\\b)(chore|maintenance)(\\b)"
 
 dependencies:
-  - "(\\b)(dependencies)(\\b)"
+  - "(\\b)(dependenc(y|ies))(\\b)"

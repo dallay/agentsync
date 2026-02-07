@@ -7,6 +7,10 @@ on:
       - '.github/labels.yml'
   workflow_dispatch:
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   sync:
     uses: dallay/common-actions/.github/workflows/labels-sync.yml@v1
