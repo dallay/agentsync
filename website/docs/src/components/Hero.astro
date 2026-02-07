@@ -13,15 +13,25 @@ const tagline =
 
 // Handle Astro's image object (has .src property) or use fallback
 const rawImage = hero?.image?.file;
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 const imageFile =
 	typeof rawImage === "object" && rawImage?.src
 		? rawImage.src
-		: (rawImage ?? "/synchro.svg");
+		: (rawImage ?? `${base}/synchro.svg`);
 
-const actions = hero?.actions ?? [
-	{ text: "Get started", link: "/guides/getting-started/", variant: "primary" },
-	{ text: "Contribute", link: "/guides/contributing/", variant: "secondary" },
-];
+const actions = (
+	hero?.actions ?? [
+		{
+			text: "Get started",
+			link: "/guides/getting-started/",
+			variant: "primary",
+		},
+		{ text: "Contribute", link: "/guides/contributing/", variant: "secondary" },
+	]
+).map((a) => ({
+	...a,
+	link: a.link.startsWith("/") ? `${base}${a.link}` : a.link,
+}));
 ---
 
 <header class="hero">

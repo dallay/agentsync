@@ -9,9 +9,11 @@ interface Props {
 
 const { title, description, icon = "✨", href } = Astro.props;
 const Tag = href ? "a" : "div";
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+const link = href && href.startsWith("/") ? `${base}${href}` : href;
 ---
 
-<Tag class="feature-item" href={href || undefined}>
+<Tag class="feature-item" href={link || undefined}>
     <span class="feature-icon">{icon}</span>
     <h3 class="feature-title">{title}</h3>
     <p class="feature-desc">{description}</p>
