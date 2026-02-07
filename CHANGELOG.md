@@ -1,3 +1,9 @@
+## [1.26.2](https://github.com/dallay/agentsync/compare/v1.26.1...v1.26.2) (2026-02-07)
+
+### ♻️ Refactors
+
+* **ci:** migrate workflows to dallay/common-actions reusable workflows ([#142](https://github.com/dallay/agentsync/issues/142)) ([6a07053](https://github.com/dallay/agentsync/commit/6a0705385b3b7b0bf69f1dc482f37dcf6e34f73e))
+
 ## [1.26.1](https://github.com/dallay/agentsync/compare/v1.26.0...v1.26.1) (2026-02-07)
 
 ### 🐛 Bug Fixes
