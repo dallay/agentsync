@@ -1,3 +1,15 @@
+## [1.27.1](https://github.com/dallay/agentsync/compare/v1.27.0...v1.27.1) (2026-02-07)
+
+### 🐛 Bug Fixes
+
+* **docs:** improve sidebar active menu item contrast ([#153](https://github.com/dallay/agentsync/issues/153)) ([b90c50c](https://github.com/dallay/agentsync/commit/b90c50c6b051ec70737ccc6d986f92459b41e5a5))
+
+### 📝 Documentation
+
+* Add missing community standard files ([#150](https://github.com/dallay/agentsync/issues/150)) ([aa62397](https://github.com/dallay/agentsync/commit/aa62397837ccc980176ac91558530d5966cc66fa))
+* enhance README.md with improved installation instructions and checksum verification ([#152](https://github.com/dallay/agentsync/issues/152)) ([80c46c6](https://github.com/dallay/agentsync/commit/80c46c6165876c4649f948b6d00b95a2a739d086))
+* update README.md for installation instructions and accuracy ([#143](https://github.com/dallay/agentsync/issues/143)) ([917fb54](https://github.com/dallay/agentsync/commit/917fb544d6e59c51e992ed7bc4247f191be3e4f2))
+
 ## [1.27.0](https://github.com/dallay/agentsync/compare/v1.26.2...v1.27.0) (2026-02-07)
 
 ### ✨ Features
