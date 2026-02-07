@@ -79,6 +79,11 @@
 	--as-hero-bg: linear-gradient(180deg, #07070a 0%, #0a0a10 100%);
 	--as-hero-glow-1: rgba(0, 229, 196, 0.08);
 	--as-hero-glow-2: rgba(124, 77, 255, 0.06);
+
+	/* Starlight theme overrides (Dark) */
+	--sl-color-accent: var(--as-primary);
+	--sl-color-text-accent: var(--as-primary);
+	--sl-color-text-invert: var(--as-bg-base);
 }
 
 /* Light mode overrides for Starlight compatibility */
@@ -102,6 +107,16 @@
 	--as-hero-bg: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 50%, #f1f5f9 100%);
 	--as-hero-glow-1: rgba(0, 229, 196, 0.15);
 	--as-hero-glow-2: rgba(124, 77, 255, 0.1);
+
+	/* Starlight theme overrides (Light) */
+	--sl-color-accent: var(--as-secondary);
+	--sl-color-text-accent: var(--as-secondary);
+	--sl-color-text-invert: #ffffff;
+
+	/* Fix link contrast in light mode */
+	a:hover {
+		color: var(--as-secondary);
+	}
 }
 
 /* --- Header Overrides --- */
@@ -214,6 +229,10 @@ body {
 /* Sidebar enhancements */
 .sidebar-content {
 	background: var(--as-bg-elevated);
+}
+
+.sidebar-content a[aria-current="page"]:hover {
+	color: var(--sl-color-text-invert) !important;
 }
 
 /* Code blocks */

@@ -1,0 +1,17 @@
+
+> agentsync-docs@0.0.1 dev /app/website/docs
+> astro dev
+
+18:29:10 [types] Generated 1ms
+18:29:11 [content] Syncing content
+18:29:11 [content] Synced content
+18:29:11 [vite] Re-optimizing dependencies because vite config has changed
+
+ astro  v5.17.1 ready in 2340 ms
+
+┃ Local    http://localhost:4321/agentsync
+┃ Network  use --host to expose
+
+18:29:11 watching for file changes...
+18:30:20 [200] /guides/contributing/ 533ms
+ ELIFECYCLE  Command failed.
