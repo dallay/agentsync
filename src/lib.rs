@@ -4,6 +4,7 @@
 //! Unlike tools that copy files, AgentSync creates symlinks to maintain a single
 //! source of truth for your AI agent instructions.
 
+pub(crate) mod agent_ids;
 pub mod config;
 pub mod gitignore;
 pub mod init;
