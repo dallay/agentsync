@@ -112,11 +112,11 @@
 	--sl-color-accent: var(--as-secondary);
 	--sl-color-text-accent: var(--as-secondary);
 	--sl-color-text-invert: #ffffff;
+}
 
-	/* Fix link contrast in light mode */
-	a:hover {
-		color: var(--as-secondary);
-	}
+/* Fix link contrast in light mode */
+[data-theme="light"] a:hover {
+	color: var(--as-secondary);
 }
 
 /* --- Header Overrides --- */
