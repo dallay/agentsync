@@ -150,7 +150,10 @@ impl McpAgent {
 
 /// Trait for formatting MCP configuration for different agents
 pub trait McpFormatter: Send + Sync {
-    /// Format MCP servers into agent-specific JSON structure
+    /// Format MCP servers into an agent-specific logical `Value` representation.
+    ///
+    /// This is used as a common in-memory shape across formatters and tests.
+    /// On-disk serialization should use `format_to_string()`.
     fn format(&self, servers: &HashMap<String, &McpServerConfig>) -> Value;
 
     /// Format MCP servers into the agent-specific file content.
@@ -387,6 +390,9 @@ impl McpFormatter for GithubCopilotFormatter {
 pub struct CodexCliFormatter;
 
 impl McpFormatter for CodexCliFormatter {
+    /// Returns a logical Value representation (`mcp_servers`) for parity with the
+    /// formatter trait. Codex file output is TOML and is produced by
+    /// `format_to_string()`.
     fn format(&self, servers: &HashMap<String, &McpServerConfig>) -> Value {
         let mut mcp_servers = Map::new();
 
