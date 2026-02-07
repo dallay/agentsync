@@ -118,32 +118,16 @@ cargo install agentsync
 
 Download the latest release for your platform from the [GitHub Releases](https://github.com/dallay/agentsync/releases) page.
 
-Note: Replace `<version>` with the desired release tag (e.g., `v1.25.0`). See the [GitHub Releases](https://github.com/dallay/agentsync/releases) page for available versions.
+To install via terminal, you can use the following script (replace `VERSION` with the latest version number, e.g., `1.26.2`):
 
 ```bash
+# Define version and platform
+VERSION="1.26.2"
+PLATFORM="x86_64-apple-darwin" # e.g., aarch64-apple-darwin, x86_64-unknown-linux-gnu
 
-# macOS (Apple Silicon)
-
-curl -LO https://github.com/dallay/agentsync/releases/download/<version>/agentsync-<version>-aarch64-apple-darwin.tar.gz
-tar xzf agentsync-<version>-aarch64-apple-darwin.tar.gz
-sudo mv agentsync-*/agentsync /usr/local/bin/
-
-# macOS (Intel)
-
-curl -LO https://github.com/dallay/agentsync/releases/download/<version>/agentsync-<version>-x86_64-apple-darwin.tar.gz
-tar xzf agentsync-<version>-x86_64-apple-darwin.tar.gz
-sudo mv agentsync-*/agentsync /usr/local/bin/
-
-# Linux (x86_64)
-
-curl -LO https://github.com/dallay/agentsync/releases/download/<version>/agentsync-<version>-x86_64-unknown-linux-gnu.tar.gz
-tar xzf agentsync-<version>-x86_64-unknown-linux-gnu.tar.gz
-sudo mv agentsync-*/agentsync /usr/local/bin/
-
-# Linux (ARM64)
-
-curl -LO https://github.com/dallay/agentsync/releases/download/<version>/agentsync-<version>-aarch64-unknown-linux-gnu.tar.gz
-tar xzf agentsync-<version>-aarch64-unknown-linux-gnu.tar.gz
+# Download and install
+curl -LO "https://github.com/dallay/agentsync/releases/download/v${VERSION}/agentsync-${VERSION}-${PLATFORM}.tar.gz"
+tar xzf "agentsync-${VERSION}-${PLATFORM}.tar.gz"
 sudo mv agentsync-*/agentsync /usr/local/bin/
 ```
 
@@ -251,9 +235,11 @@ agentsync apply --no-gitignore
 
 agentsync apply --verbose
 
-# Show version
+# Show status of managed symlinks
+agentsync status
 
-agentsync --version
+# Run diagnostic and health check
+agentsync doctor
 
 # Manage skills
 
@@ -394,9 +380,8 @@ filter which files to link.
 
 ```
 .agents/
-├── agentsync.toml      # Configuration file
+├── agentsync.toml      # Configuration file (source of truth for MCP)
 ├── AGENTS.md           # Main agent instructions (single source)
-├── .mcp.json           # MCP server configurations
 ├── command/            # Agent commands
 │   ├── review.agent.md
 │   └── test.agent.md
@@ -414,7 +399,7 @@ project-root/
 ├── CLAUDE.md           → .agents/AGENTS.md
 ├── GEMINI.md           → .agents/AGENTS.md
 ├── AGENTS.md           → .agents/AGENTS.md
-├── .mcp.json           → .agents/.mcp.json
+├── .mcp.json           (Generated from agentsync.toml)
 ├── .claude/
 │   └── commands/       → symlinks to .agents/command/*.agent.md
 ├── .gemini/
@@ -441,15 +426,20 @@ The symlinks are primarily for local development. CI builds typically don't need
 
 ### Installing in CI
 
-If you need agentsync in CI, add it to your workflow:
+If you need agentsync in CI, you can download the latest version automatically:
 
 ```yaml
 - name: Install agentsync
   run: |
-    curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-x86_64-unknown-linux-gnu.tar.gz
-    tar xzf agentsync-x86_64-unknown-linux-gnu.tar.gz
+    # Get latest version tag
+    LATEST_TAG=$(curl -s https://api.github.com/repos/dallay/agentsync/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+    VERSION=${LATEST_TAG#v} # remove 'v' prefix
+    
+    curl -LO "https://github.com/dallay/agentsync/releases/latest/download/agentsync-${VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+    tar xzf agentsync-${VERSION}-x86_64-unknown-linux-gnu.tar.gz
     sudo mv agentsync-*/agentsync /usr/local/bin/
 ```
+
 
 ## Getting Started (Development)
 
