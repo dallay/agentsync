@@ -1,3 +1,15 @@
+## [1.26.2](https://github.com/dallay/agentsync/compare/v1.26.1...v1.26.2) (2026-02-07)
+
+### ♻️ Refactors
+
+* **ci:** migrate workflows to dallay/common-actions reusable workflows ([#142](https://github.com/dallay/agentsync/issues/142)) ([6a07053](https://github.com/dallay/agentsync/commit/6a0705385b3b7b0bf69f1dc482f37dcf6e34f73e))
+
+## [1.26.1](https://github.com/dallay/agentsync/compare/v1.26.0...v1.26.1) (2026-02-07)
+
+### 🐛 Bug Fixes
+
+* update Docker base image to 22.04 and add cleanup for Docker resources in CI ([#138](https://github.com/dallay/agentsync/issues/138)) ([97cc5a3](https://github.com/dallay/agentsync/commit/97cc5a369b5fb459ab37592629e5eed9b85c6f32))
+
 ## [1.26.0](https://github.com/dallay/agentsync/compare/v1.25.0...v1.26.0) (2026-02-06)
 
 ### ✨ Features

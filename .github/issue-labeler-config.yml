@@ -1,0 +1,14 @@
+# Issue labeler configuration for github/issue-labeler action
+# Matches keywords in issue title and body using regex patterns
+
+backend:
+  - "(\\b)(backend|rust)(\\b)"
+
+ci:
+  - "(\\b)(ci|workflow|github action|github actions)(\\b)"
+
+chore:
+  - "(\\b)(chore|maintenance)(\\b)"
+
+dependencies:
+  - "(\\b)(dependenc(y|ies))(\\b)"

@@ -24,6 +24,10 @@ pub struct Config {
     #[serde(default = "default_source_dir")]
     pub source_dir: String,
 
+    /// If true, generate a compressed AGENTS.md and point AGENTS.md symlinks to it.
+    #[serde(default)]
+    pub compress_agents_md: bool,
+
     /// Default agents to run when --agents is not specified.
     /// Uses case-insensitive substring matching.
     /// If empty, all enabled agents will be processed.
@@ -373,6 +377,7 @@ mod tests {
 
         assert!(config.agents.is_empty());
         assert_eq!(config.source_dir, ".");
+        assert!(!config.compress_agents_md);
         assert!(config.gitignore.enabled);
     }
 
@@ -394,6 +399,24 @@ mod tests {
         assert!(config.agents["test"].description.is_empty());
         // Default source_dir
         assert_eq!(config.source_dir, ".");
+    }
+
+    #[test]
+    fn test_parse_compress_agents_md_enabled() {
+        let toml = r#"
+            compress_agents_md = true
+
+            [agents.test]
+            enabled = true
+
+            [agents.test.targets.main]
+            source = "AGENTS.md"
+            destination = "TEST.md"
+            type = "symlink"
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        assert!(config.compress_agents_md);
     }
 
     #[test]
