@@ -1,5 +1,7 @@
 ---
 // FeatureItem - Individual feature card with glassmorphism and hover effects
+import { withBase } from "../utils/links";
+
 interface Props {
 	title: string;
 	description: string;
@@ -8,10 +10,11 @@ interface Props {
 }
 
 const { title, description, icon = "✨", href } = Astro.props;
-const Tag = href ? "a" : "div";
+const resolvedHref = typeof href === "string" ? withBase(href) : href;
+const Tag = resolvedHref ? "a" : "div";
 ---
 
-<Tag class="feature-item" href={href || undefined}>
+<Tag class="feature-item" href={resolvedHref || undefined}>
     <span class="feature-icon">{icon}</span>
     <h3 class="feature-title">{title}</h3>
     <p class="feature-desc">{description}</p>

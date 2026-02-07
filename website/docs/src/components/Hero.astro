@@ -1,6 +1,7 @@
 ---
 import { Icon } from "@astrojs/starlight/components";
 import Rust from "~icons/devicon-plain/rust";
+import { withBase } from "../utils/links";
 
 const heroFromProps = Astro.props?.hero;
 const heroFromRoute = Astro.locals?.starlightRoute?.entry?.data?.hero;
@@ -16,12 +17,15 @@ const rawImage = hero?.image?.file;
 const imageFile =
 	typeof rawImage === "object" && rawImage?.src
 		? rawImage.src
-		: (rawImage ?? "/synchro.svg");
+		: withBase(typeof rawImage === "string" ? rawImage : "/synchro.svg");
 
-const actions = hero?.actions ?? [
+const actions = (hero?.actions ?? [
 	{ text: "Get started", link: "/guides/getting-started/", variant: "primary" },
 	{ text: "Contribute", link: "/guides/contributing/", variant: "secondary" },
-];
+]).map((action) => ({
+	...action,
+	link: typeof action.link === "string" ? withBase(action.link) : action.link,
+}));
 ---
 
 <header class="hero">
