@@ -21,9 +21,12 @@ Please describe the tests that you ran to verify your changes. Provide instructi
 - [ ] Test B
 
 **Test Configuration**:
-* Firmware version:
-* Hardware:
-* SDK:
+* OS/Distribution: [e.g. Ubuntu 22.04, macOS 14.2]
+* Rust version: [e.g. 1.89.0]
+* Node/pnpm version: [e.g. Node 20.13.0, pnpm 9.1.0]
+* Test command used: [e.g. make verify-all, make rust-test]
+* Environment variables: [e.g. AGENTSYNC_CONFIG=...]
+* Reproduction steps: [if applicable]
 
 ## Checklist:
 
