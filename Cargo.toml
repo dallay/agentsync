@@ -42,7 +42,7 @@ thiserror = "2.0"
 
 # Terminal output
 colored = "3.0"
-dialoguer = "0.11"
+dialoguer = "0.12"
 
 # File system
 walkdir = "2.5"
