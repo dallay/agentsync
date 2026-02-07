@@ -1,16 +1,12 @@
 name: Greetings
 
-on: [pull_request, issues]
+on: [pull_request_target, issues]
+
+permissions:
+  issues: write
+  pull-requests: write
 
 jobs:
-  greeting:
-    runs-on: ubuntu-latest
-    permissions:
-      issues: write
-      pull-requests: write
-    steps:
-    - uses: actions/first-interaction@1c4688942c71f71d4f5502a26ea67c331730fa4d # v3
-      with:
-        repo_token: ${{ secrets.GITHUB_TOKEN }}
-        issue_message: "Thank you for reporting this issue, welcome to the community and the amazing world of open source"
-        pr_message: "Thank you for contributing to this project with this PR, welcome to the community and the amazing world of open source"
+  greet:
+    uses: dallay/common-actions/.github/workflows/greetings.yml@v1
+    secrets: inherit

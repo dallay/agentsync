@@ -13,6 +13,16 @@ By default, `agentsync` looks for this file at `.agents/agentsync.toml`.
 The base directory for your source files, relative to the configuration file.
 - **Default**: `"."`
 
+### `compress_agents_md`
+When enabled, AgentSync creates a compressed copy of `AGENTS.md` (named `AGENTS.compact.md`)
+and points any `AGENTS.md` targets using `type = "symlink"` or `type = "symlink-contents"`
+to the compressed file. The original `AGENTS.md` is never modified.
+- **Default**: `false`
+
+```toml
+compress_agents_md = true
+```
+
 ### `default_agents`
 A list of agent names to run when `--agents` is not specified on the CLI. Uses case-insensitive substring matching.
 - **Default**: `[]` (empty, meaning all enabled agents will run)
@@ -64,6 +74,7 @@ AgentSync automatically adds the following patterns to `.gitignore` based on whi
 | :--- | :--- |
 | **claude** | `.mcp.json`, `.claude/commands/`, `.claude/skills/` |
 | **copilot** | `.vscode/mcp.json` |
+| **codex** | `.codex/config.toml` |
 | **gemini** | `GEMINI.md`, `.gemini/settings.json`, `.gemini/commands/`, `.gemini/skills/` |
 | **cursor** | `.cursor/mcp.json`, `.cursor/skills/` |
 | **vscode** | `.vscode/mcp.json` |

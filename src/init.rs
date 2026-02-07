@@ -13,6 +13,9 @@ pub const DEFAULT_CONFIG: &str = r#"# AgentSync Configuration
 # Source directory (relative to this config file)
 source_dir = "."
 
+# Optional: compress AGENTS.md and point symlinks to the compressed file
+# compress_agents_md = false
+
 # Gitignore management
 [gitignore]
 enabled = true
@@ -24,7 +27,7 @@ marker = "AI Agent Symlinks"
 # MCP (Model Context Protocol) Configuration
 # =============================================================================
 # Define MCP servers once here, and AgentSync will generate the appropriate
-# config files for each AI agent (Claude, Copilot, Cursor, Gemini, VS Code, OpenCode).
+# config files for each AI agent (Claude, Copilot, Codex, Cursor, Gemini, VS Code, OpenCode).
 #
 # [mcp]
 # enabled = true
