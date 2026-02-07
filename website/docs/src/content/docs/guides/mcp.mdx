@@ -56,6 +56,7 @@ AgentSync automatically knows where to place the MCP configuration for these ass
 | :--- | :--- | :--- |
 | **Claude Code** | `.mcp.json` | Standard format |
 | **GitHub Copilot** | `.vscode/mcp.json` | Shared with VS Code |
+| **OpenAI Codex CLI** | `.codex/config.toml` | TOML format (`[mcp_servers.<name>]`); AgentSync maps `headers` to `http_headers` |
 | **Gemini CLI** | `.gemini/settings.json` | Automatically adds `"trust": true` |
 | **VS Code** | `.vscode/mcp.json` | For VS Code extensions |
 | **Cursor** | `.cursor/mcp.json` | Standard format |

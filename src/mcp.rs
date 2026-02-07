@@ -9,7 +9,9 @@ use serde_json::{Map, Value, json};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use toml::{Table as TomlTable, Value as TomlValue};
 
+use crate::agent_ids;
 use crate::config::{McpMergeStrategy, McpServerConfig};
 
 // =============================================================================
@@ -49,6 +51,8 @@ pub enum McpAgent {
     ClaudeCode,
     /// GitHub Copilot (.vscode/mcp.json)
     GithubCopilot,
+    /// OpenAI Codex CLI (.codex/config.toml)
+    CodexCli,
     /// Gemini CLI (.gemini/settings.json)
     GeminiCli,
     /// VS Code (.vscode/mcp.json)
@@ -65,6 +69,7 @@ impl McpAgent {
         &[
             McpAgent::ClaudeCode,
             McpAgent::GithubCopilot,
+            McpAgent::CodexCli,
             McpAgent::GeminiCli,
             McpAgent::VsCode,
             McpAgent::Cursor,
@@ -77,6 +82,7 @@ impl McpAgent {
         match self {
             McpAgent::ClaudeCode => "claude",
             McpAgent::GithubCopilot => "copilot",
+            McpAgent::CodexCli => "codex",
             McpAgent::GeminiCli => "gemini",
             McpAgent::VsCode => "vscode",
             McpAgent::Cursor => "cursor",
@@ -89,6 +95,7 @@ impl McpAgent {
         match self {
             McpAgent::ClaudeCode => "Claude Code",
             McpAgent::GithubCopilot => "GitHub Copilot",
+            McpAgent::CodexCli => "OpenAI Codex CLI",
             McpAgent::GeminiCli => "Gemini CLI",
             McpAgent::VsCode => "VS Code",
             McpAgent::Cursor => "Cursor",
@@ -101,6 +108,7 @@ impl McpAgent {
         match self {
             McpAgent::ClaudeCode => ".mcp.json",
             McpAgent::GithubCopilot => ".vscode/mcp.json",
+            McpAgent::CodexCli => ".codex/config.toml",
             McpAgent::GeminiCli => ".gemini/settings.json",
             McpAgent::VsCode => ".vscode/mcp.json",
             McpAgent::Cursor => ".cursor/mcp.json",
@@ -113,6 +121,7 @@ impl McpAgent {
         match self {
             McpAgent::ClaudeCode => Box::new(ClaudeCodeFormatter),
             McpAgent::GithubCopilot => Box::new(GithubCopilotFormatter),
+            McpAgent::CodexCli => Box::new(CodexCliFormatter),
             McpAgent::GeminiCli => Box::new(GeminiCliFormatter),
             McpAgent::VsCode => Box::new(VsCodeFormatter),
             McpAgent::Cursor => Box::new(CursorFormatter),
@@ -122,13 +131,14 @@ impl McpAgent {
 
     /// Parse agent from string identifier
     pub fn from_id(id: &str) -> Option<McpAgent> {
-        match id.to_lowercase().as_str() {
-            "claude" | "claude-code" | "claude_code" => Some(McpAgent::ClaudeCode),
-            "copilot" | "github-copilot" | "github_copilot" => Some(McpAgent::GithubCopilot),
-            "gemini" | "gemini-cli" | "gemini_cli" => Some(McpAgent::GeminiCli),
-            "vscode" | "vs-code" | "vs_code" => Some(McpAgent::VsCode),
+        match agent_ids::canonical_mcp_agent_id(id)? {
+            "claude" => Some(McpAgent::ClaudeCode),
+            "copilot" => Some(McpAgent::GithubCopilot),
+            "codex" => Some(McpAgent::CodexCli),
+            "gemini" => Some(McpAgent::GeminiCli),
+            "vscode" => Some(McpAgent::VsCode),
             "cursor" => Some(McpAgent::Cursor),
-            "opencode" | "open-code" | "open_code" => Some(McpAgent::OpenCode),
+            "opencode" => Some(McpAgent::OpenCode),
             _ => None,
         }
     }
@@ -142,6 +152,13 @@ impl McpAgent {
 pub trait McpFormatter: Send + Sync {
     /// Format MCP servers into agent-specific JSON structure
     fn format(&self, servers: &HashMap<String, &McpServerConfig>) -> Value;
+
+    /// Format MCP servers into the agent-specific file content.
+    /// By default this returns pretty JSON for agents that use JSON configs.
+    fn format_to_string(&self, servers: &HashMap<String, &McpServerConfig>) -> Result<String> {
+        let output = self.format(servers);
+        serde_json::to_string_pretty(&output).context("Failed to serialize MCP config")
+    }
 
     /// Parse existing configuration file to extract mcpServers
     fn parse_existing(&self, content: &str) -> Result<HashMap<String, Value>>;
@@ -357,6 +374,117 @@ impl McpFormatter for GithubCopilotFormatter {
             new_servers,
             "Failed to parse existing Copilot MCP config as JSON",
         )
+    }
+}
+
+// =============================================================================
+// OpenAI Codex CLI Formatter
+// =============================================================================
+
+/// Formatter for OpenAI Codex CLI (.codex/config.toml)
+/// Format: [mcp_servers.<name>] tables
+#[derive(Debug)]
+pub struct CodexCliFormatter;
+
+impl McpFormatter for CodexCliFormatter {
+    fn format(&self, servers: &HashMap<String, &McpServerConfig>) -> Value {
+        let mut mcp_servers = Map::new();
+
+        for (name, config) in servers {
+            mcp_servers.insert(name.clone(), server_to_json(config));
+        }
+
+        json!({
+            "mcp_servers": mcp_servers
+        })
+    }
+
+    fn format_to_string(&self, servers: &HashMap<String, &McpServerConfig>) -> Result<String> {
+        let mut doc = TomlTable::new();
+        let mut mcp_servers = TomlTable::new();
+
+        for (name, config) in servers {
+            mcp_servers.insert(name.clone(), server_to_codex_toml(config));
+        }
+
+        doc.insert("mcp_servers".to_string(), TomlValue::Table(mcp_servers));
+
+        toml::to_string_pretty(&TomlValue::Table(doc)).context("Failed to serialize Codex config")
+    }
+
+    fn parse_existing(&self, content: &str) -> Result<HashMap<String, Value>> {
+        let doc = parse_codex_doc(content)?;
+        let servers = doc
+            .get("mcp_servers")
+            .and_then(|v| v.as_table())
+            .cloned()
+            .unwrap_or_default();
+
+        let parsed = servers
+            .into_iter()
+            .map(|(k, v)| (k, toml_to_json_value(&v)))
+            .collect();
+
+        Ok(parsed)
+    }
+
+    fn merge(
+        &self,
+        existing_content: &str,
+        new_servers: &HashMap<String, &McpServerConfig>,
+    ) -> Result<String> {
+        let mut doc = parse_codex_doc(existing_content)?;
+        let mut existing_servers = doc
+            .get("mcp_servers")
+            .and_then(|v| v.as_table())
+            .cloned()
+            .unwrap_or_default();
+
+        for (name, config) in new_servers {
+            existing_servers.insert(name.clone(), server_to_codex_toml(config));
+        }
+
+        doc.insert(
+            "mcp_servers".to_string(),
+            TomlValue::Table(existing_servers),
+        );
+
+        toml::to_string_pretty(&TomlValue::Table(doc))
+            .context("Failed to serialize merged Codex config")
+    }
+
+    fn cleanup_removed_servers(
+        &self,
+        existing_content: &str,
+        new_servers: &HashMap<String, &McpServerConfig>,
+    ) -> Result<String> {
+        let mut doc = parse_codex_doc(existing_content)?;
+        let existing_servers = doc
+            .get("mcp_servers")
+            .and_then(|v| v.as_table())
+            .cloned()
+            .unwrap_or_default();
+
+        let mut filtered_servers: TomlTable = existing_servers
+            .into_iter()
+            .filter(|(name, _)| new_servers.contains_key(name))
+            .collect();
+
+        for (name, config) in new_servers {
+            filtered_servers.insert(name.clone(), server_to_codex_toml(config));
+        }
+
+        doc.insert(
+            "mcp_servers".to_string(),
+            TomlValue::Table(filtered_servers),
+        );
+
+        toml::to_string_pretty(&TomlValue::Table(doc))
+            .context("Failed to serialize cleaned Codex config")
+    }
+
+    fn preserve_on_overwrite(&self) -> bool {
+        true
     }
 }
 
@@ -769,6 +897,71 @@ fn server_to_json(config: &McpServerConfig) -> Value {
     Value::Object(obj)
 }
 
+/// Parse Codex CLI config TOML into a document table
+fn parse_codex_doc(content: &str) -> Result<TomlTable> {
+    let parsed: TomlValue =
+        toml::from_str(content).context("Failed to parse existing Codex config as TOML")?;
+    Ok(parsed.as_table().cloned().unwrap_or_default())
+}
+
+/// Convert TOML value recursively to JSON value for unified parsing APIs
+fn toml_to_json_value(value: &TomlValue) -> Value {
+    match value {
+        TomlValue::String(s) => Value::String(s.clone()),
+        TomlValue::Integer(i) => json!(*i),
+        TomlValue::Float(f) => json!(*f),
+        TomlValue::Boolean(b) => json!(*b),
+        TomlValue::Datetime(d) => Value::String(d.to_string()),
+        TomlValue::Array(arr) => Value::Array(arr.iter().map(toml_to_json_value).collect()),
+        TomlValue::Table(table) => {
+            let mut obj = Map::new();
+            for (k, v) in table {
+                obj.insert(k.clone(), toml_to_json_value(v));
+            }
+            Value::Object(obj)
+        }
+    }
+}
+
+/// Convert McpServerConfig into a Codex CLI TOML server table
+fn server_to_codex_toml(config: &McpServerConfig) -> TomlValue {
+    let mut table = TomlTable::new();
+
+    if let Some(ref cmd) = config.command {
+        table.insert("command".to_string(), TomlValue::String(cmd.clone()));
+    }
+
+    if !config.args.is_empty() {
+        table.insert(
+            "args".to_string(),
+            TomlValue::Array(config.args.iter().cloned().map(TomlValue::String).collect()),
+        );
+    }
+
+    if !config.env.is_empty() {
+        let mut env_table = TomlTable::new();
+        for (k, v) in &config.env {
+            env_table.insert(k.clone(), TomlValue::String(v.clone()));
+        }
+        table.insert("env".to_string(), TomlValue::Table(env_table));
+    }
+
+    if let Some(ref url) = config.url {
+        table.insert("url".to_string(), TomlValue::String(url.clone()));
+    }
+
+    if !config.headers.is_empty() {
+        let mut headers_table = TomlTable::new();
+        for (k, v) in &config.headers {
+            headers_table.insert(k.clone(), TomlValue::String(v.clone()));
+        }
+        // Codex MCP schema uses `http_headers` for static headers.
+        table.insert("http_headers".to_string(), TomlValue::Table(headers_table));
+    }
+
+    TomlValue::Table(table)
+}
+
 // =============================================================================
 // MCP Generator
 // =============================================================================
@@ -868,8 +1061,7 @@ impl McpGenerator {
             // Use cleanup_removed_servers to replace mcp sections while preserving other keys
             formatter.cleanup_removed_servers(&existing, enabled_servers)?
         } else {
-            let output = formatter.format(enabled_servers);
-            serde_json::to_string_pretty(&output)?
+            formatter.format_to_string(enabled_servers)?
         };
 
         // Create parent directories if needed
@@ -1009,9 +1201,10 @@ mod tests {
     #[test]
     fn test_agent_all_returns_all_agents() {
         let agents = McpAgent::all();
-        assert_eq!(agents.len(), 6);
+        assert_eq!(agents.len(), 7);
         assert!(agents.contains(&McpAgent::ClaudeCode));
         assert!(agents.contains(&McpAgent::GithubCopilot));
+        assert!(agents.contains(&McpAgent::CodexCli));
         assert!(agents.contains(&McpAgent::GeminiCli));
         assert!(agents.contains(&McpAgent::VsCode));
         assert!(agents.contains(&McpAgent::Cursor));
@@ -1028,6 +1221,8 @@ mod tests {
             McpAgent::from_id("github-copilot"),
             Some(McpAgent::GithubCopilot)
         );
+        assert_eq!(McpAgent::from_id("codex"), Some(McpAgent::CodexCli));
+        assert_eq!(McpAgent::from_id("codex-cli"), Some(McpAgent::CodexCli));
         assert_eq!(McpAgent::from_id("gemini"), Some(McpAgent::GeminiCli));
         assert_eq!(McpAgent::from_id("vscode"), Some(McpAgent::VsCode));
         assert_eq!(McpAgent::from_id("vs-code"), Some(McpAgent::VsCode));
@@ -1041,10 +1236,135 @@ mod tests {
     fn test_agent_config_paths() {
         assert_eq!(McpAgent::ClaudeCode.config_path(), ".mcp.json");
         assert_eq!(McpAgent::GithubCopilot.config_path(), ".vscode/mcp.json");
+        assert_eq!(McpAgent::CodexCli.config_path(), ".codex/config.toml");
         assert_eq!(McpAgent::GeminiCli.config_path(), ".gemini/settings.json");
         assert_eq!(McpAgent::VsCode.config_path(), ".vscode/mcp.json");
         assert_eq!(McpAgent::Cursor.config_path(), ".cursor/mcp.json");
         assert_eq!(McpAgent::OpenCode.config_path(), "opencode.json");
+    }
+
+    // ==========================================================================
+    // FORMATTER TESTS - Codex CLI
+    // ==========================================================================
+
+    #[test]
+    fn test_codex_formatter_format_to_string() {
+        let formatter = CodexCliFormatter;
+        let server = create_test_server();
+        let servers: HashMap<String, &McpServerConfig> =
+            HashMap::from([("filesystem".to_string(), &server)]);
+
+        let output = formatter.format_to_string(&servers).unwrap();
+        let parsed: TomlValue = toml::from_str(&output).unwrap();
+        let table = parsed.as_table().unwrap();
+
+        let mcp_servers = table.get("mcp_servers").unwrap().as_table().unwrap();
+        assert!(mcp_servers.get("filesystem").is_some());
+    }
+
+    #[test]
+    fn test_codex_formatter_uses_http_headers_and_omits_type() {
+        let formatter = CodexCliFormatter;
+        let server = McpServerConfig {
+            command: None,
+            args: vec![],
+            env: HashMap::new(),
+            url: Some("https://example.com/mcp".to_string()),
+            headers: HashMap::from([("Authorization".to_string(), "Bearer test".to_string())]),
+            transport_type: Some("http".to_string()),
+            disabled: false,
+        };
+        let servers: HashMap<String, &McpServerConfig> =
+            HashMap::from([("remote".to_string(), &server)]);
+
+        let output = formatter.format_to_string(&servers).unwrap();
+        let parsed: TomlValue = toml::from_str(&output).unwrap();
+        let remote = parsed
+            .as_table()
+            .unwrap()
+            .get("mcp_servers")
+            .unwrap()
+            .as_table()
+            .unwrap()
+            .get("remote")
+            .unwrap()
+            .as_table()
+            .unwrap();
+
+        assert!(remote.get("http_headers").is_some());
+        assert!(remote.get("headers").is_none());
+        assert!(remote.get("type").is_none());
+    }
+
+    #[test]
+    fn test_codex_formatter_parse_existing() {
+        let formatter = CodexCliFormatter;
+        let existing = r#"
+[mcp_servers.existing]
+command = "node"
+args = ["server.js"]
+"#;
+
+        let parsed = formatter.parse_existing(existing).unwrap();
+        assert!(parsed.contains_key("existing"));
+    }
+
+    #[test]
+    fn test_codex_formatter_merge_preserves_other_settings() {
+        let formatter = CodexCliFormatter;
+        let existing = r#"
+model = "gpt-5-codex"
+
+[mcp_servers.existing]
+command = "node"
+args = ["server.js"]
+"#;
+
+        let new_server = create_test_server();
+        let servers: HashMap<String, &McpServerConfig> =
+            HashMap::from([("filesystem".to_string(), &new_server)]);
+
+        let merged = formatter.merge(existing, &servers).unwrap();
+        let parsed: TomlValue = toml::from_str(&merged).unwrap();
+        let table = parsed.as_table().unwrap();
+
+        // Should preserve top-level settings
+        assert_eq!(table.get("model").unwrap().as_str().unwrap(), "gpt-5-codex");
+
+        // Should have both servers
+        let mcp_servers = table.get("mcp_servers").unwrap().as_table().unwrap();
+        assert!(mcp_servers.get("existing").is_some());
+        assert!(mcp_servers.get("filesystem").is_some());
+    }
+
+    #[test]
+    fn test_codex_formatter_cleanup_removed_servers() {
+        let formatter = CodexCliFormatter;
+        let existing = r#"
+[mcp_servers.keep]
+command = "keep-cmd"
+
+[mcp_servers.remove]
+command = "remove-cmd"
+"#;
+
+        let mut keep_server = create_test_server();
+        keep_server.command = Some("keep-cmd".to_string());
+        let servers = HashMap::from([("keep".to_string(), keep_server)]);
+        let refs = servers.iter().map(|(k, v)| (k.clone(), v)).collect();
+
+        let cleaned = formatter.cleanup_removed_servers(existing, &refs).unwrap();
+        let parsed: TomlValue = toml::from_str(&cleaned).unwrap();
+        let mcp_servers = parsed
+            .as_table()
+            .unwrap()
+            .get("mcp_servers")
+            .unwrap()
+            .as_table()
+            .unwrap();
+
+        assert!(mcp_servers.get("keep").is_some());
+        assert!(mcp_servers.get("remove").is_none());
     }
 
     // ==========================================================================
@@ -1729,6 +2049,20 @@ mod tests {
     }
 
     #[test]
+    fn test_generator_creates_parent_directories_codex() {
+        let temp_dir = TempDir::new().unwrap();
+        let servers = HashMap::from([("filesystem".to_string(), create_test_server())]);
+
+        let generator = McpGenerator::new(servers, McpMergeStrategy::Overwrite);
+        generator
+            .generate_for_agent(McpAgent::CodexCli, temp_dir.path(), false)
+            .unwrap();
+
+        let config_path = temp_dir.path().join(".codex/config.toml");
+        assert!(config_path.exists());
+    }
+
+    #[test]
     fn test_generator_skips_disabled_servers() {
         let temp_dir = TempDir::new().unwrap();
 
@@ -1863,6 +2197,14 @@ mod tests {
                 },
             ),
             (
+                "codex".to_string(),
+                AgentConfig {
+                    enabled: true,
+                    description: String::new(),
+                    targets: HashMap::new(),
+                },
+            ),
+            (
                 "disabled_agent".to_string(),
                 AgentConfig {
                     enabled: false,
@@ -1885,6 +2227,7 @@ mod tests {
         // Should only include enabled agents that map to known MCP agents
         assert!(enabled.contains(&McpAgent::ClaudeCode));
         assert!(enabled.contains(&McpAgent::GithubCopilot));
-        assert_eq!(enabled.len(), 2);
+        assert!(enabled.contains(&McpAgent::CodexCli));
+        assert_eq!(enabled.len(), 3);
     }
 }

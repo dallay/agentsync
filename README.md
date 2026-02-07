@@ -321,7 +321,7 @@ pattern = "*.agent.md"
 ### MCP Support (Model Context Protocol)
 
 AgentSync can automatically generate MCP configuration files for supported agents (Claude Code,
-GitHub Copilot, Gemini CLI, Cursor, VS Code, OpenCode).
+GitHub Copilot, OpenAI Codex CLI, Gemini CLI, Cursor, VS Code, OpenCode).
 
 This allows you to define MCP servers once in `agentsync.toml` and have them synchronized to all
 agent-specific config files.
@@ -360,6 +360,7 @@ AgentSync supports the following agents and will synchronize corresponding files
 
 - **Claude Code** — `.mcp.json` (agent id: `claude`)
 - **GitHub Copilot** — `.vscode/mcp.json` (agent id: `copilot`)
+- **OpenAI Codex CLI** — `.codex/config.toml` (agent id: `codex`) — TOML format with `[mcp_servers.<name>]` tables. AgentSync maps `headers` to Codex `http_headers`.
 - **Gemini CLI** — `.gemini/settings.json` (agent id: `gemini`) — AgentSync will add `trust: true` when generating Gemini configs.
 - **Cursor** — `.cursor/mcp.json` (agent id: `cursor`)
 - **VS Code** — `.vscode/mcp.json` (agent id: `vscode`)

@@ -91,33 +91,30 @@ impl Linker {
             // Filter by agent name if specified
             // Priority: CLI --agents flag > default_agents config > all enabled agents
             if let Some(ref filter) = options.agents {
-                // Use CLI-provided agents (case-insensitive substring matching)
                 if !filter
                     .iter()
-                    .any(|f| agent_name.to_lowercase().contains(&f.to_lowercase()))
+                    .any(|f| crate::agent_ids::sync_filter_matches(agent_name, f))
                 {
                     if options.verbose {
                         println!("  {} Skipping filtered agent: {}", "○".yellow(), agent_name);
                     }
                     continue;
                 }
-            } else if !self.config.default_agents.is_empty() {
-                // Use default_agents from config (case-insensitive substring matching)
-                if !self
+            } else if !self.config.default_agents.is_empty()
+                && !self
                     .config
                     .default_agents
                     .iter()
-                    .any(|f| agent_name.to_lowercase().contains(&f.to_lowercase()))
-                {
-                    if options.verbose {
-                        println!(
-                            "  {} Skipping agent (not in default_agents): {}",
-                            "○".yellow(),
-                            agent_name
-                        );
-                    }
-                    continue;
+                    .any(|f| crate::agent_ids::sync_filter_matches(agent_name, f))
+            {
+                if options.verbose {
+                    println!(
+                        "  {} Skipping agent (not in default_agents): {}",
+                        "○".yellow(),
+                        agent_name
+                    );
                 }
+                continue;
             }
             // If neither --agents nor default_agents, process all enabled agents
 
@@ -488,11 +485,7 @@ impl Linker {
         let filtered_agents: Vec<_> = if let Some(filter) = agents_filter {
             enabled_agents
                 .into_iter()
-                .filter(|agent| {
-                    filter
-                        .iter()
-                        .any(|f| agent.id().to_lowercase().contains(&f.to_lowercase()))
-                })
+                .filter(|agent| filter.iter().any(|f| mcp_agent_matches_filter(*agent, f)))
                 .collect()
         } else if !self.config.default_agents.is_empty() {
             // Apply default_agents filtering
@@ -502,7 +495,7 @@ impl Linker {
                     self.config
                         .default_agents
                         .iter()
-                        .any(|f| agent.id().to_lowercase().contains(&f.to_lowercase()))
+                        .any(|f| mcp_agent_matches_filter(*agent, f))
                 })
                 .collect()
         } else {
@@ -519,6 +512,13 @@ impl Linker {
         );
         generator.generate_all(&self.project_root, &filtered_agents, dry_run)
     }
+}
+
+/// Match MCP agents against CLI/default filter values.
+/// Supports canonical IDs (e.g. "codex") and aliases (e.g. "codex-cli"),
+/// while preserving legacy substring matching for unknown/custom filters.
+fn mcp_agent_matches_filter(agent: crate::mcp::McpAgent, filter: &str) -> bool {
+    crate::agent_ids::mcp_filter_matches(agent.id(), filter)
 }
 
 /// Simple glob pattern matching (supports * and ?)
@@ -1029,6 +1029,75 @@ mod tests {
         assert_eq!(result.created, 2);
         assert!(temp_dir.path().join("CLAUDE.md").exists());
         assert!(temp_dir.path().join("COPILOT.md").exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_sync_cli_filter_supports_aliases() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let source_file = agents_dir.join("AGENTS.md");
+        fs::write(&source_file, "# Test").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            
+            [agents.codex]
+            enabled = true
+            [agents.codex.targets.main]
+            source = "AGENTS.md"
+            destination = "CODEX.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let options = SyncOptions {
+            agents: Some(vec!["codex-cli".to_string()]),
+            ..Default::default()
+        };
+        let result = linker.sync(&options).unwrap();
+
+        assert_eq!(result.created, 1);
+        assert!(temp_dir.path().join("CODEX.md").exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_sync_default_agents_support_aliases() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let source_file = agents_dir.join("AGENTS.md");
+        fs::write(&source_file, "# Test").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            default_agents = ["codex-cli"]
+            
+            [agents.codex]
+            enabled = true
+            [agents.codex.targets.main]
+            source = "AGENTS.md"
+            destination = "CODEX.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker.sync(&SyncOptions::default()).unwrap();
+
+        assert_eq!(result.created, 1);
+        assert!(temp_dir.path().join("CODEX.md").exists());
     }
 
     #[test]
@@ -1599,13 +1668,77 @@ mod tests {
     }
 
     #[test]
+    fn test_sync_mcp_creates_codex_config_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+
+            [mcp]
+            enabled = true
+
+            [mcp_servers.filesystem]
+            command = "npx"
+            args = ["-y", "@modelcontextprotocol/server-filesystem", "."]
+
+            [agents.codex]
+            enabled = true
+            [agents.codex.targets.main]
+            source = "AGENTS.md"
+            destination = "AGENTS.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker.sync_mcp(false, None).unwrap();
+
+        // Should create MCP config for Codex
+        assert_eq!(result.created, 1);
+        assert_eq!(result.updated, 0);
+
+        let codex_config_path = temp_dir.path().join(".codex/config.toml");
+        assert!(codex_config_path.exists());
+
+        // Verify TOML content
+        let content = fs::read_to_string(&codex_config_path).unwrap();
+        let parsed: toml::Value = toml::from_str(&content).unwrap();
+        let mcp_servers = parsed
+            .get("mcp_servers")
+            .and_then(|v| v.as_table())
+            .expect("mcp_servers table missing");
+        let filesystem = mcp_servers
+            .get("filesystem")
+            .and_then(|v| v.as_table())
+            .expect("filesystem server missing");
+
+        assert_eq!(
+            filesystem
+                .get("command")
+                .and_then(|v| v.as_str())
+                .expect("filesystem command missing"),
+            "npx"
+        );
+        let args = filesystem
+            .get("args")
+            .and_then(|v| v.as_array())
+            .expect("filesystem args missing");
+        assert_eq!(args.len(), 3);
+    }
+
+    #[test]
     fn test_sync_mcp_only_creates_for_configured_agents() {
         let temp_dir = TempDir::new().unwrap();
         let agents_dir = temp_dir.path().join(".agents");
         fs::create_dir_all(&agents_dir).unwrap();
 
         let config_path = agents_dir.join("agentsync.toml");
-        // Only configure claude and copilot - cursor, gemini, vscode, opencode should NOT get configs
+        // Only configure claude and copilot; other MCP-capable agents should NOT get configs.
         let config_content = r#"
             source_dir = "."
 
@@ -1675,6 +1808,85 @@ mod tests {
             !opencode_config.exists(),
             "OpenCode MCP config should NOT exist for unconfigured agent"
         );
+
+        // Verify codex config does NOT exist (not configured)
+        let codex_config = temp_dir.path().join(".codex/config.toml");
+        assert!(
+            !codex_config.exists(),
+            "Codex MCP config should NOT exist for unconfigured agent"
+        );
+    }
+
+    #[test]
+    fn test_sync_mcp_cli_filter_supports_aliases() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+
+            [mcp]
+            enabled = true
+
+            [mcp_servers.filesystem]
+            command = "npx"
+            args = ["-y", "@modelcontextprotocol/server-filesystem", "."]
+
+            [agents.codex-cli]
+            enabled = true
+            [agents.codex-cli.targets.main]
+            source = "AGENTS.md"
+            destination = "AGENTS.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let filter = vec!["codex-cli".to_string()];
+        let result = linker.sync_mcp(false, Some(&filter)).unwrap();
+
+        assert_eq!(result.created, 1);
+        assert!(temp_dir.path().join(".codex/config.toml").exists());
+    }
+
+    #[test]
+    fn test_sync_mcp_default_agents_support_aliases() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            default_agents = ["codex-cli"]
+
+            [mcp]
+            enabled = true
+
+            [mcp_servers.filesystem]
+            command = "npx"
+            args = ["-y", "@modelcontextprotocol/server-filesystem", "."]
+
+            [agents.codex-cli]
+            enabled = true
+            [agents.codex-cli.targets.main]
+            source = "AGENTS.md"
+            destination = "AGENTS.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker.sync_mcp(false, None).unwrap();
+
+        assert_eq!(result.created, 1);
+        assert!(temp_dir.path().join(".codex/config.toml").exists());
     }
 
     #[test]
@@ -1711,5 +1923,6 @@ mod tests {
         assert!(!temp_dir.path().join(".mcp.json").exists());
         assert!(!temp_dir.path().join(".vscode/mcp.json").exists());
         assert!(!temp_dir.path().join(".cursor/mcp.json").exists());
+        assert!(!temp_dir.path().join(".codex/config.toml").exists());
     }
 }

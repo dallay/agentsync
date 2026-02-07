@@ -3,6 +3,7 @@
 //! Handles TOML configuration files that define how AI agent
 //! configurations should be synchronized via symbolic links.
 
+use crate::agent_ids;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
@@ -295,20 +296,7 @@ impl Config {
     /// Get known gitignore patterns for a specific agent.
     /// These are files/directories that agents generate but are not direct symlink targets.
     pub fn known_ignore_patterns(agent_name: &str) -> &'static [&'static str] {
-        match agent_name.to_lowercase().as_str() {
-            "claude" => &[".mcp.json", ".claude/commands/", ".claude/skills/"],
-            "copilot" => &[".vscode/mcp.json"],
-            "gemini" => &[
-                "GEMINI.md",
-                ".gemini/settings.json",
-                ".gemini/commands/",
-                ".gemini/skills/",
-            ],
-            "opencode" => &["opencode.json"],
-            "cursor" => &[".cursor/mcp.json", ".cursor/skills/"],
-            "vscode" => &[".vscode/mcp.json"],
-            _ => &[],
-        }
+        agent_ids::known_ignore_patterns(agent_name)
     }
 }
 
@@ -732,6 +720,24 @@ mod tests {
     }
 
     #[test]
+    fn test_known_ignore_patterns_codex() {
+        let patterns = Config::known_ignore_patterns("codex");
+        assert!(patterns.contains(&".codex/config.toml"));
+    }
+
+    #[test]
+    fn test_known_ignore_patterns_codex_aliases() {
+        assert_eq!(
+            Config::known_ignore_patterns("codex"),
+            Config::known_ignore_patterns("codex-cli")
+        );
+        assert_eq!(
+            Config::known_ignore_patterns("codex"),
+            Config::known_ignore_patterns("codex_cli")
+        );
+    }
+
+    #[test]
     fn test_known_ignore_patterns_gemini() {
         let patterns = Config::known_ignore_patterns("gemini");
         assert!(patterns.contains(&"GEMINI.md"));
@@ -873,6 +879,23 @@ mod tests {
 
         // Should include known patterns
         assert!(entries.contains(&".mcp.json".to_string()));
+    }
+
+    #[test]
+    fn test_all_gitignore_entries_includes_known_patterns_for_alias_agents() {
+        let toml = r#"
+            [agents.codex-cli]
+            enabled = true
+            [agents.codex-cli.targets.main]
+            source = "AGENTS.md"
+            destination = "AGENTS.md"
+            type = "symlink"
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        let entries = config.all_gitignore_entries();
+
+        assert!(entries.contains(&".codex/config.toml".to_string()));
     }
 
     // ==========================================================================
