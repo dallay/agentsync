@@ -1,0 +1,10 @@
+---
+import { withBase } from "../utils/links";
+
+const { href, ...rest } = Astro.props;
+const resolvedHref = typeof href === "string" ? withBase(href) : href;
+---
+
+<a href={resolvedHref} {...rest}>
+	<slot />
+</a>

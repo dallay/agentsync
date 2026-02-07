@@ -1,6 +1,10 @@
 ---
+import { withBase } from "../utils/links";
+
 // Premium Footer component for AgentSync
 const currentYear = new Date().getFullYear();
+const docsHref = withBase("/guides/getting-started/");
+const contributingHref = withBase("/guides/contributing/");
 ---
 
 <footer class="as-footer">
@@ -30,8 +34,8 @@ const currentYear = new Date().getFullYear();
                 </svg>
                 GitHub
             </a>
-            <a href="/guides/getting-started/">Docs</a>
-            <a href="/guides/contributing/">Contributing</a>
+            <a href={docsHref}>Docs</a>
+            <a href={contributingHref}>Contributing</a>
         </div>
         <div class="as-footer-copy">
             <p>
