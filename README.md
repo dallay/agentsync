@@ -124,10 +124,26 @@ To install via terminal, you can use the following script (replace `VERSION` wit
 # Define version and platform
 VERSION="1.26.2"
 PLATFORM="x86_64-apple-darwin" # e.g., aarch64-apple-darwin, x86_64-unknown-linux-gnu
+TARBALL="agentsync-${VERSION}-${PLATFORM}.tar.gz"
 
-# Download and install
-curl -LO "https://github.com/dallay/agentsync/releases/download/v${VERSION}/agentsync-${VERSION}-${PLATFORM}.tar.gz"
-tar xzf "agentsync-${VERSION}-${PLATFORM}.tar.gz"
+# Download binary and checksum
+curl -LO "https://github.com/dallay/agentsync/releases/download/v${VERSION}/${TARBALL}"
+curl -LO "https://github.com/dallay/agentsync/releases/download/v${VERSION}/${TARBALL}.sha256"
+
+# Verify integrity
+if command -v sha256sum >/dev/null; then
+  sha256sum --check "${TARBALL}.sha256"
+else
+  shasum -a 256 --check "${TARBALL}.sha256"
+fi
+
+if [ $? -ne 0 ]; then
+  echo "Error: Checksum verification failed!"
+  exit 1
+fi
+
+# Extract and install
+tar xzf "${TARBALL}"
 sudo mv agentsync-*/agentsync /usr/local/bin/
 ```
 
@@ -426,17 +442,27 @@ The symlinks are primarily for local development. CI builds typically don't need
 
 ### Installing in CI
 
-If you need agentsync in CI, you can download the latest version automatically:
+If you need agentsync in CI, you can download the latest version automatically using `jq` for robust parsing:
 
 ```yaml
 - name: Install agentsync
+  env:
+    GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   run: |
-    # Get latest version tag
-    LATEST_TAG=$(curl -s https://api.github.com/repos/dallay/agentsync/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-    VERSION=${LATEST_TAG#v} # remove 'v' prefix
+    # Fetch latest version using GitHub API and jq
+    LATEST_TAG=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
+      https://api.github.com/repos/dallay/agentsync/releases/latest | jq -r '.tag_name')
     
-    curl -LO "https://github.com/dallay/agentsync/releases/latest/download/agentsync-${VERSION}-x86_64-unknown-linux-gnu.tar.gz"
-    tar xzf agentsync-${VERSION}-x86_64-unknown-linux-gnu.tar.gz
+    if [ "$LATEST_TAG" == "null" ] || [ -z "$LATEST_TAG" ]; then
+      echo "Error: Failed to fetch latest release tag"
+      exit 1
+    fi
+    
+    VERSION=${LATEST_TAG#v}
+    PLATFORM="x86_64-unknown-linux-gnu"
+    
+    curl -LO "https://github.com/dallay/agentsync/releases/download/${LATEST_TAG}/agentsync-${VERSION}-${PLATFORM}.tar.gz"
+    tar xzf agentsync-${VERSION}-${PLATFORM}.tar.gz
     sudo mv agentsync-*/agentsync /usr/local/bin/
 ```
 
