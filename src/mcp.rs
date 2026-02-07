@@ -6,7 +6,7 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 use serde_json::{Map, Value, json};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -180,6 +180,15 @@ pub trait McpFormatter: Send + Sync {
 // Standard MCP Helper Functions
 // =============================================================================
 
+/// Build a JSON object from key/value pairs in deterministic lexicographic key order.
+fn sorted_json_map_from_pairs<I>(pairs: I) -> Map<String, Value>
+where
+    I: IntoIterator<Item = (String, Value)>,
+{
+    let sorted: BTreeMap<String, Value> = pairs.into_iter().collect();
+    sorted.into_iter().collect()
+}
+
 /// Build a JSON object from server configs using lexicographic key order.
 fn sorted_json_map_from_server_refs<F>(
     servers: &HashMap<String, &McpServerConfig>,
@@ -188,41 +197,29 @@ fn sorted_json_map_from_server_refs<F>(
 where
     F: FnMut(&McpServerConfig) -> Value,
 {
-    let mut entries: Vec<(&String, &&McpServerConfig)> = servers.iter().collect();
-    entries.sort_by(|a, b| a.0.cmp(b.0));
-
-    let mut sorted = Map::new();
-    for (name, config) in entries {
-        sorted.insert(name.clone(), server_to_value(config));
-    }
-
-    sorted
+    sorted_json_map_from_pairs(
+        servers
+            .iter()
+            .map(|(name, config)| (name.clone(), server_to_value(config))),
+    )
 }
 
 /// Build a JSON object from existing JSON values using lexicographic key order.
 fn sorted_json_map_from_values(values: &HashMap<String, Value>) -> Map<String, Value> {
-    let mut entries: Vec<(&String, &Value)> = values.iter().collect();
-    entries.sort_by(|a, b| a.0.cmp(b.0));
-
-    let mut sorted = Map::new();
-    for (name, value) in entries {
-        sorted.insert(name.clone(), value.clone());
-    }
-
-    sorted
+    sorted_json_map_from_pairs(
+        values
+            .iter()
+            .map(|(name, value)| (name.clone(), value.clone())),
+    )
 }
 
 /// Build a JSON object from string key/value pairs using lexicographic key order.
 fn sorted_json_map_from_string_map(values: &HashMap<String, String>) -> Map<String, Value> {
-    let mut entries: Vec<(&String, &String)> = values.iter().collect();
-    entries.sort_by(|a, b| a.0.cmp(b.0));
-
-    let mut sorted = Map::new();
-    for (name, value) in entries {
-        sorted.insert(name.clone(), json!(value));
-    }
-
-    sorted
+    sorted_json_map_from_pairs(
+        values
+            .iter()
+            .map(|(name, value)| (name.clone(), Value::String(value.clone()))),
+    )
 }
 
 /// Format servers into standard { "mcpServers": { ... } } structure
