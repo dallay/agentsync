@@ -81,9 +81,16 @@ impl Linker {
 
     /// Resolve the expected source path for status checks.
     pub fn expected_source_path(&self, source: &Path, target: &TargetConfig) -> Option<PathBuf> {
+        // expected_source_path feeds status/entry_is_problematic; when should_compress_agents_md
+        // applies, only return compressed_agents_md_path if it already exists.
         if self.should_compress_agents_md(source, target) {
             if source.exists() {
-                Some(compressed_agents_md_path(source))
+                let compressed = compressed_agents_md_path(source);
+                if compressed.exists() {
+                    Some(compressed)
+                } else {
+                    Some(source.to_path_buf())
+                }
             } else {
                 None
             }
@@ -189,6 +196,7 @@ impl Linker {
                 &source,
                 &dest,
                 target.pattern.as_deref(),
+                target,
                 options,
             ),
         }
@@ -214,9 +222,10 @@ impl Linker {
                 self.write_compressed_agents_md(source, &compressed)?;
             }
 
+            let exists = options.dry_run || compressed.exists();
             return Ok(ResolvedSource {
-                path: compressed.clone(),
-                exists: options.dry_run || compressed.exists(),
+                path: compressed,
+                exists,
             });
         }
 
@@ -228,7 +237,10 @@ impl Linker {
 
     fn should_compress_agents_md(&self, source: &Path, target: &TargetConfig) -> bool {
         self.config.compress_agents_md
-            && target.sync_type == SyncType::Symlink
+            && matches!(
+                target.sync_type,
+                SyncType::Symlink | SyncType::SymlinkContents
+            )
             && is_agents_md_path(source)
     }
 
@@ -398,6 +410,7 @@ impl Linker {
         source_dir: &Path,
         dest_dir: &Path,
         pattern: Option<&str>,
+        target: &TargetConfig,
         options: &SyncOptions,
     ) -> Result<SyncResult> {
         let mut result = SyncResult::default();
@@ -449,10 +462,7 @@ impl Linker {
             let source_path = entry.path();
             let dest_path = dest_dir.join(entry.file_name());
 
-            let resolved = ResolvedSource {
-                path: source_path.to_path_buf(),
-                exists: source_path.exists(),
-            };
+            let resolved = self.resolve_source_path(source_path, target, options)?;
             let item_result = self.create_symlink(&resolved, &dest_path, options)?;
             result.created += item_result.created;
             result.updated += item_result.updated;
@@ -660,12 +670,12 @@ fn compress_agents_md_content(input: &str) -> String {
         let is_fence = fence_delim_match.is_some();
 
         if is_fence {
-            if let Some(delim) = fence_delim_match {
-                if fence_delim.is_none() {
-                    fence_delim = Some(delim);
-                } else if fence_delim.as_ref() == Some(&delim) {
-                    fence_delim = None;
-                }
+            let delim =
+                fence_delim_match.expect("fence_delim_match should be set when is_fence is true");
+            if fence_delim.is_none() {
+                fence_delim = Some(delim);
+            } else if fence_delim.as_ref() == Some(&delim) {
+                fence_delim = None;
             }
             out.push_str(trimmed_end);
             out.push('\n');
@@ -1475,6 +1485,54 @@ mod tests {
         assert!(output_dir.join("skill1.md").is_symlink());
         assert!(output_dir.join("skill2.md").is_symlink());
         assert!(!output_dir.join("readme.txt").exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_sync_symlink_contents_compresses_agents_md() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        let instructions_dir = agents_dir.join("instructions");
+        fs::create_dir_all(&instructions_dir).unwrap();
+
+        fs::write(
+            instructions_dir.join("AGENTS.md"),
+            "## Title  \n\nSome   text\n```txt\n  keep\n```\n",
+        )
+        .unwrap();
+        fs::write(instructions_dir.join("OTHER.md"), "# Other").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            compress_agents_md = true
+
+            [agents.test]
+            enabled = true
+
+            [agents.test.targets.main]
+            source = "instructions"
+            destination = "output"
+            type = "symlink-contents"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        linker.sync(&SyncOptions::default()).unwrap();
+
+        let compressed = instructions_dir.join("AGENTS.compact.md");
+        assert!(compressed.exists());
+
+        let dest = temp_dir.path().join("output").join("AGENTS.md");
+        assert!(dest.is_symlink());
+
+        let link_target = fs::read_link(&dest).unwrap();
+        let linked = dest.parent().unwrap().join(link_target);
+        let linked_canon = fs::canonicalize(linked).unwrap();
+        let compressed_canon = fs::canonicalize(compressed).unwrap();
+        assert_eq!(linked_canon, compressed_canon);
     }
 
     // ==========================================================================
