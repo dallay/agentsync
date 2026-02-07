@@ -1344,6 +1344,45 @@ args = ["server.js"]
     }
 
     #[test]
+    fn test_codex_formatter_merge_override() {
+        let formatter = CodexCliFormatter;
+        let existing = r#"
+[mcp_servers.filesystem]
+command = "old-command"
+args = ["old-arg"]
+"#;
+
+        let new_server = create_test_server();
+        let servers: HashMap<String, &McpServerConfig> =
+            HashMap::from([("filesystem".to_string(), &new_server)]);
+
+        let merged = formatter.merge(existing, &servers).unwrap();
+        let parsed: TomlValue = toml::from_str(&merged).unwrap();
+        let fs_server = parsed
+            .as_table()
+            .unwrap()
+            .get("mcp_servers")
+            .unwrap()
+            .as_table()
+            .unwrap()
+            .get("filesystem")
+            .unwrap()
+            .as_table()
+            .unwrap();
+
+        // Should override existing server with new config
+        assert_eq!(fs_server.get("command").unwrap().as_str().unwrap(), "npx");
+        assert_eq!(
+            fs_server.get("args").unwrap().as_array().unwrap(),
+            &vec![
+                TomlValue::String("-y".to_string()),
+                TomlValue::String("@modelcontextprotocol/server-filesystem".to_string()),
+                TomlValue::String(".".to_string()),
+            ]
+        );
+    }
+
+    #[test]
     fn test_codex_formatter_cleanup_removed_servers() {
         let formatter = CodexCliFormatter;
         let existing = r#"
