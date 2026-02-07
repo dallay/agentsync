@@ -180,13 +180,54 @@ pub trait McpFormatter: Send + Sync {
 // Standard MCP Helper Functions
 // =============================================================================
 
+/// Build a JSON object from server configs using lexicographic key order.
+fn sorted_json_map_from_server_refs<F>(
+    servers: &HashMap<String, &McpServerConfig>,
+    mut server_to_value: F,
+) -> Map<String, Value>
+where
+    F: FnMut(&McpServerConfig) -> Value,
+{
+    let mut entries: Vec<(&String, &&McpServerConfig)> = servers.iter().collect();
+    entries.sort_by(|a, b| a.0.cmp(b.0));
+
+    let mut sorted = Map::new();
+    for (name, config) in entries {
+        sorted.insert(name.clone(), server_to_value(config));
+    }
+
+    sorted
+}
+
+/// Build a JSON object from existing JSON values using lexicographic key order.
+fn sorted_json_map_from_values(values: &HashMap<String, Value>) -> Map<String, Value> {
+    let mut entries: Vec<(&String, &Value)> = values.iter().collect();
+    entries.sort_by(|a, b| a.0.cmp(b.0));
+
+    let mut sorted = Map::new();
+    for (name, value) in entries {
+        sorted.insert(name.clone(), value.clone());
+    }
+
+    sorted
+}
+
+/// Build a JSON object from string key/value pairs using lexicographic key order.
+fn sorted_json_map_from_string_map(values: &HashMap<String, String>) -> Map<String, Value> {
+    let mut entries: Vec<(&String, &String)> = values.iter().collect();
+    entries.sort_by(|a, b| a.0.cmp(b.0));
+
+    let mut sorted = Map::new();
+    for (name, value) in entries {
+        sorted.insert(name.clone(), json!(value));
+    }
+
+    sorted
+}
+
 /// Format servers into standard { "mcpServers": { ... } } structure
 fn format_standard_mcp(servers: &HashMap<String, &McpServerConfig>) -> Value {
-    let mut mcp_servers = Map::new();
-
-    for (name, config) in servers {
-        mcp_servers.insert(name.clone(), server_to_json(config));
-    }
+    let mcp_servers = sorted_json_map_from_server_refs(servers, server_to_json);
 
     json!({
         "mcpServers": mcp_servers
@@ -220,7 +261,7 @@ fn merge_standard_mcp(
     }
 
     let output = json!({
-        "mcpServers": existing
+        "mcpServers": sorted_json_map_from_values(&existing)
     });
 
     serde_json::to_string_pretty(&output).context("Failed to serialize merged config")
@@ -240,7 +281,7 @@ fn merge_standard_mcp_filtered(
     }
 
     let output = json!({
-        "mcpServers": existing
+        "mcpServers": sorted_json_map_from_values(&existing)
     });
 
     serde_json::to_string_pretty(&output).context("Failed to serialize merged config")
@@ -371,16 +412,14 @@ pub struct GeminiCliFormatter; // keep type name
 
 impl McpFormatter for GeminiCliFormatter {
     fn format(&self, servers: &HashMap<String, &McpServerConfig>) -> Value {
-        let mut mcp_servers = Map::new();
-
-        for (name, config) in servers {
+        let mcp_servers = sorted_json_map_from_server_refs(servers, |config| {
             let mut server_json = server_to_json(config);
             // Gemini requires trust: true for non-interactive execution
             if let Some(obj) = server_json.as_object_mut() {
                 obj.insert("trust".to_string(), json!(true));
             }
-            mcp_servers.insert(name.clone(), server_json);
-        }
+            server_json
+        });
 
         json!({
             "mcpServers": mcp_servers
@@ -421,7 +460,10 @@ impl McpFormatter for GeminiCliFormatter {
 
         // Update only the mcpServers key, preserving other settings
         if let Some(doc_obj) = existing_doc.as_object_mut() {
-            doc_obj.insert("mcpServers".to_string(), json!(existing_servers));
+            doc_obj.insert(
+                "mcpServers".to_string(),
+                Value::Object(sorted_json_map_from_values(&existing_servers)),
+            );
         }
 
         serde_json::to_string_pretty(&existing_doc).context("Failed to serialize merged config")
@@ -456,7 +498,10 @@ impl McpFormatter for GeminiCliFormatter {
 
         // Update only the mcpServers key, preserving other settings
         if let Some(doc_obj) = existing_doc.as_object_mut() {
-            doc_obj.insert("mcpServers".to_string(), json!(final_servers));
+            doc_obj.insert(
+                "mcpServers".to_string(),
+                Value::Object(sorted_json_map_from_values(&final_servers)),
+            );
         }
 
         serde_json::to_string_pretty(&existing_doc).context("Failed to serialize cleaned config")
@@ -592,11 +637,7 @@ pub struct OpenCodeFormatter;
 
 impl McpFormatter for OpenCodeFormatter {
     fn format(&self, servers: &HashMap<String, &McpServerConfig>) -> Value {
-        let mut mcp_servers = Map::new();
-
-        for (name, config) in servers {
-            mcp_servers.insert(name.clone(), server_to_opencode_json(config));
-        }
+        let mcp_servers = sorted_json_map_from_server_refs(servers, server_to_opencode_json);
 
         json!({
             "$schema": "https://opencode.ai/config.json",
@@ -634,7 +675,10 @@ impl McpFormatter for OpenCodeFormatter {
 
         // Update only the mcp key
         if let Some(doc_obj) = existing_doc.as_object_mut() {
-            doc_obj.insert("mcp".to_string(), json!(existing_servers));
+            doc_obj.insert(
+                "mcp".to_string(),
+                Value::Object(sorted_json_map_from_values(&existing_servers)),
+            );
             // Add schema if missing
             if !doc_obj.contains_key("$schema") {
                 doc_obj.insert(
@@ -646,7 +690,7 @@ impl McpFormatter for OpenCodeFormatter {
             // If existing content wasn't an object, overwrite it entirely
             existing_doc = json!({
                 "$schema": "https://opencode.ai/config.json",
-                "mcp": existing_servers
+                "mcp": Value::Object(sorted_json_map_from_values(&existing_servers))
             });
         }
 
@@ -678,7 +722,10 @@ impl McpFormatter for OpenCodeFormatter {
 
         // Update only the mcp key, preserving other settings
         if let Some(doc_obj) = existing_doc.as_object_mut() {
-            doc_obj.insert("mcp".to_string(), json!(final_servers));
+            doc_obj.insert(
+                "mcp".to_string(),
+                Value::Object(sorted_json_map_from_values(&final_servers)),
+            );
             // Add schema if missing
             if !doc_obj.contains_key("$schema") {
                 doc_obj.insert(
@@ -690,7 +737,7 @@ impl McpFormatter for OpenCodeFormatter {
             // If existing content wasn't an object, overwrite it entirely
             existing_doc = json!({
                 "$schema": "https://opencode.ai/config.json",
-                "mcp": final_servers
+                "mcp": Value::Object(sorted_json_map_from_values(&final_servers))
             });
         }
 
@@ -710,7 +757,10 @@ fn server_to_opencode_json(config: &McpServerConfig) -> Value {
         obj.insert("type".to_string(), json!("remote"));
         obj.insert("url".to_string(), json!(url));
         if !config.headers.is_empty() {
-            obj.insert("headers".to_string(), json!(config.headers));
+            obj.insert(
+                "headers".to_string(),
+                Value::Object(sorted_json_map_from_string_map(&config.headers)),
+            );
         }
     } else {
         obj.insert("type".to_string(), json!("local"));
@@ -724,7 +774,10 @@ fn server_to_opencode_json(config: &McpServerConfig) -> Value {
         obj.insert("command".to_string(), json!(command_parts));
 
         if !config.env.is_empty() {
-            obj.insert("environment".to_string(), json!(config.env));
+            obj.insert(
+                "environment".to_string(),
+                Value::Object(sorted_json_map_from_string_map(&config.env)),
+            );
         }
     }
 
@@ -751,7 +804,10 @@ fn server_to_json(config: &McpServerConfig) -> Value {
     }
 
     if !config.env.is_empty() {
-        obj.insert("env".to_string(), json!(config.env));
+        obj.insert(
+            "env".to_string(),
+            Value::Object(sorted_json_map_from_string_map(&config.env)),
+        );
     }
 
     if let Some(ref url) = config.url {
@@ -759,7 +815,10 @@ fn server_to_json(config: &McpServerConfig) -> Value {
     }
 
     if !config.headers.is_empty() {
-        obj.insert("headers".to_string(), json!(config.headers));
+        obj.insert(
+            "headers".to_string(),
+            Value::Object(sorted_json_map_from_string_map(&config.headers)),
+        );
     }
 
     if let Some(ref transport) = config.transport_type {
@@ -1067,6 +1126,24 @@ mod tests {
         }
     }
 
+    fn assert_keys_in_order(content: &str, keys: &[&str]) {
+        let mut last_pos = 0;
+
+        for key in keys {
+            let needle = format!("\"{}\"", key);
+            let pos = content
+                .find(&needle)
+                .unwrap_or_else(|| panic!("Missing key '{}' in output: {}", key, content));
+            assert!(
+                pos >= last_pos,
+                "Expected keys in order {:?}, got output: {}",
+                keys,
+                content
+            );
+            last_pos = pos;
+        }
+    }
+
     #[test]
     fn test_claude_formatter_basic() {
         let formatter = ClaudeCodeFormatter;
@@ -1144,6 +1221,20 @@ mod tests {
         // Should override with new config
         let fs_server = parsed.get("mcpServers").unwrap().get("filesystem").unwrap();
         assert_eq!(fs_server.get("command").unwrap().as_str().unwrap(), "npx");
+    }
+
+    #[test]
+    fn test_claude_formatter_orders_servers_deterministically() {
+        let formatter = ClaudeCodeFormatter;
+        let server = create_test_server();
+        let servers: HashMap<String, &McpServerConfig> = HashMap::from([
+            ("zeta".to_string(), &server),
+            ("alpha".to_string(), &server),
+            ("mid".to_string(), &server),
+        ]);
+
+        let output = serde_json::to_string_pretty(&formatter.format(&servers)).unwrap();
+        assert_keys_in_order(&output, &["alpha", "mid", "zeta"]);
     }
 
     // ==========================================================================
@@ -1257,6 +1348,31 @@ mod tests {
         // And have both servers
         assert!(parsed.get("mcp").unwrap().get("existing").is_some());
         assert!(parsed.get("mcp").unwrap().get("filesystem").is_some());
+    }
+
+    #[test]
+    fn test_opencode_formatter_merge_orders_servers_deterministically() {
+        let formatter = OpenCodeFormatter;
+        let existing = r#"{
+            "$schema": "https://opencode.ai/config.json",
+            "mcp": {
+                "zeta": {
+                    "type": "local",
+                    "command": ["zeta-cmd"]
+                },
+                "alpha": {
+                    "type": "local",
+                    "command": ["alpha-cmd"]
+                }
+            }
+        }"#;
+
+        let server = create_test_server();
+        let servers: HashMap<String, &McpServerConfig> =
+            HashMap::from([("mid".to_string(), &server)]);
+
+        let merged = formatter.merge(existing, &servers).unwrap();
+        assert_keys_in_order(&merged, &["alpha", "mid", "zeta"]);
     }
 
     // ==========================================================================
@@ -1835,6 +1951,46 @@ mod tests {
         // Empty fields should not be present
         assert!(json.get("command").is_none());
         assert!(json.get("args").is_none());
+    }
+
+    #[test]
+    fn test_server_to_json_orders_env_and_headers() {
+        let server = McpServerConfig {
+            command: Some("npx".to_string()),
+            args: vec![],
+            env: HashMap::from([
+                ("ZZZ".to_string(), "1".to_string()),
+                ("AAA".to_string(), "2".to_string()),
+            ]),
+            url: None,
+            headers: HashMap::from([
+                ("X-Zebra".to_string(), "z".to_string()),
+                ("X-Alpha".to_string(), "a".to_string()),
+            ]),
+            transport_type: Some("stdio".to_string()),
+            disabled: false,
+        };
+
+        let json = server_to_json(&server);
+        let env_keys: Vec<&str> = json
+            .get("env")
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(|key| key.as_str())
+            .collect();
+        let header_keys: Vec<&str> = json
+            .get("headers")
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(|key| key.as_str())
+            .collect();
+
+        assert_eq!(env_keys, vec!["AAA", "ZZZ"]);
+        assert_eq!(header_keys, vec!["X-Alpha", "X-Zebra"]);
     }
 
     // ==========================================================================
