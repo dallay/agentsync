@@ -13,6 +13,8 @@ use walkdir::WalkDir;
 
 use crate::config::{Config, SyncType, TargetConfig};
 
+const COMPRESSED_AGENTS_MD_NAME: &str = "AGENTS.compact.md";
+
 /// Options for the sync operation
 #[derive(Debug, Default)]
 pub struct SyncOptions {
@@ -34,6 +36,12 @@ pub struct SyncResult {
     pub skipped: usize,
     pub removed: usize,
     pub errors: usize,
+}
+
+#[derive(Debug)]
+struct ResolvedSource {
+    path: PathBuf,
+    exists: bool,
 }
 
 /// Performs the synchronization of agent configurations
@@ -71,6 +79,28 @@ impl Linker {
         &self.config
     }
 
+    /// Resolve the expected source path for status checks.
+    pub fn expected_source_path(&self, source: &Path, target: &TargetConfig) -> Option<PathBuf> {
+        // expected_source_path feeds status/entry_is_problematic; when should_compress_agents_md
+        // applies, only return compressed_agents_md_path if it already exists.
+        if self.should_compress_agents_md(source, target) {
+            if source.exists() {
+                let compressed = compressed_agents_md_path(source);
+                if compressed.exists() {
+                    Some(compressed)
+                } else {
+                    Some(source.to_path_buf())
+                }
+            } else {
+                None
+            }
+        } else if source.exists() {
+            Some(source.to_path_buf())
+        } else {
+            None
+        }
+    }
+
     /// Perform the sync operation
     pub fn sync(&self, options: &SyncOptions) -> Result<SyncResult> {
         let mut result = SyncResult::default();
@@ -91,33 +121,30 @@ impl Linker {
             // Filter by agent name if specified
             // Priority: CLI --agents flag > default_agents config > all enabled agents
             if let Some(ref filter) = options.agents {
-                // Use CLI-provided agents (case-insensitive substring matching)
                 if !filter
                     .iter()
-                    .any(|f| agent_name.to_lowercase().contains(&f.to_lowercase()))
+                    .any(|f| crate::agent_ids::sync_filter_matches(agent_name, f))
                 {
                     if options.verbose {
                         println!("  {} Skipping filtered agent: {}", "○".yellow(), agent_name);
                     }
                     continue;
                 }
-            } else if !self.config.default_agents.is_empty() {
-                // Use default_agents from config (case-insensitive substring matching)
-                if !self
+            } else if !self.config.default_agents.is_empty()
+                && !self
                     .config
                     .default_agents
                     .iter()
-                    .any(|f| agent_name.to_lowercase().contains(&f.to_lowercase()))
-                {
-                    if options.verbose {
-                        println!(
-                            "  {} Skipping agent (not in default_agents): {}",
-                            "○".yellow(),
-                            agent_name
-                        );
-                    }
-                    continue;
+                    .any(|f| crate::agent_ids::sync_filter_matches(agent_name, f))
+            {
+                if options.verbose {
+                    println!(
+                        "  {} Skipping agent (not in default_agents): {}",
+                        "○".yellow(),
+                        agent_name
+                    );
                 }
+                continue;
             }
             // If neither --agents nor default_agents, process all enabled agents
 
@@ -158,31 +185,99 @@ impl Linker {
         let dest = self.project_root.join(&target.destination);
 
         match target.sync_type {
-            SyncType::Symlink => self.create_symlink(&source, &dest, options),
+            SyncType::Symlink => {
+                let resolved = self.resolve_source_path(&source, target, options)?;
+                self.create_symlink(&resolved, &dest, options)
+            }
             SyncType::SymlinkContents => self.create_symlinks_for_contents(
                 &source,
                 &dest,
                 target.pattern.as_deref(),
+                target,
                 options,
             ),
         }
     }
 
+    fn resolve_source_path(
+        &self,
+        source: &Path,
+        target: &TargetConfig,
+        options: &SyncOptions,
+    ) -> Result<ResolvedSource> {
+        if self.should_compress_agents_md(source, target) {
+            if !source.exists() {
+                return Ok(ResolvedSource {
+                    path: source.to_path_buf(),
+                    exists: false,
+                });
+            }
+
+            let compressed = compressed_agents_md_path(source);
+
+            if !options.dry_run {
+                self.write_compressed_agents_md(source, &compressed)?;
+            }
+
+            let exists = options.dry_run || compressed.exists();
+            return Ok(ResolvedSource {
+                path: compressed,
+                exists,
+            });
+        }
+
+        Ok(ResolvedSource {
+            path: source.to_path_buf(),
+            exists: source.exists(),
+        })
+    }
+
+    fn should_compress_agents_md(&self, source: &Path, target: &TargetConfig) -> bool {
+        self.config.compress_agents_md
+            && matches!(
+                target.sync_type,
+                SyncType::Symlink | SyncType::SymlinkContents
+            )
+            && is_agents_md_path(source)
+    }
+
+    fn write_compressed_agents_md(&self, source: &Path, dest: &Path) -> Result<()> {
+        let content = fs::read_to_string(source)
+            .with_context(|| format!("Failed to read AGENTS.md: {}", source.display()))?;
+        let compressed = compress_agents_md_content(&content);
+
+        if let Ok(existing) = fs::read_to_string(dest)
+            && existing == compressed
+        {
+            return Ok(());
+        }
+
+        if let Some(parent) = dest.parent()
+            && !parent.exists()
+        {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
+        }
+
+        fs::write(dest, compressed)
+            .with_context(|| format!("Failed to write compressed AGENTS.md: {}", dest.display()))
+    }
+
     /// Create a single symlink
     fn create_symlink(
         &self,
-        source: &Path,
+        source: &ResolvedSource,
         dest: &Path,
         options: &SyncOptions,
     ) -> Result<SyncResult> {
         let mut result = SyncResult::default();
 
         // Check if source exists
-        if !source.exists() {
+        if !source.exists {
             println!(
                 "  {} Source does not exist: {}",
                 "!".yellow(),
-                source.display()
+                source.path.display()
             );
             result.skipped += 1;
             return Ok(result);
@@ -210,7 +305,8 @@ impl Linker {
         }
 
         // Calculate relative path from dest to source
-        let relative_source = self.relative_path(dest, source)?;
+        let allow_missing = options.dry_run && !source.path.exists();
+        let relative_source = self.relative_path(dest, &source.path, allow_missing)?;
 
         // Handle existing destination
         if dest.is_symlink() {
@@ -287,7 +383,7 @@ impl Linker {
 
             #[cfg(windows)]
             {
-                if source.is_dir() {
+                if source.path.is_dir() {
                     std::os::windows::fs::symlink_dir(&relative_source, dest)?;
                 } else {
                     std::os::windows::fs::symlink_file(&relative_source, dest)?;
@@ -311,6 +407,7 @@ impl Linker {
         source_dir: &Path,
         dest_dir: &Path,
         pattern: Option<&str>,
+        target: &TargetConfig,
         options: &SyncOptions,
     ) -> Result<SyncResult> {
         let mut result = SyncResult::default();
@@ -362,7 +459,8 @@ impl Linker {
             let source_path = entry.path();
             let dest_path = dest_dir.join(entry.file_name());
 
-            let item_result = self.create_symlink(source_path, &dest_path, options)?;
+            let resolved = self.resolve_source_path(source_path, target, options)?;
+            let item_result = self.create_symlink(&resolved, &dest_path, options)?;
             result.created += item_result.created;
             result.updated += item_result.updated;
             result.skipped += item_result.skipped;
@@ -385,7 +483,7 @@ impl Linker {
     }
 
     /// Calculate relative path from dest to source
-    fn relative_path(&self, from: &Path, to: &Path) -> Result<PathBuf> {
+    fn relative_path(&self, from: &Path, to: &Path, allow_missing: bool) -> Result<PathBuf> {
         let from_dir = from.parent().unwrap_or(from);
 
         // Canonicalize paths for accurate relative calculation
@@ -399,9 +497,20 @@ impl Linker {
             self.project_root.join(relative)
         };
 
-        let to_abs = self
-            .canonicalize_cached(to)
-            .with_context(|| format!("Source path does not exist: {}", to.display()))?;
+        let to_abs = match self.canonicalize_cached(to) {
+            Ok(path) => path,
+            Err(_) if allow_missing => {
+                if to.is_absolute() {
+                    to.to_path_buf()
+                } else {
+                    self.project_root.join(to)
+                }
+            }
+            Err(err) => {
+                return Err(err)
+                    .with_context(|| format!("Source path does not exist: {}", to.display()));
+            }
+        };
 
         // Use pathdiff to calculate relative path
         pathdiff::diff_paths(&to_abs, &from_abs)
@@ -488,11 +597,7 @@ impl Linker {
         let filtered_agents: Vec<_> = if let Some(filter) = agents_filter {
             enabled_agents
                 .into_iter()
-                .filter(|agent| {
-                    filter
-                        .iter()
-                        .any(|f| agent.id().to_lowercase().contains(&f.to_lowercase()))
-                })
+                .filter(|agent| filter.iter().any(|f| mcp_agent_matches_filter(*agent, f)))
                 .collect()
         } else if !self.config.default_agents.is_empty() {
             // Apply default_agents filtering
@@ -502,7 +607,7 @@ impl Linker {
                     self.config
                         .default_agents
                         .iter()
-                        .any(|f| agent.id().to_lowercase().contains(&f.to_lowercase()))
+                        .any(|f| mcp_agent_matches_filter(*agent, f))
                 })
                 .collect()
         } else {
@@ -519,6 +624,117 @@ impl Linker {
         );
         generator.generate_all(&self.project_root, &filtered_agents, dry_run)
     }
+}
+
+/// Match MCP agents against CLI/default filter values.
+/// Supports canonical IDs (e.g. "codex") and aliases (e.g. "codex-cli"),
+/// while preserving legacy substring matching for unknown/custom filters.
+fn mcp_agent_matches_filter(agent: crate::mcp::McpAgent, filter: &str) -> bool {
+    crate::agent_ids::mcp_filter_matches(agent.id(), filter)
+}
+
+fn is_agents_md_path(path: &Path) -> bool {
+    path.file_name().is_some_and(|name| name == "AGENTS.md")
+}
+
+fn compressed_agents_md_path(path: &Path) -> PathBuf {
+    path.with_file_name(COMPRESSED_AGENTS_MD_NAME)
+}
+
+fn compress_agents_md_content(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    // Track the exact fence delimiter so only a matching fence closes the block.
+    let mut fence_delim: Option<String> = None;
+    let mut previous_blank = false;
+
+    for line in input.lines() {
+        let trimmed_end = line.trim_end_matches([' ', '\t']);
+        let trimmed_start = trimmed_end.trim_start();
+        let fence_delim_match = if trimmed_start.starts_with("```") {
+            Some(
+                trimmed_start
+                    .chars()
+                    .take_while(|c| *c == '`')
+                    .collect::<String>(),
+            )
+        } else if trimmed_start.starts_with("~~~") {
+            Some(
+                trimmed_start
+                    .chars()
+                    .take_while(|c| *c == '~')
+                    .collect::<String>(),
+            )
+        } else {
+            None
+        };
+        let is_fence = fence_delim_match.is_some();
+
+        if is_fence {
+            let delim =
+                fence_delim_match.expect("fence_delim_match should be set when is_fence is true");
+            if fence_delim.is_none() {
+                fence_delim = Some(delim);
+            } else if fence_delim.as_ref() == Some(&delim) {
+                fence_delim = None;
+            }
+            out.push_str(trimmed_end);
+            out.push('\n');
+            previous_blank = false;
+            continue;
+        }
+
+        if fence_delim.is_some() {
+            out.push_str(trimmed_end);
+            out.push('\n');
+            previous_blank = false;
+            continue;
+        }
+
+        if trimmed_end.trim().is_empty() {
+            if !previous_blank {
+                out.push('\n');
+                previous_blank = true;
+            }
+            continue;
+        }
+
+        previous_blank = false;
+        let (leading, rest) = split_leading_whitespace(trimmed_end);
+        let normalized = normalize_inline_whitespace(rest);
+        out.push_str(leading);
+        out.push_str(&normalized);
+        out.push('\n');
+    }
+
+    out
+}
+
+fn split_leading_whitespace(line: &str) -> (&str, &str) {
+    let idx = line
+        .char_indices()
+        .find(|(_, c)| *c != ' ' && *c != '\t')
+        .map(|(idx, _)| idx)
+        .unwrap_or_else(|| line.len());
+    line.split_at(idx)
+}
+
+fn normalize_inline_whitespace(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut in_whitespace = false;
+
+    for ch in line.chars() {
+        if ch == ' ' || ch == '\t' {
+            if !in_whitespace {
+                out.push(' ');
+                in_whitespace = true;
+            }
+        } else {
+            in_whitespace = false;
+            out.push(ch);
+        }
+    }
+
+    out
 }
 
 /// Simple glob pattern matching (supports * and ?)
@@ -738,6 +954,59 @@ mod tests {
         // Verify symlink was created
         let dest = temp_dir.path().join("TEST.md");
         assert!(dest.is_symlink());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_sync_compresses_agents_md_when_enabled() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let source_file = agents_dir.join("AGENTS.md");
+        fs::write(
+            &source_file,
+            "## Title  \n\n\nSome   text\twith   spacing.\n```rust\nfn  main() {}\n```\n",
+        )
+        .unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            compress_agents_md = true
+
+            [agents.test]
+            enabled = true
+
+            [agents.test.targets.main]
+            source = "AGENTS.md"
+            destination = "TEST.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker.sync(&SyncOptions::default()).unwrap();
+
+        assert_eq!(result.created, 1);
+
+        let dest = temp_dir.path().join("TEST.md");
+        assert!(dest.is_symlink());
+
+        let compressed = agents_dir.join("AGENTS.compact.md");
+        assert!(compressed.exists());
+
+        let link_target = fs::read_link(&dest).unwrap();
+        let linked = dest.parent().unwrap().join(link_target);
+        let linked_canon = fs::canonicalize(linked).unwrap();
+        let compressed_canon = fs::canonicalize(compressed).unwrap();
+        assert_eq!(linked_canon, compressed_canon);
+
+        let compressed_content = fs::read_to_string(agents_dir.join("AGENTS.compact.md")).unwrap();
+        assert!(compressed_content.contains("Some text with spacing."));
+        assert!(compressed_content.contains("fn  main() {}"));
     }
 
     #[test]
@@ -1033,6 +1302,75 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
+    fn test_sync_cli_filter_supports_aliases() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let source_file = agents_dir.join("AGENTS.md");
+        fs::write(&source_file, "# Test").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+
+            [agents.codex]
+            enabled = true
+            [agents.codex.targets.main]
+            source = "AGENTS.md"
+            destination = "CODEX.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let options = SyncOptions {
+            agents: Some(vec!["codex-cli".to_string()]),
+            ..Default::default()
+        };
+        let result = linker.sync(&options).unwrap();
+
+        assert_eq!(result.created, 1);
+        assert!(temp_dir.path().join("CODEX.md").exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_sync_default_agents_support_aliases() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let source_file = agents_dir.join("AGENTS.md");
+        fs::write(&source_file, "# Test").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            default_agents = ["codex-cli"]
+
+            [agents.codex]
+            enabled = true
+            [agents.codex.targets.main]
+            source = "AGENTS.md"
+            destination = "CODEX.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker.sync(&SyncOptions::default()).unwrap();
+
+        assert_eq!(result.created, 1);
+        assert!(temp_dir.path().join("CODEX.md").exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
     fn test_sync_all_enabled_when_no_default_agents_and_no_cli() {
         let temp_dir = TempDir::new().unwrap();
         let agents_dir = temp_dir.path().join(".agents");
@@ -1216,6 +1554,54 @@ mod tests {
         assert!(output_dir.join("skill1.md").is_symlink());
         assert!(output_dir.join("skill2.md").is_symlink());
         assert!(!output_dir.join("readme.txt").exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_sync_symlink_contents_compresses_agents_md() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        let instructions_dir = agents_dir.join("instructions");
+        fs::create_dir_all(&instructions_dir).unwrap();
+
+        fs::write(
+            instructions_dir.join("AGENTS.md"),
+            "## Title  \n\nSome   text\n```txt\n  keep\n```\n",
+        )
+        .unwrap();
+        fs::write(instructions_dir.join("OTHER.md"), "# Other").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            compress_agents_md = true
+
+            [agents.test]
+            enabled = true
+
+            [agents.test.targets.main]
+            source = "instructions"
+            destination = "output"
+            type = "symlink-contents"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        linker.sync(&SyncOptions::default()).unwrap();
+
+        let compressed = instructions_dir.join("AGENTS.compact.md");
+        assert!(compressed.exists());
+
+        let dest = temp_dir.path().join("output").join("AGENTS.md");
+        assert!(dest.is_symlink());
+
+        let link_target = fs::read_link(&dest).unwrap();
+        let linked = dest.parent().unwrap().join(link_target);
+        let linked_canon = fs::canonicalize(linked).unwrap();
+        let compressed_canon = fs::canonicalize(compressed).unwrap();
+        assert_eq!(linked_canon, compressed_canon);
     }
 
     // ==========================================================================
@@ -1599,13 +1985,77 @@ mod tests {
     }
 
     #[test]
+    fn test_sync_mcp_creates_codex_config_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+
+            [mcp]
+            enabled = true
+
+            [mcp_servers.filesystem]
+            command = "npx"
+            args = ["-y", "@modelcontextprotocol/server-filesystem", "."]
+
+            [agents.codex]
+            enabled = true
+            [agents.codex.targets.main]
+            source = "AGENTS.md"
+            destination = "AGENTS.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker.sync_mcp(false, None).unwrap();
+
+        // Should create MCP config for Codex
+        assert_eq!(result.created, 1);
+        assert_eq!(result.updated, 0);
+
+        let codex_config_path = temp_dir.path().join(".codex/config.toml");
+        assert!(codex_config_path.exists());
+
+        // Verify TOML content
+        let content = fs::read_to_string(&codex_config_path).unwrap();
+        let parsed: toml::Value = toml::from_str(&content).unwrap();
+        let mcp_servers = parsed
+            .get("mcp_servers")
+            .and_then(|v| v.as_table())
+            .expect("mcp_servers table missing");
+        let filesystem = mcp_servers
+            .get("filesystem")
+            .and_then(|v| v.as_table())
+            .expect("filesystem server missing");
+
+        assert_eq!(
+            filesystem
+                .get("command")
+                .and_then(|v| v.as_str())
+                .expect("filesystem command missing"),
+            "npx"
+        );
+        let args = filesystem
+            .get("args")
+            .and_then(|v| v.as_array())
+            .expect("filesystem args missing");
+        assert_eq!(args.len(), 3);
+    }
+
+    #[test]
     fn test_sync_mcp_only_creates_for_configured_agents() {
         let temp_dir = TempDir::new().unwrap();
         let agents_dir = temp_dir.path().join(".agents");
         fs::create_dir_all(&agents_dir).unwrap();
 
         let config_path = agents_dir.join("agentsync.toml");
-        // Only configure claude and copilot - cursor, gemini, vscode, opencode should NOT get configs
+        // Only configure claude and copilot; other MCP-capable agents should NOT get configs.
         let config_content = r#"
             source_dir = "."
 
@@ -1675,6 +2125,85 @@ mod tests {
             !opencode_config.exists(),
             "OpenCode MCP config should NOT exist for unconfigured agent"
         );
+
+        // Verify codex config does NOT exist (not configured)
+        let codex_config = temp_dir.path().join(".codex/config.toml");
+        assert!(
+            !codex_config.exists(),
+            "Codex MCP config should NOT exist for unconfigured agent"
+        );
+    }
+
+    #[test]
+    fn test_sync_mcp_cli_filter_supports_aliases() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+
+            [mcp]
+            enabled = true
+
+            [mcp_servers.filesystem]
+            command = "npx"
+            args = ["-y", "@modelcontextprotocol/server-filesystem", "."]
+
+            [agents.codex-cli]
+            enabled = true
+            [agents.codex-cli.targets.main]
+            source = "AGENTS.md"
+            destination = "AGENTS.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let filter = vec!["codex-cli".to_string()];
+        let result = linker.sync_mcp(false, Some(&filter)).unwrap();
+
+        assert_eq!(result.created, 1);
+        assert!(temp_dir.path().join(".codex/config.toml").exists());
+    }
+
+    #[test]
+    fn test_sync_mcp_default_agents_support_aliases() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            default_agents = ["codex-cli"]
+
+            [mcp]
+            enabled = true
+
+            [mcp_servers.filesystem]
+            command = "npx"
+            args = ["-y", "@modelcontextprotocol/server-filesystem", "."]
+
+            [agents.codex-cli]
+            enabled = true
+            [agents.codex-cli.targets.main]
+            source = "AGENTS.md"
+            destination = "AGENTS.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker.sync_mcp(false, None).unwrap();
+
+        assert_eq!(result.created, 1);
+        assert!(temp_dir.path().join(".codex/config.toml").exists());
     }
 
     #[test]
@@ -1711,5 +2240,6 @@ mod tests {
         assert!(!temp_dir.path().join(".mcp.json").exists());
         assert!(!temp_dir.path().join(".vscode/mcp.json").exists());
         assert!(!temp_dir.path().join(".cursor/mcp.json").exists());
+        assert!(!temp_dir.path().join(".codex/config.toml").exists());
     }
 }

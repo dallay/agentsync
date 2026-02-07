@@ -118,32 +118,32 @@ cargo install agentsync
 
 Download the latest release for your platform from the [GitHub Releases](https://github.com/dallay/agentsync/releases) page.
 
-Note: Replace `<version>` with the desired release tag (e.g., `v1.25.0`). See the [GitHub Releases](https://github.com/dallay/agentsync/releases) page for available versions.
+To install via terminal, you can use the following script (replace `VERSION` with the latest version number, e.g., `1.27.0`):
 
 ```bash
+# Define version and platform
+VERSION="1.27.0"
+PLATFORM="x86_64-apple-darwin" # e.g., aarch64-apple-darwin, x86_64-unknown-linux-gnu
+TARBALL="agentsync-${VERSION}-${PLATFORM}.tar.gz"
 
-# macOS (Apple Silicon)
+# Download binary and checksum
+curl -LO "https://github.com/dallay/agentsync/releases/download/v${VERSION}/${TARBALL}"
+curl -LO "https://github.com/dallay/agentsync/releases/download/v${VERSION}/${TARBALL}.sha256"
 
-curl -LO https://github.com/dallay/agentsync/releases/download/<version>/agentsync-<version>-aarch64-apple-darwin.tar.gz
-tar xzf agentsync-<version>-aarch64-apple-darwin.tar.gz
-sudo mv agentsync-*/agentsync /usr/local/bin/
+# Verify integrity
+if command -v sha256sum >/dev/null; then
+  sha256sum --check "${TARBALL}.sha256"
+else
+  shasum -a 256 --check "${TARBALL}.sha256"
+fi
 
-# macOS (Intel)
+if [ $? -ne 0 ]; then
+  echo "Error: Checksum verification failed!"
+  exit 1
+fi
 
-curl -LO https://github.com/dallay/agentsync/releases/download/<version>/agentsync-<version>-x86_64-apple-darwin.tar.gz
-tar xzf agentsync-<version>-x86_64-apple-darwin.tar.gz
-sudo mv agentsync-*/agentsync /usr/local/bin/
-
-# Linux (x86_64)
-
-curl -LO https://github.com/dallay/agentsync/releases/download/<version>/agentsync-<version>-x86_64-unknown-linux-gnu.tar.gz
-tar xzf agentsync-<version>-x86_64-unknown-linux-gnu.tar.gz
-sudo mv agentsync-*/agentsync /usr/local/bin/
-
-# Linux (ARM64)
-
-curl -LO https://github.com/dallay/agentsync/releases/download/<version>/agentsync-<version>-aarch64-unknown-linux-gnu.tar.gz
-tar xzf agentsync-<version>-aarch64-unknown-linux-gnu.tar.gz
+# Extract and install
+tar xzf "${TARBALL}"
 sudo mv agentsync-*/agentsync /usr/local/bin/
 ```
 
@@ -251,9 +251,11 @@ agentsync apply --no-gitignore
 
 agentsync apply --verbose
 
-# Show version
+# Show status of managed symlinks
+agentsync status
 
-agentsync --version
+# Run diagnostic and health check
+agentsync doctor
 
 # Manage skills
 
@@ -283,6 +285,9 @@ Configuration is stored in `.agents/agentsync.toml`:
 # Source directory (relative to this config file)
 
 source_dir = "."
+
+# Optional: compress AGENTS.md and point symlinks to the compressed file
+# compress_agents_md = false
 
 # Default agents to run when --agents is not specified.
 # If empty, all enabled agents will be processed.
@@ -321,7 +326,7 @@ pattern = "*.agent.md"
 ### MCP Support (Model Context Protocol)
 
 AgentSync can automatically generate MCP configuration files for supported agents (Claude Code,
-GitHub Copilot, Gemini CLI, Cursor, VS Code, OpenCode).
+GitHub Copilot, OpenAI Codex CLI, Gemini CLI, Cursor, VS Code, OpenCode).
 
 This allows you to define MCP servers once in `agentsync.toml` and have them synchronized to all
 agent-specific config files.
@@ -360,6 +365,7 @@ AgentSync supports the following agents and will synchronize corresponding files
 
 - **Claude Code** — `.mcp.json` (agent id: `claude`)
 - **GitHub Copilot** — `.vscode/mcp.json` (agent id: `copilot`)
+- **OpenAI Codex CLI** — `.codex/config.toml` (agent id: `codex`) — TOML format with `[mcp_servers.<name>]` tables. AgentSync maps `headers` to Codex `http_headers`.
 - **Gemini CLI** — `.gemini/settings.json` (agent id: `gemini`) — AgentSync will add `trust: true` when generating Gemini configs.
 - **Cursor** — `.cursor/mcp.json` (agent id: `cursor`)
 - **VS Code** — `.vscode/mcp.json` (agent id: `vscode`)
@@ -390,9 +396,8 @@ filter which files to link.
 
 ```
 .agents/
-├── agentsync.toml      # Configuration file
+├── agentsync.toml      # Configuration file (source of truth for MCP)
 ├── AGENTS.md           # Main agent instructions (single source)
-├── .mcp.json           # MCP server configurations
 ├── command/            # Agent commands
 │   ├── review.agent.md
 │   └── test.agent.md
@@ -410,7 +415,7 @@ project-root/
 ├── CLAUDE.md           → .agents/AGENTS.md
 ├── GEMINI.md           → .agents/AGENTS.md
 ├── AGENTS.md           → .agents/AGENTS.md
-├── .mcp.json           → .agents/.mcp.json
+├── .mcp.json           (Generated from agentsync.toml)
 ├── .claude/
 │   └── commands/       → symlinks to .agents/command/*.agent.md
 ├── .gemini/
@@ -437,15 +442,30 @@ The symlinks are primarily for local development. CI builds typically don't need
 
 ### Installing in CI
 
-If you need agentsync in CI, add it to your workflow:
+If you need agentsync in CI, you can download the latest version automatically using `jq` for robust parsing:
 
 ```yaml
 - name: Install agentsync
+  env:
+    GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   run: |
-    curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-x86_64-unknown-linux-gnu.tar.gz
-    tar xzf agentsync-x86_64-unknown-linux-gnu.tar.gz
+    # Fetch latest version using GitHub API and jq
+    LATEST_TAG=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
+      https://api.github.com/repos/dallay/agentsync/releases/latest | jq -r '.tag_name')
+
+    if [ "$LATEST_TAG" == "null" ] || [ -z "$LATEST_TAG" ]; then
+      echo "Error: Failed to fetch latest release tag"
+      exit 1
+    fi
+
+    VERSION=${LATEST_TAG#v}
+    PLATFORM="x86_64-unknown-linux-gnu"
+
+    curl -LO "https://github.com/dallay/agentsync/releases/download/${LATEST_TAG}/agentsync-${VERSION}-${PLATFORM}.tar.gz"
+    tar xzf agentsync-${VERSION}-${PLATFORM}.tar.gz
     sudo mv agentsync-*/agentsync /usr/local/bin/
 ```
+
 
 ## Getting Started (Development)
 
@@ -466,45 +486,45 @@ This project is a monorepo containing a Rust core and a JavaScript/TypeScript wr
 
 ### Setup
 
-1.  **Install JavaScript dependencies:**
+1.  **Install all dependencies and build core:**
 
     ```bash
-    pnpm install
+    make install
     ```
 
-2.  **Build the Rust binary:**
+    *Alternatively, you can run the steps manually:*
 
     ```bash
+    # Install JavaScript dependencies
+    pnpm install
+
+    # Build the Rust core
     cargo build
     ```
 
 ### Common Commands
 
-This project uses a `Makefile` to orchestrate common tasks.
+This project uses a `Makefile` to orchestrate common tasks across both Rust and JavaScript/TypeScript stacks.
 
--   **Run Rust tests:**
+-   **Install everything:** `make install` (pnpm install + cargo build)
+-   **Run Rust tests:** `make rust-test`
+-   **Run JavaScript tests:** `make js-test`
+-   **Full build:** `make all` (builds both JS and Rust)
+-   **Formatting:** `make fmt` (runs `cargo fmt` and `biome format`)
+-   **Verify everything:** `make verify-all` (runs all tests, linters, and builds)
 
-    ```bash
-    make rust-test
-    ```
+### Cross-Stack Workflow
 
--   **Run JavaScript tests:**
+AgentSync is built with a **Rust core** for performance and a **TypeScript wrapper** for seamless distribution via NPM.
 
-    ```bash
-    make js-test
-    ```
+1.  **Core Logic**: All CLI logic, MCP generation, and symlink handling live in `src/` (Rust).
+2.  **Distribution Layer**: The code in `npm/agentsync/` provides the Node.js interface and handles downloading the appropriate Rust binary for the user's platform.
+3.  **Documentation**: Starlight docs are located in `website/docs/` and are automatically synced from the shared source.
 
--   **Build all components:**
-
-    ```bash
-    make all
-    ```
-
--   **Format the code:**
-
-    ```bash
-    make fmt
-    ```
+When contributing:
+- Changes to CLI behavior should be made in the Rust `src/`.
+- Changes to the NPM installation or programmatic API should be made in `npm/agentsync/`.
+- Always run `make verify-all` to ensure changes in one stack don't break the other.
 
 ## Troubleshooting
 

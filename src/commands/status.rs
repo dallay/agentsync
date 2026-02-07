@@ -55,11 +55,9 @@ pub fn run_status(json: bool, project_root: PathBuf) -> Result<()> {
                 points_to = Some(link.display().to_string());
             }
 
-            let expected = if source.exists() {
-                Some(source.display().to_string())
-            } else {
-                None
-            };
+            let expected = linker
+                .expected_source_path(&source, target)
+                .map(|path| path.display().to_string());
 
             entries.push(StatusEntry {
                 destination: dest.display().to_string(),

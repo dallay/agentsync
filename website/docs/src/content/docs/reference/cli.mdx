@@ -72,6 +72,26 @@ agentsync apply              # Runs all enabled agents
 
 ---
 
+### `doctor`
+
+Runs diagnostics and health checks on your AgentSync configuration and environment.
+
+```bash
+agentsync doctor [FLAGS]
+```
+
+**Flags**:
+- `-p, --path <PATH>`: Path to the project root.
+- `-v, --verbose`: Enable verbose logging.
+
+**Checks performed**:
+- Validates the `agentsync.toml` file.
+- Checks for duplicate or overlapping symlink destinations.
+- Audits `.gitignore` for correct markers and entries.
+- Verifies executability of MCP server commands.
+
+---
+
 ### `clean`
 
 Removes all symbolic links managed by AgentSync.

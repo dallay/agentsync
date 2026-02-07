@@ -3,6 +3,7 @@
 //! Handles TOML configuration files that define how AI agent
 //! configurations should be synchronized via symbolic links.
 
+use crate::agent_ids;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
@@ -22,6 +23,10 @@ pub struct Config {
     /// configuration file. Defaults to ".".
     #[serde(default = "default_source_dir")]
     pub source_dir: String,
+
+    /// If true, generate a compressed AGENTS.md and point AGENTS.md symlinks to it.
+    #[serde(default)]
+    pub compress_agents_md: bool,
 
     /// Default agents to run when --agents is not specified.
     /// Uses case-insensitive substring matching.
@@ -295,20 +300,7 @@ impl Config {
     /// Get known gitignore patterns for a specific agent.
     /// These are files/directories that agents generate but are not direct symlink targets.
     pub fn known_ignore_patterns(agent_name: &str) -> &'static [&'static str] {
-        match agent_name.to_lowercase().as_str() {
-            "claude" => &[".mcp.json", ".claude/commands/", ".claude/skills/"],
-            "copilot" => &[".vscode/mcp.json"],
-            "gemini" => &[
-                "GEMINI.md",
-                ".gemini/settings.json",
-                ".gemini/commands/",
-                ".gemini/skills/",
-            ],
-            "opencode" => &["opencode.json"],
-            "cursor" => &[".cursor/mcp.json", ".cursor/skills/"],
-            "vscode" => &[".vscode/mcp.json"],
-            _ => &[],
-        }
+        agent_ids::known_ignore_patterns(agent_name)
     }
 }
 
@@ -385,6 +377,7 @@ mod tests {
 
         assert!(config.agents.is_empty());
         assert_eq!(config.source_dir, ".");
+        assert!(!config.compress_agents_md);
         assert!(config.gitignore.enabled);
     }
 
@@ -406,6 +399,24 @@ mod tests {
         assert!(config.agents["test"].description.is_empty());
         // Default source_dir
         assert_eq!(config.source_dir, ".");
+    }
+
+    #[test]
+    fn test_parse_compress_agents_md_enabled() {
+        let toml = r#"
+            compress_agents_md = true
+
+            [agents.test]
+            enabled = true
+
+            [agents.test.targets.main]
+            source = "AGENTS.md"
+            destination = "TEST.md"
+            type = "symlink"
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        assert!(config.compress_agents_md);
     }
 
     #[test]
@@ -732,6 +743,24 @@ mod tests {
     }
 
     #[test]
+    fn test_known_ignore_patterns_codex() {
+        let patterns = Config::known_ignore_patterns("codex");
+        assert!(patterns.contains(&".codex/config.toml"));
+    }
+
+    #[test]
+    fn test_known_ignore_patterns_codex_aliases() {
+        assert_eq!(
+            Config::known_ignore_patterns("codex"),
+            Config::known_ignore_patterns("codex-cli")
+        );
+        assert_eq!(
+            Config::known_ignore_patterns("codex"),
+            Config::known_ignore_patterns("codex_cli")
+        );
+    }
+
+    #[test]
     fn test_known_ignore_patterns_gemini() {
         let patterns = Config::known_ignore_patterns("gemini");
         assert!(patterns.contains(&"GEMINI.md"));
@@ -873,6 +902,23 @@ mod tests {
 
         // Should include known patterns
         assert!(entries.contains(&".mcp.json".to_string()));
+    }
+
+    #[test]
+    fn test_all_gitignore_entries_includes_known_patterns_for_alias_agents() {
+        let toml = r#"
+            [agents.codex-cli]
+            enabled = true
+            [agents.codex-cli.targets.main]
+            source = "AGENTS.md"
+            destination = "AGENTS.md"
+            type = "symlink"
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        let entries = config.all_gitignore_entries();
+
+        assert!(entries.contains(&".codex/config.toml".to_string()));
     }
 
     // ==========================================================================
