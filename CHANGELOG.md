@@ -1,3 +1,13 @@
+## [1.27.2](https://github.com/dallay/agentsync/compare/v1.27.1...v1.27.2) (2026-02-08)
+
+### 🚀 Performance
+
+* optimize AGENTS.md compression by reducing allocations ([#157](https://github.com/dallay/agentsync/issues/157)) ([3bc989b](https://github.com/dallay/agentsync/commit/3bc989b89c878d2a11b021853d4449d0fe8144f3))
+
+### 📝 Documentation
+
+* update README.md for accuracy ([#156](https://github.com/dallay/agentsync/issues/156)) ([ab6c304](https://github.com/dallay/agentsync/commit/ab6c304f4c463fccd94495c41b1cd169a8dbb07b))
+
 ## [1.27.1](https://github.com/dallay/agentsync/compare/v1.27.0...v1.27.1) (2026-02-07)
 
 ### 🐛 Bug Fixes
