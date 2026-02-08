@@ -16,3 +16,7 @@
 **Learning:** Passing owned `HashMap<String, McpServerConfig>` to trait methods was causing redundant deep clones of entire server configurations (including strings, vectors, and sub-maps) for every AI agent. Refactoring the trait to use a map of references and pre-calculating the enabled servers set eliminated these allocations.
 
 **Action:** Prefer passing references to large configuration structures in trait methods, especially when they are called repeatedly in a loop. Pre-filter data once at the entry point of a process instead of re-filtering it in every sub-component.
+
+## 2026-02-08 - Zero-Allocation Markdown Compression
+**Learning:** The `compress_agents_md_content` function was performing (N)$ string allocations, where $ is the number of lines in `AGENTS.md`. By refactoring helper functions to use mutable buffer passing and switching code fence state to use string slices (`&str`), we eliminated almost all heap allocations in the compression loop.
+**Action:** Avoid returning `String` from functions called inside loops processing large text files. Instead, pass a mutable `&mut String` buffer to be filled. Use `Option<&str>` instead of `Option<String>` for state that refers to parts of the input buffer.

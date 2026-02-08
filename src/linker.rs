@@ -644,26 +644,20 @@ fn compressed_agents_md_path(path: &Path) -> PathBuf {
 fn compress_agents_md_content(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     // Track the exact fence delimiter so only a matching fence closes the block.
-    let mut fence_delim: Option<String> = None;
+    let mut fence_delim: Option<&str> = None;
     let mut previous_blank = false;
 
     for line in input.lines() {
         let trimmed_end = line.trim_end_matches([' ', '\t']);
         let trimmed_start = trimmed_end.trim_start();
+
+        // Detect code fence delimiters (``` or ~~~) without allocations.
         let fence_delim_match = if trimmed_start.starts_with("```") {
-            Some(
-                trimmed_start
-                    .chars()
-                    .take_while(|c| *c == '`')
-                    .collect::<String>(),
-            )
+            let len = trimmed_start.find(|c| c != '`').unwrap_or(trimmed_start.len());
+            Some(&trimmed_start[..len])
         } else if trimmed_start.starts_with("~~~") {
-            Some(
-                trimmed_start
-                    .chars()
-                    .take_while(|c| *c == '~')
-                    .collect::<String>(),
-            )
+            let len = trimmed_start.find(|c| c != '~').unwrap_or(trimmed_start.len());
+            Some(&trimmed_start[..len])
         } else {
             None
         };
@@ -674,7 +668,7 @@ fn compress_agents_md_content(input: &str) -> String {
                 fence_delim_match.expect("fence_delim_match should be set when is_fence is true");
             if fence_delim.is_none() {
                 fence_delim = Some(delim);
-            } else if fence_delim.as_ref() == Some(&delim) {
+            } else if fence_delim == Some(delim) {
                 fence_delim = None;
             }
             out.push_str(trimmed_end);
@@ -700,9 +694,8 @@ fn compress_agents_md_content(input: &str) -> String {
 
         previous_blank = false;
         let (leading, rest) = split_leading_whitespace(trimmed_end);
-        let normalized = normalize_inline_whitespace(rest);
         out.push_str(leading);
-        out.push_str(&normalized);
+        normalize_inline_whitespace_to(rest, &mut out);
         out.push('\n');
     }
 
@@ -718,8 +711,7 @@ fn split_leading_whitespace(line: &str) -> (&str, &str) {
     line.split_at(idx)
 }
 
-fn normalize_inline_whitespace(line: &str) -> String {
-    let mut out = String::with_capacity(line.len());
+fn normalize_inline_whitespace_to(line: &str, out: &mut String) {
     let mut in_whitespace = false;
 
     for ch in line.chars() {
@@ -733,8 +725,6 @@ fn normalize_inline_whitespace(line: &str) -> String {
             out.push(ch);
         }
     }
-
-    out
 }
 
 /// Simple glob pattern matching (supports * and ?)
