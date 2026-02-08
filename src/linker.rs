@@ -651,12 +651,17 @@ fn compress_agents_md_content(input: &str) -> String {
         let trimmed_end = line.trim_end_matches([' ', '\t']);
         let trimmed_start = trimmed_end.trim_start();
 
-        // Detect code fence delimiters (``` or ~~~) without allocations.
+        // Detect code fence delimiter (``` or ~~~) via slicing, no allocation.
+        // fence_delim_match borrows from trimmed_start, avoiding a new String.
         let fence_delim_match = if trimmed_start.starts_with("```") {
-            let len = trimmed_start.find(|c| c != '`').unwrap_or(trimmed_start.len());
+            let len = trimmed_start
+                .find(|c| c != '`')
+                .unwrap_or(trimmed_start.len());
             Some(&trimmed_start[..len])
         } else if trimmed_start.starts_with("~~~") {
-            let len = trimmed_start.find(|c| c != '~').unwrap_or(trimmed_start.len());
+            let len = trimmed_start
+                .find(|c| c != '~')
+                .unwrap_or(trimmed_start.len());
             Some(&trimmed_start[..len])
         } else {
             None

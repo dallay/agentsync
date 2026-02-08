@@ -19,10 +19,16 @@ const imageFile =
 		? rawImage.src
 		: withBase(typeof rawImage === "string" ? rawImage : "/synchro.svg");
 
-const actions = (hero?.actions ?? [
-	{ text: "Get started", link: "/guides/getting-started/", variant: "primary" },
-	{ text: "Contribute", link: "/guides/contributing/", variant: "secondary" },
-]).map((action) => ({
+const actions = (
+	hero?.actions ?? [
+		{
+			text: "Get started",
+			link: "/guides/getting-started/",
+			variant: "primary",
+		},
+		{ text: "Contribute", link: "/guides/contributing/", variant: "secondary" },
+	]
+).map((action) => ({
 	...action,
 	link: typeof action.link === "string" ? withBase(action.link) : action.link,
 }));
