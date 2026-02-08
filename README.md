@@ -118,11 +118,11 @@ cargo install agentsync
 
 Download the latest release for your platform from the [GitHub Releases](https://github.com/dallay/agentsync/releases) page.
 
-To install via terminal, you can use the following script (replace `VERSION` with the latest version number, e.g., `1.26.2`):
+To install via terminal, you can use the following script (replace `VERSION` with the latest version number, e.g., `1.27.1`):
 
 ```bash
 # Define version and platform
-VERSION="1.26.2"
+VERSION="1.27.1"
 PLATFORM="x86_64-apple-darwin" # e.g., aarch64-apple-darwin, x86_64-unknown-linux-gnu
 TARBALL="agentsync-${VERSION}-${PLATFORM}.tar.gz"
 
@@ -300,9 +300,7 @@ enabled = true
 marker = "AI Agent Symlinks"
 # Additional entries to add to .gitignore (target destinations are added automatically)
 entries = [
-    "CLAUDE.md",
     "GEMINI.md",
-    ".github/copilot-instructions.md",
 ]
 
 # Agent definitions
