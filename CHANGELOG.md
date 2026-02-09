@@ -1,3 +1,13 @@
+## [1.28.0](https://github.com/dallay/agentsync/compare/v1.27.2...v1.28.0) (2026-02-09)
+
+### ✨ Features
+
+* add GitHub URL conversion for ZIP downloads and implement condition-based waiting skill ([#160](https://github.com/dallay/agentsync/issues/160)) ([86be61b](https://github.com/dallay/agentsync/commit/86be61b94fa83f3d9fc106fb6e6e4714a44fbb47))
+
+### 📝 Documentation
+
+* update README.md for accuracy and formatting ([#159](https://github.com/dallay/agentsync/issues/159)) ([8cb9f19](https://github.com/dallay/agentsync/commit/8cb9f19b2302456f0e4536f7a37ad9af5645e605))
+
 ## [1.27.2](https://github.com/dallay/agentsync/compare/v1.27.1...v1.27.2) (2026-02-08)
 
 ### 🚀 Performance
