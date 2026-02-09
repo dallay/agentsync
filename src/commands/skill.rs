@@ -238,6 +238,10 @@ pub fn run_install(args: SkillInstallArgs, project_root: PathBuf) -> Result<()> 
 
 fn resolve_source(skill_id: &str, source_arg: Option<String>) -> Result<String> {
     if let Some(s) = source_arg {
+        // Check if it's a GitHub URL that needs conversion to ZIP format
+        if let Some(github_url) = try_convert_github_url(&s) {
+            return Ok(github_url);
+        }
         return Ok(s);
     }
 
@@ -258,6 +262,94 @@ fn resolve_source(skill_id: &str, source_arg: Option<String>) -> Result<String> 
     } else {
         Ok(skill_id.to_string())
     }
+}
+
+/// Attempts to convert a GitHub URL to a downloadable ZIP URL.
+///
+/// Supports the following GitHub URL formats:
+/// - `https://github.com/owner/repo` → `https://github.com/owner/repo/archive/HEAD.zip`
+/// - `https://github.com/owner/repo/tree/branch/path` → `https://github.com/owner/repo/archive/refs/heads/branch.zip#path`
+/// - `https://github.com/owner/repo/blob/branch/path/file` → `https://github.com/owner/repo/archive/refs/heads/branch.zip#path`
+///
+/// Returns `None` if the URL is not a GitHub URL or already points to an archive.
+fn try_convert_github_url(url: &str) -> Option<String> {
+    // Skip if it's already an archive URL
+    if url.ends_with(".zip") || url.ends_with(".tar.gz") || url.ends_with(".tgz") {
+        return None;
+    }
+
+    // Parse the URL
+    let parsed = url::Url::parse(url).ok()?;
+
+    // Only process github.com URLs
+    if parsed.host_str() != Some("github.com") {
+        return None;
+    }
+
+    // Get the path segments
+    let segments: Vec<&str> = parsed
+        .path_segments()
+        .map(|s| s.collect())
+        .unwrap_or_default();
+
+    // Minimum: owner/repo (at least 2 segments)
+    if segments.len() < 2 {
+        return None;
+    }
+
+    let owner = segments[0];
+    let repo = segments[1];
+
+    // Check if it's a tree or blob URL with subpath
+    if segments.len() >= 4 && (segments[2] == "tree" || segments[2] == "blob") {
+        let branch = segments[3];
+        // The rest is the path within the repo
+        let subpath = segments[4..].join("/");
+
+        // If it's a blob URL pointing to a file, get the parent directory
+        let final_subpath = if segments[2] == "blob" && subpath.contains('/') {
+            // Remove the filename to get the directory
+            let path_parts: Vec<&str> = subpath.split('/').collect();
+            if path_parts.len() > 1 {
+                path_parts[..path_parts.len() - 1].join("/")
+            } else {
+                subpath
+            }
+        } else {
+            subpath
+        };
+
+        let mut zip_url = format!(
+            "https://github.com/{}/{}/archive/refs/heads/{}.zip",
+            owner, repo, branch
+        );
+
+        if !final_subpath.is_empty() {
+            zip_url.push('#');
+            zip_url.push_str(&final_subpath);
+        }
+
+        return Some(zip_url);
+    }
+
+    // Simple repo URL: github.com/owner/repo
+    if segments.len() == 2 {
+        return Some(format!(
+            "https://github.com/{}/{}/archive/HEAD.zip",
+            owner, repo
+        ));
+    }
+
+    // Repo URL with trailing segments but not tree/blob
+    // e.g., github.com/owner/repo/ (with trailing slash)
+    if segments.len() > 2 && segments[2].is_empty() {
+        return Some(format!(
+            "https://github.com/{}/{}/archive/HEAD.zip",
+            owner, repo
+        ));
+    }
+
+    None
 }
 
 fn remediation_for_error(msg: &str) -> &str {
@@ -360,5 +452,72 @@ mod tests {
         let project_root = std::env::temp_dir();
         let res = run_skill(SkillCommand::List, project_root);
         assert!(res.is_err(), "list should return error until implemented");
+    }
+
+    #[test]
+    fn github_url_converter_simple_repo() {
+        let result = try_convert_github_url("https://github.com/obra/superpowers");
+        assert_eq!(
+            result,
+            Some("https://github.com/obra/superpowers/archive/HEAD.zip".to_string())
+        );
+    }
+
+    #[test]
+    fn github_url_converter_tree_with_subpath() {
+        let result = try_convert_github_url(
+            "https://github.com/obra/superpowers/tree/main/skills/systematic-debugging",
+        );
+        assert_eq!(
+            result,
+            Some("https://github.com/obra/superpowers/archive/refs/heads/main.zip#skills/systematic-debugging".to_string())
+        );
+    }
+
+    #[test]
+    fn github_url_converter_blob_extracts_directory() {
+        // Blob URLs should extract the parent directory
+        let result = try_convert_github_url(
+            "https://github.com/obra/superpowers/blob/main/skills/systematic-debugging/SKILL.md",
+        );
+        assert_eq!(
+            result,
+            Some("https://github.com/obra/superpowers/archive/refs/heads/main.zip#skills/systematic-debugging".to_string())
+        );
+    }
+
+    #[test]
+    fn github_url_converter_already_zip_returns_none() {
+        // Already a ZIP URL should return None
+        let result = try_convert_github_url(
+            "https://github.com/obra/superpowers/archive/refs/heads/main.zip",
+        );
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn github_url_converter_tar_gz_returns_none() {
+        // Already a tar.gz URL should return None
+        let result = try_convert_github_url("https://example.com/archive.tar.gz");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn github_url_converter_non_github_returns_none() {
+        // Non-GitHub URLs should return None
+        let result = try_convert_github_url("https://gitlab.com/user/repo");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn github_url_converter_tree_deeply_nested() {
+        // Deeply nested paths
+        let result = try_convert_github_url(
+            "https://github.com/owner/repo/tree/develop/skills/category/my-skill",
+        );
+        assert_eq!(
+            result,
+            Some("https://github.com/owner/repo/archive/refs/heads/develop.zip#skills/category/my-skill".to_string())
+        );
     }
 }

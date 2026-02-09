@@ -1,0 +1,16 @@
+{
+	"schemaVersion": 1,
+	"last_updated": "2026-02-09T07:19:42.383219+00:00",
+	"skills": {
+		"systematic-debugging": {
+			"name": "systematic-debugging",
+			"version": null,
+			"description": "Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes",
+			"provider": null,
+			"source": "/var/folders/zz/d4kl1hfj1j15nxm43d24px300000gn/T/.tmpNLRGh8/skills/systematic-debugging",
+			"installedAt": "2026-02-09T07:19:42.382960+00:00",
+			"files": null,
+			"manifestHash": null
+		}
+	}
+}
