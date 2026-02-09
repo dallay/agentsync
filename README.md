@@ -44,21 +44,16 @@ If you have Node.js (>=18) installed, the easiest way to install AgentSync is th
 #### Global Installation
 
 ```bash
-
 # Using npm
-
 npm install -g @dallay/agentsync
 
 # Using pnpm
-
 pnpm add -g @dallay/agentsync
 
 # Using yarn (Classic v1)
-
 yarn global add @dallay/agentsync
 
 # Using bun
-
 bun i -g @dallay/agentsync
 ```
 
@@ -67,42 +62,32 @@ bun i -g @dallay/agentsync
 If you want to run AgentSync without a permanent global installation:
 
 ```bash
-
 # Using npx (npm)
-
 npx @dallay/agentsync apply
 
 # Using dlx (pnpm)
-
 pnpm dlx @dallay/agentsync apply
 
 # Using dlx (yarn v2+)
-
 yarn dlx @dallay/agentsync apply
 
 # Using bunx (bun)
-
 bunx @dallay/agentsync apply
 ```
 
 #### Local Installation (Dev Dependency)
 
 ```bash
-
 # Using npm
-
 npm install --save-dev @dallay/agentsync
 
 # Using pnpm
-
 pnpm add -D @dallay/agentsync
 
 # Using yarn
-
 yarn add -D @dallay/agentsync
 
 # Using bun
-
 bun add -d @dallay/agentsync
 ```
 
@@ -118,11 +103,11 @@ cargo install agentsync
 
 Download the latest release for your platform from the [GitHub Releases](https://github.com/dallay/agentsync/releases) page.
 
-To install via terminal, you can use the following script (replace `VERSION` with the latest version number, e.g., `1.26.2`):
+To install via terminal, you can use the following script (replace `VERSION` with the latest version number, e.g., `1.27.2`):
 
 ```bash
 # Define version and platform
-VERSION="1.26.2"
+VERSION="1.27.2"
 PLATFORM="x86_64-apple-darwin" # e.g., aarch64-apple-darwin, x86_64-unknown-linux-gnu
 TARBALL="agentsync-${VERSION}-${PLATFORM}.tar.gz"
 
@@ -213,7 +198,6 @@ agentsync apply
 ## Usage
 
 ```bash
-
 # Initialize a new configuration
 agentsync init
 
@@ -224,31 +208,24 @@ agentsync init --wizard
 agentsync apply
 
 # Clean existing symlinks before applying
-
 agentsync apply --clean
 
 # Remove all managed symlinks
-
 agentsync clean
 
 # Use a custom config file
-
 agentsync apply --config /path/to/config.toml
 
 # Dry run (show what would be done without making changes)
-
 agentsync apply --dry-run
 
 # Filter by agent
-
 agentsync apply --agents claude,copilot
 
 # Disable gitignore updates
-
 agentsync apply --no-gitignore
 
 # Verbose output
-
 agentsync apply --verbose
 
 # Show status of managed symlinks
@@ -258,7 +235,6 @@ agentsync status
 agentsync doctor
 
 # Manage skills
-
 agentsync skill install <skill-id>
 agentsync skill update <skill-id>
 ```
@@ -281,9 +257,7 @@ Exit codes: 0 = no problems, 1 = problems detected (CI-friendly)
 Configuration is stored in `.agents/agentsync.toml`:
 
 ```toml
-
 # Source directory (relative to this config file)
-
 source_dir = "."
 
 # Optional: compress AGENTS.md and point symlinks to the compressed file
@@ -294,7 +268,6 @@ source_dir = "."
 default_agents = ["claude", "copilot"]
 
 # Gitignore management
-
 [gitignore]
 enabled = true
 marker = "AI Agent Symlinks"
@@ -306,7 +279,6 @@ entries = [
 ]
 
 # Agent definitions
-
 [agents.claude]
 enabled = true
 description = "Claude Code - Anthropic's AI coding assistant"
@@ -336,13 +308,10 @@ agent-specific config files.
 enabled = true
 
 # Strategy for existing files: "merge" (default) or "overwrite"
-
 # "merge" preserves existing servers but overwrites conflicts with TOML config
-
 merge_strategy = "merge"
 
 # Define servers once
-
 [mcp_servers.filesystem]
 command = "npx"
 args = ["-y", "@modelcontextprotocol/server-filesystem", "."]
@@ -352,11 +321,8 @@ command = "npx"
 args = ["-y", "@modelcontextprotocol/server-git", "--repository", "."]
 
 # Optional fields:
-
 # env = { "KEY" = "VALUE" }
-
 # disabled = false
-
 ```
 
 #### Supported Agents (canonical)
@@ -465,7 +431,6 @@ If you need agentsync in CI, you can download the latest version automatically u
     tar xzf agentsync-${VERSION}-${PLATFORM}.tar.gz
     sudo mv agentsync-*/agentsync /usr/local/bin/
 ```
-
 
 ## Getting Started (Development)
 
