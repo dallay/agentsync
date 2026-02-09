@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Component, Path};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -25,9 +25,41 @@ pub enum SkillUninstallError {
 /// * `Err(SkillUninstallError)` if the skill was not found or an error occurred
 pub fn uninstall_skill(skill_id: &str, target_root: &Path) -> Result<(), SkillUninstallError> {
     // Validate skill_id to prevent path traversal
-    if skill_id.contains('/') || skill_id.contains('\\') || skill_id.is_empty() {
+    // Check for empty string and path separators
+    if skill_id.is_empty() {
         return Err(SkillUninstallError::Validation(
-            "Invalid skill ID: must not contain path separators or be empty".to_string(),
+            "Invalid skill ID: must not be empty".to_string(),
+        ));
+    }
+
+    if skill_id.contains('/') || skill_id.contains('\\') {
+        return Err(SkillUninstallError::Validation(
+            "Invalid skill ID: must not contain path separators".to_string(),
+        ));
+    }
+
+    // Check for . and .. using Path components
+    let path = Path::new(skill_id);
+    let mut normal_count = 0;
+    for component in path.components() {
+        match component {
+            Component::Normal(_) => normal_count += 1,
+            Component::CurDir | Component::ParentDir => {
+                return Err(SkillUninstallError::Validation(
+                    "Invalid skill ID: must not be '.' or '..'".to_string(),
+                ));
+            }
+            _ => {
+                return Err(SkillUninstallError::Validation(
+                    "Invalid skill ID: contains invalid path component".to_string(),
+                ));
+            }
+        }
+    }
+
+    if normal_count != 1 {
+        return Err(SkillUninstallError::Validation(
+            "Invalid skill ID: must be a single path segment".to_string(),
         ));
     }
 
@@ -39,24 +71,28 @@ pub fn uninstall_skill(skill_id: &str, target_root: &Path) -> Result<(), SkillUn
         return Err(SkillUninstallError::NotFound(skill_id.to_string()));
     }
 
-    // Remove the skill directory
-    fs::remove_dir_all(&skill_dir).map_err(SkillUninstallError::Io)?;
+    // First, update the registry to remove the entry (atomic operation)
+    // This ensures consistency even if directory removal fails
+    if registry_path.exists() {
+        remove_registry_entry(&registry_path, skill_id)
+            .map_err(|e| SkillUninstallError::Registry(e.to_string()))?;
+    }
 
-    // Update the registry to remove the entry
-    if registry_path.exists()
-        && let Err(e) = remove_registry_entry(&registry_path, skill_id)
-    {
+    // Then remove the skill directory
+    if let Err(e) = fs::remove_dir_all(&skill_dir) {
         tracing::warn!(
             skill_id = %skill_id,
             error = %e,
-            "Failed to update registry after uninstall, but skill directory was removed"
+            "Registry was updated but failed to remove skill directory"
         );
+        return Err(SkillUninstallError::Io(e));
     }
 
     Ok(())
 }
 
 /// Remove a skill entry from the registry.
+/// Only rewrites the registry file if the skill_id was actually present.
 fn remove_registry_entry(registry_path: &Path, skill_id: &str) -> Result<(), SkillUninstallError> {
     use crate::skills::registry::{Registry, read_registry};
 
@@ -64,12 +100,16 @@ fn remove_registry_entry(registry_path: &Path, skill_id: &str) -> Result<(), Ski
         read_registry(registry_path).map_err(|e| SkillUninstallError::Registry(e.to_string()))?;
 
     if let Some(ref mut skills) = reg.skills {
-        skills.remove(skill_id);
-        reg.last_updated = Some(chrono::Utc::now().to_rfc3339());
+        // Only proceed if the skill_id is actually present
+        if skills.remove(skill_id).is_some() {
+            reg.last_updated = Some(chrono::Utc::now().to_rfc3339());
 
-        let body = serde_json::to_string_pretty(&reg)
-            .map_err(|e| SkillUninstallError::Registry(e.to_string()))?;
-        fs::write(registry_path, body).map_err(|e| SkillUninstallError::Registry(e.to_string()))?;
+            let body = serde_json::to_string_pretty(&reg)
+                .map_err(|e| SkillUninstallError::Registry(e.to_string()))?;
+            fs::write(registry_path, body)
+                .map_err(|e| SkillUninstallError::Registry(e.to_string()))?;
+        }
+        // If skill_id wasn't present, return Ok without writing
     }
 
     Ok(())
@@ -135,6 +175,26 @@ mod tests {
         assert!(matches!(result, Err(SkillUninstallError::Validation(_))));
 
         let result = uninstall_skill("", target_root);
+        assert!(matches!(result, Err(SkillUninstallError::Validation(_))));
+    }
+
+    #[test]
+    fn test_uninstall_skill_dot_rejected() {
+        let temp_dir = TempDir::new().unwrap();
+        let target_root = temp_dir.path();
+
+        // '.' should be rejected
+        let result = uninstall_skill(".", target_root);
+        assert!(matches!(result, Err(SkillUninstallError::Validation(_))));
+    }
+
+    #[test]
+    fn test_uninstall_skill_dotdot_rejected() {
+        let temp_dir = TempDir::new().unwrap();
+        let target_root = temp_dir.path();
+
+        // '..' should be rejected
+        let result = uninstall_skill("..", target_root);
         assert!(matches!(result, Err(SkillUninstallError::Validation(_))));
     }
 }

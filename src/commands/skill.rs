@@ -312,6 +312,7 @@ fn resolve_source(skill_id: &str, source_arg: Option<String>) -> Result<String> 
     if let Some(s) = source_arg {
         // Check if it's a GitHub URL that needs conversion to ZIP format
         if let Some(github_url) = try_convert_github_url(&s) {
+            tracing::info!(original = %s, converted = %github_url, "Converted GitHub URL to ZIP format");
             return Ok(github_url);
         }
         return Ok(s);
@@ -343,15 +344,23 @@ fn resolve_source(skill_id: &str, source_arg: Option<String>) -> Result<String> 
 /// - `https://github.com/owner/repo/tree/branch/path` → `https://github.com/owner/repo/archive/refs/heads/branch.zip#path`
 /// - `https://github.com/owner/repo/blob/branch/path/file` → `https://github.com/owner/repo/archive/refs/heads/branch.zip#path`
 ///
+/// **Limitation:** Branch names containing slashes (e.g., `feature/auth`) cannot be reliably
+/// distinguished from subpaths without accessing the GitHub API. In such cases, the function
+/// assumes the first segment after `tree/` or `blob/` is the branch name. For branches with
+/// slashes, the resulting URL may be incorrect. If API access becomes available in the future,
+/// this function could use the GitHub refs API to resolve the correct branch name via
+/// longest-prefix matching.
+///
 /// Returns `None` if the URL is not a GitHub URL or already points to an archive.
 fn try_convert_github_url(url: &str) -> Option<String> {
-    // Skip if it's already an archive URL
-    if url.ends_with(".zip") || url.ends_with(".tar.gz") || url.ends_with(".tgz") {
+    // Parse the URL to properly handle query strings and fragments
+    let parsed = url::Url::parse(url).ok()?;
+
+    // Check if it's already an archive URL by examining the path component
+    let path = parsed.path();
+    if path.ends_with(".zip") || path.ends_with(".tar.gz") || path.ends_with(".tgz") {
         return None;
     }
-
-    // Parse the URL
-    let parsed = url::Url::parse(url).ok()?;
 
     // Only process github.com URLs
     if parsed.host_str() != Some("github.com") {
@@ -379,13 +388,19 @@ fn try_convert_github_url(url: &str) -> Option<String> {
         let subpath = segments[4..].join("/");
 
         // If it's a blob URL pointing to a file, get the parent directory
-        let final_subpath = if segments[2] == "blob" && subpath.contains('/') {
-            // Remove the filename to get the directory
-            let path_parts: Vec<&str> = subpath.split('/').collect();
-            if path_parts.len() > 1 {
-                path_parts[..path_parts.len() - 1].join("/")
+        let final_subpath = if segments[2] == "blob" {
+            if subpath.contains('/') {
+                // Remove the filename to get the directory
+                let path_parts: Vec<&str> = subpath.split('/').collect();
+                if path_parts.len() > 1 {
+                    path_parts[..path_parts.len() - 1].join("/")
+                } else {
+                    subpath
+                }
             } else {
-                subpath
+                // Blob pointing to a file at repo root (e.g., README.md)
+                // Return empty string so no fragment is added
+                String::new()
             }
         } else {
             subpath
@@ -591,5 +606,31 @@ mod tests {
             result,
             Some("https://github.com/owner/repo/archive/refs/heads/develop.zip#skills/category/my-skill".to_string())
         );
+    }
+
+    #[test]
+    fn github_url_converter_blob_root_file() {
+        // Blob URL pointing to a file at repository root should return ZIP URL without fragment
+        let result = try_convert_github_url("https://github.com/owner/repo/blob/main/README.md");
+        assert_eq!(
+            result,
+            Some("https://github.com/owner/repo/archive/refs/heads/main.zip".to_string())
+        );
+    }
+
+    #[test]
+    fn github_url_converter_zip_with_query_string() {
+        // ZIP URL with query string should return None (already an archive)
+        let result =
+            try_convert_github_url("https://github.com/owner/repo/archive/HEAD.zip?token=abc123");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn github_url_converter_zip_with_fragment() {
+        // ZIP URL with fragment should return None (already an archive)
+        let result =
+            try_convert_github_url("https://github.com/owner/repo/archive/HEAD.zip#subpath");
+        assert_eq!(result, None);
     }
 }
