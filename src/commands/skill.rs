@@ -274,18 +274,25 @@ pub fn run_uninstall(args: SkillUninstallArgs, project_root: PathBuf) -> Result<
         }
         Err(e) => {
             let err_string = e.to_string();
-            let code = match e {
-                agentsync::skills::uninstall::SkillUninstallError::NotFound(_) => "skill_not_found",
-                agentsync::skills::uninstall::SkillUninstallError::Validation(_) => {
-                    "validation_error"
+            let (code, remediation) = match e {
+                agentsync::skills::uninstall::SkillUninstallError::NotFound(_) => {
+                    ("skill_not_found", "Try 'list' to verify installed skills")
                 }
-                _ => "uninstall_error",
+                agentsync::skills::uninstall::SkillUninstallError::Validation(_) => (
+                    "validation_error",
+                    "Ensure the skill ID is valid (no special characters, not '.' or '..')",
+                ),
+                _ => (
+                    "uninstall_error",
+                    "Ensure you have proper permissions to remove files",
+                ),
             };
 
             if args.json {
                 let output = serde_json::json!({
                     "error": err_string,
-                    "code": code
+                    "code": code,
+                    "remediation": remediation
                 });
                 println!("{}", serde_json::to_string(&output)?);
                 Err(anyhow::anyhow!(e))

@@ -71,11 +71,11 @@ pub fn uninstall_skill(skill_id: &str, target_root: &Path) -> Result<(), SkillUn
         return Err(SkillUninstallError::NotFound(skill_id.to_string()));
     }
 
-    // First, update the registry to remove the entry (atomic operation)
-    // This ensures consistency even if directory removal fails
+    // First, update the registry to remove the entry via a read-modify-write.
+    // This is not atomic and has no file locking—use a lock or transactional
+    // mechanism if concurrent access must be handled.
     if registry_path.exists() {
-        remove_registry_entry(&registry_path, skill_id)
-            .map_err(|e| SkillUninstallError::Registry(e.to_string()))?;
+        remove_registry_entry(&registry_path, skill_id)?;
     }
 
     // Then remove the skill directory
