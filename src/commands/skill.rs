@@ -12,6 +12,8 @@ pub enum SkillCommand {
     Install(SkillInstallArgs),
     /// Update a skill to latest version
     Update(SkillUpdateArgs),
+    /// Uninstall a skill
+    Uninstall(SkillUninstallArgs),
     /// List installed skills
     List,
 }
@@ -37,6 +39,16 @@ pub struct SkillUpdateArgs {
     /// Optional source (dir, archive, or URL)
     #[arg(long)]
     pub source: Option<String>,
+    /// Output JSON instead of human-friendly
+    #[arg(long)]
+    pub json: bool,
+}
+
+/// Arguments for uninstalling a skill
+#[derive(Args, Debug)]
+pub struct SkillUninstallArgs {
+    /// Skill id to uninstall
+    pub skill_id: String,
     /// Output JSON instead of human-friendly
     #[arg(long)]
     pub json: bool,
@@ -136,6 +148,7 @@ pub fn run_skill(cmd: SkillCommand, project_root: PathBuf) -> Result<()> {
     match cmd {
         SkillCommand::Install(args) => run_install(args, project_root),
         SkillCommand::Update(args) => run_update(args, project_root),
+        SkillCommand::Uninstall(args) => run_uninstall(args, project_root),
         SkillCommand::List => {
             // Signal failure until List is implemented so CLI exits non-zero
             bail!("list command not implemented")
@@ -231,6 +244,65 @@ pub fn run_install(args: SkillInstallArgs, project_root: PathBuf) -> Result<()> 
                 error!(%code, %err_string, "Install failed");
                 println!("Hint: {}", remediation);
                 Err(e)
+            }
+        }
+    }
+}
+
+pub fn run_uninstall(args: SkillUninstallArgs, project_root: PathBuf) -> Result<()> {
+    let target_root = project_root.join(".agents").join("skills");
+
+    let skill_id = &args.skill_id;
+
+    // Validate skill_id to prevent path traversal or invalid path segments
+    validate_skill_id(skill_id)?;
+
+    let result = agentsync::skills::uninstall::uninstall_skill(skill_id, &target_root);
+
+    match result {
+        Ok(()) => {
+            if args.json {
+                let output = serde_json::json!({
+                    "id": skill_id,
+                    "status": "uninstalled"
+                });
+                println!("{}", serde_json::to_string(&output)?);
+            } else {
+                println!("Uninstalled {}", skill_id);
+            }
+            Ok(())
+        }
+        Err(e) => {
+            let err_string = e.to_string();
+            let code = match e {
+                agentsync::skills::uninstall::SkillUninstallError::NotFound(_) => "skill_not_found",
+                agentsync::skills::uninstall::SkillUninstallError::Validation(_) => {
+                    "validation_error"
+                }
+                _ => "uninstall_error",
+            };
+
+            if args.json {
+                let output = serde_json::json!({
+                    "error": err_string,
+                    "code": code
+                });
+                println!("{}", serde_json::to_string(&output)?);
+                Err(anyhow::anyhow!(e))
+            } else {
+                error!(%code, %err_string, "Uninstall failed");
+                match e {
+                    agentsync::skills::uninstall::SkillUninstallError::NotFound(_) => {
+                        println!(
+                            "Hint: Skill '{}' is not installed. Use 'list' to see installed skills.",
+                            skill_id
+                        );
+                    }
+                    _ => {
+                        println!("Hint: Ensure you have proper permissions to remove files.");
+                    }
+                }
+                Err(anyhow::anyhow!(e))
             }
         }
     }
