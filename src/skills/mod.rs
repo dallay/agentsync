@@ -7,6 +7,7 @@ pub mod manifest;
 pub mod provider;
 pub mod registry;
 pub mod transaction;
+pub mod uninstall;
 pub mod update;
 
 pub use install::*;
@@ -14,4 +15,5 @@ pub use manifest::*;
 pub use provider::*;
 pub use registry::*;
 pub use transaction::*;
+pub use uninstall::*;
 pub use update::*;

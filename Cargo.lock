@@ -48,6 +48,7 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
+ "url",
  "urlencoding",
  "walkdir",
  "zip",
