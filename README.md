@@ -196,19 +196,19 @@ agentsync apply
 
 ```bash
 # Initialize a new configuration
-agentsync init
+agentsync init [--path <path>] [--force]
 
 # Initialize with interactive wizard (for existing projects with agent files)
-agentsync init --wizard
+agentsync init --wizard [--path <path>] [--force]
 
 # Apply configuration (create symlinks)
-agentsync apply
+agentsync apply [--path <path>]
 
 # Clean existing symlinks before applying
-agentsync apply --clean
+agentsync apply --clean [--path <path>]
 
 # Remove all managed symlinks
-agentsync clean
+agentsync clean [--path <path>]
 
 # Use a custom config file
 agentsync apply --config /path/to/config.toml
@@ -226,7 +226,7 @@ agentsync apply --no-gitignore
 agentsync apply --verbose
 
 # Show status of managed symlinks
-agentsync status
+agentsync status [--project-root <path>] [--json]
 
 # Run diagnostic and health check
 agentsync doctor [--project-root <path>]
