@@ -380,9 +380,12 @@ project-root/
 ├── AGENTS.md           → .agents/AGENTS.md
 ├── .mcp.json           (Generated from agentsync.toml)
 ├── .claude/
-│   └── commands/       → symlinks to .agents/command/*.agent.md
+│   ├── commands/       → symlinks to .agents/command/*.agent.md
+│   └── skills/         → symlinks to .agents/skills/*
 ├── .gemini/
-│   └── commands/       → symlinks to .agents/command/*.agent.md
+│   ├── settings.json   (Generated from agentsync.toml)
+│   ├── commands/       → symlinks to .agents/command/*.agent.md
+│   └── skills/         → symlinks to .agents/skills/*
 └── .github/
     ├── copilot-instructions.md → .agents/AGENTS.md
     └── agents/         → symlinks to .agents/command/*.agent.md
