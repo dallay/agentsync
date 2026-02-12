@@ -31,6 +31,7 @@ locations.
 - 🔗 **Symlinks over copies** - Changes propagate instantly
 - 📝 **TOML configuration** - Human-readable, easy to maintain
 - 📋 **Gitignore management** - Automatically updates `.gitignore`
+- 🛡️ **Safe** - Automatically backs up existing files before replacing them
 - 🖥️ **Cross-platform** - Linux, macOS, Windows
 - 🚀 **CI-friendly** - Gracefully skips when binary unavailable
 - ⚡ **Fast** - Single static binary, no runtime dependencies
@@ -232,7 +233,7 @@ agentsync apply --verbose
 agentsync status
 
 # Run diagnostic and health check
-agentsync doctor
+agentsync doctor [--project-root <path>]
 
 # Manage skills
 agentsync skill install <skill-id>
