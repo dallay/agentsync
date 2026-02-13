@@ -8,6 +8,7 @@ use colored::Colorize;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::rc::Rc;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -53,7 +54,8 @@ pub struct Linker {
     source_dir: PathBuf,
     path_cache: RefCell<HashMap<PathBuf, PathBuf>>,
     /// Cache of compressed content for AGENTS.md files to avoid redundant processing.
-    compression_cache: RefCell<HashMap<PathBuf, String>>,
+    /// Uses Rc to share the same heap-allocated string across multiple agents.
+    compression_cache: RefCell<HashMap<PathBuf, Rc<String>>>,
     /// Tracks which compressed files have already been ensured to be up-to-date.
     ensured_outputs: RefCell<HashSet<PathBuf>>,
 }
@@ -263,14 +265,15 @@ impl Linker {
                 let content = fs::read_to_string(source)
                     .with_context(|| format!("Failed to read AGENTS.md: {}", source.display()))?;
                 let compressed = compress_agents_md_content(&content);
-                cache.insert(source.to_path_buf(), compressed.clone());
-                compressed
+                let rc = Rc::new(compressed);
+                cache.insert(source.to_path_buf(), rc.clone());
+                rc
             }
         };
 
         // 3. Check if existing file already matches the compressed content to avoid unnecessary writes.
         if let Ok(existing) = fs::read_to_string(dest)
-            && existing == compressed
+            && existing == *compressed
         {
             self.ensured_outputs.borrow_mut().insert(dest.to_path_buf());
             return Ok(());
@@ -283,7 +286,7 @@ impl Linker {
                 .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
         }
 
-        fs::write(dest, &compressed)
+        fs::write(dest, &*compressed)
             .with_context(|| format!("Failed to write compressed AGENTS.md: {}", dest.display()))?;
 
         // 4. Mark this destination as ensured.
