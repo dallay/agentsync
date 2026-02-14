@@ -199,8 +199,14 @@ agentsync apply
 ## Usage
 
 ```bash
-# Initialize a new configuration
+# Initialize a new configuration (in current directory)
 agentsync init
+
+# Initialize configuration in a specific directory
+agentsync init --path /path/to/project
+
+# Overwrite existing configuration without prompting
+agentsync init --force
 
 # Initialize with interactive wizard (for existing projects with agent files)
 agentsync init --wizard
@@ -208,14 +214,20 @@ agentsync init --wizard
 # Apply configuration (create symlinks)
 agentsync apply
 
+# Use a custom config file
+agentsync apply --config /path/to/config.toml
+
+# Specify a project root directory
+agentsync apply --path /path/to/project
+
 # Clean existing symlinks before applying
 agentsync apply --clean
 
 # Remove all managed symlinks
 agentsync clean
 
-# Use a custom config file
-agentsync apply --config /path/to/config.toml
+# Clean symlinks in a specific project
+agentsync clean --path /path/to/project
 
 # Dry run (show what would be done without making changes)
 agentsync apply --dry-run
@@ -230,15 +242,15 @@ agentsync apply --no-gitignore
 agentsync apply --verbose
 
 # Show status of managed symlinks
-agentsync status
+agentsync status [--project-root <path>] [--json]
 
 # Run diagnostic and health check
 agentsync doctor [--project-root <path>]
 
 # Manage skills
-agentsync skill install <skill-id>
-agentsync skill update <skill-id>
-agentsync skill uninstall <skill-id>
+agentsync skill [--project-root <path>] install <skill-id> [--source <source>] [--json]
+agentsync skill [--project-root <path>] update <skill-id> [--source <source>] [--json]
+agentsync skill [--project-root <path>] uninstall <skill-id> [--json]
 ```
 
 ### Status
