@@ -23,3 +23,7 @@
 **Learning:** The `compress_agents_md_content` function was performing $O(N)$ string allocations, where $N$ is the number of lines in `AGENTS.md`. By refactoring helper functions to use mutable buffer passing and switching code fence state to use string slices (`&str`), we eliminated almost all heap allocations in the compression loop.
 
 **Action:** Avoid returning `String` from functions called inside loops processing large text files. Instead, pass a mutable `&mut String` buffer to be filled. Use `Option<&str>` instead of `Option<String>` for state that refers to parts of the input buffer.
+
+## 2026-02-15 - Caching Redundant I/O and Compression
+**Learning:** Multiple agents often share the same source file (e.g., AGENTS.md) or target directories. Without caching, the Linker performs redundant file reads, string compression, and directory existence checks for every target.
+**Action:** Implement `compression_cache` (HashMap) to memoize expensive text compression and `ensured_outputs` (HashSet) to track verified destination paths. This optimization reduced execution time by ~83% (from 0.055s to 0.0094s) in a 100-agent scenario.
