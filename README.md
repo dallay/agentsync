@@ -236,9 +236,9 @@ agentsync status
 agentsync doctor [--project-root <path>]
 
 # Manage skills
-agentsync skill install <skill-id>
-agentsync skill update <skill-id>
-agentsync skill uninstall <skill-id>
+agentsync skill install <skill-id> [--source <source>] [--json]
+agentsync skill update <skill-id> [--source <source>] [--json]
+agentsync skill uninstall <skill-id> [--json]
 ```
 
 ### Status
