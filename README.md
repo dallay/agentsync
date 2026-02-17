@@ -351,7 +351,7 @@ When `merge_strategy = "merge"`:
 | Type               | Description                                           |
 |--------------------|-------------------------------------------------------|
 | `symlink`          | Create a symlink to the source file/directory         |
-| `symlink-contents` | Create symlinks for each file in the source directory |
+| `symlink-contents` | Create symlinks for each item in the source directory |
 
 The `symlink-contents` type optionally supports a `pattern` field (glob pattern like `*.md`) to
 filter which files to link.
