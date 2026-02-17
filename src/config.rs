@@ -279,7 +279,7 @@ impl Config {
     pub fn all_gitignore_entries(&self) -> Vec<String> {
         let mut entries: BTreeSet<String> = self.gitignore.entries.iter().cloned().collect();
 
-        entries.insert(".agents/skills/*.bak".to_string());
+        entries.insert(".agents/skills/*.bak".to_string()); // Defensive pattern to ignore skill backup files even if skills aren't used yet
         // Add destinations from all enabled agents and their known patterns
         for (agent_name, agent) in &self.agents {
             if agent.enabled {
@@ -675,7 +675,9 @@ mod tests {
         let entries = config.all_gitignore_entries();
 
         assert!(entries.contains(&"enabled.md".to_string()));
+        assert!(entries.contains(&"enabled.md.bak.*".to_string()));
         assert!(!entries.contains(&"disabled.md".to_string()));
+        assert!(!entries.contains(&"disabled.md.bak.*".to_string()));
     }
 
     #[test]
@@ -1264,6 +1266,7 @@ mod tests {
         assert!(config.gitignore.enabled);
         assert_eq!(config.agents["copilot"].description, "GitHub Copilot");
     }
+
     #[test]
     fn test_all_gitignore_entries_includes_backup_patterns() {
         let toml = r#"
