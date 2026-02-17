@@ -279,12 +279,14 @@ impl Config {
     pub fn all_gitignore_entries(&self) -> Vec<String> {
         let mut entries: BTreeSet<String> = self.gitignore.entries.iter().cloned().collect();
 
+        entries.insert(".agents/skills/*.bak".to_string());
         // Add destinations from all enabled agents and their known patterns
         for (agent_name, agent) in &self.agents {
             if agent.enabled {
                 // Add target destinations
                 for target in agent.targets.values() {
                     entries.insert(target.destination.clone());
+                    entries.insert(format!("{}.bak.*", target.destination));
                 }
 
                 // Add known ignore patterns for this agent
@@ -1261,5 +1263,23 @@ mod tests {
         assert_eq!(config.source_dir, ".");
         assert!(config.gitignore.enabled);
         assert_eq!(config.agents["copilot"].description, "GitHub Copilot");
+    }
+    #[test]
+    fn test_all_gitignore_entries_includes_backup_patterns() {
+        let toml = r#"
+            [agents.test]
+            enabled = true
+            [agents.test.targets.main]
+            source = "README.md"
+            destination = "OUTPUT.md"
+            type = "symlink"
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        let entries = config.all_gitignore_entries();
+
+        assert!(entries.contains(&"OUTPUT.md".to_string()));
+        assert!(entries.contains(&"OUTPUT.md.bak.*".to_string()));
+        assert!(entries.contains(&".agents/skills/*.bak".to_string()));
     }
 }
