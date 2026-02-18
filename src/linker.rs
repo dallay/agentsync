@@ -348,7 +348,9 @@ impl Linker {
                     dest.display()
                 );
             } else {
-                let backup = PathBuf::from(format!("{}.bak", dest.display()));
+                let mut backup_os = dest.as_os_str().to_os_string();
+                backup_os.push(".bak");
+                let backup = PathBuf::from(backup_os);
                 fs::rename(dest, &backup)?;
                 println!(
                     "  {} Backed up: {} -> {}",
@@ -2208,15 +2210,13 @@ mod tests {
         assert!(!temp_dir.path().join(".cursor/mcp.json").exists());
         assert!(!temp_dir.path().join(".codex/config.toml").exists());
     }
-}
 
-#[cfg(test)]
-mod additional_backup_tests {
-    use super::*;
-    use std::fs;
-    use tempfile::TempDir;
+    // ==========================================================================
+    // BACKUP TESTS
+    // ==========================================================================
 
     #[test]
+    #[cfg(unix)]
     fn test_backup_logic_fixed_extension() {
         let temp_dir = TempDir::new().unwrap();
         let agents_dir = temp_dir.path().join(".agents");
