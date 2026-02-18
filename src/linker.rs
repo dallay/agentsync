@@ -2213,8 +2213,8 @@ mod tests {
 #[cfg(test)]
 mod additional_backup_tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     #[test]
     fn test_backup_logic_fixed_extension() {
@@ -2248,7 +2248,10 @@ mod additional_backup_tests {
 
         let backup_file = temp_dir.path().join("CLAUDE.md.bak");
         assert!(backup_file.exists());
-        assert_eq!(fs::read_to_string(&backup_file).unwrap(), "original content");
+        assert_eq!(
+            fs::read_to_string(&backup_file).unwrap(),
+            "original content"
+        );
         assert!(dest_file.is_symlink());
 
         // Replace symlink with a new real file to simulate user intervention
@@ -2259,6 +2262,9 @@ mod additional_backup_tests {
         linker.sync(&SyncOptions::default()).unwrap();
 
         assert!(backup_file.exists());
-        assert_eq!(fs::read_to_string(&backup_file).unwrap(), "modified content");
+        assert_eq!(
+            fs::read_to_string(&backup_file).unwrap(),
+            "modified content"
+        );
     }
 }
