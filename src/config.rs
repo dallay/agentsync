@@ -286,6 +286,7 @@ impl Config {
                 // Add target destinations
                 for target in agent.targets.values() {
                     entries.insert(target.destination.clone());
+                    entries.insert(format!("{}.bak", target.destination));
                     entries.insert(format!("{}.bak.*", target.destination));
                 }
 
@@ -675,8 +676,10 @@ mod tests {
         let entries = config.all_gitignore_entries();
 
         assert!(entries.contains(&"enabled.md".to_string()));
+        assert!(entries.contains(&"enabled.md.bak".to_string()));
         assert!(entries.contains(&"enabled.md.bak.*".to_string()));
         assert!(!entries.contains(&"disabled.md".to_string()));
+        assert!(!entries.contains(&"disabled.md.bak".to_string()));
         assert!(!entries.contains(&"disabled.md.bak.*".to_string()));
     }
 
@@ -1282,6 +1285,7 @@ mod tests {
         let entries = config.all_gitignore_entries();
 
         assert!(entries.contains(&"OUTPUT.md".to_string()));
+        assert!(entries.contains(&"OUTPUT.md.bak".to_string()));
         assert!(entries.contains(&"OUTPUT.md.bak.*".to_string()));
         assert!(entries.contains(&".agents/skills/*.bak".to_string()));
     }

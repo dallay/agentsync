@@ -348,11 +348,7 @@ impl Linker {
                     dest.display()
                 );
             } else {
-                let backup = PathBuf::from(format!(
-                    "{}.bak.{}",
-                    dest.display(),
-                    chrono_lite_timestamp()
-                ));
+                let backup = PathBuf::from(format!("{}.bak", dest.display()));
                 fs::rename(dest, &backup)?;
                 println!(
                     "  {} Backed up: {} -> {}",
@@ -776,15 +772,6 @@ fn matches_pattern(name: &str, pattern: &str) -> bool {
             }
         }
     }
-}
-
-/// Generate a simple timestamp without external dependencies
-fn chrono_lite_timestamp() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let duration = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
-    format!("{}", duration.as_secs())
 }
 
 #[cfg(test)]
@@ -1837,22 +1824,6 @@ mod tests {
     }
 
     // ==========================================================================
-    // TIMESTAMP FUNCTION TESTS
-    // ==========================================================================
-
-    #[test]
-    fn test_chrono_lite_timestamp() {
-        let ts = chrono_lite_timestamp();
-
-        // Should be a numeric string
-        assert!(ts.chars().all(|c| c.is_ascii_digit()));
-
-        // Should be a reasonable Unix timestamp (after year 2020)
-        let ts_num: u64 = ts.parse().unwrap();
-        assert!(ts_num > 1577836800); // 2020-01-01
-    }
-
-    // ==========================================================================
     // MCP SYNC TESTS
     // ==========================================================================
 
@@ -2236,5 +2207,58 @@ mod tests {
         assert!(!temp_dir.path().join(".vscode/mcp.json").exists());
         assert!(!temp_dir.path().join(".cursor/mcp.json").exists());
         assert!(!temp_dir.path().join(".codex/config.toml").exists());
+    }
+}
+
+#[cfg(test)]
+mod additional_backup_tests {
+    use super::*;
+    use tempfile::TempDir;
+    use std::fs;
+
+    #[test]
+    fn test_backup_logic_fixed_extension() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let source_file = agents_dir.join("AGENTS.md");
+        fs::write(&source_file, "new content").unwrap();
+
+        let dest_file = temp_dir.path().join("CLAUDE.md");
+        fs::write(&dest_file, "original content").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            [agents.claude]
+            enabled = true
+            [agents.claude.targets.main]
+            source = "AGENTS.md"
+            destination = "CLAUDE.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        // First run - should backup original content
+        linker.sync(&SyncOptions::default()).unwrap();
+
+        let backup_file = temp_dir.path().join("CLAUDE.md.bak");
+        assert!(backup_file.exists());
+        assert_eq!(fs::read_to_string(&backup_file).unwrap(), "original content");
+        assert!(dest_file.is_symlink());
+
+        // Replace symlink with a new real file to simulate user intervention
+        fs::remove_file(&dest_file).unwrap();
+        fs::write(&dest_file, "modified content").unwrap();
+
+        // Second run - should overwrite the backup
+        linker.sync(&SyncOptions::default()).unwrap();
+
+        assert!(backup_file.exists());
+        assert_eq!(fs::read_to_string(&backup_file).unwrap(), "modified content");
     }
 }
