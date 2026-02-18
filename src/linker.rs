@@ -2266,5 +2266,6 @@ mod tests {
             fs::read_to_string(&backup_file).unwrap(),
             "modified content"
         );
+        assert!(dest_file.is_symlink(), "dest should be a symlink after second sync");
     }
 }
