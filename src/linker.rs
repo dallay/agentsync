@@ -8,8 +8,8 @@ use colored::Colorize;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::rc::Rc;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use walkdir::WalkDir;
 
 use crate::config::{Config, SyncType, TargetConfig};
