@@ -76,6 +76,18 @@ Remove previously created symbolic links:
 agentsync clean
 ```
 
+#### Status and Diagnostics:
+
+Check the status of managed symlinks or run a diagnostic health check:
+
+```bash
+# Verify the state of symlinks and report drift
+agentsync status
+
+# Run a comprehensive diagnostic and health check
+agentsync doctor
+```
+
 🎯 **Example Workflows**:
 
 - **Programmatic Usage in Node.js**:
@@ -107,56 +119,47 @@ agentsync clean
 ## MCP & Skills
 
 - AgentSync supports MCP generation for multiple agents (Claude, Copilot, Gemini, Cursor, VS Code, OpenCode). The canonical list and file locations live in the repo README and in the docs site (guides/mcp).
-- Skills live under `.agents/skills/` in the project. 
+- Skills live under `.agents/skills/` in the project.
+- **Manage skills via CLI**:
+  ```bash
+  agentsync skill install <skill-id>
+  agentsync skill update <skill-id>
+  agentsync skill uninstall <skill-id>
+  ```
 
 ---
 
 ## 👷 Development
 
-This package is part of the [AgentSync mono-repo](https://github.com/dallay/agentsync). It serves as a Node.js wrapper for the high-performance Rust core.
+This package is part of the [AgentSync mono-repo](https://github.com/dallay/agentsync). It serves as a Node.js distribution layer for the high-performance Rust core.
 
 ### Prerequisites
 
-- [pnpm](https://pnpm.io/): Dependency manager.
-- [Node.js](https://nodejs.org/) >= 24.13.0 (for development).
-- [Rust](https://www.rust-lang.org/): For building the core CLI.
+- [**pnpm**](https://pnpm.io/): Dependency manager.
+- [**Node.js**](https://nodejs.org/) >= 24.13.0.
+- [**Rust**](https://www.rust-lang.org/): For building the core CLI (1.89+).
 
-### Steps
+### Setup and Build
 
-1. Clone the repository:
+From the monorepo root:
 
+1. **Install dependencies and build core**:
    ```bash
-   git clone https://github.com/dallay/agentsync.git
-   cd agentsync
+   make install
    ```
 
-2. Install dependencies:
-
-   ```bash
-   pnpm install
-   ```
-
-3. Build:
-
+2. **Build the NPM package**:
    ```bash
    make js-build
-   # or
-   pnpm run build
    ```
 
-4. Run tests and type checks:
+### Common Commands
 
-   ```bash
-   make js-test
-   # or
-   pnpm run typecheck
-   ```
+- **Run tests and type checks**: `make js-test`
+- **Format code**: `make fmt`
+- **Full verification**: `make verify-all`
 
-5. Format:
-
-   ```bash
-   make fmt
-   ```
+For more details on the Rust core development, see the [main README](https://github.com/dallay/agentsync/blob/main/README.md).
 
 ---
 

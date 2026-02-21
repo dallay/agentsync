@@ -239,6 +239,7 @@ agentsync doctor [--project-root <path>]
 agentsync skill install <skill-id>
 agentsync skill update <skill-id>
 agentsync skill uninstall <skill-id>
+# agentsync skill list (Currently under development)
 ```
 
 ### Status
@@ -435,62 +436,65 @@ If you need agentsync in CI, you can download the latest version automatically u
 
 ## Getting Started (Development)
 
-This project is a monorepo containing a Rust core and a JavaScript/TypeScript wrapper.
+This project is a monorepo containing a Rust core and a JavaScript/TypeScript distribution layer.
 
-### Repository Structure
+### Monorepo Structure
 
 - `src/`: Core logic and CLI implementation in **Rust**.
 - `npm/agentsync/`: **TypeScript** wrapper used for NPM distribution.
 - `website/docs/`: Documentation site built with **Starlight**.
-- `tests/`: Integration tests for the CLI.
+- `.agents/`: Single source of truth for agent configurations and skills.
+- `tests/`: Integration and E2E tests for the CLI.
 
 ### Prerequisites
 
-- [**Rust**](https://www.rust-lang.org/tools/install) (1.89+ recommended)
-- [**Node.js**](https://nodejs.org/) (v24.13.0+ recommended for development)
+- [**Rust**](https://www.rust-lang.org/tools/install) (1.89+ recommended, Edition 2024)
+- [**Node.js**](https://nodejs.org/) (v24.13.0+ recommended)
 - [**pnpm**](https://pnpm.io/installation)
 
 ### Setup
 
-1.  **Install JavaScript dependencies:**
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/dallay/agentsync.git
+   cd agentsync
+   ```
 
-    ```bash
-    pnpm install
-    ```
+2. **Install all dependencies**:
+   ```bash
+   make install
+   # This runs pnpm install and cargo build
+   ```
 
-2.  **Build the Rust binary:**
+### Development Workflow
 
-    ```bash
-    cargo build
-    ```
+#### Rust (Core)
+- **Build**: `make rust-build` (or `cargo build`)
+- **Test**: `make rust-test` (or `cargo test`)
+- **Run**: `make rust-run` (or `cargo run -- <args>`)
+- **Lint**: `cargo clippy`
 
-### Common Commands
+#### JavaScript / TypeScript (Wrapper & Docs)
+- **Build**: `make js-build` (builds the `@dallay/agentsync` package)
+- **Test**: `make js-test` (runs type checks and tests)
+- **Docs (Dev)**: `make docs-dev` (starts Starlight dev server)
 
-This project uses a `Makefile` to orchestrate common tasks.
+### Common Commands (Makefile)
 
--   **Run Rust tests:**
+We use a `Makefile` to orchestrate tasks across both stacks:
 
-    ```bash
-    make rust-test
-    ```
-
--   **Run JavaScript tests:**
-
-    ```bash
-    make js-test
-    ```
-
--   **Build all components:**
-
-    ```bash
-    make all
-    ```
-
--   **Format the code:**
-
-    ```bash
-    make fmt
-    ```
+| Command | Description |
+| :--- | :--- |
+| `make all` | Install dependencies and build all components |
+| `make verify-all` | **Recommended before PRs**: Runs all builds, tests, and linters |
+| `make install` | Install JS dependencies and build Rust core |
+| `make fmt` | Format both Rust (rustfmt) and JS/TS (biome) |
+| `make rust-test` | Run all Rust unit and integration tests |
+| `make rust-run` | Build and run the Rust CLI project |
+| `make js-test` | Run all JavaScript tests and type checks |
+| `make e2e-test` | Run end-to-end tests using Docker |
+| `make docs-build` | Build the documentation site |
+| `make clean` | Remove build artifacts and temporary files |
 
 ## Troubleshooting
 

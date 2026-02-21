@@ -11,8 +11,9 @@ Thank you for your interest in contributing to AgentSync! To maintain high code 
    - If it's documentation, it goes in `website/docs/src/content/docs/`.
 3. **Verify your changes**:
    - **Full Suite**: Run `make verify-all` from the root. This runs all tests, linters, and builds the documentation.
-   - For Rust: `make rust-test`, `cargo fmt`, and `cargo clippy`.
-   - For TypeScript: `make js-test`, `make js-build` and `make fmt`.
+   - For Rust: `make rust-test`, `make rust-build`, and `cargo clippy`.
+   - For TypeScript: `make js-test` and `make js-build`.
+   - Formatting: `make fmt` (formats both Rust and TypeScript).
 4. **Open a Pull Request** with a clear description of the changes and why they are needed.
 
 ## Code Style

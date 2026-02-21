@@ -10,8 +10,8 @@ description: Detailed guide to the repository structure and polyglot development
 - `src/`: Core logic and CLI implementation in **Rust**.
 - `npm/agentsync/`: **TypeScript** wrapper used for NPM distribution.
 - `website/docs/`: Documentation site built with **Starlight**.
-- `website/`: Main project website.
-- `tests/`: Integration tests for the CLI.
+- `.agents/`: Single source of truth for agent configurations and skills.
+- `tests/`: Integration and E2E tests for the CLI.
 
 ---
 
@@ -24,9 +24,9 @@ The core logic is written in Rust for speed, safety, and easy distribution as a 
 - **Key Commands**:
 
   ```bash
-  cargo build    # Build debug binary
-  cargo test     # Run unit and integration tests
-  cargo run      # Run the CLI locally
+  make rust-build # Build core binary
+  make rust-test  # Run unit and integration tests
+  make rust-run   # Run the CLI locally
   ```
 
 - **Error Handling**: Uses `thiserror` for custom errors and `anyhow` for application-level error handling.
@@ -35,15 +35,15 @@ The core logic is written in Rust for speed, safety, and easy distribution as a 
 
 ## JavaScript Workspace (Distribution)
 
-The JS workspace acts as a wrapper to provide an easy installation path via `pnpm/npm`. It manages platform-specific binary downloads.
+The JS workspace provides a Node.js distribution layer and managed binary downloads for different platforms.
 
 - **Tools**: pnpm, TypeScript, Make
 - **Location**: `npm/agentsync/`
 - **Key Commands**:
 
   ```bash
-  pnpm run typecheck  # Verify types
-  pnpm run build      # Compile TypeScript to JS
+  make js-test    # Verify types and run JS tests
+  make js-build   # Compile TypeScript to JS
   ```
 
 - **Strictness**: We enforce strict TypeScript configurations. Avoid `any` at all costs.

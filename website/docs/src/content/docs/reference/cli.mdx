@@ -191,14 +191,36 @@ Human-friendly output uses colors and statuses:
 - `! Missing` — destination does not exist
 - `· Exists but not a symlink` — a regular file or directory exists at the destination
 
-Exit codes
+Exit codes:
 - `0` — no problems detected
 - `1` — one or more issues found (suitable to fail CI builds)
 
-Examples
-- Human readable:
-  - `agentsync status`
-- JSON for CI:
-  - `agentsync status --json`
-- With custom project root:
-  - `agentsync status --project-root /path/to/repo --json`
+Examples:
+- Human readable: `agentsync status`
+- JSON for CI: `agentsync status --json`
+- With custom project root: `agentsync status --project-root /path/to/repo --json`
+
+---
+
+### `doctor`
+
+Run diagnostic and health checks for the AgentSync environment.
+
+```bash
+agentsync doctor [FLAGS]
+```
+
+**Flags**:
+- `--project-root <PATH>`: Project root directory (defaults to current directory).
+
+**Diagnostics performed**:
+1.  **Config Loading**: Verifies that `agentsync.toml` can be found and parsed correctly.
+2.  **Source Directory**: Checks if the configured `source_dir` exists.
+3.  **Target Sources**: Verifies that all files/directories referenced as `source` in the config actually exist.
+4.  **Destination Conflicts**: Detects duplicate destinations or overlapping paths (where one destination is a parent of another).
+5.  **MCP Servers**: Audits configured MCP servers to ensure their `command` executables are available in the system `PATH`.
+6.  **Gitignore Audit**: Verifies if the `.gitignore` file has the managed AgentSync section and if it is up to date with all required entries.
+
+**Exit codes**:
+- `0` — all checks passed
+- `1` — one or more issues detected
