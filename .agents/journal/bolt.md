@@ -28,3 +28,9 @@
 
 **Learning:** Multiple agents often share the same source file (e.g., AGENTS.md) or target directories. Without caching, the Linker performs redundant file reads, string compression, and directory existence checks for every target.
 **Action:** Implement `compression_cache` (HashMap) to memoize expensive text compression and `ensured_outputs` (HashSet) to track verified destination paths. This optimization reduced execution time by ~83% (from 0.055s to 0.0094s) in a 100-agent scenario.
+
+## 2026-02-22 - Zero-Allocation Agent ID Matching
+
+**Learning:** The `canonical_mcp_agent_id` function was performing a `to_lowercase()` allocation for every call, which is O(Agents * Filters) during synchronization. Replacing this with `eq_ignore_ascii_case` for known ASCII aliases eliminates these heap allocations. Additionally, `mcp_filter_matches` and `sync_filter_matches` were performing redundant `to_lowercase()` calls on strings that were already canonical (lowercase).
+
+**Action:** Use `eq_ignore_ascii_case` for case-insensitive matching against known ASCII constants to avoid `String` allocations. Avoid calling `to_lowercase()` on strings that are already guaranteed to be lowercase by the system's architecture.
