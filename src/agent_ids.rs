@@ -5,15 +5,40 @@
 
 /// Normalize a user-provided agent identifier to a canonical MCP ID.
 pub fn canonical_mcp_agent_id(id: &str) -> Option<&'static str> {
-    match id.to_lowercase().as_str() {
-        "claude" | "claude-code" | "claude_code" => Some("claude"),
-        "copilot" | "github-copilot" | "github_copilot" => Some("copilot"),
-        "codex" | "codex-cli" | "codex_cli" => Some("codex"),
-        "gemini" | "gemini-cli" | "gemini_cli" => Some("gemini"),
-        "vscode" | "vs-code" | "vs_code" => Some("vscode"),
-        "cursor" => Some("cursor"),
-        "opencode" | "open-code" | "open_code" => Some("opencode"),
-        _ => None,
+    if id.eq_ignore_ascii_case("claude")
+        || id.eq_ignore_ascii_case("claude-code")
+        || id.eq_ignore_ascii_case("claude_code")
+    {
+        Some("claude")
+    } else if id.eq_ignore_ascii_case("copilot")
+        || id.eq_ignore_ascii_case("github-copilot")
+        || id.eq_ignore_ascii_case("github_copilot")
+    {
+        Some("copilot")
+    } else if id.eq_ignore_ascii_case("codex")
+        || id.eq_ignore_ascii_case("codex-cli")
+        || id.eq_ignore_ascii_case("codex_cli")
+    {
+        Some("codex")
+    } else if id.eq_ignore_ascii_case("gemini")
+        || id.eq_ignore_ascii_case("gemini-cli")
+        || id.eq_ignore_ascii_case("gemini_cli")
+    {
+        Some("gemini")
+    } else if id.eq_ignore_ascii_case("vscode")
+        || id.eq_ignore_ascii_case("vs-code")
+        || id.eq_ignore_ascii_case("vs_code")
+    {
+        Some("vscode")
+    } else if id.eq_ignore_ascii_case("cursor") {
+        Some("cursor")
+    } else if id.eq_ignore_ascii_case("opencode")
+        || id.eq_ignore_ascii_case("open-code")
+        || id.eq_ignore_ascii_case("open_code")
+    {
+        Some("opencode")
+    } else {
+        None
     }
 }
 
@@ -46,7 +71,8 @@ pub fn mcp_filter_matches(agent_id: &str, filter: &str) -> bool {
         canonical_filter == agent_id
     } else {
         let filter_lower = filter.to_lowercase();
-        agent_id.to_lowercase().contains(&filter_lower)
+        // agent_id is already canonical (lowercase), so we don't need to lowercase it.
+        agent_id.contains(&filter_lower)
     }
 }
 
@@ -56,15 +82,19 @@ pub fn mcp_filter_matches(agent_id: &str, filter: &str) -> bool {
 /// known, this performs exact canonical matching. Otherwise it falls back to
 /// legacy case-insensitive substring matching against the configured name.
 pub fn sync_filter_matches(config_agent_name: &str, filter: &str) -> bool {
-    if let Some(canonical_filter) = canonical_mcp_agent_id(filter) {
-        if let Some(canonical_agent) = canonical_mcp_agent_id(config_agent_name) {
-            canonical_agent == canonical_filter
-        } else {
-            let filter_lower = filter.to_lowercase();
-            config_agent_name.to_lowercase().contains(&filter_lower)
+    if let Some(cf) = canonical_mcp_agent_id(filter) {
+        if let Some(ca) = canonical_mcp_agent_id(config_agent_name) {
+            return ca == cf;
         }
+        // filter is known, use its canonical (lowercase) form to avoid an allocation
+        return config_agent_name.to_lowercase().contains(cf);
+    }
+
+    let filter_lower = filter.to_lowercase();
+    if let Some(ca) = canonical_mcp_agent_id(config_agent_name) {
+        // agent is known, its canonical ID is already lowercase
+        ca.contains(&filter_lower)
     } else {
-        let filter_lower = filter.to_lowercase();
         config_agent_name.to_lowercase().contains(&filter_lower)
     }
 }
