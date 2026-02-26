@@ -26,7 +26,6 @@ Thumbs.db
 *.tar.gz
 *.zip
 agentsync-*
-changes.diff
 
 # NPM
 npm/agentsync/lib/
@@ -50,3 +49,4 @@ AGENTS.md
 CLAUDE.md
 opencode.json
 # END AI Agent Symlinks
+changes.diff
