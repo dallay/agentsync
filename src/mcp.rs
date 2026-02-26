@@ -6,6 +6,7 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 use serde_json::{Map, Value, json};
+use serde_yaml;
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -61,6 +62,74 @@ pub enum McpAgent {
     Cursor,
     /// OpenCode (opencode.json)
     OpenCode,
+    /// Amp (.mcp.json)
+    Amp,
+    /// Antigravity (.mcp.json)
+    Antigravity,
+    /// Augment (.mcp.json)
+    Augment,
+    /// OpenClaw (.mcp.json)
+    OpenClaw,
+    /// Cline (.mcp.json)
+    Cline,
+    /// CodeBuddy (.mcp.json)
+    CodeBuddy,
+    /// Command Code (.mcp.json)
+    CommandCode,
+    /// Continue (.continue/config.json)
+    Continue,
+    /// Cortex Code (.mcp.json)
+    Cortex,
+    /// Crush (.mcp.json)
+    Crush,
+    /// Droid (.mcp.json)
+    Droid,
+    /// Goose (.goose/config.yaml)
+    Goose,
+    /// Junie (.mcp.json)
+    Junie,
+    /// iFlow CLI (.mcp.json)
+    Iflow,
+    /// Kilo Code (.mcp.json)
+    Kilo,
+    /// Kimi Code CLI (.mcp.json)
+    Kimi,
+    /// Kiro CLI (.mcp.json)
+    Kiro,
+    /// Kode (.mcp.json)
+    Kode,
+    /// MCPJam (.mcp.json)
+    McpJam,
+    /// Mistral Vibe (.mcp.json)
+    Vibe,
+    /// Mux (.mcp.json)
+    Mux,
+    /// OpenHands (.mcp.json)
+    OpenHands,
+    /// Pi (.mcp.json)
+    Pi,
+    /// Qoder (.mcp.json)
+    Qoder,
+    /// Qwen Code (.mcp.json)
+    Qwen,
+    /// Replit (.mcp.json)
+    Replit,
+    /// Roo Code (.mcp.json)
+    Roo,
+    /// Trae (.trae/mcp_config.json)
+    Trae,
+    /// Trae CN (.trae/mcp_config.json)
+    TraeCn,
+    /// Windsurf (.windsurf/mcp_config.json)
+    Windsurf,
+    /// Zencoder (.mcp.json)
+    Zencoder,
+    /// Neovate (.mcp.json)
+    Neovate,
+    /// Pochi (.mcp.json)
+    Pochi,
+    /// AdaL (.mcp.json)
+    Adal,
 }
 
 impl McpAgent {
@@ -74,6 +143,40 @@ impl McpAgent {
             McpAgent::VsCode,
             McpAgent::Cursor,
             McpAgent::OpenCode,
+            McpAgent::Amp,
+            McpAgent::Antigravity,
+            McpAgent::Augment,
+            McpAgent::OpenClaw,
+            McpAgent::Cline,
+            McpAgent::CodeBuddy,
+            McpAgent::CommandCode,
+            McpAgent::Continue,
+            McpAgent::Cortex,
+            McpAgent::Crush,
+            McpAgent::Droid,
+            McpAgent::Goose,
+            McpAgent::Junie,
+            McpAgent::Iflow,
+            McpAgent::Kilo,
+            McpAgent::Kimi,
+            McpAgent::Kiro,
+            McpAgent::Kode,
+            McpAgent::McpJam,
+            McpAgent::Vibe,
+            McpAgent::Mux,
+            McpAgent::OpenHands,
+            McpAgent::Pi,
+            McpAgent::Qoder,
+            McpAgent::Qwen,
+            McpAgent::Replit,
+            McpAgent::Roo,
+            McpAgent::Trae,
+            McpAgent::TraeCn,
+            McpAgent::Windsurf,
+            McpAgent::Zencoder,
+            McpAgent::Neovate,
+            McpAgent::Pochi,
+            McpAgent::Adal,
         ]
     }
 
@@ -87,6 +190,40 @@ impl McpAgent {
             McpAgent::VsCode => "vscode",
             McpAgent::Cursor => "cursor",
             McpAgent::OpenCode => "opencode",
+            McpAgent::Amp => "amp",
+            McpAgent::Antigravity => "antigravity",
+            McpAgent::Augment => "augment",
+            McpAgent::OpenClaw => "openclaw",
+            McpAgent::Cline => "cline",
+            McpAgent::CodeBuddy => "codebuddy",
+            McpAgent::CommandCode => "command-code",
+            McpAgent::Continue => "continue",
+            McpAgent::Cortex => "cortex",
+            McpAgent::Crush => "crush",
+            McpAgent::Droid => "droid",
+            McpAgent::Goose => "goose",
+            McpAgent::Junie => "junie",
+            McpAgent::Iflow => "iflow",
+            McpAgent::Kilo => "kilo",
+            McpAgent::Kimi => "kimi",
+            McpAgent::Kiro => "kiro",
+            McpAgent::Kode => "kode",
+            McpAgent::McpJam => "mcpjam",
+            McpAgent::Vibe => "vibe",
+            McpAgent::Mux => "mux",
+            McpAgent::OpenHands => "openhands",
+            McpAgent::Pi => "pi",
+            McpAgent::Qoder => "qoder",
+            McpAgent::Qwen => "qwen",
+            McpAgent::Replit => "replit",
+            McpAgent::Roo => "roo",
+            McpAgent::Trae => "trae",
+            McpAgent::TraeCn => "trae-cn",
+            McpAgent::Windsurf => "windsurf",
+            McpAgent::Zencoder => "zencoder",
+            McpAgent::Neovate => "neovate",
+            McpAgent::Pochi => "pochi",
+            McpAgent::Adal => "adal",
         }
     }
 
@@ -100,6 +237,40 @@ impl McpAgent {
             McpAgent::VsCode => "VS Code",
             McpAgent::Cursor => "Cursor",
             McpAgent::OpenCode => "OpenCode",
+            McpAgent::Amp => "Amp",
+            McpAgent::Antigravity => "Antigravity",
+            McpAgent::Augment => "Augment",
+            McpAgent::OpenClaw => "OpenClaw",
+            McpAgent::Cline => "Cline",
+            McpAgent::CodeBuddy => "CodeBuddy",
+            McpAgent::CommandCode => "Command Code",
+            McpAgent::Continue => "Continue",
+            McpAgent::Cortex => "Cortex Code",
+            McpAgent::Crush => "Crush",
+            McpAgent::Droid => "Droid",
+            McpAgent::Goose => "Goose",
+            McpAgent::Junie => "Junie",
+            McpAgent::Iflow => "iFlow CLI",
+            McpAgent::Kilo => "Kilo Code",
+            McpAgent::Kimi => "Kimi Code CLI",
+            McpAgent::Kiro => "Kiro CLI",
+            McpAgent::Kode => "Kode",
+            McpAgent::McpJam => "MCPJam",
+            McpAgent::Vibe => "Mistral Vibe",
+            McpAgent::Mux => "Mux",
+            McpAgent::OpenHands => "OpenHands",
+            McpAgent::Pi => "Pi",
+            McpAgent::Qoder => "Qoder",
+            McpAgent::Qwen => "Qwen Code",
+            McpAgent::Replit => "Replit",
+            McpAgent::Roo => "Roo Code",
+            McpAgent::Trae => "Trae",
+            McpAgent::TraeCn => "Trae CN",
+            McpAgent::Windsurf => "Windsurf",
+            McpAgent::Zencoder => "Zencoder",
+            McpAgent::Neovate => "Neovate",
+            McpAgent::Pochi => "Pochi",
+            McpAgent::Adal => "AdaL",
         }
     }
 
@@ -113,6 +284,40 @@ impl McpAgent {
             McpAgent::VsCode => ".vscode/mcp.json",
             McpAgent::Cursor => ".cursor/mcp.json",
             McpAgent::OpenCode => "opencode.json",
+            McpAgent::Amp => ".mcp.json",
+            McpAgent::Antigravity => ".mcp.json",
+            McpAgent::Augment => ".mcp.json",
+            McpAgent::OpenClaw => ".mcp.json",
+            McpAgent::Cline => ".mcp.json",
+            McpAgent::CodeBuddy => ".mcp.json",
+            McpAgent::CommandCode => ".mcp.json",
+            McpAgent::Continue => ".continue/config.json",
+            McpAgent::Cortex => ".mcp.json",
+            McpAgent::Crush => ".mcp.json",
+            McpAgent::Droid => ".mcp.json",
+            McpAgent::Goose => ".goose/config.yaml",
+            McpAgent::Junie => ".mcp.json",
+            McpAgent::Iflow => ".mcp.json",
+            McpAgent::Kilo => ".mcp.json",
+            McpAgent::Kimi => ".mcp.json",
+            McpAgent::Kiro => ".mcp.json",
+            McpAgent::Kode => ".mcp.json",
+            McpAgent::McpJam => ".mcp.json",
+            McpAgent::Vibe => ".mcp.json",
+            McpAgent::Mux => ".mcp.json",
+            McpAgent::OpenHands => ".mcp.json",
+            McpAgent::Pi => ".mcp.json",
+            McpAgent::Qoder => ".mcp.json",
+            McpAgent::Qwen => ".mcp.json",
+            McpAgent::Replit => ".mcp.json",
+            McpAgent::Roo => ".mcp.json",
+            McpAgent::Trae => ".trae/mcp_config.json",
+            McpAgent::TraeCn => ".trae/mcp_config.json",
+            McpAgent::Windsurf => ".windsurf/mcp_config.json",
+            McpAgent::Zencoder => ".mcp.json",
+            McpAgent::Neovate => ".mcp.json",
+            McpAgent::Pochi => ".mcp.json",
+            McpAgent::Adal => ".mcp.json",
         }
     }
 
@@ -126,6 +331,13 @@ impl McpAgent {
             McpAgent::VsCode => Box::new(VsCodeFormatter),
             McpAgent::Cursor => Box::new(CursorFormatter),
             McpAgent::OpenCode => Box::new(OpenCodeFormatter),
+            McpAgent::Continue | McpAgent::Trae | McpAgent::TraeCn | McpAgent::Windsurf => {
+                Box::new(ContinueFormatter)
+            }
+            McpAgent::Goose => Box::new(YamlFormatter {
+                wrapper_key: Some("mcpServers"),
+            }),
+            _ => Box::new(StandardMcpFormatter),
         }
     }
 
@@ -139,6 +351,40 @@ impl McpAgent {
             "vscode" => Some(McpAgent::VsCode),
             "cursor" => Some(McpAgent::Cursor),
             "opencode" => Some(McpAgent::OpenCode),
+            "amp" => Some(McpAgent::Amp),
+            "antigravity" => Some(McpAgent::Antigravity),
+            "augment" => Some(McpAgent::Augment),
+            "openclaw" => Some(McpAgent::OpenClaw),
+            "cline" => Some(McpAgent::Cline),
+            "codebuddy" => Some(McpAgent::CodeBuddy),
+            "command-code" => Some(McpAgent::CommandCode),
+            "continue" => Some(McpAgent::Continue),
+            "cortex" => Some(McpAgent::Cortex),
+            "crush" => Some(McpAgent::Crush),
+            "droid" => Some(McpAgent::Droid),
+            "goose" => Some(McpAgent::Goose),
+            "junie" => Some(McpAgent::Junie),
+            "iflow" => Some(McpAgent::Iflow),
+            "kilo" => Some(McpAgent::Kilo),
+            "kimi" => Some(McpAgent::Kimi),
+            "kiro" => Some(McpAgent::Kiro),
+            "kode" => Some(McpAgent::Kode),
+            "mcpjam" => Some(McpAgent::McpJam),
+            "vibe" => Some(McpAgent::Vibe),
+            "mux" => Some(McpAgent::Mux),
+            "openhands" => Some(McpAgent::OpenHands),
+            "pi" => Some(McpAgent::Pi),
+            "qoder" => Some(McpAgent::Qoder),
+            "qwen" => Some(McpAgent::Qwen),
+            "replit" => Some(McpAgent::Replit),
+            "roo" => Some(McpAgent::Roo),
+            "trae" => Some(McpAgent::Trae),
+            "trae-cn" => Some(McpAgent::TraeCn),
+            "windsurf" => Some(McpAgent::Windsurf),
+            "zencoder" => Some(McpAgent::Zencoder),
+            "neovate" => Some(McpAgent::Neovate),
+            "pochi" => Some(McpAgent::Pochi),
+            "adal" => Some(McpAgent::Adal),
             _ => None,
         }
     }
@@ -1251,6 +1497,162 @@ pub fn get_mcp_config_path(agent: McpAgent, project_root: &Path) -> PathBuf {
 // Tests
 // =============================================================================
 
+// -----------------------------------------------------------------------------
+// Standard MCP Formatter (Generic)
+// -----------------------------------------------------------------------------
+
+pub struct StandardMcpFormatter;
+
+impl McpFormatter for StandardMcpFormatter {
+    fn format(&self, servers: &HashMap<String, &McpServerConfig>) -> Value {
+        format_standard_mcp(servers)
+    }
+
+    fn parse_existing(&self, content: &str) -> Result<HashMap<String, Value>> {
+        parse_standard_mcp(content, "Failed to parse existing MCP config as JSON")
+    }
+
+    fn merge(
+        &self,
+        existing_content: &str,
+        new_servers: &HashMap<String, &McpServerConfig>,
+    ) -> Result<String> {
+        merge_standard_mcp(
+            existing_content,
+            new_servers,
+            "Failed to parse existing MCP config as JSON",
+        )
+    }
+}
+
+// -----------------------------------------------------------------------------
+// YAML Formatter (e.g. Goose)
+// -----------------------------------------------------------------------------
+
+pub struct YamlFormatter {
+    pub wrapper_key: Option<&'static str>,
+}
+
+impl McpFormatter for YamlFormatter {
+    fn format(&self, servers: &HashMap<String, &McpServerConfig>) -> Value {
+        let mcp_servers = sorted_json_map_from_server_refs(servers, server_to_json);
+        if let Some(key) = self.wrapper_key {
+            json!({ key: mcp_servers })
+        } else {
+            json!(mcp_servers)
+        }
+    }
+
+    fn format_to_string(&self, servers: &HashMap<String, &McpServerConfig>) -> Result<String> {
+        let output = self.format(servers);
+        serde_yaml::to_string(&output).context("Failed to serialize MCP config to YAML")
+    }
+
+    fn parse_existing(&self, content: &str) -> Result<HashMap<String, Value>> {
+        let parsed: Value =
+            serde_yaml::from_str(content).context("Failed to parse existing YAML config")?;
+
+        let servers = if let Some(key) = self.wrapper_key {
+            parsed.get(key)
+        } else {
+            Some(&parsed)
+        };
+
+        let servers_map = servers
+            .and_then(|v| v.as_object())
+            .map(|obj| obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+            .unwrap_or_default();
+
+        Ok(servers_map)
+    }
+
+    fn merge(
+        &self,
+        existing_content: &str,
+        new_servers: &HashMap<String, &McpServerConfig>,
+    ) -> Result<String> {
+        let mut existing_doc: Value =
+            serde_yaml::from_str(existing_content).unwrap_or_else(|_| json!({}));
+        let mut existing_servers = self.parse_existing(existing_content)?;
+
+        for (name, config) in new_servers {
+            existing_servers.insert(name.clone(), server_to_json(config));
+        }
+
+        let sorted_servers = sorted_json_map_from_values(&existing_servers);
+
+        if let Some(key) = self.wrapper_key {
+            if let Some(obj) = existing_doc.as_object_mut() {
+                obj.insert(key.to_string(), json!(sorted_servers));
+            } else {
+                existing_doc = json!({ key: sorted_servers });
+            }
+        } else {
+            existing_doc = json!(sorted_servers);
+        }
+
+        serde_yaml::to_string(&existing_doc).context("Failed to serialize merged YAML config")
+    }
+
+    fn preserve_on_overwrite(&self) -> bool {
+        true
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Continue Formatter
+// -----------------------------------------------------------------------------
+
+pub struct ContinueFormatter;
+
+impl McpFormatter for ContinueFormatter {
+    fn format(&self, servers: &HashMap<String, &McpServerConfig>) -> Value {
+        let mcp_servers = sorted_json_map_from_server_refs(servers, server_to_json);
+        json!({ "mcpServers": mcp_servers })
+    }
+
+    fn parse_existing(&self, content: &str) -> Result<HashMap<String, Value>> {
+        let parsed: Value =
+            serde_json::from_str(content).context("Failed to parse Continue config as JSON")?;
+
+        let servers = parsed
+            .get("mcpServers")
+            .and_then(|v| v.as_object())
+            .map(|obj| obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+            .unwrap_or_default();
+
+        Ok(servers)
+    }
+
+    fn merge(
+        &self,
+        existing_content: &str,
+        new_servers: &HashMap<String, &McpServerConfig>,
+    ) -> Result<String> {
+        let mut existing_doc: Value =
+            serde_json::from_str(existing_content).unwrap_or_else(|_| json!({}));
+        let mut existing_servers = self.parse_existing(existing_content)?;
+
+        for (name, config) in new_servers {
+            existing_servers.insert(name.clone(), server_to_json(config));
+        }
+
+        let sorted_servers = sorted_json_map_from_values(&existing_servers);
+
+        if let Some(obj) = existing_doc.as_object_mut() {
+            obj.insert("mcpServers".to_string(), json!(sorted_servers));
+        } else {
+            existing_doc = json!({ "mcpServers": sorted_servers });
+        }
+
+        serde_json::to_string_pretty(&existing_doc)
+            .context("Failed to serialize merged Continue config")
+    }
+
+    fn preserve_on_overwrite(&self) -> bool {
+        true
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1263,7 +1665,7 @@ mod tests {
     #[test]
     fn test_agent_all_returns_all_agents() {
         let agents = McpAgent::all();
-        assert_eq!(agents.len(), 7);
+        assert_eq!(agents.len(), 41);
         assert!(agents.contains(&McpAgent::ClaudeCode));
         assert!(agents.contains(&McpAgent::GithubCopilot));
         assert!(agents.contains(&McpAgent::CodexCli));

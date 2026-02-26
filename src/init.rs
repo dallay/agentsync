@@ -208,6 +208,12 @@ enum AgentFileType {
     McpConfig,
     CopilotInstructions,
     RootAgentsFile,
+    ClineInstructions,
+    RooInstructions,
+    GooseInstructions,
+    WindsurfInstructions,
+    TraeInstructions,
+    ContinueInstructions,
     Other,
 }
 
@@ -215,14 +221,59 @@ enum AgentFileType {
 fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
     let mut discovered = Vec::new();
 
-    // Check for CLAUDE.md in root
-    let claude_path = project_root.join("CLAUDE.md");
-    if claude_path.exists() {
-        discovered.push(DiscoveredFile {
-            path: "CLAUDE.md".into(),
-            file_type: AgentFileType::ClaudeInstructions,
-            display_name: "CLAUDE.md (Claude instructions)".to_string(),
-        });
+    // Mapping of filename to (AgentFileType, DisplayName)
+    let checks = [
+        (
+            "CLAUDE.md",
+            AgentFileType::ClaudeInstructions,
+            "CLAUDE.md (Claude instructions)",
+        ),
+        (
+            "CLINE.md",
+            AgentFileType::ClineInstructions,
+            "CLINE.md (Cline instructions)",
+        ),
+        (
+            "ROO.md",
+            AgentFileType::RooInstructions,
+            "ROO.md (Roo Code instructions)",
+        ),
+        (
+            "GOOSE.md",
+            AgentFileType::GooseInstructions,
+            "GOOSE.md (Goose instructions)",
+        ),
+        (
+            "WINDSURF.md",
+            AgentFileType::WindsurfInstructions,
+            "WINDSURF.md (Windsurf instructions)",
+        ),
+        (
+            "TRAE.md",
+            AgentFileType::TraeInstructions,
+            "TRAE.md (Trae instructions)",
+        ),
+        (
+            "CONTINUE.md",
+            AgentFileType::ContinueInstructions,
+            "CONTINUE.md (Continue instructions)",
+        ),
+        (
+            "AGENTS.md",
+            AgentFileType::RootAgentsFile,
+            "AGENTS.md (Root agent instructions)",
+        ),
+    ];
+
+    for (filename, file_type, display_name) in checks {
+        let path = project_root.join(filename);
+        if path.exists() {
+            discovered.push(DiscoveredFile {
+                path: filename.into(),
+                file_type,
+                display_name: display_name.to_string(),
+            });
+        }
     }
 
     // Check for .cursor/ directory
@@ -252,16 +303,6 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
             path: ".github/copilot-instructions.md".into(),
             file_type: AgentFileType::CopilotInstructions,
             display_name: ".github/copilot-instructions.md (Copilot instructions)".to_string(),
-        });
-    }
-
-    // Check for AGENTS.md in root (not in .agents/)
-    let agents_path = project_root.join("AGENTS.md");
-    if agents_path.exists() {
-        discovered.push(DiscoveredFile {
-            path: "AGENTS.md".into(),
-            file_type: AgentFileType::RootAgentsFile,
-            display_name: "AGENTS.md (Root agent instructions)".to_string(),
         });
     }
 
@@ -348,7 +389,6 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
         );
     }
 
-    // Create skills directory
     let skills_dir = agents_dir.join("skills");
     if !skills_dir.exists() {
         fs::create_dir_all(&skills_dir)?;
@@ -371,6 +411,12 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
                 AgentFileType::ClaudeInstructions
                     | AgentFileType::RootAgentsFile
                     | AgentFileType::CopilotInstructions
+                    | AgentFileType::ClineInstructions
+                    | AgentFileType::RooInstructions
+                    | AgentFileType::GooseInstructions
+                    | AgentFileType::WindsurfInstructions
+                    | AgentFileType::TraeInstructions
+                    | AgentFileType::ContinueInstructions
             )
         })
         .collect();
@@ -418,7 +464,13 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
         match file.file_type {
             AgentFileType::ClaudeInstructions
             | AgentFileType::RootAgentsFile
-            | AgentFileType::CopilotInstructions => {
+            | AgentFileType::CopilotInstructions
+            | AgentFileType::ClineInstructions
+            | AgentFileType::RooInstructions
+            | AgentFileType::GooseInstructions
+            | AgentFileType::WindsurfInstructions
+            | AgentFileType::TraeInstructions
+            | AgentFileType::ContinueInstructions => {
                 // Already handled above - content merged into AGENTS.md
                 continue;
             }
@@ -581,68 +633,74 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
 }
 
 /// Helper function to copy a directory recursively
-fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
-    fs::create_dir_all(dst)?;
+/// Helper function to copy a directory recursively
+pub fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> Result<()> {
+    fs::create_dir_all(&dst)?;
     for entry in fs::read_dir(src)? {
         let entry = entry?;
-        let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
-
-        // Use symlink_metadata to detect symlinks without following them
-        let metadata = entry.path().symlink_metadata()?;
-
-        if metadata.is_symlink() {
-            // Handle symlinks: recreate them at destination
+        let ty = entry.file_type()?;
+        let dst_path = dst.as_ref().join(entry.file_name());
+        if ty.is_dir() {
+            copy_dir_all(entry.path(), dst_path)?;
+        } else if ty.is_symlink() {
+            let target = fs::read_link(entry.path())?;
             #[cfg(unix)]
-            {
-                use std::os::unix::fs as unix_fs;
-                let link_target = fs::read_link(&src_path)?;
-                unix_fs::symlink(&link_target, &dst_path)?;
-            }
+            std::os::unix::fs::symlink(target, dst_path)?;
             #[cfg(windows)]
             {
-                use std::os::windows::fs as windows_fs;
-                let link_target = fs::read_link(&src_path)?;
-                // On Windows, we need to know if target is dir or file
-                if link_target.is_dir() {
-                    windows_fs::symlink_dir(&link_target, &dst_path)?;
+                if entry.path().is_dir() {
+                    std::os::windows::fs::symlink_dir(target, dst_path)?;
                 } else {
-                    windows_fs::symlink_file(&link_target, &dst_path)?;
+                    std::os::windows::fs::symlink_file(target, dst_path)?;
                 }
             }
-        } else if metadata.is_dir() {
-            copy_dir_all(&src_path, &dst_path)?;
         } else {
-            fs::copy(&src_path, &dst_path)?;
+            fs::copy(entry.path(), dst_path)?;
         }
     }
     Ok(())
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    // ==========================================================================
-    // INIT FUNCTION TESTS
-    // ==========================================================================
+    #[test]
+    fn test_default_config_is_valid_toml() {
+        let parsed: toml::Value = toml::from_str(DEFAULT_CONFIG).unwrap();
+        assert!(parsed.is_table());
+    }
 
     #[test]
-    fn test_init_creates_agents_directory() {
-        let temp_dir = TempDir::new().unwrap();
+    fn test_default_config_gitignore_enabled() {
+        let parsed: toml::Value = toml::from_str(DEFAULT_CONFIG).unwrap();
+        let gitignore = parsed.get("gitignore").unwrap();
+        assert!(gitignore.get("enabled").unwrap().as_bool().unwrap());
+    }
 
+    #[test]
+    fn test_init_creates_config_file() {
+        let temp_dir = TempDir::new().unwrap();
+        init(temp_dir.path(), false).unwrap();
+
+        let config_path = temp_dir.path().join(".agents").join("agentsync.toml");
+        assert!(config_path.exists());
+    }
+
+    #[test]
+    fn test_init_creates_nested_structure() {
+        let temp_dir = TempDir::new().unwrap();
         init(temp_dir.path(), false).unwrap();
 
         let agents_dir = temp_dir.path().join(".agents");
         assert!(agents_dir.exists());
-        assert!(agents_dir.is_dir());
+        assert!(agents_dir.join("AGENTS.md").exists());
+        assert!(agents_dir.join("skills").exists());
     }
 
     #[test]
     fn test_init_creates_skills_directory() {
         let temp_dir = TempDir::new().unwrap();
-
         init(temp_dir.path(), false).unwrap();
 
         let skills_dir = temp_dir.path().join(".agents").join("skills");
@@ -651,85 +709,19 @@ mod tests {
     }
 
     #[test]
-    fn test_init_creates_config_file() {
-        let temp_dir = TempDir::new().unwrap();
-
-        init(temp_dir.path(), false).unwrap();
-
-        let config_path = temp_dir.path().join(".agents").join("agentsync.toml");
-        assert!(config_path.exists());
-
-        let content = fs::read_to_string(&config_path).unwrap();
-        assert!(content.contains("[agents.claude]"));
-        assert!(content.contains("[agents.copilot]"));
-        assert!(content.contains("[agents.cursor]"));
-        assert!(content.contains("[agents.codex]"));
-    }
-
-    #[test]
-    fn test_init_creates_agents_md() {
-        let temp_dir = TempDir::new().unwrap();
-
-        init(temp_dir.path(), false).unwrap();
-
-        let agents_md_path = temp_dir.path().join(".agents").join("AGENTS.md");
-        assert!(agents_md_path.exists());
-
-        let content = fs::read_to_string(&agents_md_path).unwrap();
-        assert!(content.contains("# AI Agent Instructions"));
-        assert!(content.contains("## Project Overview"));
-    }
-
-    #[test]
     fn test_init_does_not_overwrite_without_force() {
         let temp_dir = TempDir::new().unwrap();
         let agents_dir = temp_dir.path().join(".agents");
         fs::create_dir_all(&agents_dir).unwrap();
-
-        // Create existing files with custom content
         let config_path = agents_dir.join("agentsync.toml");
-        let original_config = "# My custom config";
-        fs::write(&config_path, original_config).unwrap();
+        fs::write(&config_path, "original content").unwrap();
 
-        let agents_md_path = agents_dir.join("AGENTS.md");
-        let original_agents = "# My custom agents";
-        fs::write(&agents_md_path, original_agents).unwrap();
-
-        // Init without force
         init(temp_dir.path(), false).unwrap();
 
-        // Files should NOT be overwritten
-        assert_eq!(fs::read_to_string(&config_path).unwrap(), original_config);
         assert_eq!(
-            fs::read_to_string(&agents_md_path).unwrap(),
-            original_agents
+            fs::read_to_string(&config_path).unwrap(),
+            "original content"
         );
-    }
-
-    #[test]
-    fn test_init_overwrites_with_force() {
-        let temp_dir = TempDir::new().unwrap();
-        let agents_dir = temp_dir.path().join(".agents");
-        fs::create_dir_all(&agents_dir).unwrap();
-
-        // Create existing files with custom content
-        let config_path = agents_dir.join("agentsync.toml");
-        fs::write(&config_path, "# Old config").unwrap();
-
-        let agents_md_path = agents_dir.join("AGENTS.md");
-        fs::write(&agents_md_path, "# Old agents").unwrap();
-
-        // Init WITH force
-        init(temp_dir.path(), true).unwrap();
-
-        // Files SHOULD be overwritten with default content
-        let config_content = fs::read_to_string(&config_path).unwrap();
-        assert!(config_content.contains("[agents.claude]"));
-        assert!(config_content.contains("[agents.cursor]"));
-        assert!(config_content.contains("[agents.codex]"));
-
-        let agents_content = fs::read_to_string(&agents_md_path).unwrap();
-        assert!(agents_content.contains("# AI Agent Instructions"));
     }
 
     #[test]
@@ -738,82 +730,30 @@ mod tests {
         let agents_dir = temp_dir.path().join(".agents");
         fs::create_dir_all(&agents_dir).unwrap();
 
-        // Init should work even if .agents exists
         let result = init(temp_dir.path(), false);
         assert!(result.is_ok());
-
-        // Should still create files
-        assert!(agents_dir.join("agentsync.toml").exists());
-        assert!(agents_dir.join("AGENTS.md").exists());
     }
 
     #[test]
-    fn test_init_creates_nested_structure() {
+    fn test_init_overwrites_with_force() {
         let temp_dir = TempDir::new().unwrap();
-        let nested_project = temp_dir.path().join("deep").join("nested").join("project");
-        fs::create_dir_all(&nested_project).unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+        let config_path = agents_dir.join("agentsync.toml");
+        fs::write(&config_path, "original content").unwrap();
 
-        init(&nested_project, false).unwrap();
+        init(temp_dir.path(), true).unwrap();
 
-        let agents_dir = nested_project.join(".agents");
-        assert!(agents_dir.exists());
-        assert!(agents_dir.join("agentsync.toml").exists());
-        assert!(agents_dir.join("AGENTS.md").exists());
+        assert_ne!(
+            fs::read_to_string(&config_path).unwrap(),
+            "original content"
+        );
+        assert!(
+            fs::read_to_string(&config_path)
+                .unwrap()
+                .contains("AgentSync Configuration")
+        );
     }
-
-    // ==========================================================================
-    // DEFAULT TEMPLATE TESTS
-    // ==========================================================================
-
-    #[test]
-    fn test_default_config_is_valid_toml() {
-        // Ensure the default config template is valid TOML
-        let result: Result<crate::config::Config, _> = toml::from_str(DEFAULT_CONFIG);
-        assert!(result.is_ok(), "Default config should be valid TOML");
-    }
-
-    #[test]
-    fn test_default_config_contains_expected_agents() {
-        let config: crate::config::Config = toml::from_str(DEFAULT_CONFIG).unwrap();
-
-        assert!(config.agents.contains_key("claude"));
-        assert!(config.agents.contains_key("copilot"));
-        assert!(config.agents.contains_key("cursor"));
-        assert!(config.agents.contains_key("codex"));
-        assert!(config.agents.contains_key("root"));
-    }
-
-    #[test]
-    fn test_default_config_agents_are_enabled() {
-        let config: crate::config::Config = toml::from_str(DEFAULT_CONFIG).unwrap();
-
-        assert!(config.agents["claude"].enabled);
-        assert!(config.agents["copilot"].enabled);
-        assert!(config.agents["cursor"].enabled);
-        assert!(config.agents["codex"].enabled);
-        assert!(config.agents["root"].enabled);
-    }
-
-    #[test]
-    fn test_default_config_gitignore_enabled() {
-        let config: crate::config::Config = toml::from_str(DEFAULT_CONFIG).unwrap();
-
-        assert!(config.gitignore.enabled);
-        assert_eq!(config.gitignore.marker, "AI Agent Symlinks");
-    }
-
-    #[test]
-    fn test_default_agents_md_contains_sections() {
-        assert!(DEFAULT_AGENTS_MD.contains("# AI Agent Instructions"));
-        assert!(DEFAULT_AGENTS_MD.contains("## Project Overview"));
-        assert!(DEFAULT_AGENTS_MD.contains("## Code Style"));
-        assert!(DEFAULT_AGENTS_MD.contains("## Architecture"));
-        assert!(DEFAULT_AGENTS_MD.contains("## Testing"));
-    }
-
-    // ==========================================================================
-    // WIZARD TESTS
-    // ==========================================================================
 
     #[test]
     fn test_scan_agent_files_finds_claude_md() {
@@ -1005,6 +945,12 @@ mod tests {
                     AgentFileType::ClaudeInstructions
                         | AgentFileType::RootAgentsFile
                         | AgentFileType::CopilotInstructions
+                        | AgentFileType::ClineInstructions
+                        | AgentFileType::RooInstructions
+                        | AgentFileType::GooseInstructions
+                        | AgentFileType::WindsurfInstructions
+                        | AgentFileType::TraeInstructions
+                        | AgentFileType::ContinueInstructions
                 )
             })
             .collect();

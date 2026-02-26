@@ -13,6 +13,41 @@ pub fn canonical_mcp_agent_id(id: &str) -> Option<&'static str> {
         "vscode" | "vs-code" | "vs_code" => Some("vscode"),
         "cursor" => Some("cursor"),
         "opencode" | "open-code" | "open_code" => Some("opencode"),
+        // New agents
+        "amp" => Some("amp"),
+        "antigravity" => Some("antigravity"),
+        "augment" => Some("augment"),
+        "openclaw" | "open-claw" | "clawdbot" | "moltbot" => Some("openclaw"),
+        "cline" => Some("cline"),
+        "codebuddy" => Some("codebuddy"),
+        "command-code" | "commandcode" => Some("command-code"),
+        "continue" => Some("continue"),
+        "cortex" => Some("cortex"),
+        "crush" => Some("crush"),
+        "droid" | "factory" => Some("droid"),
+        "goose" => Some("goose"),
+        "junie" => Some("junie"),
+        "iflow" | "iflow-cli" => Some("iflow"),
+        "kilo" => Some("kilo"),
+        "kimi" | "kimi-cli" => Some("kimi"),
+        "kiro" | "kiro-cli" => Some("kiro"),
+        "kode" => Some("kode"),
+        "mcpjam" => Some("mcpjam"),
+        "vibe" | "mistral-vibe" => Some("vibe"),
+        "mux" => Some("mux"),
+        "openhands" => Some("openhands"),
+        "pi" => Some("pi"),
+        "qoder" => Some("qoder"),
+        "qwen" | "qwen-code" => Some("qwen"),
+        "replit" => Some("replit"),
+        "roo" | "roocode" | "roo-code" => Some("roo"),
+        "trae" => Some("trae"),
+        "trae-cn" => Some("trae-cn"),
+        "windsurf" => Some("windsurf"),
+        "zencoder" => Some("zencoder"),
+        "neovate" => Some("neovate"),
+        "pochi" => Some("pochi"),
+        "adal" => Some("adal"),
         _ => None,
     }
 }
@@ -32,6 +67,41 @@ pub fn known_ignore_patterns(agent_name: &str) -> &'static [&'static str] {
         Some("opencode") => &["opencode.json"],
         Some("cursor") => &[".cursor/mcp.json", ".cursor/skills/"],
         Some("vscode") => &[".vscode/mcp.json"],
+        // New agents
+        Some("amp") => &[".mcp.json", ".agents/skills/"],
+        Some("antigravity") => &[".mcp.json", ".agent/skills/"],
+        Some("augment") => &[".augment/skills/"],
+        Some("openclaw") => &["skills/"],
+        Some("cline") => &[".mcp.json", ".cline/skills/"],
+        Some("codebuddy") => &[".codebuddy/skills/"],
+        Some("command-code") => &[".commandcode/skills/"],
+        Some("continue") => &[".continue/config.json", ".continue/skills/"],
+        Some("cortex") => &[".cortex/skills/"],
+        Some("crush") => &[".crush/skills/"],
+        Some("droid") => &[".factory/skills/"],
+        Some("goose") => &[".goose/config.yaml", ".goose/skills/"],
+        Some("junie") => &[".junie/skills/"],
+        Some("iflow") => &[".iflow/skills/"],
+        Some("kilo") => &[".kilocode/skills/"],
+        Some("kimi") => &[".agents/skills/"],
+        Some("kiro") => &[".kiro/skills/"],
+        Some("kode") => &[".kode/skills/"],
+        Some("mcpjam") => &[".mcpjam/skills/"],
+        Some("vibe") => &[".vibe/skills/"],
+        Some("mux") => &[".mux/skills/"],
+        Some("openhands") => &[".openhands/skills/"],
+        Some("pi") => &[".pi/skills/"],
+        Some("qoder") => &[".qoder/skills/"],
+        Some("qwen") => &[".qwen/skills/"],
+        Some("replit") => &[".replit", ".agents/skills/"],
+        Some("roo") => &[".mcp.json", ".roo/skills/"],
+        Some("trae") => &[".trae/mcp_config.json", ".trae/skills/"],
+        Some("trae-cn") => &[".trae/mcp_config.json", ".trae/skills/"],
+        Some("windsurf") => &[".windsurf/mcp_config.json", ".windsurf/skills/"],
+        Some("zencoder") => &[".zencoder/skills/"],
+        Some("neovate") => &[".neovate/skills/"],
+        Some("pochi") => &[".pochi/skills/"],
+        Some("adal") => &[".adal/skills/"],
         _ => &[],
     }
 }
@@ -82,6 +152,9 @@ mod tests {
         assert_eq!(canonical_mcp_agent_id("gemini-cli"), Some("gemini"));
         assert_eq!(canonical_mcp_agent_id("vs-code"), Some("vscode"));
         assert_eq!(canonical_mcp_agent_id("open-code"), Some("opencode"));
+        assert_eq!(canonical_mcp_agent_id("cline"), Some("cline"));
+        assert_eq!(canonical_mcp_agent_id("roo-code"), Some("roo"));
+        assert_eq!(canonical_mcp_agent_id("windsurf"), Some("windsurf"));
         assert_eq!(canonical_mcp_agent_id("unknown"), None);
     }
 
@@ -102,6 +175,7 @@ mod tests {
         assert!(mcp_filter_matches("codex", "codex-cli"));
         assert!(mcp_filter_matches("copilot", "pilot"));
         assert!(!mcp_filter_matches("codex", "gemini-cli"));
+        assert!(mcp_filter_matches("cline", "cline"));
     }
 
     #[test]
@@ -110,5 +184,6 @@ mod tests {
         assert!(sync_filter_matches("codex-cli", "codex"));
         assert!(sync_filter_matches("custom-copilot-helper", "pilot"));
         assert!(!sync_filter_matches("custom-copilot-helper", "codex-cli"));
+        assert!(sync_filter_matches("cline", "cline"));
     }
 }
