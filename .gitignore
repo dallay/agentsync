@@ -35,12 +35,18 @@ node_modules/
 .pnpm-store/
 pnpm-debug.log
 # START AI Agent Symlinks
+.claude/commands/
+.claude/skills/
 .github/agents
 .github/copilot-instructions.md
 .github/prompts
 .github/skills
+.mcp.json
 .opencode/command
 .opencode/skill
+.vscode/mcp.json
 AGENTS.md
 CLAUDE.md
+opencode.json
 # END AI Agent Symlinks
+changes.diff
