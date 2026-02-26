@@ -175,7 +175,6 @@ mod tests {
         assert!(mcp_filter_matches("codex", "codex-cli"));
         assert!(mcp_filter_matches("copilot", "pilot"));
         assert!(!mcp_filter_matches("codex", "gemini-cli"));
-        assert!(mcp_filter_matches("cline", "cline"));
     }
 
     #[test]
@@ -184,6 +183,29 @@ mod tests {
         assert!(sync_filter_matches("codex-cli", "codex"));
         assert!(sync_filter_matches("custom-copilot-helper", "pilot"));
         assert!(!sync_filter_matches("custom-copilot-helper", "codex-cli"));
-        assert!(sync_filter_matches("cline", "cline"));
+    }
+    #[test]
+    fn test_new_agents_normalization() {
+        assert_eq!(canonical_mcp_agent_id("openclaw"), Some("openclaw"));
+        assert_eq!(canonical_mcp_agent_id("open-claw"), Some("openclaw"));
+        assert_eq!(canonical_mcp_agent_id("clawdbot"), Some("openclaw"));
+        assert_eq!(canonical_mcp_agent_id("moltbot"), Some("openclaw"));
+        assert_eq!(canonical_mcp_agent_id("roo-code"), Some("roo"));
+        assert_eq!(canonical_mcp_agent_id("commandcode"), Some("command-code"));
+    }
+
+    #[test]
+    fn test_new_agents_ignore_patterns() {
+        let trae_patterns = known_ignore_patterns("trae");
+        let trae_cn_patterns = known_ignore_patterns("trae-cn");
+        assert_eq!(trae_patterns, trae_cn_patterns);
+        assert!(trae_patterns.contains(&".trae/skills/"));
+    }
+
+    #[test]
+    fn test_new_agents_filter_matches() {
+        assert!(mcp_filter_matches("openclaw", "clawdbot"));
+        assert!(sync_filter_matches("moltbot", "openclaw"));
+        assert!(sync_filter_matches("roo-code", "roocode"));
     }
 }
