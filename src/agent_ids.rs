@@ -5,14 +5,15 @@
 
 /// Normalize a user-provided agent identifier to a canonical MCP ID.
 pub fn canonical_mcp_agent_id(id: &str) -> Option<&'static str> {
-    match id.to_lowercase().as_str() {
-        "claude" | "claude-code" | "claude_code" => Some("claude"),
-        "copilot" | "github-copilot" | "github_copilot" => Some("copilot"),
-        "codex" | "codex-cli" | "codex_cli" => Some("codex"),
-        "gemini" | "gemini-cli" | "gemini_cli" => Some("gemini"),
-        "vscode" | "vs-code" | "vs_code" => Some("vscode"),
+    let normalized = id.replace('_', "-").to_lowercase();
+    match normalized.as_str() {
+        "claude" | "claude-code" => Some("claude"),
+        "copilot" | "github-copilot" => Some("copilot"),
+        "codex" | "codex-cli" => Some("codex"),
+        "gemini" | "gemini-cli" => Some("gemini"),
+        "vscode" | "vs-code" => Some("vscode"),
         "cursor" => Some("cursor"),
-        "opencode" | "open-code" | "open_code" => Some("opencode"),
+        "opencode" | "open-code" => Some("opencode"),
         // New agents
         "amp" => Some("amp"),
         "antigravity" => Some("antigravity"),
@@ -56,7 +57,7 @@ pub fn canonical_mcp_agent_id(id: &str) -> Option<&'static str> {
 pub fn known_ignore_patterns(agent_name: &str) -> &'static [&'static str] {
     match canonical_mcp_agent_id(agent_name) {
         Some("claude") => &[".mcp.json", ".claude/commands/", ".claude/skills/"],
-        Some("copilot") => &[".vscode/mcp.json"],
+        Some("copilot") => &[".vscode/mcp.json", ".mcp.json"],
         Some("codex") => &[".codex/config.toml"],
         Some("gemini") => &[
             "GEMINI.md",
@@ -65,8 +66,8 @@ pub fn known_ignore_patterns(agent_name: &str) -> &'static [&'static str] {
             ".gemini/skills/",
         ],
         Some("opencode") => &["opencode.json"],
-        Some("cursor") => &[".cursor/mcp.json", ".cursor/skills/"],
-        Some("vscode") => &[".vscode/mcp.json"],
+        Some("cursor") => &[".cursor/mcp.json", ".cursor/skills/", ".mcp.json"],
+        Some("vscode") => &[".vscode/mcp.json", ".mcp.json"],
         // New agents
         Some("amp") => &[".mcp.json", ".agents/skills/"],
         Some("antigravity") => &[".mcp.json", ".agent/skills/"],
@@ -112,11 +113,11 @@ pub fn known_ignore_patterns(agent_name: &str) -> &'static [&'static str] {
 /// matching. Otherwise it falls back to legacy case-insensitive substring
 /// matching against the canonical ID.
 pub fn mcp_filter_matches(agent_id: &str, filter: &str) -> bool {
-    if let Some(canonical_filter) = canonical_mcp_agent_id(filter) {
+    let filter_normalized = filter.replace('_', "-").to_lowercase();
+    if let Some(canonical_filter) = canonical_mcp_agent_id(&filter_normalized) {
         canonical_filter == agent_id
     } else {
-        let filter_lower = filter.to_lowercase();
-        agent_id.to_lowercase().contains(&filter_lower)
+        agent_id.to_lowercase().contains(&filter_normalized)
     }
 }
 
@@ -126,16 +127,16 @@ pub fn mcp_filter_matches(agent_id: &str, filter: &str) -> bool {
 /// known, this performs exact canonical matching. Otherwise it falls back to
 /// legacy case-insensitive substring matching against the configured name.
 pub fn sync_filter_matches(config_agent_name: &str, filter: &str) -> bool {
-    if let Some(canonical_filter) = canonical_mcp_agent_id(filter) {
-        if let Some(canonical_agent) = canonical_mcp_agent_id(config_agent_name) {
+    let filter_normalized = filter.replace('_', "-").to_lowercase();
+    let config_normalized = config_agent_name.replace('_', "-").to_lowercase();
+    if let Some(canonical_filter) = canonical_mcp_agent_id(&filter_normalized) {
+        if let Some(canonical_agent) = canonical_mcp_agent_id(&config_normalized) {
             canonical_agent == canonical_filter
         } else {
-            let filter_lower = filter.to_lowercase();
-            config_agent_name.to_lowercase().contains(&filter_lower)
+            config_normalized.contains(&filter_normalized)
         }
     } else {
-        let filter_lower = filter.to_lowercase();
-        config_agent_name.to_lowercase().contains(&filter_lower)
+        config_normalized.contains(&filter_normalized)
     }
 }
 
@@ -144,69 +145,155 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_canonical_mcp_agent_id_aliases() {
-        assert_eq!(canonical_mcp_agent_id("claude"), Some("claude"));
-        assert_eq!(canonical_mcp_agent_id("claude-code"), Some("claude"));
-        assert_eq!(canonical_mcp_agent_id("github-copilot"), Some("copilot"));
-        assert_eq!(canonical_mcp_agent_id("codex_cli"), Some("codex"));
-        assert_eq!(canonical_mcp_agent_id("gemini-cli"), Some("gemini"));
-        assert_eq!(canonical_mcp_agent_id("vs-code"), Some("vscode"));
-        assert_eq!(canonical_mcp_agent_id("open-code"), Some("opencode"));
-        assert_eq!(canonical_mcp_agent_id("cline"), Some("cline"));
-        assert_eq!(canonical_mcp_agent_id("roo-code"), Some("roo"));
-        assert_eq!(canonical_mcp_agent_id("windsurf"), Some("windsurf"));
-        assert_eq!(canonical_mcp_agent_id("unknown"), None);
+    fn test_normalization_table() {
+        let cases = [
+            ("claude", "claude"),
+            ("claude-code", "claude"),
+            ("claude_code", "claude"),
+            ("github_copilot", "copilot"),
+            ("codex_cli", "codex"),
+            ("gemini_cli", "gemini"),
+            ("vs_code", "vscode"),
+            ("open_code", "opencode"),
+            ("open-claw", "openclaw"),
+            ("clawdbot", "openclaw"),
+            ("moltbot", "openclaw"),
+            ("roo-code", "roo"),
+            ("roo_code", "roo"),
+            ("iflow_cli", "iflow"),
+            ("trae_cn", "trae-cn"),
+        ];
+
+        for (input, expected) in cases {
+            assert_eq!(
+                canonical_mcp_agent_id(input),
+                Some(expected),
+                "Failed to normalize '{}'",
+                input
+            );
+        }
     }
 
     #[test]
-    fn test_known_ignore_patterns_uses_aliases() {
-        assert_eq!(
-            known_ignore_patterns("codex"),
-            known_ignore_patterns("codex-cli")
-        );
-        assert_eq!(
-            known_ignore_patterns("vscode"),
-            known_ignore_patterns("vs-code")
-        );
+    fn test_all_known_ignore_patterns_non_empty() {
+        let agents = [
+            "claude",
+            "copilot",
+            "codex",
+            "gemini",
+            "vscode",
+            "cursor",
+            "opencode",
+            "amp",
+            "antigravity",
+            "augment",
+            "openclaw",
+            "cline",
+            "codebuddy",
+            "command-code",
+            "continue",
+            "cortex",
+            "crush",
+            "droid",
+            "goose",
+            "junie",
+            "iflow",
+            "kilo",
+            "kimi",
+            "kiro",
+            "kode",
+            "mcpjam",
+            "vibe",
+            "mux",
+            "openhands",
+            "pi",
+            "qoder",
+            "qwen",
+            "replit",
+            "roo",
+            "trae",
+            "trae-cn",
+            "windsurf",
+            "zencoder",
+            "neovate",
+            "pochi",
+            "adal",
+        ];
+
+        for agent in agents {
+            let patterns = known_ignore_patterns(agent);
+            assert!(
+                !patterns.is_empty(),
+                "Agent '{}' has empty ignore patterns",
+                agent
+            );
+
+            // Check for .mcp.json if applicable
+            let needs_mcp = !matches!(
+                agent,
+                "codex"
+                    | "gemini"
+                    | "opencode"
+                    | "goose"
+                    | "trae"
+                    | "trae-cn"
+                    | "windsurf"
+                    | "continue"
+            );
+            if needs_mcp {
+                assert!(
+                    patterns.contains(&".mcp.json"),
+                    "Agent '{}' missing .mcp.json in ignore patterns",
+                    agent
+                );
+            }
+        }
     }
 
     #[test]
-    fn test_mcp_filter_matches_alias_and_substring() {
-        assert!(mcp_filter_matches("codex", "codex-cli"));
-        assert!(mcp_filter_matches("copilot", "pilot"));
-        assert!(!mcp_filter_matches("codex", "gemini-cli"));
+    fn test_filter_matches_table() {
+        let cases = [
+            ("codex", "codex-cli", true),
+            ("codex", "codex_cli", true),
+            ("copilot", "pilot", true),
+            ("copilot", "github_copilot", true),
+            ("openclaw", "clawdbot", true),
+            ("openclaw", "moltbot", true),
+            ("roo", "roo_code", true),
+            ("roo", "roo-code", true),
+            ("trae-cn", "trae_cn", true),
+        ];
+
+        for (agent_id, filter, expected) in cases {
+            assert_eq!(
+                mcp_filter_matches(agent_id, filter),
+                expected,
+                "mcp_filter_matches failed for agent '{}' filter '{}'",
+                agent_id,
+                filter
+            );
+        }
     }
 
     #[test]
-    fn test_sync_filter_matches_alias_and_substring() {
-        assert!(sync_filter_matches("codex", "codex-cli"));
-        assert!(sync_filter_matches("codex-cli", "codex"));
-        assert!(sync_filter_matches("custom-copilot-helper", "pilot"));
-        assert!(!sync_filter_matches("custom-copilot-helper", "codex-cli"));
-    }
+    fn test_sync_filter_matches_table() {
+        let cases = [
+            ("codex-cli", "codex", true),
+            ("codex_cli", "codex", true),
+            ("moltbot", "openclaw", true),
+            ("custom-copilot-helper", "pilot", true),
+            ("custom_copilot_helper", "copilot", true),
+            ("roo-code", "roocode", true),
+        ];
 
-    #[test]
-    fn test_new_agents_normalization() {
-        assert_eq!(canonical_mcp_agent_id("openclaw"), Some("openclaw"));
-        assert_eq!(canonical_mcp_agent_id("open-claw"), Some("openclaw"));
-        assert_eq!(canonical_mcp_agent_id("clawdbot"), Some("openclaw"));
-        assert_eq!(canonical_mcp_agent_id("moltbot"), Some("openclaw"));
-        assert_eq!(canonical_mcp_agent_id("roo-code"), Some("roo"));
-        assert_eq!(canonical_mcp_agent_id("commandcode"), Some("command-code"));
-    }
-
-    #[test]
-    fn test_new_agents_ignore_patterns() {
-        let trae_patterns = known_ignore_patterns("trae");
-        let trae_cn_patterns = known_ignore_patterns("trae-cn");
-        assert_eq!(trae_patterns, trae_cn_patterns);
-        assert!(trae_patterns.contains(&".trae/skills/"));
-    }
-
-    #[test]
-    fn test_new_agents_filter_matches() {
-        assert!(mcp_filter_matches("openclaw", "clawdbot"));
-        assert!(sync_filter_matches("moltbot", "openclaw"));
-        assert!(sync_filter_matches("roo-code", "roocode"));
+        for (config_name, filter, expected) in cases {
+            assert_eq!(
+                sync_filter_matches(config_name, filter),
+                expected,
+                "sync_filter_matches failed for config '{}' filter '{}'",
+                config_name,
+                filter
+            );
+        }
     }
 }

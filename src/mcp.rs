@@ -1498,9 +1498,6 @@ pub fn get_mcp_config_path(agent: McpAgent, project_root: &Path) -> PathBuf {
 // =============================================================================
 
 // -----------------------------------------------------------------------------
-// Standard MCP Formatter (Generic)
-// -----------------------------------------------------------------------------
-
 // -----------------------------------------------------------------------------
 // Standard MCP Formatter (Generic)
 // -----------------------------------------------------------------------------
@@ -2923,5 +2920,55 @@ command = "remove-cmd"
         assert!(enabled.contains(&McpAgent::GithubCopilot));
         assert!(enabled.contains(&McpAgent::CodexCli));
         assert_eq!(enabled.len(), 3);
+    }
+
+    #[test]
+    fn test_yaml_formatter_cleanup_removed_servers() {
+        let formatter = YamlFormatter {
+            wrapper_key: Some("mcpServers"),
+        };
+        let existing = "other_key: true\nmcpServers:\n  old-server:\n    command: old-cmd\n";
+
+        let mut server = create_test_server();
+        server.command = Some("new-cmd".to_string());
+        let new_servers = HashMap::from([("new-server".to_string(), &server)]);
+
+        let result = formatter
+            .cleanup_removed_servers(existing, &new_servers)
+            .unwrap();
+        let parsed: Value = serde_yaml::from_str(&result).unwrap();
+
+        assert!(parsed.get("other_key").is_some());
+        let mcp_servers = parsed.get("mcpServers").unwrap().as_object().unwrap();
+        assert!(mcp_servers.get("old-server").is_none());
+        assert!(mcp_servers.get("new-server").is_some());
+    }
+
+    #[test]
+    fn test_continue_formatter_cleanup_removed_servers() {
+        let formatter = ContinueFormatter;
+        let existing = r#"{
+            "other_setting": "val",
+            "mcpServers": {
+                "old-server": { "command": "old-cmd" }
+            }
+        }"#;
+
+        let mut server = create_test_server();
+        server.command = Some("new-cmd".to_string());
+        let new_servers = HashMap::from([("new-server".to_string(), &server)]);
+
+        let result = formatter
+            .cleanup_removed_servers(existing, &new_servers)
+            .unwrap();
+        let parsed: Value = serde_json::from_str(&result).unwrap();
+
+        assert_eq!(
+            parsed.get("other_setting").unwrap().as_str().unwrap(),
+            "val"
+        );
+        let mcp_servers = parsed.get("mcpServers").unwrap().as_object().unwrap();
+        assert!(mcp_servers.get("old-server").is_none());
+        assert!(mcp_servers.get("new-server").is_some());
     }
 }

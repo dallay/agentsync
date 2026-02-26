@@ -24,8 +24,8 @@ pub fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> Result<()> 
             #[cfg(windows)]
             {
                 // On Windows, we need to know if the target is a directory to use symlink_dir
-                let is_dir = entry.metadata().map(|m| m.is_dir()).unwrap_or(false);
-                if is_dir {
+                // Use entry.file_type() instead of entry.metadata() to avoid following symlinks.
+                if ty.is_dir() {
                     std::os::windows::fs::symlink_dir(target, &dst_path)?;
                 } else {
                     std::os::windows::fs::symlink_file(target, &dst_path)?;

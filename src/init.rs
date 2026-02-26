@@ -218,6 +218,22 @@ enum AgentFileType {
     Other,
 }
 
+/// Check if an agent file type is an instruction file
+fn is_instruction_file_type(file_type: &AgentFileType) -> bool {
+    matches!(
+        file_type,
+        AgentFileType::ClaudeInstructions
+            | AgentFileType::RootAgentsFile
+            | AgentFileType::CopilotInstructions
+            | AgentFileType::ClineInstructions
+            | AgentFileType::RooInstructions
+            | AgentFileType::GooseInstructions
+            | AgentFileType::WindsurfInstructions
+            | AgentFileType::TraeInstructions
+            | AgentFileType::ContinueInstructions
+    )
+}
+
 /// Scan project for existing agent-related files
 fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
     let mut discovered = Vec::new();
@@ -406,20 +422,7 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
     // Collect all instruction files first
     let instruction_files: Vec<_> = files_to_migrate
         .iter()
-        .filter(|f| {
-            matches!(
-                f.file_type,
-                AgentFileType::ClaudeInstructions
-                    | AgentFileType::RootAgentsFile
-                    | AgentFileType::CopilotInstructions
-                    | AgentFileType::ClineInstructions
-                    | AgentFileType::RooInstructions
-                    | AgentFileType::GooseInstructions
-                    | AgentFileType::WindsurfInstructions
-                    | AgentFileType::TraeInstructions
-                    | AgentFileType::ContinueInstructions
-            )
-        })
+        .filter(|f| is_instruction_file_type(&f.file_type))
         .collect();
 
     // Determine how to handle instruction files
@@ -458,6 +461,42 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
     // Track migration counts
     let mut files_actually_migrated = 0;
     let mut files_skipped = 0;
+    let mut wrote_agents_md = false;
+
+    // Create AGENTS.md with migrated content
+    let agents_md_path = agents_dir.join("AGENTS.md");
+    if let Some(content) = migrated_content {
+        if agents_md_path.exists() && !force {
+            println!(
+                "  {} AGENTS.md already exists (use --force to overwrite)",
+                "!".yellow()
+            );
+        } else {
+            fs::write(&agents_md_path, &content)?;
+            wrote_agents_md = true;
+            if instruction_files_merged > 1 {
+                println!(
+                    "  {} Created: {} (merged {} instruction files)",
+                    "✔".green(),
+                    agents_md_path.display(),
+                    instruction_files_merged
+                );
+            } else {
+                println!(
+                    "  {} Created: {} (with migrated content)",
+                    "✔".green(),
+                    agents_md_path.display()
+                );
+            }
+        }
+    } else {
+        // Use default template if no content migrated
+        if !agents_md_path.exists() || force {
+            fs::write(&agents_md_path, DEFAULT_AGENTS_MD)?;
+            wrote_agents_md = true;
+            println!("  {} Created: {}", "✔".green(), agents_md_path.display());
+        }
+    }
 
     for file in &files_to_migrate {
         let src_path = project_root.join(&file.path);
@@ -504,39 +543,6 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
             AgentFileType::Other => {
                 files_skipped += 1;
             }
-        }
-    }
-
-    // Create AGENTS.md with migrated content
-    let agents_md_path = agents_dir.join("AGENTS.md");
-    if let Some(content) = migrated_content {
-        if agents_md_path.exists() && !force {
-            println!(
-                "  {} AGENTS.md already exists (use --force to overwrite)",
-                "!".yellow()
-            );
-        } else {
-            fs::write(&agents_md_path, &content)?;
-            if instruction_files_merged > 1 {
-                println!(
-                    "  {} Created: {} (merged {} instruction files)",
-                    "✔".green(),
-                    agents_md_path.display(),
-                    instruction_files_merged
-                );
-            } else {
-                println!(
-                    "  {} Created: {} (with migrated content)",
-                    "✔".green(),
-                    agents_md_path.display()
-                );
-            }
-        }
-    } else {
-        // Use default template if no content migrated
-        if !agents_md_path.exists() || force {
-            fs::write(&agents_md_path, DEFAULT_AGENTS_MD)?;
-            println!("  {} Created: {}", "✔".green(), agents_md_path.display());
         }
     }
 
@@ -598,6 +604,11 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
                 continue;
             }
 
+            if is_instruction_file_type(&file.file_type) && !wrote_agents_md && !force {
+                // Skip backup if instructions weren't actually migrated
+                continue;
+            }
+
             let src_path = project_root.join(&file.path);
             if !src_path.exists() {
                 continue;
@@ -630,6 +641,7 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
 
     Ok(())
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -797,6 +809,33 @@ mod tests {
     }
 
     #[test]
+    fn test_scan_all_agent_files() {
+        let temp_dir = TempDir::new().unwrap();
+        let checks = [
+            ("CLAUDE.md", AgentFileType::ClaudeInstructions),
+            ("CLINE.md", AgentFileType::ClineInstructions),
+            ("ROO.md", AgentFileType::RooInstructions),
+            ("GOOSE.md", AgentFileType::GooseInstructions),
+            ("WINDSURF.md", AgentFileType::WindsurfInstructions),
+            ("TRAE.md", AgentFileType::TraeInstructions),
+            ("CONTINUE.md", AgentFileType::ContinueInstructions),
+            ("AGENTS.md", AgentFileType::RootAgentsFile),
+        ];
+
+        for (filename, file_type) in checks {
+            let path = temp_dir.path().join(filename);
+            fs::write(&path, "content").unwrap();
+            let discovered = scan_agent_files(temp_dir.path()).unwrap();
+            assert!(
+                discovered.iter().any(|f| f.file_type == file_type),
+                "Failed to discover '{}'",
+                filename
+            );
+            fs::remove_file(&path).unwrap();
+        }
+    }
+
+    #[test]
     fn test_scan_agent_files_finds_multiple() {
         let temp_dir = TempDir::new().unwrap();
 
@@ -909,20 +948,7 @@ mod tests {
         // Should find all three instruction files
         let instruction_files: Vec<_> = discovered
             .iter()
-            .filter(|f| {
-                matches!(
-                    f.file_type,
-                    AgentFileType::ClaudeInstructions
-                        | AgentFileType::RootAgentsFile
-                        | AgentFileType::CopilotInstructions
-                        | AgentFileType::ClineInstructions
-                        | AgentFileType::RooInstructions
-                        | AgentFileType::GooseInstructions
-                        | AgentFileType::WindsurfInstructions
-                        | AgentFileType::TraeInstructions
-                        | AgentFileType::ContinueInstructions
-                )
-            })
+            .filter(|f| is_instruction_file_type(&f.file_type))
             .collect();
 
         assert_eq!(instruction_files.len(), 3);
