@@ -6,6 +6,7 @@
 
 pub(crate) mod agent_ids;
 pub mod config;
+pub mod fs;
 pub mod gitignore;
 pub mod init;
 pub mod linker;

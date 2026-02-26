@@ -28,3 +28,9 @@
 
 **Learning:** Multiple agents often share the same source file (e.g., AGENTS.md) or target directories. Without caching, the Linker performs redundant file reads, string compression, and directory existence checks for every target.
 **Action:** Implement `compression_cache` (HashMap) to memoize expensive text compression and `ensured_outputs` (HashSet) to track verified destination paths. This optimization reduced execution time by ~83% (from 0.055s to 0.0094s) in a 100-agent scenario.
+
+## 2026-02-26 - Support for 34 New Agents and Config Migration
+
+**Learning:** Supporting a wide array of AI agents (41 total) requires handling diverse MCP configuration formats (YAML, nested JSON) and legacy instruction files (e.g., ROO.md, CLINE.md). Centralizing these into a unified structure during 'init --wizard' and using specialized formatters (Standard, YAML, Continue) ensures a seamless developer experience across all tools.
+
+**Action:** When adding support for new agents, identify their specific configuration requirements (path, format, and instruction file naming) and implement reusable formatters. Always prioritize automated migration of existing configuration to the central .agents/ directory to minimize manual setup.
