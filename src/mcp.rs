@@ -1501,6 +1501,10 @@ pub fn get_mcp_config_path(agent: McpAgent, project_root: &Path) -> PathBuf {
 // Standard MCP Formatter (Generic)
 // -----------------------------------------------------------------------------
 
+// -----------------------------------------------------------------------------
+// Standard MCP Formatter (Generic)
+// -----------------------------------------------------------------------------
+
 pub struct StandardMcpFormatter;
 
 impl McpFormatter for StandardMcpFormatter {
@@ -1519,6 +1523,28 @@ impl McpFormatter for StandardMcpFormatter {
     ) -> Result<String> {
         merge_standard_mcp(
             existing_content,
+            new_servers,
+            "Failed to parse existing MCP config as JSON",
+        )
+    }
+
+    fn cleanup_removed_servers(
+        &self,
+        existing_content: &str,
+        new_servers: &HashMap<String, &McpServerConfig>,
+    ) -> Result<String> {
+        let existing = parse_standard_mcp(
+            existing_content,
+            "Failed to parse existing MCP config as JSON",
+        )?;
+
+        let filtered_existing: HashMap<String, Value> = existing
+            .into_iter()
+            .filter(|(name, _)| new_servers.contains_key(name))
+            .collect();
+
+        merge_standard_mcp_filtered(
+            &filtered_existing,
             new_servers,
             "Failed to parse existing MCP config as JSON",
         )
@@ -1594,6 +1620,40 @@ impl McpFormatter for YamlFormatter {
         serde_yaml::to_string(&existing_doc).context("Failed to serialize merged YAML config")
     }
 
+    fn cleanup_removed_servers(
+        &self,
+        existing_content: &str,
+        new_servers: &HashMap<String, &McpServerConfig>,
+    ) -> Result<String> {
+        let mut existing_doc: Value =
+            serde_yaml::from_str(existing_content).unwrap_or_else(|_| json!({}));
+        let existing_servers = self.parse_existing(existing_content)?;
+
+        let filtered_existing: HashMap<String, Value> = existing_servers
+            .into_iter()
+            .filter(|(name, _)| new_servers.contains_key(name))
+            .collect();
+
+        let mut final_servers = filtered_existing;
+        for (name, config) in new_servers {
+            final_servers.insert(name.clone(), server_to_json(config));
+        }
+
+        let sorted_servers = sorted_json_map_from_values(&final_servers);
+
+        if let Some(key) = self.wrapper_key {
+            if let Some(obj) = existing_doc.as_object_mut() {
+                obj.insert(key.to_string(), json!(sorted_servers));
+            } else {
+                existing_doc = json!({ key: sorted_servers });
+            }
+        } else {
+            existing_doc = json!(sorted_servers);
+        }
+
+        serde_yaml::to_string(&existing_doc).context("Failed to serialize cleaned YAML config")
+    }
+
     fn preserve_on_overwrite(&self) -> bool {
         true
     }
@@ -1647,6 +1707,37 @@ impl McpFormatter for ContinueFormatter {
 
         serde_json::to_string_pretty(&existing_doc)
             .context("Failed to serialize merged Continue config")
+    }
+
+    fn cleanup_removed_servers(
+        &self,
+        existing_content: &str,
+        new_servers: &HashMap<String, &McpServerConfig>,
+    ) -> Result<String> {
+        let mut existing_doc: Value =
+            serde_json::from_str(existing_content).unwrap_or_else(|_| json!({}));
+        let existing_servers = self.parse_existing(existing_content)?;
+
+        let filtered_existing: HashMap<String, Value> = existing_servers
+            .into_iter()
+            .filter(|(name, _)| new_servers.contains_key(name))
+            .collect();
+
+        let mut final_servers = filtered_existing;
+        for (name, config) in new_servers {
+            final_servers.insert(name.clone(), server_to_json(config));
+        }
+
+        let sorted_servers = sorted_json_map_from_values(&final_servers);
+
+        if let Some(obj) = existing_doc.as_object_mut() {
+            obj.insert("mcpServers".to_string(), json!(sorted_servers));
+        } else {
+            existing_doc = json!({ "mcpServers": sorted_servers });
+        }
+
+        serde_json::to_string_pretty(&existing_doc)
+            .context("Failed to serialize cleaned Continue config")
     }
 
     fn preserve_on_overwrite(&self) -> bool {

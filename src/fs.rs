@@ -1,10 +1,20 @@
-/// Helper function to copy a directory recursively
+//! File system utilities.
+
+use anyhow::Result;
+use std::fs;
+use std::path::Path;
+
+/// Helper function to copy a directory recursively, preserving symbolic links.
 pub fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> Result<()> {
-    fs::create_dir_all(&dst)?;
+    let src = src.as_ref();
+    let dst = dst.as_ref();
+
+    fs::create_dir_all(dst)?;
     for entry in fs::read_dir(src)? {
         let entry = entry?;
         let ty = entry.file_type()?;
-        let dst_path = dst.as_ref().join(entry.file_name());
+        let dst_path = dst.join(entry.file_name());
+
         if ty.is_dir() {
             copy_dir_all(entry.path(), &dst_path)?;
         } else if ty.is_symlink() {
