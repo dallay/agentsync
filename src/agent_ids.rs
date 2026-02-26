@@ -5,15 +5,42 @@
 
 /// Normalize a user-provided agent identifier to a canonical MCP ID.
 pub fn canonical_mcp_agent_id(id: &str) -> Option<&'static str> {
-    match id.to_lowercase().as_str() {
-        "claude" | "claude-code" | "claude_code" => Some("claude"),
-        "copilot" | "github-copilot" | "github_copilot" => Some("copilot"),
-        "codex" | "codex-cli" | "codex_cli" => Some("codex"),
-        "gemini" | "gemini-cli" | "gemini_cli" => Some("gemini"),
-        "vscode" | "vs-code" | "vs_code" => Some("vscode"),
-        "cursor" => Some("cursor"),
-        "opencode" | "open-code" | "open_code" => Some("opencode"),
-        _ => None,
+    // Bolt Optimization: Use eq_ignore_ascii_case instead of to_lowercase() to
+    // eliminate unnecessary heap allocations for every identifier check.
+    if id.eq_ignore_ascii_case("claude")
+        || id.eq_ignore_ascii_case("claude-code")
+        || id.eq_ignore_ascii_case("claude_code")
+    {
+        Some("claude")
+    } else if id.eq_ignore_ascii_case("copilot")
+        || id.eq_ignore_ascii_case("github-copilot")
+        || id.eq_ignore_ascii_case("github_copilot")
+    {
+        Some("copilot")
+    } else if id.eq_ignore_ascii_case("codex")
+        || id.eq_ignore_ascii_case("codex-cli")
+        || id.eq_ignore_ascii_case("codex_cli")
+    {
+        Some("codex")
+    } else if id.eq_ignore_ascii_case("gemini")
+        || id.eq_ignore_ascii_case("gemini-cli")
+        || id.eq_ignore_ascii_case("gemini_cli")
+    {
+        Some("gemini")
+    } else if id.eq_ignore_ascii_case("vscode")
+        || id.eq_ignore_ascii_case("vs-code")
+        || id.eq_ignore_ascii_case("vs_code")
+    {
+        Some("vscode")
+    } else if id.eq_ignore_ascii_case("cursor") {
+        Some("cursor")
+    } else if id.eq_ignore_ascii_case("opencode")
+        || id.eq_ignore_ascii_case("open-code")
+        || id.eq_ignore_ascii_case("open_code")
+    {
+        Some("opencode")
+    } else {
+        None
     }
 }
 
@@ -36,6 +63,32 @@ pub fn known_ignore_patterns(agent_name: &str) -> &'static [&'static str] {
     }
 }
 
+/// Perform a case-insensitive substring match.
+///
+/// This avoids redundant heap allocations by only lowercasing the needle or
+/// haystack once. If the respective flag is true, it skips lowercasing that
+/// string.
+fn substring_match_ignore_case(
+    haystack: &str,
+    needle: &str,
+    haystack_is_lowercase: bool,
+    needle_is_lowercase: bool,
+) -> bool {
+    let needle_lower_owned;
+    let needle_lower = if needle_is_lowercase {
+        needle
+    } else {
+        needle_lower_owned = needle.to_lowercase();
+        &needle_lower_owned
+    };
+
+    if haystack_is_lowercase {
+        haystack.contains(needle_lower)
+    } else {
+        haystack.to_lowercase().contains(needle_lower)
+    }
+}
+
 /// Match a canonical agent ID against a filter token.
 ///
 /// If `filter` is a known alias/canonical ID, this performs exact canonical
@@ -45,8 +98,9 @@ pub fn mcp_filter_matches(agent_id: &str, filter: &str) -> bool {
     if let Some(canonical_filter) = canonical_mcp_agent_id(filter) {
         canonical_filter == agent_id
     } else {
-        let filter_lower = filter.to_lowercase();
-        agent_id.to_lowercase().contains(&filter_lower)
+        // Bolt Optimization: agent_id is already canonical (lowercase), so we
+        // skip redundant lowercasing of the haystack.
+        substring_match_ignore_case(agent_id, filter, true, false)
     }
 }
 
@@ -60,12 +114,13 @@ pub fn sync_filter_matches(config_agent_name: &str, filter: &str) -> bool {
         if let Some(canonical_agent) = canonical_mcp_agent_id(config_agent_name) {
             canonical_agent == canonical_filter
         } else {
-            let filter_lower = filter.to_lowercase();
-            config_agent_name.to_lowercase().contains(&filter_lower)
+            // Filter matched a canonical ID. We search for the original filter
+            // string in the config_agent_name as a fallback.
+            substring_match_ignore_case(config_agent_name, filter, false, false)
         }
     } else {
-        let filter_lower = filter.to_lowercase();
-        config_agent_name.to_lowercase().contains(&filter_lower)
+        // Legacy substring match fallback.
+        substring_match_ignore_case(config_agent_name, filter, false, false)
     }
 }
 

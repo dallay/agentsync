@@ -28,3 +28,7 @@
 
 **Learning:** Multiple agents often share the same source file (e.g., AGENTS.md) or target directories. Without caching, the Linker performs redundant file reads, string compression, and directory existence checks for every target.
 **Action:** Implement `compression_cache` (HashMap) to memoize expensive text compression and `ensured_outputs` (HashSet) to track verified destination paths. This optimization reduced execution time by ~83% (from 0.055s to 0.0094s) in a 100-agent scenario.
+
+## 2026-02-26 - Optimizing Identifier Normalization with ASCII Case-Insensitivity
+**Learning:** Using `id.to_lowercase().as_str()` in match blocks or frequent comparisons causes a heap allocation for every call. For ASCII-based identifiers, `eq_ignore_ascii_case` is a zero-allocation alternative. Additionally, when refactoring matching logic for performance, ensure the "needle" remains exactly as the user provided to avoid breaking substring matches against custom names.
+**Action:** Use `eq_ignore_ascii_case` for case-insensitive exact matches of known ASCII strings. Consolidate substring search logic into a helper that handles optional lowercasing of the haystack and needle to minimize redundant allocations.
