@@ -45,6 +45,349 @@ impl McpOutput {
 // Agent Definition
 // =============================================================================
 
+/// Formatter kinds for McpAgent
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FormatterKind {
+    /// Claude Code formatter
+    ClaudeCode,
+    /// GitHub Copilot formatter
+    GithubCopilot,
+    /// Codex CLI formatter
+    CodexCli,
+    /// Gemini CLI formatter
+    GeminiCli,
+    /// VS Code formatter
+    VsCode,
+    /// Cursor formatter
+    Cursor,
+    /// OpenCode formatter
+    OpenCode,
+    /// Continue formatter (also used by Trae, TraeCN, Windsurf)
+    Continue,
+    /// YAML formatter (for Goose)
+    Yaml,
+    /// Standard MCP formatter (default for most agents)
+    Standard,
+}
+
+/// Agent descriptor with metadata
+struct AgentDescriptor {
+    agent: McpAgent,
+    id: &'static str,
+    name: &'static str,
+    config_path: &'static str,
+    formatter_kind: FormatterKind,
+}
+
+/// Static descriptor table for all MCP agents
+static AGENT_DESCRIPTORS: &[AgentDescriptor] = &[
+    AgentDescriptor {
+        agent: McpAgent::ClaudeCode,
+        id: "claude",
+        name: "Claude Code",
+        config_path: ".mcp.json",
+        formatter_kind: FormatterKind::ClaudeCode,
+    },
+    AgentDescriptor {
+        agent: McpAgent::GithubCopilot,
+        id: "copilot",
+        name: "GitHub Copilot",
+        config_path: ".vscode/mcp.json",
+        formatter_kind: FormatterKind::GithubCopilot,
+    },
+    AgentDescriptor {
+        agent: McpAgent::CodexCli,
+        id: "codex",
+        name: "OpenAI Codex CLI",
+        config_path: ".codex/config.toml",
+        formatter_kind: FormatterKind::CodexCli,
+    },
+    AgentDescriptor {
+        agent: McpAgent::GeminiCli,
+        id: "gemini",
+        name: "Gemini CLI",
+        config_path: ".gemini/settings.json",
+        formatter_kind: FormatterKind::GeminiCli,
+    },
+    AgentDescriptor {
+        agent: McpAgent::VsCode,
+        id: "vscode",
+        name: "VS Code",
+        config_path: ".vscode/mcp.json",
+        formatter_kind: FormatterKind::VsCode,
+    },
+    AgentDescriptor {
+        agent: McpAgent::Cursor,
+        id: "cursor",
+        name: "Cursor",
+        config_path: ".cursor/mcp.json",
+        formatter_kind: FormatterKind::Cursor,
+    },
+    AgentDescriptor {
+        agent: McpAgent::OpenCode,
+        id: "opencode",
+        name: "OpenCode",
+        config_path: "opencode.json",
+        formatter_kind: FormatterKind::OpenCode,
+    },
+    AgentDescriptor {
+        agent: McpAgent::Amp,
+        id: "amp",
+        name: "Amp",
+        config_path: ".mcp.json",
+        formatter_kind: FormatterKind::Standard,
+    },
+    AgentDescriptor {
+        agent: McpAgent::Antigravity,
+        id: "antigravity",
+        name: "Antigravity",
+        config_path: ".mcp.json",
+        formatter_kind: FormatterKind::Standard,
+    },
+    AgentDescriptor {
+        agent: McpAgent::Augment,
+        id: "augment",
+        name: "Augment",
+        config_path: ".mcp.json",
+        formatter_kind: FormatterKind::Standard,
+    },
+    AgentDescriptor {
+        agent: McpAgent::OpenClaw,
+        id: "openclaw",
+        name: "OpenClaw",
+        config_path: ".mcp.json",
+        formatter_kind: FormatterKind::Standard,
+    },
+    AgentDescriptor {
+        agent: McpAgent::Cline,
+        id: "cline",
+        name: "Cline",
+        config_path: ".mcp.json",
+        formatter_kind: FormatterKind::Standard,
+    },
+    AgentDescriptor {
+        agent: McpAgent::CodeBuddy,
+        id: "codebuddy",
+        name: "CodeBuddy",
+        config_path: ".mcp.json",
+        formatter_kind: FormatterKind::Standard,
+    },
+    AgentDescriptor {
+        agent: McpAgent::CommandCode,
+        id: "command-code",
+        name: "Command Code",
+        config_path: ".mcp.json",
+        formatter_kind: FormatterKind::Standard,
+    },
+    AgentDescriptor {
+        agent: McpAgent::Continue,
+        id: "continue",
+        name: "Continue",
+        config_path: ".continue/config.json",
+        formatter_kind: FormatterKind::Continue,
+    },
+    AgentDescriptor {
+        agent: McpAgent::Cortex,
+        id: "cortex",
+        name: "Cortex Code",
+        config_path: ".mcp.json",
+        formatter_kind: FormatterKind::Standard,
+    },
+    AgentDescriptor {
+        agent: McpAgent::Crush,
+        id: "crush",
+        name: "Crush",
+        config_path: ".mcp.json",
+        formatter_kind: FormatterKind::Standard,
+    },
+    AgentDescriptor {
+        agent: McpAgent::Droid,
+        id: "droid",
+        name: "Droid",
+        config_path: ".mcp.json",
+        formatter_kind: FormatterKind::Standard,
+    },
+    AgentDescriptor {
+        agent: McpAgent::Goose,
+        id: "goose",
+        name: "Goose",
+        config_path: ".goose/config.yaml",
+        formatter_kind: FormatterKind::Yaml,
+    },
+    AgentDescriptor {
+        agent: McpAgent::Junie,
+        id: "junie",
+        name: "Junie",
+        config_path: ".mcp.json",
+        formatter_kind: FormatterKind::Standard,
+    },
+    AgentDescriptor {
+        agent: McpAgent::Iflow,
+        id: "iflow",
+        name: "iFlow CLI",
+        config_path: ".mcp.json",
+        formatter_kind: FormatterKind::Standard,
+    },
+    AgentDescriptor {
+        agent: McpAgent::Kilo,
+        id: "kilo",
+        name: "Kilo Code",
+        config_path: ".mcp.json",
+        formatter_kind: FormatterKind::Standard,
+    },
+    AgentDescriptor {
+        agent: McpAgent::Kimi,
+        id: "kimi",
+        name: "Kimi Code CLI",
+        config_path: ".mcp.json",
+        formatter_kind: FormatterKind::Standard,
+    },
+    AgentDescriptor {
+        agent: McpAgent::Kiro,
+        id: "kiro",
+        name: "Kiro CLI",
+        config_path: ".mcp.json",
+        formatter_kind: FormatterKind::Standard,
+    },
+    AgentDescriptor {
+        agent: McpAgent::Kode,
+        id: "kode",
+        name: "Kode",
+        config_path: ".mcp.json",
+        formatter_kind: FormatterKind::Standard,
+    },
+    AgentDescriptor {
+        agent: McpAgent::McpJam,
+        id: "mcpjam",
+        name: "MCPJam",
+        config_path: ".mcp.json",
+        formatter_kind: FormatterKind::Standard,
+    },
+    AgentDescriptor {
+        agent: McpAgent::Vibe,
+        id: "vibe",
+        name: "Mistral Vibe",
+        config_path: ".mcp.json",
+        formatter_kind: FormatterKind::Standard,
+    },
+    AgentDescriptor {
+        agent: McpAgent::Mux,
+        id: "mux",
+        name: "Mux",
+        config_path: ".mcp.json",
+        formatter_kind: FormatterKind::Standard,
+    },
+    AgentDescriptor {
+        agent: McpAgent::OpenHands,
+        id: "openhands",
+        name: "OpenHands",
+        config_path: ".mcp.json",
+        formatter_kind: FormatterKind::Standard,
+    },
+    AgentDescriptor {
+        agent: McpAgent::Pi,
+        id: "pi",
+        name: "Pi",
+        config_path: ".mcp.json",
+        formatter_kind: FormatterKind::Standard,
+    },
+    AgentDescriptor {
+        agent: McpAgent::Qoder,
+        id: "qoder",
+        name: "Qoder",
+        config_path: ".mcp.json",
+        formatter_kind: FormatterKind::Standard,
+    },
+    AgentDescriptor {
+        agent: McpAgent::Qwen,
+        id: "qwen",
+        name: "Qwen Code",
+        config_path: ".mcp.json",
+        formatter_kind: FormatterKind::Standard,
+    },
+    AgentDescriptor {
+        agent: McpAgent::Replit,
+        id: "replit",
+        name: "Replit",
+        config_path: ".mcp.json",
+        formatter_kind: FormatterKind::Standard,
+    },
+    AgentDescriptor {
+        agent: McpAgent::Roo,
+        id: "roo",
+        name: "Roo Code",
+        config_path: ".mcp.json",
+        formatter_kind: FormatterKind::Standard,
+    },
+    AgentDescriptor {
+        agent: McpAgent::Trae,
+        id: "trae",
+        name: "Trae",
+        config_path: ".trae/mcp_config.json",
+        formatter_kind: FormatterKind::Continue,
+    },
+    AgentDescriptor {
+        agent: McpAgent::TraeCn,
+        id: "trae-cn",
+        name: "Trae CN",
+        config_path: ".trae/mcp_config.json",
+        formatter_kind: FormatterKind::Continue,
+    },
+    AgentDescriptor {
+        agent: McpAgent::Windsurf,
+        id: "windsurf",
+        name: "Windsurf",
+        config_path: ".windsurf/mcp_config.json",
+        formatter_kind: FormatterKind::Continue,
+    },
+    AgentDescriptor {
+        agent: McpAgent::Zencoder,
+        id: "zencoder",
+        name: "Zencoder",
+        config_path: ".mcp.json",
+        formatter_kind: FormatterKind::Standard,
+    },
+    AgentDescriptor {
+        agent: McpAgent::Neovate,
+        id: "neovate",
+        name: "Neovate",
+        config_path: ".mcp.json",
+        formatter_kind: FormatterKind::Standard,
+    },
+    AgentDescriptor {
+        agent: McpAgent::Pochi,
+        id: "pochi",
+        name: "Pochi",
+        config_path: ".mcp.json",
+        formatter_kind: FormatterKind::Standard,
+    },
+    AgentDescriptor {
+        agent: McpAgent::Adal,
+        id: "adal",
+        name: "AdaL",
+        config_path: ".mcp.json",
+        formatter_kind: FormatterKind::Standard,
+    },
+];
+
+/// Get formatter from kind
+fn formatter_from_kind(kind: FormatterKind) -> Box<dyn McpFormatter> {
+    match kind {
+        FormatterKind::ClaudeCode => Box::new(ClaudeCodeFormatter),
+        FormatterKind::GithubCopilot => Box::new(GithubCopilotFormatter),
+        FormatterKind::CodexCli => Box::new(CodexCliFormatter),
+        FormatterKind::GeminiCli => Box::new(GeminiCliFormatter),
+        FormatterKind::VsCode => Box::new(VsCodeFormatter),
+        FormatterKind::Cursor => Box::new(CursorFormatter),
+        FormatterKind::OpenCode => Box::new(OpenCodeFormatter),
+        FormatterKind::Continue => Box::new(ContinueFormatter),
+        FormatterKind::Yaml => Box::new(YamlFormatter {
+            wrapper_key: Some("mcpServers"),
+        }),
+        FormatterKind::Standard => Box::new(StandardMcpFormatter),
+    }
+}
+
 /// Known MCP-compatible agent identifiers
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum McpAgent {
@@ -182,211 +525,48 @@ impl McpAgent {
 
     /// Get the agent identifier string (used in config)
     pub fn id(&self) -> &'static str {
-        match self {
-            McpAgent::ClaudeCode => "claude",
-            McpAgent::GithubCopilot => "copilot",
-            McpAgent::CodexCli => "codex",
-            McpAgent::GeminiCli => "gemini",
-            McpAgent::VsCode => "vscode",
-            McpAgent::Cursor => "cursor",
-            McpAgent::OpenCode => "opencode",
-            McpAgent::Amp => "amp",
-            McpAgent::Antigravity => "antigravity",
-            McpAgent::Augment => "augment",
-            McpAgent::OpenClaw => "openclaw",
-            McpAgent::Cline => "cline",
-            McpAgent::CodeBuddy => "codebuddy",
-            McpAgent::CommandCode => "command-code",
-            McpAgent::Continue => "continue",
-            McpAgent::Cortex => "cortex",
-            McpAgent::Crush => "crush",
-            McpAgent::Droid => "droid",
-            McpAgent::Goose => "goose",
-            McpAgent::Junie => "junie",
-            McpAgent::Iflow => "iflow",
-            McpAgent::Kilo => "kilo",
-            McpAgent::Kimi => "kimi",
-            McpAgent::Kiro => "kiro",
-            McpAgent::Kode => "kode",
-            McpAgent::McpJam => "mcpjam",
-            McpAgent::Vibe => "vibe",
-            McpAgent::Mux => "mux",
-            McpAgent::OpenHands => "openhands",
-            McpAgent::Pi => "pi",
-            McpAgent::Qoder => "qoder",
-            McpAgent::Qwen => "qwen",
-            McpAgent::Replit => "replit",
-            McpAgent::Roo => "roo",
-            McpAgent::Trae => "trae",
-            McpAgent::TraeCn => "trae-cn",
-            McpAgent::Windsurf => "windsurf",
-            McpAgent::Zencoder => "zencoder",
-            McpAgent::Neovate => "neovate",
-            McpAgent::Pochi => "pochi",
-            McpAgent::Adal => "adal",
-        }
+        AGENT_DESCRIPTORS
+            .iter()
+            .find(|d| d.agent == *self)
+            .map(|d| d.id)
+            .expect("unknown McpAgent variant")
     }
 
     /// Get human-readable name
     pub fn name(&self) -> &'static str {
-        match self {
-            McpAgent::ClaudeCode => "Claude Code",
-            McpAgent::GithubCopilot => "GitHub Copilot",
-            McpAgent::CodexCli => "OpenAI Codex CLI",
-            McpAgent::GeminiCli => "Gemini CLI",
-            McpAgent::VsCode => "VS Code",
-            McpAgent::Cursor => "Cursor",
-            McpAgent::OpenCode => "OpenCode",
-            McpAgent::Amp => "Amp",
-            McpAgent::Antigravity => "Antigravity",
-            McpAgent::Augment => "Augment",
-            McpAgent::OpenClaw => "OpenClaw",
-            McpAgent::Cline => "Cline",
-            McpAgent::CodeBuddy => "CodeBuddy",
-            McpAgent::CommandCode => "Command Code",
-            McpAgent::Continue => "Continue",
-            McpAgent::Cortex => "Cortex Code",
-            McpAgent::Crush => "Crush",
-            McpAgent::Droid => "Droid",
-            McpAgent::Goose => "Goose",
-            McpAgent::Junie => "Junie",
-            McpAgent::Iflow => "iFlow CLI",
-            McpAgent::Kilo => "Kilo Code",
-            McpAgent::Kimi => "Kimi Code CLI",
-            McpAgent::Kiro => "Kiro CLI",
-            McpAgent::Kode => "Kode",
-            McpAgent::McpJam => "MCPJam",
-            McpAgent::Vibe => "Mistral Vibe",
-            McpAgent::Mux => "Mux",
-            McpAgent::OpenHands => "OpenHands",
-            McpAgent::Pi => "Pi",
-            McpAgent::Qoder => "Qoder",
-            McpAgent::Qwen => "Qwen Code",
-            McpAgent::Replit => "Replit",
-            McpAgent::Roo => "Roo Code",
-            McpAgent::Trae => "Trae",
-            McpAgent::TraeCn => "Trae CN",
-            McpAgent::Windsurf => "Windsurf",
-            McpAgent::Zencoder => "Zencoder",
-            McpAgent::Neovate => "Neovate",
-            McpAgent::Pochi => "Pochi",
-            McpAgent::Adal => "AdaL",
-        }
+        AGENT_DESCRIPTORS
+            .iter()
+            .find(|d| d.agent == *self)
+            .map(|d| d.name)
+            .expect("unknown McpAgent variant")
     }
 
     /// Get the project-level config file path (relative to project root)
     pub fn config_path(&self) -> &'static str {
-        match self {
-            McpAgent::ClaudeCode => ".mcp.json",
-            McpAgent::GithubCopilot => ".vscode/mcp.json",
-            McpAgent::CodexCli => ".codex/config.toml",
-            McpAgent::GeminiCli => ".gemini/settings.json",
-            McpAgent::VsCode => ".vscode/mcp.json",
-            McpAgent::Cursor => ".cursor/mcp.json",
-            McpAgent::OpenCode => "opencode.json",
-            McpAgent::Amp => ".mcp.json",
-            McpAgent::Antigravity => ".mcp.json",
-            McpAgent::Augment => ".mcp.json",
-            McpAgent::OpenClaw => ".mcp.json",
-            McpAgent::Cline => ".mcp.json",
-            McpAgent::CodeBuddy => ".mcp.json",
-            McpAgent::CommandCode => ".mcp.json",
-            McpAgent::Continue => ".continue/config.json",
-            McpAgent::Cortex => ".mcp.json",
-            McpAgent::Crush => ".mcp.json",
-            McpAgent::Droid => ".mcp.json",
-            McpAgent::Goose => ".goose/config.yaml",
-            McpAgent::Junie => ".mcp.json",
-            McpAgent::Iflow => ".mcp.json",
-            McpAgent::Kilo => ".mcp.json",
-            McpAgent::Kimi => ".mcp.json",
-            McpAgent::Kiro => ".mcp.json",
-            McpAgent::Kode => ".mcp.json",
-            McpAgent::McpJam => ".mcp.json",
-            McpAgent::Vibe => ".mcp.json",
-            McpAgent::Mux => ".mcp.json",
-            McpAgent::OpenHands => ".mcp.json",
-            McpAgent::Pi => ".mcp.json",
-            McpAgent::Qoder => ".mcp.json",
-            McpAgent::Qwen => ".mcp.json",
-            McpAgent::Replit => ".mcp.json",
-            McpAgent::Roo => ".mcp.json",
-            McpAgent::Trae => ".trae/mcp_config.json",
-            McpAgent::TraeCn => ".trae/mcp_config.json",
-            McpAgent::Windsurf => ".windsurf/mcp_config.json",
-            McpAgent::Zencoder => ".mcp.json",
-            McpAgent::Neovate => ".mcp.json",
-            McpAgent::Pochi => ".mcp.json",
-            McpAgent::Adal => ".mcp.json",
-        }
+        AGENT_DESCRIPTORS
+            .iter()
+            .find(|d| d.agent == *self)
+            .map(|d| d.config_path)
+            .expect("unknown McpAgent variant")
     }
 
     /// Get the formatter for this agent
     pub fn formatter(&self) -> Box<dyn McpFormatter> {
-        match self {
-            McpAgent::ClaudeCode => Box::new(ClaudeCodeFormatter),
-            McpAgent::GithubCopilot => Box::new(GithubCopilotFormatter),
-            McpAgent::CodexCli => Box::new(CodexCliFormatter),
-            McpAgent::GeminiCli => Box::new(GeminiCliFormatter),
-            McpAgent::VsCode => Box::new(VsCodeFormatter),
-            McpAgent::Cursor => Box::new(CursorFormatter),
-            McpAgent::OpenCode => Box::new(OpenCodeFormatter),
-            McpAgent::Continue | McpAgent::Trae | McpAgent::TraeCn | McpAgent::Windsurf => {
-                Box::new(ContinueFormatter)
-            }
-            McpAgent::Goose => Box::new(YamlFormatter {
-                wrapper_key: Some("mcpServers"),
-            }),
-            _ => Box::new(StandardMcpFormatter),
-        }
+        let kind = AGENT_DESCRIPTORS
+            .iter()
+            .find(|d| d.agent == *self)
+            .map(|d| d.formatter_kind)
+            .expect("unknown McpAgent variant");
+        formatter_from_kind(kind)
     }
 
     /// Parse agent from string identifier
     pub fn from_id(id: &str) -> Option<McpAgent> {
-        match agent_ids::canonical_mcp_agent_id(id)? {
-            "claude" => Some(McpAgent::ClaudeCode),
-            "copilot" => Some(McpAgent::GithubCopilot),
-            "codex" => Some(McpAgent::CodexCli),
-            "gemini" => Some(McpAgent::GeminiCli),
-            "vscode" => Some(McpAgent::VsCode),
-            "cursor" => Some(McpAgent::Cursor),
-            "opencode" => Some(McpAgent::OpenCode),
-            "amp" => Some(McpAgent::Amp),
-            "antigravity" => Some(McpAgent::Antigravity),
-            "augment" => Some(McpAgent::Augment),
-            "openclaw" => Some(McpAgent::OpenClaw),
-            "cline" => Some(McpAgent::Cline),
-            "codebuddy" => Some(McpAgent::CodeBuddy),
-            "command-code" => Some(McpAgent::CommandCode),
-            "continue" => Some(McpAgent::Continue),
-            "cortex" => Some(McpAgent::Cortex),
-            "crush" => Some(McpAgent::Crush),
-            "droid" => Some(McpAgent::Droid),
-            "goose" => Some(McpAgent::Goose),
-            "junie" => Some(McpAgent::Junie),
-            "iflow" => Some(McpAgent::Iflow),
-            "kilo" => Some(McpAgent::Kilo),
-            "kimi" => Some(McpAgent::Kimi),
-            "kiro" => Some(McpAgent::Kiro),
-            "kode" => Some(McpAgent::Kode),
-            "mcpjam" => Some(McpAgent::McpJam),
-            "vibe" => Some(McpAgent::Vibe),
-            "mux" => Some(McpAgent::Mux),
-            "openhands" => Some(McpAgent::OpenHands),
-            "pi" => Some(McpAgent::Pi),
-            "qoder" => Some(McpAgent::Qoder),
-            "qwen" => Some(McpAgent::Qwen),
-            "replit" => Some(McpAgent::Replit),
-            "roo" => Some(McpAgent::Roo),
-            "trae" => Some(McpAgent::Trae),
-            "trae-cn" => Some(McpAgent::TraeCn),
-            "windsurf" => Some(McpAgent::Windsurf),
-            "zencoder" => Some(McpAgent::Zencoder),
-            "neovate" => Some(McpAgent::Neovate),
-            "pochi" => Some(McpAgent::Pochi),
-            "adal" => Some(McpAgent::Adal),
-            _ => None,
-        }
+        let canonical = agent_ids::canonical_mcp_agent_id(id)?;
+        AGENT_DESCRIPTORS
+            .iter()
+            .find(|d| d.id == canonical)
+            .map(|d| d.agent)
     }
 }
 
@@ -1497,7 +1677,6 @@ pub fn get_mcp_config_path(agent: McpAgent, project_root: &Path) -> PathBuf {
 // Tests
 // =============================================================================
 
-// -----------------------------------------------------------------------------
 // -----------------------------------------------------------------------------
 // Standard MCP Formatter (Generic)
 // -----------------------------------------------------------------------------

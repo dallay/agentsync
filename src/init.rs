@@ -645,12 +645,34 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::Config;
     use tempfile::TempDir;
 
     #[test]
     fn test_default_config_is_valid_toml() {
         let parsed: toml::Value = toml::from_str(DEFAULT_CONFIG).unwrap();
         assert!(parsed.is_table());
+    }
+
+    #[test]
+    fn test_default_config_deserializes_to_config() {
+        // Deserialize into the real Config type to validate schema
+        let config: Config = toml::from_str(DEFAULT_CONFIG).unwrap();
+
+        // Verify key schema fields
+        assert_eq!(config.source_dir, ".");
+        assert!(config.gitignore.enabled);
+        assert_eq!(config.gitignore.marker, "AI Agent Symlinks");
+
+        // Verify at least one agent is configured
+        assert!(!config.agents.is_empty());
+
+        // Verify Claude agent is enabled
+        let claude = config
+            .agents
+            .get("claude")
+            .expect("claude agent should exist");
+        assert!(claude.enabled);
     }
 
     #[test]
@@ -916,6 +938,27 @@ mod tests {
         // Verify symlink target
         let link_target = fs::read_link(&dst_link).unwrap();
         assert_eq!(link_target.to_str().unwrap(), "real_file.txt");
+    }
+
+    #[test]
+    fn test_copy_dir_all_rejects_dst_inside_src() {
+        let temp_dir = TempDir::new().unwrap();
+        let src_dir = temp_dir.path().join("src");
+        let dst_dir = src_dir.join("subdir"); // dst is inside src
+
+        fs::create_dir_all(&src_dir).unwrap();
+        fs::write(src_dir.join("file.txt"), "content").unwrap();
+
+        // Copy should fail with error
+        let result = copy_dir_all(&src_dir, &dst_dir);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("destination cannot be inside source"),
+            "error should mention dst inside src: {}",
+            err
+        );
     }
 
     #[test]

@@ -26,6 +26,7 @@ Thumbs.db
 *.tar.gz
 *.zip
 agentsync-*
+changes.diff
 
 # NPM
 npm/agentsync/lib/
