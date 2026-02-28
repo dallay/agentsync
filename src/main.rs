@@ -35,13 +35,13 @@ enum Commands {
     Skill {
         #[command(subcommand)]
         cmd: SkillCommand,
-        /// Root of the project (defaults to CWD)
+        /// Project root directory (defaults to CWD)
         #[arg(short = 'p', long)]
         project_root: Option<PathBuf>,
     },
     /// Run diagnostic and health check
     Doctor {
-        /// Project root (defaults to CWD)
+        /// Project root directory (defaults to CWD)
         #[arg(short = 'p', long)]
         project_root: Option<PathBuf>,
     },
@@ -49,7 +49,7 @@ enum Commands {
     Status {
         #[command(flatten)]
         args: StatusArgs,
-        /// Project root (defaults to CWD)
+        /// Project root directory (defaults to CWD)
         #[arg(short = 'p', long)]
         project_root: Option<PathBuf>,
     },
@@ -58,7 +58,7 @@ enum Commands {
         #[arg(
             short = 'p',
             long = "project-root",
-            help = "Project root directory (defaults to current dir)"
+            help = "Project root directory (defaults to CWD)"
         )]
         project_root: Option<PathBuf>,
         #[arg(
