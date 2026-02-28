@@ -167,6 +167,9 @@ jobs:
   # Security audit
   # ==========================================================================
   audit:
+    permissions:
+      contents: read
+      checks: write
     name: Security Audit
     runs-on: ubuntu-latest
     steps:
