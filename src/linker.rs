@@ -6,7 +6,7 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
@@ -52,8 +52,6 @@ pub struct Linker {
     project_root: PathBuf,
     source_dir: PathBuf,
     path_cache: RefCell<HashMap<PathBuf, PathBuf>>,
-    compression_cache: RefCell<HashMap<PathBuf, String>>,
-    ensured_outputs: RefCell<HashSet<PathBuf>>,
 }
 
 impl Linker {
@@ -68,8 +66,6 @@ impl Linker {
             project_root,
             source_dir,
             path_cache: RefCell::new(HashMap::new()),
-            compression_cache: RefCell::new(HashMap::new()),
-            ensured_outputs: RefCell::new(HashSet::new()),
         }
     }
 
@@ -219,8 +215,7 @@ impl Linker {
 
             let compressed = compressed_agents_md_path(source);
 
-            let already_ensured = self.ensured_outputs.borrow().contains(&compressed);
-            if !options.dry_run && !already_ensured {
+            if !options.dry_run {
                 self.write_compressed_agents_md(source, &compressed)?;
             }
 
@@ -247,24 +242,13 @@ impl Linker {
     }
 
     fn write_compressed_agents_md(&self, source: &Path, dest: &Path) -> Result<()> {
-        let cached = self.compression_cache.borrow().get(source).cloned();
-
-        let compressed = if let Some(c) = cached {
-            c
-        } else {
-            let content = fs::read_to_string(source)
-                .with_context(|| format!("Failed to read AGENTS.md: {}", source.display()))?;
-            let c = compress_agents_md_content(&content);
-            self.compression_cache
-                .borrow_mut()
-                .insert(source.to_path_buf(), c.clone());
-            c
-        };
+        let content = fs::read_to_string(source)
+            .with_context(|| format!("Failed to read AGENTS.md: {}", source.display()))?;
+        let compressed = compress_agents_md_content(&content);
 
         if let Ok(existing) = fs::read_to_string(dest)
             && existing == compressed
         {
-            self.ensured_outputs.borrow_mut().insert(dest.to_path_buf());
             return Ok(());
         }
 
@@ -275,11 +259,8 @@ impl Linker {
                 .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
         }
 
-        fs::write(dest, &compressed)
-            .with_context(|| format!("Failed to write compressed AGENTS.md: {}", dest.display()))?;
-
-        self.ensured_outputs.borrow_mut().insert(dest.to_path_buf());
-        Ok(())
+        fs::write(dest, compressed)
+            .with_context(|| format!("Failed to write compressed AGENTS.md: {}", dest.display()))
     }
 
     /// Create a single symlink
@@ -303,28 +284,23 @@ impl Linker {
         }
 
         // Create parent directory if needed
-        if let Some(parent) = dest.parent() {
-            let mut ensured = self.ensured_outputs.borrow_mut();
-            if !ensured.contains(parent) {
-                if !parent.exists() {
-                    if options.dry_run {
-                        if options.verbose {
-                            println!(
-                                "  {} Would create directory: {}",
-                                "→".cyan(),
-                                parent.display()
-                            );
-                        }
-                    } else {
-                        fs::create_dir_all(parent).with_context(|| {
-                            format!("Failed to create directory: {}", parent.display())
-                        })?;
-                        if options.verbose {
-                            println!("  {} Created directory: {}", "✔".green(), parent.display());
-                        }
-                    }
+        if let Some(parent) = dest.parent()
+            && !parent.exists()
+        {
+            if options.dry_run {
+                if options.verbose {
+                    println!(
+                        "  {} Would create directory: {}",
+                        "→".cyan(),
+                        parent.display()
+                    );
                 }
-                ensured.insert(parent.to_path_buf());
+            } else {
+                fs::create_dir_all(parent)
+                    .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
+                if options.verbose {
+                    println!("  {} Created directory: {}", "✔".green(), parent.display());
+                }
             }
         }
 

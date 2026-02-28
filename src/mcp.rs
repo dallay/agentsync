@@ -47,409 +47,100 @@ impl McpOutput {
 /// Known MCP-compatible agent identifiers
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum McpAgent {
+    /// Claude Code (.mcp.json)
     ClaudeCode,
+    /// GitHub Copilot (.vscode/mcp.json)
     GithubCopilot,
+    /// OpenAI Codex CLI (.codex/config.toml)
     CodexCli,
+    /// Gemini CLI (.gemini/settings.json)
     GeminiCli,
+    /// VS Code (.vscode/mcp.json)
     VsCode,
+    /// Cursor (.cursor/mcp.json)
     Cursor,
+    /// OpenCode (opencode.json)
     OpenCode,
-    Amp,
-    Antigravity,
-    Augment,
-    OpenClaw,
-    Cline,
-    CodeBuddy,
-    CommandCode,
-    Continue,
-    Cortex,
-    Crush,
-    Droid,
-    Goose,
-    Junie,
-    Iflow,
-    Kilo,
-    Kimi,
-    Kiro,
-    Kode,
-    McpJam,
-    Vibe,
-    Mux,
-    OpenHands,
-    Pi,
-    Qoder,
-    Qwen,
-    Replit,
-    Roo,
-    Trae,
-    TraeCn,
-    Windsurf,
-    Zencoder,
-    Neovate,
-    Pochi,
-    Adal,
 }
-
-#[derive(Clone, Copy)]
-enum FormatterKind {
-    ClaudeCode,
-    GithubCopilot,
-    CodexCli,
-    GeminiCli,
-    VsCode,
-    Cursor,
-    OpenCode,
-    Continue,
-    Goose,
-    Standard,
-}
-
-struct McpAgentDescriptor {
-    agent: McpAgent,
-    id: &'static str,
-    name: &'static str,
-    config_path: &'static str,
-    formatter: FormatterKind,
-}
-
-const DESCRIPTORS: &[McpAgentDescriptor] = &[
-    McpAgentDescriptor {
-        agent: McpAgent::ClaudeCode,
-        id: "claude",
-        name: "Claude Code",
-        config_path: ".mcp.json",
-        formatter: FormatterKind::ClaudeCode,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::GithubCopilot,
-        id: "copilot",
-        name: "GitHub Copilot",
-        config_path: ".vscode/mcp.json",
-        formatter: FormatterKind::GithubCopilot,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::CodexCli,
-        id: "codex",
-        name: "OpenAI Codex CLI",
-        config_path: ".codex/config.toml",
-        formatter: FormatterKind::CodexCli,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::GeminiCli,
-        id: "gemini",
-        name: "Gemini CLI",
-        config_path: ".gemini/settings.json",
-        formatter: FormatterKind::GeminiCli,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::VsCode,
-        id: "vscode",
-        name: "VS Code",
-        config_path: ".vscode/mcp.json",
-        formatter: FormatterKind::VsCode,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::Cursor,
-        id: "cursor",
-        name: "Cursor",
-        config_path: ".cursor/mcp.json",
-        formatter: FormatterKind::Cursor,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::OpenCode,
-        id: "opencode",
-        name: "OpenCode",
-        config_path: "opencode.json",
-        formatter: FormatterKind::OpenCode,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::Amp,
-        id: "amp",
-        name: "Amp",
-        config_path: ".mcp.json",
-        formatter: FormatterKind::Standard,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::Antigravity,
-        id: "antigravity",
-        name: "Antigravity",
-        config_path: ".mcp.json",
-        formatter: FormatterKind::Standard,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::Augment,
-        id: "augment",
-        name: "Augment",
-        config_path: ".mcp.json",
-        formatter: FormatterKind::Standard,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::OpenClaw,
-        id: "openclaw",
-        name: "OpenClaw",
-        config_path: ".mcp.json",
-        formatter: FormatterKind::Standard,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::Cline,
-        id: "cline",
-        name: "Cline",
-        config_path: ".mcp.json",
-        formatter: FormatterKind::Standard,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::CodeBuddy,
-        id: "codebuddy",
-        name: "CodeBuddy",
-        config_path: ".mcp.json",
-        formatter: FormatterKind::Standard,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::CommandCode,
-        id: "command-code",
-        name: "Command Code",
-        config_path: ".mcp.json",
-        formatter: FormatterKind::Standard,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::Continue,
-        id: "continue",
-        name: "Continue",
-        config_path: ".continue/config.json",
-        formatter: FormatterKind::Continue,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::Cortex,
-        id: "cortex",
-        name: "Cortex Code",
-        config_path: ".mcp.json",
-        formatter: FormatterKind::Standard,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::Crush,
-        id: "crush",
-        name: "Crush",
-        config_path: ".mcp.json",
-        formatter: FormatterKind::Standard,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::Droid,
-        id: "droid",
-        name: "Droid",
-        config_path: ".mcp.json",
-        formatter: FormatterKind::Standard,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::Goose,
-        id: "goose",
-        name: "Goose",
-        config_path: ".goose/config.yaml",
-        formatter: FormatterKind::Goose,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::Junie,
-        id: "junie",
-        name: "Junie",
-        config_path: ".mcp.json",
-        formatter: FormatterKind::Standard,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::Iflow,
-        id: "iflow",
-        name: "iFlow CLI",
-        config_path: ".mcp.json",
-        formatter: FormatterKind::Standard,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::Kilo,
-        id: "kilo",
-        name: "Kilo Code",
-        config_path: ".mcp.json",
-        formatter: FormatterKind::Standard,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::Kimi,
-        id: "kimi",
-        name: "Kimi Code CLI",
-        config_path: ".mcp.json",
-        formatter: FormatterKind::Standard,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::Kiro,
-        id: "kiro",
-        name: "Kiro CLI",
-        config_path: ".mcp.json",
-        formatter: FormatterKind::Standard,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::Kode,
-        id: "kode",
-        name: "Kode",
-        config_path: ".mcp.json",
-        formatter: FormatterKind::Standard,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::McpJam,
-        id: "mcpjam",
-        name: "MCPJam",
-        config_path: ".mcp.json",
-        formatter: FormatterKind::Standard,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::Vibe,
-        id: "vibe",
-        name: "Mistral Vibe",
-        config_path: ".mcp.json",
-        formatter: FormatterKind::Standard,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::Mux,
-        id: "mux",
-        name: "Mux",
-        config_path: ".mcp.json",
-        formatter: FormatterKind::Standard,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::OpenHands,
-        id: "openhands",
-        name: "OpenHands",
-        config_path: ".mcp.json",
-        formatter: FormatterKind::Standard,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::Pi,
-        id: "pi",
-        name: "Pi",
-        config_path: ".mcp.json",
-        formatter: FormatterKind::Standard,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::Qoder,
-        id: "qoder",
-        name: "Qoder",
-        config_path: ".mcp.json",
-        formatter: FormatterKind::Standard,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::Qwen,
-        id: "qwen",
-        name: "Qwen Code",
-        config_path: ".mcp.json",
-        formatter: FormatterKind::Standard,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::Replit,
-        id: "replit",
-        name: "Replit",
-        config_path: ".mcp.json",
-        formatter: FormatterKind::Standard,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::Roo,
-        id: "roo",
-        name: "Roo Code",
-        config_path: ".mcp.json",
-        formatter: FormatterKind::Standard,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::Trae,
-        id: "trae",
-        name: "Trae",
-        config_path: ".trae/mcp_config.json",
-        formatter: FormatterKind::Continue,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::TraeCn,
-        id: "trae-cn",
-        name: "Trae CN",
-        config_path: ".trae/mcp_config.json",
-        formatter: FormatterKind::Continue,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::Windsurf,
-        id: "windsurf",
-        name: "Windsurf",
-        config_path: ".windsurf/mcp_config.json",
-        formatter: FormatterKind::Continue,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::Zencoder,
-        id: "zencoder",
-        name: "Zencoder",
-        config_path: ".mcp.json",
-        formatter: FormatterKind::Standard,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::Neovate,
-        id: "neovate",
-        name: "Neovate",
-        config_path: ".mcp.json",
-        formatter: FormatterKind::Standard,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::Pochi,
-        id: "pochi",
-        name: "Pochi",
-        config_path: ".mcp.json",
-        formatter: FormatterKind::Standard,
-    },
-    McpAgentDescriptor {
-        agent: McpAgent::Adal,
-        id: "adal",
-        name: "AdaL",
-        config_path: ".mcp.json",
-        formatter: FormatterKind::Standard,
-    },
-];
 
 impl McpAgent {
-    fn descriptor(&self) -> &'static McpAgentDescriptor {
-        DESCRIPTORS
-            .iter()
-            .find(|d| d.agent == *self)
-            .expect("Descriptor not found")
-    }
-
+    /// Get all supported agents
     pub fn all() -> &'static [McpAgent] {
-        lazy_static::lazy_static! {
-            static ref ALL_AGENTS: Vec<McpAgent> = DESCRIPTORS.iter().map(|d| d.agent).collect();
-        }
-        &ALL_AGENTS
+        &[
+            McpAgent::ClaudeCode,
+            McpAgent::GithubCopilot,
+            McpAgent::CodexCli,
+            McpAgent::GeminiCli,
+            McpAgent::VsCode,
+            McpAgent::Cursor,
+            McpAgent::OpenCode,
+        ]
     }
 
+    /// Get the agent identifier string (used in config)
     pub fn id(&self) -> &'static str {
-        self.descriptor().id
-    }
-    pub fn name(&self) -> &'static str {
-        self.descriptor().name
-    }
-    pub fn config_path(&self) -> &'static str {
-        self.descriptor().config_path
-    }
-
-    pub fn formatter(&self) -> Box<dyn McpFormatter> {
-        match self.descriptor().formatter {
-            FormatterKind::ClaudeCode => Box::new(ClaudeCodeFormatter),
-            FormatterKind::GithubCopilot => Box::new(GithubCopilotFormatter),
-            FormatterKind::CodexCli => Box::new(CodexCliFormatter),
-            FormatterKind::GeminiCli => Box::new(GeminiCliFormatter),
-            FormatterKind::VsCode => Box::new(VsCodeFormatter),
-            FormatterKind::Cursor => Box::new(CursorFormatter),
-            FormatterKind::OpenCode => Box::new(OpenCodeFormatter),
-            FormatterKind::Continue => Box::new(ContinueFormatter),
-            FormatterKind::Goose => Box::new(YamlFormatter {
-                wrapper_key: Some("mcpServers"),
-            }),
-            FormatterKind::Standard => Box::new(StandardMcpFormatter),
+        match self {
+            McpAgent::ClaudeCode => "claude",
+            McpAgent::GithubCopilot => "copilot",
+            McpAgent::CodexCli => "codex",
+            McpAgent::GeminiCli => "gemini",
+            McpAgent::VsCode => "vscode",
+            McpAgent::Cursor => "cursor",
+            McpAgent::OpenCode => "opencode",
         }
     }
 
+    /// Get human-readable name
+    pub fn name(&self) -> &'static str {
+        match self {
+            McpAgent::ClaudeCode => "Claude Code",
+            McpAgent::GithubCopilot => "GitHub Copilot",
+            McpAgent::CodexCli => "OpenAI Codex CLI",
+            McpAgent::GeminiCli => "Gemini CLI",
+            McpAgent::VsCode => "VS Code",
+            McpAgent::Cursor => "Cursor",
+            McpAgent::OpenCode => "OpenCode",
+        }
+    }
+
+    /// Get the project-level config file path (relative to project root)
+    pub fn config_path(&self) -> &'static str {
+        match self {
+            McpAgent::ClaudeCode => ".mcp.json",
+            McpAgent::GithubCopilot => ".vscode/mcp.json",
+            McpAgent::CodexCli => ".codex/config.toml",
+            McpAgent::GeminiCli => ".gemini/settings.json",
+            McpAgent::VsCode => ".vscode/mcp.json",
+            McpAgent::Cursor => ".cursor/mcp.json",
+            McpAgent::OpenCode => "opencode.json",
+        }
+    }
+
+    /// Get the formatter for this agent
+    pub fn formatter(&self) -> Box<dyn McpFormatter> {
+        match self {
+            McpAgent::ClaudeCode => Box::new(ClaudeCodeFormatter),
+            McpAgent::GithubCopilot => Box::new(GithubCopilotFormatter),
+            McpAgent::CodexCli => Box::new(CodexCliFormatter),
+            McpAgent::GeminiCli => Box::new(GeminiCliFormatter),
+            McpAgent::VsCode => Box::new(VsCodeFormatter),
+            McpAgent::Cursor => Box::new(CursorFormatter),
+            McpAgent::OpenCode => Box::new(OpenCodeFormatter),
+        }
+    }
+
+    /// Parse agent from string identifier
     pub fn from_id(id: &str) -> Option<McpAgent> {
-        let canonical_id = agent_ids::canonical_mcp_agent_id(id)?;
-        DESCRIPTORS
-            .iter()
-            .find(|d| d.id == canonical_id)
-            .map(|d| d.agent)
+        match agent_ids::canonical_mcp_agent_id(id)? {
+            "claude" => Some(McpAgent::ClaudeCode),
+            "copilot" => Some(McpAgent::GithubCopilot),
+            "codex" => Some(McpAgent::CodexCli),
+            "gemini" => Some(McpAgent::GeminiCli),
+            "vscode" => Some(McpAgent::VsCode),
+            "cursor" => Some(McpAgent::Cursor),
+            "opencode" => Some(McpAgent::OpenCode),
+            _ => None,
+        }
     }
 }
 
@@ -1560,206 +1251,6 @@ pub fn get_mcp_config_path(agent: McpAgent, project_root: &Path) -> PathBuf {
 // Tests
 // =============================================================================
 
-// -----------------------------------------------------------------------------
-// YAML Formatter
-// -----------------------------------------------------------------------------
-
-pub struct YamlFormatter {
-    pub wrapper_key: Option<&'static str>,
-}
-
-impl McpFormatter for YamlFormatter {
-    fn format(&self, servers: &HashMap<String, &McpServerConfig>) -> Value {
-        format_standard_mcp(servers)
-    }
-
-    fn format_to_string(&self, servers: &HashMap<String, &McpServerConfig>) -> Result<String> {
-        let output = self.format(servers);
-        if let Some(key) = self.wrapper_key {
-            let mut wrapped = HashMap::new();
-            wrapped.insert(key.to_string(), output);
-            serde_yaml::to_string(&wrapped).context("Failed to serialize YAML")
-        } else {
-            serde_yaml::to_string(&output).context("Failed to serialize YAML")
-        }
-    }
-
-    fn parse_existing(&self, content: &str) -> Result<HashMap<String, Value>> {
-        let parsed: serde_yaml::Value =
-            serde_yaml::from_str(content).context("Failed to parse YAML")?;
-        if let Some(obj) = self
-            .wrapper_key
-            .and_then(|key| parsed.get(key))
-            .and_then(|v| v.as_mapping())
-        {
-            let mut res = HashMap::new();
-            for (k, v) in obj {
-                let key_str = k.as_str().unwrap_or_default().to_string();
-                let json_v = serde_json::to_value(v)?;
-                res.insert(key_str, json_v);
-            }
-            return Ok(res);
-        }
-        Ok(HashMap::new())
-    }
-
-    fn merge(
-        &self,
-        existing_content: &str,
-        new_servers: &HashMap<String, &McpServerConfig>,
-    ) -> Result<String> {
-        let mut existing = self.parse_existing(existing_content).unwrap_or_default();
-        for (name, config) in new_servers {
-            existing.insert(name.clone(), server_to_json(config));
-        }
-        let sorted = sorted_json_map_from_values(&existing);
-        if let Some(key) = self.wrapper_key {
-            let mut wrapped = HashMap::new();
-            wrapped.insert(key.to_string(), sorted);
-            serde_yaml::to_string(&wrapped).context("Failed to serialize YAML")
-        } else {
-            serde_yaml::to_string(&sorted).context("Failed to serialize YAML")
-        }
-    }
-
-    fn cleanup_removed_servers(
-        &self,
-        existing_content: &str,
-        new_servers: &HashMap<String, &McpServerConfig>,
-    ) -> Result<String> {
-        let mut final_servers = HashMap::new();
-        for (name, config) in new_servers {
-            final_servers.insert(name.clone(), server_to_json(config));
-        }
-        let sorted = sorted_json_map_from_values(&final_servers);
-
-        let mut full_config: serde_yaml::Mapping =
-            serde_yaml::from_str(existing_content).unwrap_or_default();
-        if let Some(key) = self.wrapper_key {
-            let yaml_servers = serde_yaml::to_value(&sorted)?;
-            full_config.insert(serde_yaml::Value::String(key.to_string()), yaml_servers);
-            serde_yaml::to_string(&full_config).context("Failed to serialize YAML")
-        } else {
-            serde_yaml::to_string(&sorted).context("Failed to serialize YAML")
-        }
-    }
-}
-
-// -----------------------------------------------------------------------------
-// Continue / Trae / Windsurf Formatter
-// -----------------------------------------------------------------------------
-
-pub struct ContinueFormatter;
-
-impl McpFormatter for ContinueFormatter {
-    fn format(&self, servers: &HashMap<String, &McpServerConfig>) -> Value {
-        format_standard_mcp(servers)
-    }
-
-    fn format_to_string(&self, servers: &HashMap<String, &McpServerConfig>) -> Result<String> {
-        let output = self.format(servers);
-        let mut wrapped = HashMap::new();
-        wrapped.insert("mcpServers".to_string(), output);
-        serde_json::to_string_pretty(&wrapped).context("Failed to serialize Continue config")
-    }
-
-    fn parse_existing(&self, content: &str) -> Result<HashMap<String, Value>> {
-        let parsed: Value = serde_json::from_str(content).unwrap_or(json!({}));
-        if let Some(obj) = parsed.get("mcpServers").and_then(|mcp| mcp.as_object()) {
-            return Ok(obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect());
-        }
-        Ok(HashMap::new())
-    }
-
-    fn merge(
-        &self,
-        existing_content: &str,
-        new_servers: &HashMap<String, &McpServerConfig>,
-    ) -> Result<String> {
-        let mut existing_json: Value = serde_json::from_str(existing_content).unwrap_or(json!({}));
-        let mut mcp_servers = self.parse_existing(existing_content).unwrap_or_default();
-
-        for (name, config) in new_servers {
-            mcp_servers.insert(name.clone(), server_to_json(config));
-        }
-
-        let sorted = sorted_json_map_from_values(&mcp_servers);
-        if let Some(obj) = existing_json.as_object_mut() {
-            obj.insert("mcpServers".to_string(), Value::Object(sorted));
-        }
-
-        serde_json::to_string_pretty(&existing_json).context("Failed to serialize Continue config")
-    }
-
-    fn cleanup_removed_servers(
-        &self,
-        existing_content: &str,
-        new_servers: &HashMap<String, &McpServerConfig>,
-    ) -> Result<String> {
-        let mut existing_json: Value = serde_json::from_str(existing_content).unwrap_or(json!({}));
-        let mut final_servers = HashMap::new();
-        for (name, config) in new_servers {
-            final_servers.insert(name.clone(), server_to_json(config));
-        }
-
-        let sorted = sorted_json_map_from_values(&final_servers);
-        if let Some(obj) = existing_json.as_object_mut() {
-            obj.insert("mcpServers".to_string(), Value::Object(sorted));
-        }
-
-        serde_json::to_string_pretty(&existing_json).context("Failed to serialize Continue config")
-    }
-}
-
-// -----------------------------------------------------------------------------
-// Standard MCP Formatter (Generic)
-// -----------------------------------------------------------------------------
-
-pub struct StandardMcpFormatter;
-
-impl McpFormatter for StandardMcpFormatter {
-    fn format(&self, servers: &HashMap<String, &McpServerConfig>) -> Value {
-        format_standard_mcp(servers)
-    }
-
-    fn parse_existing(&self, content: &str) -> Result<HashMap<String, Value>> {
-        parse_standard_mcp(content, "Failed to parse existing MCP config as JSON")
-    }
-
-    fn merge(
-        &self,
-        existing_content: &str,
-        new_servers: &HashMap<String, &McpServerConfig>,
-    ) -> Result<String> {
-        merge_standard_mcp(
-            existing_content,
-            new_servers,
-            "Failed to parse existing MCP config as JSON",
-        )
-    }
-
-    fn cleanup_removed_servers(
-        &self,
-        existing_content: &str,
-        new_servers: &HashMap<String, &McpServerConfig>,
-    ) -> Result<String> {
-        let existing = parse_standard_mcp(
-            existing_content,
-            "Failed to parse existing MCP config as JSON",
-        )?;
-
-        let filtered_existing: HashMap<String, Value> = existing
-            .into_iter()
-            .filter(|(name, _)| new_servers.contains_key(name))
-            .collect();
-
-        merge_standard_mcp_filtered(
-            &filtered_existing,
-            new_servers,
-            "Failed to parse existing MCP config as JSON",
-        )
-    }
-}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1772,7 +1263,7 @@ mod tests {
     #[test]
     fn test_agent_all_returns_all_agents() {
         let agents = McpAgent::all();
-        assert_eq!(agents.len(), 41);
+        assert_eq!(agents.len(), 7);
         assert!(agents.contains(&McpAgent::ClaudeCode));
         assert!(agents.contains(&McpAgent::GithubCopilot));
         assert!(agents.contains(&McpAgent::CodexCli));
