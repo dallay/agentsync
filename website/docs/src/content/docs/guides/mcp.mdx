@@ -50,7 +50,7 @@ env = { "DEBUG" = "true" }
 
 ## Supported Agents
 
-AgentSync automatically knows where to place the MCP configuration for these assistants:
+AgentSync automatically knows where to place the MCP configuration for 44 different assistants.
 
 | Assistant | Destination File | Notes |
 | :--- | :--- | :--- |
@@ -61,6 +61,12 @@ AgentSync automatically knows where to place the MCP configuration for these ass
 | **VS Code** | `.vscode/mcp.json` | For VS Code extensions |
 | **Cursor** | `.cursor/mcp.json` | Standard format |
 | **OpenCode** | `opencode.json` | |
+| **Continue** | `.continue/config.json` | Wrapped in `mcpServers` key |
+| **Goose** | `.goose/config.yaml` | YAML format, wrapped in `mcpServers` key |
+| **Trae** / **Trae CN** | `.trae/mcp_config.json` | Wrapped in `mcpServers` key |
+| **Windsurf** | `.windsurf/mcp_config.json` | Wrapped in `mcpServers` key |
+| **Cline** / **Roo Code** | `.mcp.json` | Standard format |
+| **Other Standard Agents** | `.mcp.json` | Includes `amp`, `antigravity`, `augment`, `openclaw`, `codebuddy`, `command-code`, `cortex`, `crush`, `droid`, `junie`, `iflow`, `kilo`, `kimi`, `kiro`, `kode`, `mcpjam`, `vibe`, `mux`, `openhands`, `pi`, `qoder`, `qwen`, `replit`, `zencoder`, `neovate`, `pochi`, `adal` |
 
 ## How it works
 
