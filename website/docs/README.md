@@ -14,6 +14,5 @@ This documentation site provides usage, guides, and technical reference for Agen
 ## Developer & contribution hints
 - For development or contributing to the documentation, see the main project `README.md` in the repo root for overall setup and build steps.
 - If you're updating supported agents or MCP formatters, make sure to cross-check `src/mcp.rs` (authoritative formatters and agent IDs).
-- The `guides/` directory contains usage documentation, while `reference/` contains detailed CLI and configuration specs.
 
-If you want to update or add specific doc pages (for example, a dedicated 'Skills' guide), please follow the project conventions.
+If you want me to update or add specific doc pages (for example, a dedicated 'Skills' guide), let me know.

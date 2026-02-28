@@ -36,13 +36,13 @@ enum Commands {
         #[command(subcommand)]
         cmd: SkillCommand,
         /// Root of the project (defaults to CWD)
-        #[arg(long)]
+        #[arg(short = 'p', long)]
         project_root: Option<PathBuf>,
     },
     /// Run diagnostic and health check
     Doctor {
         /// Project root (defaults to CWD)
-        #[arg(long)]
+        #[arg(short = 'p', long)]
         project_root: Option<PathBuf>,
     },
     /// Show status of managed symlinks
@@ -50,13 +50,17 @@ enum Commands {
         #[command(flatten)]
         args: StatusArgs,
         /// Project root (defaults to CWD)
-        #[arg(long)]
+        #[arg(short = 'p', long)]
         project_root: Option<PathBuf>,
     },
     /// Initialize a new agentsync configuration in the current or specified directory.
     Init {
-        #[arg(short, long, help = "Project root directory (defaults to current dir)")]
-        path: Option<PathBuf>,
+        #[arg(
+            short = 'p',
+            long = "project-root",
+            help = "Project root directory (defaults to current dir)"
+        )]
+        project_root: Option<PathBuf>,
         #[arg(
             short,
             long,
@@ -72,8 +76,8 @@ enum Commands {
     },
     /// Apply the configuration from agentsync.toml
     Apply {
-        #[arg(short, long)]
-        path: Option<PathBuf>,
+        #[arg(short = 'p', long = "project-root")]
+        project_root: Option<PathBuf>,
         #[arg(short, long)]
         config: Option<PathBuf>,
         #[arg(long)]
@@ -89,8 +93,8 @@ enum Commands {
     },
     /// Remove all symlinks created by agentsync
     Clean {
-        #[arg(short, long)]
-        path: Option<PathBuf>,
+        #[arg(short = 'p', long = "project-root")]
+        project_root: Option<PathBuf>,
         #[arg(short, long)]
         config: Option<PathBuf>,
         #[arg(long)]
@@ -127,11 +131,11 @@ fn main() -> Result<()> {
             run_doctor(project_root)?;
         }
         Commands::Init {
-            path,
+            project_root,
             force,
             wizard,
         } => {
-            let project_root = path.unwrap_or_else(|| env::current_dir().unwrap());
+            let project_root = project_root.unwrap_or_else(|| env::current_dir().unwrap());
             print_header();
             if wizard {
                 println!(
@@ -151,7 +155,7 @@ fn main() -> Result<()> {
             );
         }
         Commands::Apply {
-            path,
+            project_root,
             config,
             clean,
             dry_run,
@@ -159,7 +163,7 @@ fn main() -> Result<()> {
             agents,
             no_gitignore,
         } => {
-            let start_dir = path.unwrap_or_else(|| env::current_dir().unwrap());
+            let start_dir = project_root.unwrap_or_else(|| env::current_dir().unwrap());
             print_header();
             let config_path = match config {
                 Some(p) => p,
@@ -232,12 +236,12 @@ fn main() -> Result<()> {
             );
         }
         Commands::Clean {
-            path,
+            project_root,
             config,
             dry_run,
             verbose,
         } => {
-            let start_dir = path.unwrap_or_else(|| env::current_dir().unwrap());
+            let start_dir = project_root.unwrap_or_else(|| env::current_dir().unwrap());
             print_header();
             let config_path = match config {
                 Some(p) => p,

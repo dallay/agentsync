@@ -106,8 +106,8 @@ agentsync clean
 
 ## MCP & Skills
 
-- AgentSync supports MCP generation for over 40 agents (Claude, Copilot, Gemini, Cursor, VS Code, OpenCode, Continue, Trae, Windsurf, etc.). The canonical list and file locations live in the repo README and in the docs site (guides/mcp).
-- Skills live under `.agents/skills/` in the project and can be managed using the `agentsync skill` command.
+- AgentSync supports MCP generation for multiple agents (Claude, Copilot, Gemini, Cursor, VS Code, OpenCode). The canonical list and file locations live in the repo README and in the docs site (guides/mcp).
+- Skills live under `.agents/skills/` in the project.
 
 ---
 
