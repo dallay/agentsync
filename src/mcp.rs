@@ -103,7 +103,11 @@ impl McpAgent {
         }
     }
 
-    /// Get the project-level config file path (relative to project root)
+    /// Get the project-level config file path (relative to project root).
+    ///
+    /// Note: Both GithubCopilot and VsCode use ".vscode/mcp.json". This overlap is
+    /// intentional as they share the same configuration location. Enabling both
+    /// agents will result in writing to the same file.
     pub fn config_path(&self) -> &'static str {
         match self {
             McpAgent::ClaudeCode => ".mcp.json",

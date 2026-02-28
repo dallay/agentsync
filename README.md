@@ -103,11 +103,11 @@ cargo install agentsync
 
 Download the latest release for your platform from the [GitHub Releases](https://github.com/dallay/agentsync/releases) page.
 
-To install via terminal, you can use the following script (replace `VERSION` with the latest version number, e.g., `1.28.0`):
+To install via terminal, you can use the following script (replace `VERSION` with the latest version number from the [Releases page](https://github.com/dallay/agentsync/releases)):
 
 ```bash
 # Define version and platform
-VERSION="1.28.0"
+VERSION="1.28.0" # Example value — check the Releases page for the latest VERSION
 PLATFORM="x86_64-apple-darwin" # e.g., aarch64-apple-darwin, x86_64-unknown-linux-gnu
 TARBALL="agentsync-${VERSION}-${PLATFORM}.tar.gz"
 
