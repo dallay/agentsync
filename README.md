@@ -321,7 +321,7 @@ args = ["-y", "@modelcontextprotocol/server-git", "--repository", "."]
 
 #### Supported Agents (canonical)
 
-AgentSync supports 44 agents and will synchronize corresponding files/locations. This list is canonical — keep it in sync with `src/mcp.rs` (authoritative).
+AgentSync supports 41 agents and will synchronize corresponding files/locations. This list is canonical — keep it in sync with `src/mcp.rs` (authoritative).
 
 - **Claude Code** — `.mcp.json` (agent id: `claude`)
 - **GitHub Copilot** — `.vscode/mcp.json` (agent id: `copilot`)
@@ -491,7 +491,7 @@ AgentSync is a polyglot monorepo. The core logic is implemented in Rust, while t
 - **JS Wrapper**: Located in `npm/agentsync/`. Distributes the Rust binary via NPM and provides optional programmatic access.
 - **Documentation**: Located in `website/docs/`. Built with Astro/Starlight.
 
-When making changes to the core, ensure you run `make rust-test`. If those changes affect the CLI interface, you may also need to update the TypeScript wrapper in `npm/agentsync/`.
+When making changes to the core, ensure you run `make rust-test`. If those changes affect the CLI, you may also need to update the TypeScript wrapper in `npm/agentsync/`.
 
 ## Troubleshooting
 
