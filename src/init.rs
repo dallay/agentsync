@@ -540,9 +540,7 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
         fs::create_dir_all(&backup_dir)?;
 
         for file in &files_to_migrate {
-            if file.file_type == AgentFileType::McpConfig
-                || file.file_type == AgentFileType::CopilotInstructions
-            {
+            if file.file_type == AgentFileType::McpConfig {
                 // Skip files that weren't actually migrated
                 continue;
             }
