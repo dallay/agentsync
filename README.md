@@ -31,6 +31,7 @@ locations.
 - 🔗 **Symlinks over copies** - Changes propagate instantly
 - 📝 **TOML configuration** - Human-readable, easy to maintain
 - 📋 **Gitignore management** - Automatically updates `.gitignore`
+- 🛡️ **Safe** - Automatically backs up existing files before replacing them
 - 🖥️ **Cross-platform** - Linux, macOS, Windows
 - 🚀 **CI-friendly** - Gracefully skips when binary unavailable
 - ⚡ **Fast** - Single static binary, no runtime dependencies
@@ -101,14 +102,12 @@ cargo install agentsync
 
 ### From GitHub Releases (Pre-built Binaries)
 
-Download the latest release for your platform from the [GitHub Releases](https://github.com/dallay/agentsync/releases) page.
-
-To install via terminal, you can use the following script (replace `VERSION` with the latest version number, e.g., `1.28.0`):
+For manual installation, visit the [GitHub Releases](https://github.com/dallay/agentsync/releases) page to find the latest version. Substitute `<version>` with a real tag (e.g., `1.28.0`) and `<platform>` with your target in the following script:
 
 ```bash
 # Define version and platform
-VERSION="1.28.0"
-PLATFORM="x86_64-apple-darwin" # e.g., aarch64-apple-darwin, x86_64-unknown-linux-gnu
+VERSION="<version>"
+PLATFORM="<platform>" # e.g., x86_64-apple-darwin, aarch64-apple-darwin, x86_64-unknown-linux-gnu
 TARBALL="agentsync-${VERSION}-${PLATFORM}.tar.gz"
 
 # Download binary and checksum
@@ -146,9 +145,7 @@ Or clone and build manually:
 git clone https://github.com/dallay/agentsync
 cd agentsync
 cargo build --release
-
 # The binary will be available at ./target/release/agentsync
-
 ```
 
 ## Quick Start
@@ -294,8 +291,8 @@ pattern = "*.agent.md"
 
 ### MCP Support (Model Context Protocol)
 
-AgentSync can automatically generate MCP configuration files for supported agents (Claude Code,
-GitHub Copilot, OpenAI Codex CLI, Gemini CLI, Cursor, VS Code, OpenCode).
+AgentSync can automatically generate MCP configuration files for over 40 supported agents (Claude Code,
+GitHub Copilot, OpenAI Codex CLI, Gemini CLI, Cursor, VS Code, OpenCode, and many more).
 
 This allows you to define MCP servers once in `agentsync.toml` and have them synchronized to all
 agent-specific config files.
@@ -324,7 +321,7 @@ args = ["-y", "@modelcontextprotocol/server-git", "--repository", "."]
 
 #### Supported Agents (canonical)
 
-AgentSync supports the following agents and will synchronize corresponding files/locations. This list is canonical — keep it in sync with `src/mcp.rs` (authoritative).
+AgentSync supports 41 agents and will synchronize corresponding files/locations. This list is canonical — keep it in sync with `src/mcp.rs` (authoritative).
 
 - **Claude Code** — `.mcp.json` (agent id: `claude`)
 - **GitHub Copilot** — `.vscode/mcp.json` (agent id: `copilot`)
@@ -333,6 +330,12 @@ AgentSync supports the following agents and will synchronize corresponding files
 - **Cursor** — `.cursor/mcp.json` (agent id: `cursor`)
 - **VS Code** — `.vscode/mcp.json` (agent id: `vscode`)
 - **OpenCode** — `opencode.json` (agent id: `opencode`)
+- **Continue** — `.continue/config.json` (agent id: `continue`)
+- **Goose** — `.goose/config.yaml` (agent id: `goose`)
+- **Trae** / **Trae CN** — `.trae/mcp_config.json` (agent id: `trae`, `trae-cn`)
+- **Windsurf** — `.windsurf/mcp_config.json` (agent id: `windsurf`)
+- **Cline** / **Roo Code** — `.mcp.json` (agent id: `cline`, `roo`)
+- **Other supported agents** (Standard `.mcp.json` format): `amp`, `antigravity`, `augment`, `openclaw`, `codebuddy`, `command-code`, `cortex`, `crush`, `droid`, `junie`, `iflow`, `kilo`, `kimi`, `kiro`, `kode`, `mcpjam`, `vibe`, `mux`, `openhands`, `pi`, `qoder`, `qwen`, `replit`, `zencoder`, `neovate`, `pochi`, `adal`.
 
 See `website/docs/src/content/docs/guides/mcp.mdx` for formatter details and merge behavior.
 
@@ -451,45 +454,44 @@ This project is a monorepo containing a Rust core and a JavaScript/TypeScript wr
 
 ### Setup
 
-1.  **Install JavaScript dependencies:**
+1.  **Install all dependencies:**
 
     ```bash
-    pnpm install
+    make install
     ```
 
-2.  **Build the Rust binary:**
-
-    ```bash
-    cargo build
-    ```
-
-### Common Commands
-
-This project uses a `Makefile` to orchestrate common tasks.
-
--   **Run Rust tests:**
-
-    ```bash
-    make rust-test
-    ```
-
--   **Run JavaScript tests:**
-
-    ```bash
-    make js-test
-    ```
-
--   **Build all components:**
+2.  **Build all components:**
 
     ```bash
     make all
     ```
 
--   **Format the code:**
+### Common Commands
 
-    ```bash
-    make fmt
-    ```
+This project uses a `Makefile` to orchestrate common tasks across the monorepo.
+
+| Action | Command |
+| :--- | :--- |
+| **Full Verification** | `make verify-all` |
+| **Install Deps** | `make install` |
+| **Build Core (Rust)** | `make rust-build` |
+| **Run Core** | `make rust-run` |
+| **Rust Tests** | `make rust-test` |
+| **Build Wrapper (JS)** | `make js-build` |
+| **JS Tests** | `make js-test` |
+| **Format Code** | `make fmt` |
+| **Build Docs** | `make docs-build` |
+| **Docs Dev Mode** | `make docs-dev` |
+
+### Cross-Stack Workflow
+
+AgentSync is a polyglot monorepo. The core logic is implemented in Rust, while the NPM distribution package provides a TypeScript wrapper.
+
+- **Rust Core**: Located in `src/`. Contains the CLI logic, configuration parsing, and symlink management.
+- **JS Wrapper**: Located in `npm/agentsync/`. Distributes the Rust binary via NPM and provides optional programmatic access.
+- **Documentation**: Located in `website/docs/`. Built with Astro/Starlight.
+
+When making changes to the core, ensure you run `make rust-test`. If those changes affect the CLI, you may also need to update the TypeScript wrapper in `npm/agentsync/`.
 
 ## Troubleshooting
 
