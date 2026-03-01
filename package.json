@@ -33,5 +33,5 @@
 		"lefthook": "^2.0.15",
 		"semantic-release": "^25.0.2"
 	},
-	"version": "1.19.0"
+	"version": "1.28.0"
 }
