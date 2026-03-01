@@ -127,14 +127,23 @@ pub fn mcp_filter_matches(agent_id: &str, filter: &str) -> bool {
     }
 }
 
+/// Canonicalize an agent identifier across both MCP-native and configurable agents.
+///
+/// Returns `Some(canonical)` if the ID is recognized by either registry,
+/// `None` otherwise.
+fn canonical_any_agent_id(id: &str) -> Option<&'static str> {
+    canonical_mcp_agent_id(id).or_else(|| canonical_configurable_agent_id(id))
+}
+
 /// Match a configured agent name against a sync filter token.
 ///
-/// If `filter` is a known alias/canonical ID and the configured agent is also
-/// known, this performs exact canonical matching. Otherwise it falls back to
-/// legacy case-insensitive substring matching against the configured name.
+/// Canonicalizes both inputs across MCP-native and configurable-agent aliases.
+/// When both sides resolve to a canonical ID, performs exact canonical
+/// matching. Otherwise falls back to legacy case-insensitive substring
+/// comparison against the configured name.
 pub fn sync_filter_matches(config_agent_name: &str, filter: &str) -> bool {
-    if let Some(canonical_filter) = canonical_mcp_agent_id(filter) {
-        if let Some(canonical_agent) = canonical_mcp_agent_id(config_agent_name) {
+    if let Some(canonical_filter) = canonical_any_agent_id(filter) {
+        if let Some(canonical_agent) = canonical_any_agent_id(config_agent_name) {
             canonical_agent == canonical_filter
         } else {
             let filter_lower = filter.to_lowercase();
@@ -187,6 +196,21 @@ mod tests {
         assert!(sync_filter_matches("codex-cli", "codex"));
         assert!(sync_filter_matches("custom-copilot-helper", "pilot"));
         assert!(!sync_filter_matches("custom-copilot-helper", "codex-cli"));
+    }
+
+    #[test]
+    fn test_sync_filter_matches_configurable_agent_aliases() {
+        // Both sides resolve via canonical_configurable_agent_id
+        assert!(sync_filter_matches("roocode", "roo-code"));
+        assert!(sync_filter_matches("roo-code", "roocode"));
+        assert!(sync_filter_matches("amazon-q", "amazonq"));
+        assert!(sync_filter_matches("augmentcode", "augment-code"));
+        assert!(sync_filter_matches("trae-ai", "trae"));
+        // Configurable agent on one side, alias on the other
+        assert!(sync_filter_matches("kilo-code", "kilocode"));
+        // Should NOT match unrelated agents
+        assert!(!sync_filter_matches("roo", "cline"));
+        assert!(!sync_filter_matches("amazonq", "augment"));
     }
 
     // -------------------------------------------------------------------------

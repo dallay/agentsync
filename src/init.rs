@@ -513,6 +513,26 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
         });
     }
 
+    // Antigravity: .agent/rules/
+    let antigravity_rules = project_root.join(".agent").join("rules");
+    if antigravity_rules.exists() && antigravity_rules.is_dir() {
+        discovered.push(DiscoveredFile {
+            path: ".agent/rules".into(),
+            file_type: AgentFileType::AntigravityRules,
+            display_name: ".agent/rules/ (Antigravity rules)".to_string(),
+        });
+    }
+
+    // Zed editor: .zed/settings.json
+    let zed_settings = project_root.join(".zed").join("settings.json");
+    if zed_settings.exists() {
+        discovered.push(DiscoveredFile {
+            path: ".zed/settings.json".into(),
+            file_type: AgentFileType::ZedSettings,
+            display_name: ".zed/settings.json (Zed editor AI settings)".to_string(),
+        });
+    }
+
     Ok(discovered)
 }
 
@@ -639,17 +659,17 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
         let mut merged = String::new();
         for file in &instruction_files {
             let src_path = project_root.join(&file.path);
-            if let Ok(content) = fs::read_to_string(&src_path) {
-                if !merged.is_empty() {
-                    merged.push_str("\n\n---\n\n");
-                }
-                merged.push_str(&format!(
-                    "# Instructions from {}\n\n{}",
-                    file.path.display(),
-                    content
-                ));
-                instruction_files_merged += 1;
+            let content = fs::read_to_string(&src_path)
+                .map_err(|e| anyhow::anyhow!("Failed to read '{}': {}", src_path.display(), e))?;
+            if !merged.is_empty() {
+                merged.push_str("\n\n---\n\n");
             }
+            merged.push_str(&format!(
+                "# Instructions from {}\n\n{}",
+                file.path.display(),
+                content
+            ));
+            instruction_files_merged += 1;
         }
         if !merged.is_empty() {
             migrated_content = Some(merged);
@@ -657,10 +677,10 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
     } else if instruction_files.len() == 1 {
         // Single instruction file - use its content directly
         let src_path = project_root.join(&instruction_files[0].path);
-        if let Ok(content) = fs::read_to_string(&src_path) {
-            migrated_content = Some(content);
-            instruction_files_merged = 1;
-        }
+        let content = fs::read_to_string(&src_path)
+            .map_err(|e| anyhow::anyhow!("Failed to read '{}': {}", src_path.display(), e))?;
+        migrated_content = Some(content);
+        instruction_files_merged = 1;
     }
 
     // Track migration counts
@@ -690,7 +710,6 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
             | AgentFileType::WindsurfDirectory
             | AgentFileType::AntigravityRules
             | AgentFileType::AmazonQRules
-            | AgentFileType::FirebaseRules
             | AgentFileType::OpenHandsMicroagents
             | AgentFileType::JunieDirectory
             | AgentFileType::AugmentRules
@@ -722,8 +741,10 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
                     files_actually_migrated += 1;
                 }
             }
-            // Single-file configs that live in subdirs — copy file
-            AgentFileType::AiderConfig | AgentFileType::FirebenderConfig => {
+            // Single-file configs — copy file (handles both root-level and nested files)
+            AgentFileType::AiderConfig
+            | AgentFileType::FirebenderConfig
+            | AgentFileType::FirebaseRules => {
                 if src_path.exists() {
                     let dest_path = agents_dir.join(&file.path);
                     if let Some(parent) = dest_path.parent() {
@@ -760,6 +781,7 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
 
     // Create AGENTS.md with migrated content
     let agents_md_path = agents_dir.join("AGENTS.md");
+    let mut wrote_agents_md = false;
     if let Some(content) = migrated_content {
         if agents_md_path.exists() && !force {
             println!(
@@ -768,6 +790,7 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
             );
         } else {
             fs::write(&agents_md_path, &content)?;
+            wrote_agents_md = true;
             if instruction_files_merged > 1 {
                 println!(
                     "  {} Created: {} (merged {} instruction files)",
@@ -787,6 +810,7 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
         // Use default template if no content migrated
         if !agents_md_path.exists() || force {
             fs::write(&agents_md_path, DEFAULT_AGENTS_MD)?;
+            wrote_agents_md = true;
             println!("  {} Created: {}", "✔".green(), agents_md_path.display());
         }
     }
@@ -831,7 +855,13 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
         ".agents/agentsync.toml".cyan()
     );
 
-    // Ask if user wants to back up original files
+    // Ask if user wants to back up original files.
+    // Only offer backup when AGENTS.md was actually written — otherwise the
+    // instruction files would be moved without a migrated destination existing.
+    if !wrote_agents_md {
+        return Ok(());
+    }
+
     let should_backup = Confirm::with_theme(&ColorfulTheme::default())
         .with_prompt(
             "Would you like to back up the original files? (They will be moved to .agents/backup/)",
