@@ -6,9 +6,10 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use walkdir::WalkDir;
 
 use crate::config::{Config, SyncType, TargetConfig};
@@ -52,6 +53,11 @@ pub struct Linker {
     project_root: PathBuf,
     source_dir: PathBuf,
     path_cache: RefCell<HashMap<PathBuf, PathBuf>>,
+    /// Cache of compressed content for AGENTS.md files to avoid redundant processing.
+    /// Uses Rc to share the same heap-allocated string across multiple agents.
+    compression_cache: RefCell<HashMap<PathBuf, Rc<String>>>,
+    /// Tracks which compressed files have already been ensured to be up-to-date.
+    ensured_outputs: RefCell<HashSet<PathBuf>>,
 }
 
 impl Linker {
@@ -66,6 +72,8 @@ impl Linker {
             project_root,
             source_dir,
             path_cache: RefCell::new(HashMap::new()),
+            compression_cache: RefCell::new(HashMap::new()),
+            ensured_outputs: RefCell::new(HashSet::new()),
         }
     }
 
@@ -242,13 +250,32 @@ impl Linker {
     }
 
     fn write_compressed_agents_md(&self, source: &Path, dest: &Path) -> Result<()> {
-        let content = fs::read_to_string(source)
-            .with_context(|| format!("Failed to read AGENTS.md: {}", source.display()))?;
-        let compressed = compress_agents_md_content(&content);
+        // 1. Skip if this specific destination has already been ensured to be up-to-date.
+        if self.ensured_outputs.borrow().contains(dest) {
+            return Ok(());
+        }
 
+        // 2. Get or compute the compressed content for this source.
+        // This avoids redundant re-reading and re-compressing of the same AGENTS.md.
+        let compressed = {
+            let mut cache = self.compression_cache.borrow_mut();
+            if let Some(cached) = cache.get(source) {
+                cached.clone()
+            } else {
+                let content = fs::read_to_string(source)
+                    .with_context(|| format!("Failed to read AGENTS.md: {}", source.display()))?;
+                let compressed = compress_agents_md_content(&content);
+                let rc = Rc::new(compressed);
+                cache.insert(source.to_path_buf(), rc.clone());
+                rc
+            }
+        };
+
+        // 3. Check if existing file already matches the compressed content to avoid unnecessary writes.
         if let Ok(existing) = fs::read_to_string(dest)
-            && existing == compressed
+            && existing == *compressed
         {
+            self.ensured_outputs.borrow_mut().insert(dest.to_path_buf());
             return Ok(());
         }
 
@@ -259,8 +286,12 @@ impl Linker {
                 .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
         }
 
-        fs::write(dest, compressed)
-            .with_context(|| format!("Failed to write compressed AGENTS.md: {}", dest.display()))
+        fs::write(dest, &*compressed)
+            .with_context(|| format!("Failed to write compressed AGENTS.md: {}", dest.display()))?;
+
+        // 4. Mark this destination as ensured.
+        self.ensured_outputs.borrow_mut().insert(dest.to_path_buf());
+        Ok(())
     }
 
     /// Create a single symlink
