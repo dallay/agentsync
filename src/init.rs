@@ -203,11 +203,39 @@ struct DiscoveredFile {
 #[derive(Debug, Clone, PartialEq)]
 #[allow(dead_code)] // Some variants like Other are reserved for future extensibility
 enum AgentFileType {
+    // Instruction / rules files (merged into AGENTS.md on migration)
     ClaudeInstructions,
-    CursorDirectory,
-    McpConfig,
     CopilotInstructions,
     RootAgentsFile,
+    WindsurfRules,
+    ClineRules,
+    CrushInstructions,
+    AmpInstructions,
+    AntigravityRules,
+    AmazonQRules,
+    AiderConfig,
+    FirebaseRules,
+    OpenHandsMicroagents,
+    JunieDirectory,
+    AugmentRules,
+    KilocodeDirectory,
+    GooseHints,
+    QwenDirectory,
+    RooRules,
+    ZedSettings,
+    TraeRules,
+    WarpInstructions,
+    KiroSteering,
+    FirebenderConfig,
+    FactoryDirectory,
+    VibeDirectory,
+    JetBrainsRules,
+    GeminiInstructions,
+    // Directory / config files (copied as-is on migration)
+    CursorDirectory,
+    WindsurfDirectory,
+    // MCP / tooling config (noted, not migrated as content)
+    McpConfig,
     Other,
 }
 
@@ -215,37 +243,21 @@ enum AgentFileType {
 fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
     let mut discovered = Vec::new();
 
-    // Check for CLAUDE.md in root
+    // -------------------------------------------------------------------------
+    // Native MCP agents
+    // -------------------------------------------------------------------------
+
+    // Claude Code: CLAUDE.md
     let claude_path = project_root.join("CLAUDE.md");
     if claude_path.exists() {
         discovered.push(DiscoveredFile {
             path: "CLAUDE.md".into(),
             file_type: AgentFileType::ClaudeInstructions,
-            display_name: "CLAUDE.md (Claude instructions)".to_string(),
+            display_name: "CLAUDE.md (Claude Code instructions)".to_string(),
         });
     }
 
-    // Check for .cursor/ directory
-    let cursor_path = project_root.join(".cursor");
-    if cursor_path.exists() && cursor_path.is_dir() {
-        discovered.push(DiscoveredFile {
-            path: ".cursor".into(),
-            file_type: AgentFileType::CursorDirectory,
-            display_name: ".cursor/ (Cursor configuration directory)".to_string(),
-        });
-    }
-
-    // Check for .mcp.json
-    let mcp_path = project_root.join(".mcp.json");
-    if mcp_path.exists() {
-        discovered.push(DiscoveredFile {
-            path: ".mcp.json".into(),
-            file_type: AgentFileType::McpConfig,
-            display_name: ".mcp.json (MCP configuration)".to_string(),
-        });
-    }
-
-    // Check for GitHub Copilot instructions
+    // GitHub Copilot: .github/copilot-instructions.md
     let copilot_path = project_root.join(".github").join("copilot-instructions.md");
     if copilot_path.exists() {
         discovered.push(DiscoveredFile {
@@ -255,13 +267,269 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
         });
     }
 
-    // Check for AGENTS.md in root (not in .agents/)
+    // Cursor: .cursor/ directory
+    let cursor_path = project_root.join(".cursor");
+    if cursor_path.exists() && cursor_path.is_dir() {
+        discovered.push(DiscoveredFile {
+            path: ".cursor".into(),
+            file_type: AgentFileType::CursorDirectory,
+            display_name: ".cursor/ (Cursor configuration directory)".to_string(),
+        });
+    }
+
+    // Gemini CLI: GEMINI.md
+    let gemini_path = project_root.join("GEMINI.md");
+    if gemini_path.exists() {
+        discovered.push(DiscoveredFile {
+            path: "GEMINI.md".into(),
+            file_type: AgentFileType::GeminiInstructions,
+            display_name: "GEMINI.md (Gemini CLI instructions)".to_string(),
+        });
+    }
+
+    // Generic MCP config: .mcp.json
+    let mcp_path = project_root.join(".mcp.json");
+    if mcp_path.exists() {
+        discovered.push(DiscoveredFile {
+            path: ".mcp.json".into(),
+            file_type: AgentFileType::McpConfig,
+            display_name: ".mcp.json (MCP configuration)".to_string(),
+        });
+    }
+
+    // -------------------------------------------------------------------------
+    // Root AGENTS.md (used by Codex CLI and many other agents)
+    // -------------------------------------------------------------------------
     let agents_path = project_root.join("AGENTS.md");
     if agents_path.exists() {
         discovered.push(DiscoveredFile {
             path: "AGENTS.md".into(),
             file_type: AgentFileType::RootAgentsFile,
             display_name: "AGENTS.md (Root agent instructions)".to_string(),
+        });
+    }
+
+    // -------------------------------------------------------------------------
+    // Configurable agents — rules / instruction files
+    // -------------------------------------------------------------------------
+
+    // Windsurf: .windsurf/ directory (rules + MCP)
+    let windsurf_dir = project_root.join(".windsurf");
+    if windsurf_dir.exists() && windsurf_dir.is_dir() {
+        discovered.push(DiscoveredFile {
+            path: ".windsurf".into(),
+            file_type: AgentFileType::WindsurfDirectory,
+            display_name: ".windsurf/ (Windsurf configuration directory)".to_string(),
+        });
+    }
+
+    // Cline: .clinerules
+    let cline_path = project_root.join(".clinerules");
+    if cline_path.exists() {
+        discovered.push(DiscoveredFile {
+            path: ".clinerules".into(),
+            file_type: AgentFileType::ClineRules,
+            display_name: ".clinerules (Cline rules)".to_string(),
+        });
+    }
+
+    // Crush: CRUSH.md
+    let crush_path = project_root.join("CRUSH.md");
+    if crush_path.exists() {
+        discovered.push(DiscoveredFile {
+            path: "CRUSH.md".into(),
+            file_type: AgentFileType::CrushInstructions,
+            display_name: "CRUSH.md (Crush instructions)".to_string(),
+        });
+    }
+
+    // Amazon Q CLI: .amazonq/rules/
+    let amazonq_rules = project_root.join(".amazonq").join("rules");
+    if amazonq_rules.exists() && amazonq_rules.is_dir() {
+        discovered.push(DiscoveredFile {
+            path: ".amazonq/rules".into(),
+            file_type: AgentFileType::AmazonQRules,
+            display_name: ".amazonq/rules/ (Amazon Q CLI rules)".to_string(),
+        });
+    }
+
+    // Aider: .aider.conf.yml
+    let aider_path = project_root.join(".aider.conf.yml");
+    if aider_path.exists() {
+        discovered.push(DiscoveredFile {
+            path: ".aider.conf.yml".into(),
+            file_type: AgentFileType::AiderConfig,
+            display_name: ".aider.conf.yml (Aider configuration)".to_string(),
+        });
+    }
+
+    // Firebase Studio / IDX: .idx/airules.md
+    let firebase_rules = project_root.join(".idx").join("airules.md");
+    if firebase_rules.exists() {
+        discovered.push(DiscoveredFile {
+            path: ".idx/airules.md".into(),
+            file_type: AgentFileType::FirebaseRules,
+            display_name: ".idx/airules.md (Firebase Studio / IDX rules)".to_string(),
+        });
+    }
+
+    // OpenHands: .openhands/microagents/
+    let openhands_path = project_root.join(".openhands").join("microagents");
+    if openhands_path.exists() && openhands_path.is_dir() {
+        discovered.push(DiscoveredFile {
+            path: ".openhands/microagents".into(),
+            file_type: AgentFileType::OpenHandsMicroagents,
+            display_name: ".openhands/microagents/ (OpenHands microagents)".to_string(),
+        });
+    }
+
+    // Junie (JetBrains): .junie/
+    let junie_path = project_root.join(".junie");
+    if junie_path.exists() && junie_path.is_dir() {
+        discovered.push(DiscoveredFile {
+            path: ".junie".into(),
+            file_type: AgentFileType::JunieDirectory,
+            display_name: ".junie/ (Junie / JetBrains AI configuration)".to_string(),
+        });
+    }
+
+    // Augment Code: .augment/rules/
+    let augment_rules = project_root.join(".augment").join("rules");
+    if augment_rules.exists() && augment_rules.is_dir() {
+        discovered.push(DiscoveredFile {
+            path: ".augment/rules".into(),
+            file_type: AgentFileType::AugmentRules,
+            display_name: ".augment/rules/ (Augment Code rules)".to_string(),
+        });
+    }
+
+    // Kilo Code: .kilocode/
+    let kilocode_path = project_root.join(".kilocode");
+    if kilocode_path.exists() && kilocode_path.is_dir() {
+        discovered.push(DiscoveredFile {
+            path: ".kilocode".into(),
+            file_type: AgentFileType::KilocodeDirectory,
+            display_name: ".kilocode/ (Kilo Code configuration)".to_string(),
+        });
+    }
+
+    // Goose (Block): .goosehints
+    let goose_path = project_root.join(".goosehints");
+    if goose_path.exists() {
+        discovered.push(DiscoveredFile {
+            path: ".goosehints".into(),
+            file_type: AgentFileType::GooseHints,
+            display_name: ".goosehints (Goose hints)".to_string(),
+        });
+    }
+
+    // Qwen Code: .qwen/
+    let qwen_path = project_root.join(".qwen");
+    if qwen_path.exists() && qwen_path.is_dir() {
+        discovered.push(DiscoveredFile {
+            path: ".qwen".into(),
+            file_type: AgentFileType::QwenDirectory,
+            display_name: ".qwen/ (Qwen Code configuration)".to_string(),
+        });
+    }
+
+    // Roo Code: .roo/rules/
+    let roo_rules = project_root.join(".roo").join("rules");
+    if roo_rules.exists() && roo_rules.is_dir() {
+        discovered.push(DiscoveredFile {
+            path: ".roo/rules".into(),
+            file_type: AgentFileType::RooRules,
+            display_name: ".roo/rules/ (Roo Code rules)".to_string(),
+        });
+    }
+
+    // Trae AI: .trae/rules/
+    let trae_rules = project_root.join(".trae").join("rules");
+    if trae_rules.exists() && trae_rules.is_dir() {
+        discovered.push(DiscoveredFile {
+            path: ".trae/rules".into(),
+            file_type: AgentFileType::TraeRules,
+            display_name: ".trae/rules/ (Trae AI rules)".to_string(),
+        });
+    }
+
+    // Warp: WARP.md
+    let warp_path = project_root.join("WARP.md");
+    if warp_path.exists() {
+        discovered.push(DiscoveredFile {
+            path: "WARP.md".into(),
+            file_type: AgentFileType::WarpInstructions,
+            display_name: "WARP.md (Warp terminal instructions)".to_string(),
+        });
+    }
+
+    // Kiro: .kiro/steering/
+    let kiro_steering = project_root.join(".kiro").join("steering");
+    if kiro_steering.exists() && kiro_steering.is_dir() {
+        discovered.push(DiscoveredFile {
+            path: ".kiro/steering".into(),
+            file_type: AgentFileType::KiroSteering,
+            display_name: ".kiro/steering/ (Kiro steering documents)".to_string(),
+        });
+    }
+
+    // Firebender: firebender.json
+    let firebender_path = project_root.join("firebender.json");
+    if firebender_path.exists() {
+        discovered.push(DiscoveredFile {
+            path: "firebender.json".into(),
+            file_type: AgentFileType::FirebenderConfig,
+            display_name: "firebender.json (Firebender configuration)".to_string(),
+        });
+    }
+
+    // Factory (Droids): .factory/
+    let factory_path = project_root.join(".factory");
+    if factory_path.exists() && factory_path.is_dir() {
+        discovered.push(DiscoveredFile {
+            path: ".factory".into(),
+            file_type: AgentFileType::FactoryDirectory,
+            display_name: ".factory/ (Factory Droids configuration)".to_string(),
+        });
+    }
+
+    // Vibe (Mistral): .vibe/
+    let vibe_path = project_root.join(".vibe");
+    if vibe_path.exists() && vibe_path.is_dir() {
+        discovered.push(DiscoveredFile {
+            path: ".vibe".into(),
+            file_type: AgentFileType::VibeDirectory,
+            display_name: ".vibe/ (Vibe / Mistral configuration)".to_string(),
+        });
+    }
+
+    // JetBrains AI Assistant: .aiassistant/rules/
+    let jetbrains_rules = project_root.join(".aiassistant").join("rules");
+    if jetbrains_rules.exists() && jetbrains_rules.is_dir() {
+        discovered.push(DiscoveredFile {
+            path: ".aiassistant/rules".into(),
+            file_type: AgentFileType::JetBrainsRules,
+            display_name: ".aiassistant/rules/ (JetBrains AI Assistant rules)".to_string(),
+        });
+    }
+
+    // Antigravity: .agent/rules/
+    let antigravity_rules = project_root.join(".agent").join("rules");
+    if antigravity_rules.exists() && antigravity_rules.is_dir() {
+        discovered.push(DiscoveredFile {
+            path: ".agent/rules".into(),
+            file_type: AgentFileType::AntigravityRules,
+            display_name: ".agent/rules/ (Antigravity rules)".to_string(),
+        });
+    }
+
+    // Zed editor: .zed/settings.json
+    let zed_settings = project_root.join(".zed").join("settings.json");
+    if zed_settings.exists() {
+        discovered.push(DiscoveredFile {
+            path: ".zed/settings.json".into(),
+            file_type: AgentFileType::ZedSettings,
+            display_name: ".zed/settings.json (Zed editor AI settings)".to_string(),
         });
     }
 
@@ -362,7 +630,7 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
     // Migrate selected files
     println!("\n{}", "🔄 Migrating files...".cyan());
 
-    // Collect all instruction files first
+    // Collect all instruction files first (plain text files that get merged into AGENTS.md)
     let instruction_files: Vec<_> = files_to_migrate
         .iter()
         .filter(|f| {
@@ -371,6 +639,13 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
                 AgentFileType::ClaudeInstructions
                     | AgentFileType::RootAgentsFile
                     | AgentFileType::CopilotInstructions
+                    | AgentFileType::WindsurfRules
+                    | AgentFileType::ClineRules
+                    | AgentFileType::CrushInstructions
+                    | AgentFileType::AmpInstructions
+                    | AgentFileType::GooseHints
+                    | AgentFileType::WarpInstructions
+                    | AgentFileType::GeminiInstructions
             )
         })
         .collect();
@@ -384,17 +659,17 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
         let mut merged = String::new();
         for file in &instruction_files {
             let src_path = project_root.join(&file.path);
-            if let Ok(content) = fs::read_to_string(&src_path) {
-                if !merged.is_empty() {
-                    merged.push_str("\n\n---\n\n");
-                }
-                merged.push_str(&format!(
-                    "# Instructions from {}\n\n{}",
-                    file.path.display(),
-                    content
-                ));
-                instruction_files_merged += 1;
+            let content = fs::read_to_string(&src_path)
+                .map_err(|e| anyhow::anyhow!("Failed to read '{}': {}", src_path.display(), e))?;
+            if !merged.is_empty() {
+                merged.push_str("\n\n---\n\n");
             }
+            merged.push_str(&format!(
+                "# Instructions from {}\n\n{}",
+                file.path.display(),
+                content
+            ));
+            instruction_files_merged += 1;
         }
         if !merged.is_empty() {
             migrated_content = Some(merged);
@@ -402,10 +677,10 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
     } else if instruction_files.len() == 1 {
         // Single instruction file - use its content directly
         let src_path = project_root.join(&instruction_files[0].path);
-        if let Ok(content) = fs::read_to_string(&src_path) {
-            migrated_content = Some(content);
-            instruction_files_merged = 1;
-        }
+        let content = fs::read_to_string(&src_path)
+            .map_err(|e| anyhow::anyhow!("Failed to read '{}': {}", src_path.display(), e))?;
+        migrated_content = Some(content);
+        instruction_files_merged = 1;
     }
 
     // Track migration counts
@@ -416,16 +691,42 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
         let src_path = project_root.join(&file.path);
 
         match file.file_type {
+            // Plain-text instruction files — content already merged into AGENTS.md above
             AgentFileType::ClaudeInstructions
             | AgentFileType::RootAgentsFile
-            | AgentFileType::CopilotInstructions => {
-                // Already handled above - content merged into AGENTS.md
+            | AgentFileType::CopilotInstructions
+            | AgentFileType::WindsurfRules
+            | AgentFileType::ClineRules
+            | AgentFileType::CrushInstructions
+            | AgentFileType::AmpInstructions
+            | AgentFileType::GooseHints
+            | AgentFileType::WarpInstructions
+            | AgentFileType::GeminiInstructions => {
+                // Already handled above — content merged into AGENTS.md
                 continue;
             }
-            AgentFileType::CursorDirectory => {
-                // Copy .cursor directory to .agents/.cursor
+            // Directories — copy to .agents/
+            AgentFileType::CursorDirectory
+            | AgentFileType::WindsurfDirectory
+            | AgentFileType::AntigravityRules
+            | AgentFileType::AmazonQRules
+            | AgentFileType::OpenHandsMicroagents
+            | AgentFileType::JunieDirectory
+            | AgentFileType::AugmentRules
+            | AgentFileType::KilocodeDirectory
+            | AgentFileType::QwenDirectory
+            | AgentFileType::RooRules
+            | AgentFileType::TraeRules
+            | AgentFileType::KiroSteering
+            | AgentFileType::FactoryDirectory
+            | AgentFileType::VibeDirectory
+            | AgentFileType::JetBrainsRules => {
                 if src_path.exists() {
-                    let dest_path = agents_dir.join(".cursor");
+                    // Derive a sane destination under .agents/
+                    let dest_path = agents_dir.join(&file.path);
+                    if let Some(parent) = dest_path.parent() {
+                        fs::create_dir_all(parent)?;
+                    }
                     copy_dir_all(&src_path, &dest_path)?;
                     let dest_display = dest_path
                         .strip_prefix(project_root)
@@ -440,11 +741,35 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
                     files_actually_migrated += 1;
                 }
             }
-            AgentFileType::McpConfig => {
-                // Note: MCP config will be handled by agentsync.toml
+            // Single-file configs — copy file (handles both root-level and nested files)
+            AgentFileType::AiderConfig
+            | AgentFileType::FirebenderConfig
+            | AgentFileType::FirebaseRules => {
+                if src_path.exists() {
+                    let dest_path = agents_dir.join(&file.path);
+                    if let Some(parent) = dest_path.parent() {
+                        fs::create_dir_all(parent)?;
+                    }
+                    fs::copy(&src_path, &dest_path)?;
+                    let dest_display = dest_path
+                        .strip_prefix(project_root)
+                        .unwrap_or(&dest_path)
+                        .display();
+                    println!(
+                        "  {} Copied: {} → {}",
+                        "✔".green(),
+                        file.path.display(),
+                        dest_display
+                    );
+                    files_actually_migrated += 1;
+                }
+            }
+            // MCP / tooling configs — just note them
+            AgentFileType::McpConfig | AgentFileType::ZedSettings => {
                 println!(
-                    "  {} Note: .mcp.json detected. You can configure MCP servers in agentsync.toml",
-                    "ℹ".blue()
+                    "  {} Note: {} detected. You can configure MCP servers in agentsync.toml",
+                    "ℹ".blue(),
+                    file.path.display()
                 );
                 files_skipped += 1;
             }
@@ -456,6 +781,7 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
 
     // Create AGENTS.md with migrated content
     let agents_md_path = agents_dir.join("AGENTS.md");
+    let mut wrote_agents_md = false;
     if let Some(content) = migrated_content {
         if agents_md_path.exists() && !force {
             println!(
@@ -464,6 +790,7 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
             );
         } else {
             fs::write(&agents_md_path, &content)?;
+            wrote_agents_md = true;
             if instruction_files_merged > 1 {
                 println!(
                     "  {} Created: {} (merged {} instruction files)",
@@ -483,6 +810,7 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
         // Use default template if no content migrated
         if !agents_md_path.exists() || force {
             fs::write(&agents_md_path, DEFAULT_AGENTS_MD)?;
+            wrote_agents_md = true;
             println!("  {} Created: {}", "✔".green(), agents_md_path.display());
         }
     }
@@ -527,7 +855,13 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
         ".agents/agentsync.toml".cyan()
     );
 
-    // Ask if user wants to back up original files
+    // Ask if user wants to back up original files.
+    // Only offer backup when AGENTS.md was actually written — otherwise the
+    // instruction files would be moved without a migrated destination existing.
+    if !wrote_agents_md {
+        return Ok(());
+    }
+
     let should_backup = Confirm::with_theme(&ColorfulTheme::default())
         .with_prompt(
             "Would you like to back up the original files? (They will be moved to .agents/backup/)",
@@ -540,7 +874,10 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
         fs::create_dir_all(&backup_dir)?;
 
         for file in &files_to_migrate {
-            if file.file_type == AgentFileType::McpConfig {
+            if matches!(
+                file.file_type,
+                AgentFileType::McpConfig | AgentFileType::ZedSettings | AgentFileType::Other
+            ) {
                 // Skip files that weren't actually migrated
                 continue;
             }
@@ -908,6 +1245,243 @@ mod tests {
         assert_eq!(discovered.len(), 3);
     }
 
+    #[test]
+    fn test_scan_agent_files_finds_gemini_md() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(temp_dir.path().join("GEMINI.md"), "# Gemini").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        assert_eq!(discovered.len(), 1);
+        assert_eq!(discovered[0].file_type, AgentFileType::GeminiInstructions);
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_clinerules() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(temp_dir.path().join(".clinerules"), "# Cline Rules").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        assert_eq!(discovered.len(), 1);
+        assert_eq!(discovered[0].file_type, AgentFileType::ClineRules);
+        assert_eq!(discovered[0].path.to_str().unwrap(), ".clinerules");
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_crush_md() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(temp_dir.path().join("CRUSH.md"), "# Crush").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        assert_eq!(discovered.len(), 1);
+        assert_eq!(discovered[0].file_type, AgentFileType::CrushInstructions);
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_windsurf_dir() {
+        let temp_dir = TempDir::new().unwrap();
+        let windsurf_dir = temp_dir.path().join(".windsurf");
+        fs::create_dir_all(&windsurf_dir).unwrap();
+        fs::write(windsurf_dir.join("rules.md"), "rules").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        assert_eq!(discovered.len(), 1);
+        assert_eq!(discovered[0].file_type, AgentFileType::WindsurfDirectory);
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_amazonq_rules() {
+        let temp_dir = TempDir::new().unwrap();
+        let amazonq_rules = temp_dir.path().join(".amazonq").join("rules");
+        fs::create_dir_all(&amazonq_rules).unwrap();
+        fs::write(amazonq_rules.join("rules.md"), "rules").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        assert_eq!(discovered.len(), 1);
+        assert_eq!(discovered[0].file_type, AgentFileType::AmazonQRules);
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_aider_config() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(temp_dir.path().join(".aider.conf.yml"), "model: gpt-4").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        assert_eq!(discovered.len(), 1);
+        assert_eq!(discovered[0].file_type, AgentFileType::AiderConfig);
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_firebase_rules() {
+        let temp_dir = TempDir::new().unwrap();
+        let idx_dir = temp_dir.path().join(".idx");
+        fs::create_dir_all(&idx_dir).unwrap();
+        fs::write(idx_dir.join("airules.md"), "# Rules").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        assert_eq!(discovered.len(), 1);
+        assert_eq!(discovered[0].file_type, AgentFileType::FirebaseRules);
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_openhands_microagents() {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().join(".openhands").join("microagents");
+        fs::create_dir_all(&path).unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        assert_eq!(discovered.len(), 1);
+        assert_eq!(discovered[0].file_type, AgentFileType::OpenHandsMicroagents);
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_junie_dir() {
+        let temp_dir = TempDir::new().unwrap();
+        let junie_dir = temp_dir.path().join(".junie");
+        fs::create_dir_all(&junie_dir).unwrap();
+        fs::write(junie_dir.join("guidelines.md"), "guidelines").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        assert_eq!(discovered.len(), 1);
+        assert_eq!(discovered[0].file_type, AgentFileType::JunieDirectory);
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_augment_rules() {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().join(".augment").join("rules");
+        fs::create_dir_all(&path).unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        assert_eq!(discovered.len(), 1);
+        assert_eq!(discovered[0].file_type, AgentFileType::AugmentRules);
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_kilocode_dir() {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().join(".kilocode");
+        fs::create_dir_all(&path).unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        assert_eq!(discovered.len(), 1);
+        assert_eq!(discovered[0].file_type, AgentFileType::KilocodeDirectory);
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_goosehints() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(temp_dir.path().join(".goosehints"), "hints").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        assert_eq!(discovered.len(), 1);
+        assert_eq!(discovered[0].file_type, AgentFileType::GooseHints);
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_roo_rules() {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().join(".roo").join("rules");
+        fs::create_dir_all(&path).unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        assert_eq!(discovered.len(), 1);
+        assert_eq!(discovered[0].file_type, AgentFileType::RooRules);
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_trae_rules() {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().join(".trae").join("rules");
+        fs::create_dir_all(&path).unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        assert_eq!(discovered.len(), 1);
+        assert_eq!(discovered[0].file_type, AgentFileType::TraeRules);
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_warp_md() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(temp_dir.path().join("WARP.md"), "# Warp").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        assert_eq!(discovered.len(), 1);
+        assert_eq!(discovered[0].file_type, AgentFileType::WarpInstructions);
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_kiro_steering() {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().join(".kiro").join("steering");
+        fs::create_dir_all(&path).unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        assert_eq!(discovered.len(), 1);
+        assert_eq!(discovered[0].file_type, AgentFileType::KiroSteering);
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_firebender_json() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(temp_dir.path().join("firebender.json"), "{}").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        assert_eq!(discovered.len(), 1);
+        assert_eq!(discovered[0].file_type, AgentFileType::FirebenderConfig);
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_factory_dir() {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().join(".factory");
+        fs::create_dir_all(&path).unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        assert_eq!(discovered.len(), 1);
+        assert_eq!(discovered[0].file_type, AgentFileType::FactoryDirectory);
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_vibe_dir() {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().join(".vibe");
+        fs::create_dir_all(&path).unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        assert_eq!(discovered.len(), 1);
+        assert_eq!(discovered[0].file_type, AgentFileType::VibeDirectory);
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_jetbrains_rules() {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().join(".aiassistant").join("rules");
+        fs::create_dir_all(&path).unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        assert_eq!(discovered.len(), 1);
+        assert_eq!(discovered[0].file_type, AgentFileType::JetBrainsRules);
+    }
     #[test]
     fn test_scan_agent_files_empty_project() {
         let temp_dir = TempDir::new().unwrap();
