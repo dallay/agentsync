@@ -254,16 +254,8 @@ impl Linker {
     fn ensure_directory(&self, dir: &Path, options: &SyncOptions) -> Result<()> {
         let mut ensured = self.ensured_outputs.borrow_mut();
         if !ensured.contains(dir) {
-            if options.dry_run {
-                if !dir.exists() {
-                    if options.verbose {
-                        println!(
-                            "  {} Would create directory: {}",
-                            "→".cyan(),
-                            dir.display()
-                        );
-                    }
-                }
+            if options.dry_run && !dir.exists() && options.verbose {
+                println!("  {} Would create directory: {}", "→".cyan(), dir.display());
             } else if !dir.exists() {
                 fs::create_dir_all(dir)
                     .with_context(|| format!("Failed to create directory: {}", dir.display()))?;
