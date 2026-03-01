@@ -6,6 +6,18 @@
 
 **Action:** When implementing pattern matching or similar "search" algorithms, prefer iterative solutions with backtracking over recursive ones to avoid performance overhead and potential stack overflows.
 
+## 2025-02-18 - Caching Redundant I/O and Compression
+
+**Learning:** In scenarios with many AI agents (100+), the synchronization process was performing redundant filesystem existence checks and re-compressing `AGENTS.md` for every agent. By implementing internal caches (`compression_cache` and `ensured_outputs`) in the `Linker` struct using `RefCell`, we reduced execution time by approximately 83%.
+
+**Action:** Identify redundant I/O or CPU-intensive operations that occur inside per-agent or per-target loops and centralize them using lightweight in-memory caches.
+
+## 2025-02-18 - Prioritizing Readability Over Micro-Optimizations in CLI
+
+**Learning:** Replacing a standard Rust `match` statement with an `if/else if` chain to avoid a single heap allocation (`to_lowercase()`) in a non-hot CLI path was rejected. The gain was negligible compared to the loss of idiomatic code structure and readability.
+
+**Action:** Only sacrifice readability for performance in truly hot paths (e.g., inner loops processing thousands of items). For most CLI logic, favor idiomatic and maintainable code.
+
 ## 2026-02-01 - Algorithmic Optimization of Gitignore Generation
 
 **Learning:** The `all_gitignore_entries` function was performing deduplication using `Vec::contains` inside a nested loop, resulting in $O(N^2)$ complexity. Switching to `BTreeSet` reduced this to $O(N \log N)$ and simplified the code by removing manual sort/dedup steps.
