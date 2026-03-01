@@ -107,6 +107,10 @@ impl Linker {
 
     /// Perform the sync operation
     pub fn sync(&self, options: &SyncOptions) -> Result<SyncResult> {
+        // Clear caches at the start of every sync run to prevent stale state.
+        self.compression_cache.borrow_mut().clear();
+        self.ensured_outputs.borrow_mut().clear();
+
         let mut result = SyncResult::default();
 
         if options.dry_run {
@@ -306,13 +310,17 @@ impl Linker {
             let mut ensured = self.ensured_outputs.borrow_mut();
             if !ensured.contains(parent) {
                 if options.dry_run {
-                    if options.verbose {
-                        println!(
-                            "  {} Would create directory: {}",
-                            "→".cyan(),
-                            parent.display()
-                        );
+                    if !parent.exists() {
+                        if options.verbose {
+                            println!(
+                                "  {} Would create directory: {}",
+                                "→".cyan(),
+                                parent.display()
+                            );
+                        }
                     }
+                    // Mark as seen to avoid redundant existence checks or duplicate messages
+                    ensured.insert(parent.to_path_buf());
                 } else {
                     if !parent.exists() {
                         fs::create_dir_all(parent).with_context(|| {
@@ -446,23 +454,32 @@ impl Linker {
         }
 
         // Create destination directory if needed
-        if !dest_dir.exists() {
-            if options.dry_run {
-                if options.verbose {
-                    println!(
-                        "  {} Would create directory: {}",
-                        "→".cyan(),
-                        dest_dir.display()
-                    );
-                }
-            } else {
-                fs::create_dir_all(dest_dir)?;
-                if options.verbose {
-                    println!(
-                        "  {} Created directory: {}",
-                        "✔".green(),
-                        dest_dir.display()
-                    );
+        {
+            let mut ensured = self.ensured_outputs.borrow_mut();
+            if !ensured.contains(dest_dir) {
+                if options.dry_run {
+                    if !dest_dir.exists() {
+                        if options.verbose {
+                            println!(
+                                "  {} Would create directory: {}",
+                                "→".cyan(),
+                                dest_dir.display()
+                            );
+                        }
+                    }
+                    ensured.insert(dest_dir.to_path_buf());
+                } else {
+                    if !dest_dir.exists() {
+                        fs::create_dir_all(dest_dir)?;
+                        if options.verbose {
+                            println!(
+                                "  {} Created directory: {}",
+                                "✔".green(),
+                                dest_dir.display()
+                            );
+                        }
+                    }
+                    ensured.insert(dest_dir.to_path_buf());
                 }
             }
         }
