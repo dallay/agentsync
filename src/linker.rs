@@ -224,7 +224,7 @@ impl Linker {
             let compressed = compressed_agents_md_path(source);
 
             if !options.dry_run {
-                self.write_compressed_agents_md(source, &compressed)?;
+                self.write_compressed_agents_md(source, &compressed, options)?;
             }
 
             let exists = options.dry_run || compressed.exists();
@@ -249,7 +249,39 @@ impl Linker {
             && is_agents_md_path(source)
     }
 
-    fn write_compressed_agents_md(&self, source: &Path, dest: &Path) -> Result<()> {
+    /// Ensure a directory exists, using the ensured_outputs cache to avoid redundant I/O.
+    /// Respects dry_run and verbose options.
+    fn ensure_directory(&self, dir: &Path, options: &SyncOptions) -> Result<()> {
+        let mut ensured = self.ensured_outputs.borrow_mut();
+        if !ensured.contains(dir) {
+            if options.dry_run {
+                if !dir.exists() {
+                    if options.verbose {
+                        println!(
+                            "  {} Would create directory: {}",
+                            "→".cyan(),
+                            dir.display()
+                        );
+                    }
+                }
+            } else if !dir.exists() {
+                fs::create_dir_all(dir)
+                    .with_context(|| format!("Failed to create directory: {}", dir.display()))?;
+                if options.verbose {
+                    println!("  {} Created directory: {}", "✔".green(), dir.display());
+                }
+            }
+            ensured.insert(dir.to_path_buf());
+        }
+        Ok(())
+    }
+
+    fn write_compressed_agents_md(
+        &self,
+        source: &Path,
+        dest: &Path,
+        options: &SyncOptions,
+    ) -> Result<()> {
         let compressed = {
             let mut cache = self.compression_cache.borrow_mut();
             if let Some(cached) = cache.get(source) {
@@ -270,15 +302,7 @@ impl Linker {
         }
 
         if let Some(parent) = dest.parent() {
-            let mut ensured = self.ensured_outputs.borrow_mut();
-            if !ensured.contains(parent) {
-                if !parent.exists() {
-                    fs::create_dir_all(parent).with_context(|| {
-                        format!("Failed to create directory: {}", parent.display())
-                    })?;
-                }
-                ensured.insert(parent.to_path_buf());
-            }
+            self.ensure_directory(parent, options)?;
         }
 
         fs::write(dest, &compressed)
@@ -307,32 +331,7 @@ impl Linker {
 
         // Create parent directory if needed
         if let Some(parent) = dest.parent() {
-            let mut ensured = self.ensured_outputs.borrow_mut();
-            if !ensured.contains(parent) {
-                if options.dry_run {
-                    if !parent.exists() {
-                        if options.verbose {
-                            println!(
-                                "  {} Would create directory: {}",
-                                "→".cyan(),
-                                parent.display()
-                            );
-                        }
-                    }
-                    // Mark as seen to avoid redundant existence checks or duplicate messages
-                    ensured.insert(parent.to_path_buf());
-                } else {
-                    if !parent.exists() {
-                        fs::create_dir_all(parent).with_context(|| {
-                            format!("Failed to create directory: {}", parent.display())
-                        })?;
-                        if options.verbose {
-                            println!("  {} Created directory: {}", "✔".green(), parent.display());
-                        }
-                    }
-                    ensured.insert(parent.to_path_buf());
-                }
-            }
+            self.ensure_directory(parent, options)?;
         }
 
         // Calculate relative path from dest to source
@@ -454,35 +453,7 @@ impl Linker {
         }
 
         // Create destination directory if needed
-        {
-            let mut ensured = self.ensured_outputs.borrow_mut();
-            if !ensured.contains(dest_dir) {
-                if options.dry_run {
-                    if !dest_dir.exists() {
-                        if options.verbose {
-                            println!(
-                                "  {} Would create directory: {}",
-                                "→".cyan(),
-                                dest_dir.display()
-                            );
-                        }
-                    }
-                    ensured.insert(dest_dir.to_path_buf());
-                } else {
-                    if !dest_dir.exists() {
-                        fs::create_dir_all(dest_dir)?;
-                        if options.verbose {
-                            println!(
-                                "  {} Created directory: {}",
-                                "✔".green(),
-                                dest_dir.display()
-                            );
-                        }
-                    }
-                    ensured.insert(dest_dir.to_path_buf());
-                }
-            }
-        }
+        self.ensure_directory(dest_dir, options)?;
 
         // Iterate through source directory contents
         for entry in WalkDir::new(source_dir).min_depth(1).max_depth(1) {
@@ -2276,5 +2247,59 @@ mod tests {
         assert!(!temp_dir.path().join(".vscode/mcp.json").exists());
         assert!(!temp_dir.path().join(".cursor/mcp.json").exists());
         assert!(!temp_dir.path().join(".codex/config.toml").exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_sync_resets_caches_between_runs() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        // Create initial source file
+        let source_file = agents_dir.join("AGENTS.md");
+        fs::write(&source_file, "initial content").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            compress_agents_md = true
+            [agents.test]
+            enabled = true
+            [agents.test.targets.main]
+            source = "AGENTS.md"
+            destination = "TEST.md"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        // First run
+        linker.sync(&SyncOptions::default()).unwrap();
+        let compressed_v1 = agents_dir.join("AGENTS.compact.md");
+        let mtime_v1 = fs::metadata(&compressed_v1).unwrap().modified().unwrap();
+
+        // Mutate filesystem: update source file
+        // Sleep briefly to ensure mtime change if filesystem has low resolution
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        fs::write(&source_file, "updated content").unwrap();
+
+        // Second run on SAME linker instance
+        linker.sync(&SyncOptions::default()).unwrap();
+        let mtime_v2 = fs::metadata(&compressed_v1).unwrap().modified().unwrap();
+
+        // If cache was NOT cleared, compression would be skipped and mtime would match v1
+        // because we check content equality before writing.
+        // But since we updated the source, if cache is cleared, it re-reads, re-compresses,
+        // sees content is different, and writes new file.
+        assert!(
+            mtime_v2 > mtime_v1,
+            "Cache should have been cleared, leading to file update"
+        );
+
+        let content_v2 = fs::read_to_string(&compressed_v1).unwrap();
+        assert_eq!(content_v2.trim(), "updated content");
     }
 }
