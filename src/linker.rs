@@ -6,7 +6,7 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
@@ -52,6 +52,8 @@ pub struct Linker {
     project_root: PathBuf,
     source_dir: PathBuf,
     path_cache: RefCell<HashMap<PathBuf, PathBuf>>,
+    compression_cache: RefCell<HashMap<PathBuf, String>>,
+    ensured_outputs: RefCell<HashSet<PathBuf>>,
 }
 
 impl Linker {
@@ -66,6 +68,8 @@ impl Linker {
             project_root,
             source_dir,
             path_cache: RefCell::new(HashMap::new()),
+            compression_cache: RefCell::new(HashMap::new()),
+            ensured_outputs: RefCell::new(HashSet::new()),
         }
     }
 
@@ -242,9 +246,18 @@ impl Linker {
     }
 
     fn write_compressed_agents_md(&self, source: &Path, dest: &Path) -> Result<()> {
-        let content = fs::read_to_string(source)
-            .with_context(|| format!("Failed to read AGENTS.md: {}", source.display()))?;
-        let compressed = compress_agents_md_content(&content);
+        let compressed = {
+            let mut cache = self.compression_cache.borrow_mut();
+            if let Some(cached) = cache.get(source) {
+                cached.clone()
+            } else {
+                let content = fs::read_to_string(source)
+                    .with_context(|| format!("Failed to read AGENTS.md: {}", source.display()))?;
+                let compressed = compress_agents_md_content(&content);
+                cache.insert(source.to_path_buf(), compressed.clone());
+                compressed
+            }
+        };
 
         if let Ok(existing) = fs::read_to_string(dest)
             && existing == compressed
@@ -252,14 +265,19 @@ impl Linker {
             return Ok(());
         }
 
-        if let Some(parent) = dest.parent()
-            && !parent.exists()
-        {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
+        if let Some(parent) = dest.parent() {
+            let mut ensured = self.ensured_outputs.borrow_mut();
+            if !ensured.contains(parent) {
+                if !parent.exists() {
+                    fs::create_dir_all(parent).with_context(|| {
+                        format!("Failed to create directory: {}", parent.display())
+                    })?;
+                }
+                ensured.insert(parent.to_path_buf());
+            }
         }
 
-        fs::write(dest, compressed)
+        fs::write(dest, &compressed)
             .with_context(|| format!("Failed to write compressed AGENTS.md: {}", dest.display()))
     }
 
@@ -284,22 +302,27 @@ impl Linker {
         }
 
         // Create parent directory if needed
-        if let Some(parent) = dest.parent()
-            && !parent.exists()
-        {
-            if options.dry_run {
-                if options.verbose {
-                    println!(
-                        "  {} Would create directory: {}",
-                        "→".cyan(),
-                        parent.display()
-                    );
-                }
-            } else {
-                fs::create_dir_all(parent)
-                    .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
-                if options.verbose {
-                    println!("  {} Created directory: {}", "✔".green(), parent.display());
+        if let Some(parent) = dest.parent() {
+            let mut ensured = self.ensured_outputs.borrow_mut();
+            if !ensured.contains(parent) {
+                if options.dry_run {
+                    if options.verbose {
+                        println!(
+                            "  {} Would create directory: {}",
+                            "→".cyan(),
+                            parent.display()
+                        );
+                    }
+                } else {
+                    if !parent.exists() {
+                        fs::create_dir_all(parent).with_context(|| {
+                            format!("Failed to create directory: {}", parent.display())
+                        })?;
+                        if options.verbose {
+                            println!("  {} Created directory: {}", "✔".green(), parent.display());
+                        }
+                    }
+                    ensured.insert(parent.to_path_buf());
                 }
             }
         }
