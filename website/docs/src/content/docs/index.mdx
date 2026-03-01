@@ -71,8 +71,10 @@ import { Code } from '@astrojs/starlight/components';
 ## Quick Start
 
 <Code code={`# Install (macOS)
-curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-aarch64-apple-darwin.tar.gz
-tar xzf agentsync-aarch64-apple-darwin.tar.gz
+# Detect architecture and download
+PLATFORM=$([ "$(uname -m)" = "arm64" ] && echo "aarch64-apple-darwin" || echo "x86_64-apple-darwin")
+curl -LO "https://github.com/dallay/agentsync/releases/latest/download/agentsync-\${PLATFORM}.tar.gz"
+tar xzf "agentsync-\${PLATFORM}.tar.gz"
 sudo mv agentsync-*/agentsync /usr/local/bin/
 
 # Initialize and apply

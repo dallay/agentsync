@@ -55,7 +55,12 @@ enum Commands {
     },
     /// Initialize a new agentsync configuration in the current or specified directory.
     Init {
-        #[arg(short, long, help = "Project root directory (defaults to current dir)")]
+        #[arg(
+            short,
+            long,
+            help = "Project root directory (defaults to current dir)",
+            alias = "project-root"
+        )]
         path: Option<PathBuf>,
         #[arg(
             short,
@@ -72,7 +77,7 @@ enum Commands {
     },
     /// Apply the configuration from agentsync.toml
     Apply {
-        #[arg(short, long)]
+        #[arg(short, long, alias = "project-root")]
         path: Option<PathBuf>,
         #[arg(short, long)]
         config: Option<PathBuf>,
@@ -89,7 +94,7 @@ enum Commands {
     },
     /// Remove all symlinks created by agentsync
     Clean {
-        #[arg(short, long)]
+        #[arg(short, long, alias = "project-root")]
         path: Option<PathBuf>,
         #[arg(short, long)]
         config: Option<PathBuf>,
