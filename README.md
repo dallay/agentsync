@@ -31,6 +31,7 @@ locations.
 - 🔗 **Symlinks over copies** - Changes propagate instantly
 - 📝 **TOML configuration** - Human-readable, easy to maintain
 - 📋 **Gitignore management** - Automatically updates `.gitignore`
+- 🛡️ **Safe** - Automatically backs up existing files before replacing them
 - 🖥️ **Cross-platform** - Linux, macOS, Windows
 - 🚀 **CI-friendly** - Gracefully skips when binary unavailable
 - ⚡ **Fast** - Single static binary, no runtime dependencies
@@ -103,11 +104,11 @@ cargo install agentsync
 
 Download the latest release for your platform from the [GitHub Releases](https://github.com/dallay/agentsync/releases) page.
 
-To install via terminal, you can use the following script (replace `VERSION` with the latest version number from the [Releases page](https://github.com/dallay/agentsync/releases)):
+To install via terminal, you can use the following script (replace `VERSION` with the latest version number, e.g., `1.28.0`):
 
 ```bash
 # Define version and platform
-VERSION="1.28.0" # Example value — check the Releases page for the latest VERSION
+VERSION="1.28.0"
 PLATFORM="x86_64-apple-darwin" # e.g., aarch64-apple-darwin, x86_64-unknown-linux-gnu
 TARBALL="agentsync-${VERSION}-${PLATFORM}.tar.gz"
 
@@ -199,19 +200,19 @@ agentsync apply
 
 ```bash
 # Initialize a new configuration
-agentsync init [--project-root <path>] [--force]
+agentsync init
 
 # Initialize with interactive wizard (for existing projects with agent files)
-agentsync init --wizard [--project-root <path>] [--force]
+agentsync init --wizard
 
 # Apply configuration (create symlinks)
-agentsync apply [--project-root <path>]
+agentsync apply
 
 # Clean existing symlinks before applying
-agentsync apply --clean [--project-root <path>]
+agentsync apply --clean
 
 # Remove all managed symlinks
-agentsync clean [--project-root <path>]
+agentsync clean
 
 # Use a custom config file
 agentsync apply --config /path/to/config.toml
@@ -229,7 +230,7 @@ agentsync apply --no-gitignore
 agentsync apply --verbose
 
 # Show status of managed symlinks
-agentsync status [--project-root <path>] [--json]
+agentsync status
 
 # Run diagnostic and health check
 agentsync doctor [--project-root <path>]
@@ -353,7 +354,7 @@ When `merge_strategy = "merge"`:
 | `symlink-contents` | Create symlinks for each item in the source directory |
 
 The `symlink-contents` type optionally supports a `pattern` field (glob pattern like `*.md`) to
-filter which files to link.
+filter which items to link.
 
 ## Project Structure
 

@@ -540,7 +540,9 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
         fs::create_dir_all(&backup_dir)?;
 
         for file in &files_to_migrate {
-            if file.file_type == AgentFileType::McpConfig {
+            if file.file_type == AgentFileType::McpConfig
+                || file.file_type == AgentFileType::CopilotInstructions
+            {
                 // Skip files that weren't actually migrated
                 continue;
             }
@@ -601,13 +603,8 @@ fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
             {
                 use std::os::windows::fs as windows_fs;
                 let link_target = fs::read_link(&src_path)?;
-                // Resolve target relative to source parent to check if it's a directory
-                let resolved_target = src_path
-                    .parent()
-                    .unwrap_or_else(|| Path::new("."))
-                    .join(&link_target);
-
-                if resolved_target.is_dir() {
+                // On Windows, we need to know if target is dir or file
+                if link_target.is_dir() {
                     windows_fs::symlink_dir(&link_target, &dst_path)?;
                 } else {
                     windows_fs::symlink_file(&link_target, &dst_path)?;

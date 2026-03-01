@@ -1,32 +1,3 @@
-## [1.29.0](https://github.com/dallay/agentsync/compare/v1.28.0...v1.29.0) (2026-02-28)
-
-### ✨ Features
-
-* Add support for 34 new AI agents ([#195](https://github.com/dallay/agentsync/issues/195)) ([49a576d](https://github.com/dallay/agentsync/commit/49a576d3fa95dbf42ecad589e5bca8f21b464d93))
-* ignore backup files in .gitignore by default ([#179](https://github.com/dallay/agentsync/issues/179)) ([fa2ab34](https://github.com/dallay/agentsync/commit/fa2ab34d154dc87d440c220eda7906a30cbcc55e))
-
-### 🐛 Bug Fixes
-
-* **ci:** grant checks:write permission to audit job ([#196](https://github.com/dallay/agentsync/issues/196)) ([af78e34](https://github.com/dallay/agentsync/commit/af78e3449bb6df5894338fa2cae30df7d5210036))
-* simplify backup naming to use fixed .bak extension ([#181](https://github.com/dallay/agentsync/issues/181)) ([a915697](https://github.com/dallay/agentsync/commit/a91569775fa046484b3f3104f8de55676c357dda))
-
-### 🚀 Performance
-
-* optimize Linker with compression and I/O caching ([#176](https://github.com/dallay/agentsync/issues/176)) ([7c6f190](https://github.com/dallay/agentsync/commit/7c6f190fff780e84f42ca2a18aa8b0e39a32a225))
-
-### 📝 Documentation
-
-* address PR feedback and fix docs build ([f23a1fe](https://github.com/dallay/agentsync/commit/f23a1fe962f357c0e1e4084d3a9ae7831005d615))
-* address PR feedback and unify CLI flags ([328fa21](https://github.com/dallay/agentsync/commit/328fa21f7b33686419f6fdf70301098c0caf2ea9))
-* comprehensive documentation audit and monorepo updates ([0b1c4e2](https://github.com/dallay/agentsync/commit/0b1c4e2abf152c650631812f8cb43eb27b003aec))
-* finalize address of PR feedback and refine architecture detection ([3b86f6e](https://github.com/dallay/agentsync/commit/3b86f6e4b3e87dcc8b8347f7c9ecab5637e7167d))
-* unify project directory flag to --project-root ([0ebb993](https://github.com/dallay/agentsync/commit/0ebb993a462592db365582aac5b4fa6b8d470e25))
-* update project structure example in README.md ([758bbdf](https://github.com/dallay/agentsync/commit/758bbdf94bdbdc04d114d04450b52054e69ed692))
-* update README.md for accuracy and supported flags ([2738d25](https://github.com/dallay/agentsync/commit/2738d25dba188f750a5dc9f7c6a648112f65a73f))
-* update README.md for CLI accuracy ([872b1d5](https://github.com/dallay/agentsync/commit/872b1d5be1684e8b1c2d09bfda67db8cd346dbae))
-* update README.md for CLI accuracy and standards ([#177](https://github.com/dallay/agentsync/issues/177)) ([9e9fa2d](https://github.com/dallay/agentsync/commit/9e9fa2d18c65b8505a82a996665414468425dde1))
-* update README.md for CLI accuracy and supported agents ([#162](https://github.com/dallay/agentsync/issues/162)) ([4bddaeb](https://github.com/dallay/agentsync/commit/4bddaeb01b7cbdb98b6726f74ee7f6a6d74779ac))
-
 ## [1.28.0](https://github.com/dallay/agentsync/compare/v1.27.2...v1.28.0) (2026-02-09)
 
 ### ✨ Features
