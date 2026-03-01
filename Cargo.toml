@@ -42,7 +42,7 @@ thiserror = "2.0"
 
 # Terminal output
 colored = "3.0"
-dialoguer = "0.11"
+dialoguer = "0.12"
 
 # File system
 walkdir = "2.5"
@@ -67,7 +67,7 @@ urlencoding = "2.1"
 url = "2.5"
 
 [dev-dependencies]
-rand = "0.9"
+rand = "0.10"
 
 [profile.release]
 lto = true
