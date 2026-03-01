@@ -65,7 +65,7 @@ jobs:
           sudo apt-get install -y ripgrep
 
       - name: Semantic Release
-        uses: cycjimmy/semantic-release-action@1c8dbaa298552ad40802cf44320879943de90278
+        uses: cycjimmy/semantic-release-action@17c68674d8eefe34b5d2e0db12684eaed1deb93a
         id: semantic
         with:
           extra_plugins: |
