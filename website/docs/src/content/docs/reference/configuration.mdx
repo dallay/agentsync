@@ -102,6 +102,56 @@ destination = "CLAUDE.md"
 type = "symlink"
 ```
 
+## Agent Compatibility Matrix
+
+AgentSync has two support levels:
+
+- **Native MCP generation** (built-in formatter + merge behavior): `claude`, `copilot`, `codex`, `gemini`, `cursor`, `vscode`, `opencode`.
+- **Configurable sync targets** (rules/skills via symlink): any agent as long as you declare `[agents.<name>.targets.*]` entries.
+
+The matrix below documents common agent locations and whether AgentSync can handle them today.
+
+| Agent | Rules File(s) | MCP Configuration / Notes | Skills Support / Location |
+| :--- | :--- | :--- | :--- |
+| AGENTS.md | `AGENTS.md` | Pseudo-agent pattern via `[agents.root]` target | - |
+| GitHub Copilot | `.github/copilot-instructions.md` (or project `AGENTS.md` if you choose) | `.vscode/mcp.json` (native MCP) | Configurable; common target `.github/skills/` |
+| Claude Code | `CLAUDE.md` | `.mcp.json` (native MCP) | Configurable; common target `.claude/skills/` |
+| OpenAI Codex CLI | `AGENTS.md` (if configured) | `.codex/config.toml` (native MCP, TOML output) | Configurable; common target `.codex/skills/` |
+| Pi Coding Agent | `AGENTS.md` (if configured) | No native MCP formatter | Configurable; e.g. `.pi/skills/` |
+| Jules | `AGENTS.md` (if configured) | No native MCP formatter | Configurable |
+| Cursor | `AGENTS.md` (if configured) | `.cursor/mcp.json` (native MCP) | Configurable; common target `.cursor/skills/` |
+| Windsurf | `AGENTS.md` (if configured) | No native MCP formatter | Configurable |
+| Cline | `.clinerules` (if configured) | No native MCP formatter | Configurable |
+| Crush | `CRUSH.md` (if configured) | No native MCP formatter | Configurable |
+| Amp | `AGENTS.md` (if configured) | No native MCP formatter | Configurable; e.g. `.agents/skills/` |
+| Antigravity | `.agent/rules/ruler.md` (if configured) | No native MCP formatter | Configurable; e.g. `.agent/skills/` |
+| Amazon Q CLI | `.amazonq/rules/ruler_q_rules.md` (if configured) | No native MCP formatter (`.amazonq/mcp.json` can be symlinked manually) | Configurable |
+| Aider | `AGENTS.md`, `.aider.conf.yml` (if configured) | No native MCP formatter (`.mcp.json` can be symlinked manually) | Configurable |
+| Firebase Studio | `.idx/airules.md` (if configured) | No native MCP formatter (`.idx/mcp.json` can be symlinked manually) | Configurable |
+| Open Hands | `.openhands/microagents/repo.md` (if configured) | No native MCP formatter (`config.toml` can be symlinked manually) | Configurable |
+| Gemini CLI | `GEMINI.md` or `AGENTS.md` (if configured) | `.gemini/settings.json` (native MCP, adds `"trust": true`) | Configurable; common target `.gemini/skills/` |
+| Junie | `.junie/guidelines.md` (if configured) | No native MCP formatter | Configurable |
+| AugmentCode | `.augment/rules/ruler_augment_instructions.md` (if configured) | No native MCP formatter | Configurable |
+| Kilo Code | `AGENTS.md` (if configured) | No native MCP formatter (`.kilocode/mcp.json` can be symlinked manually) | Configurable |
+| OpenCode | `AGENTS.md` (if configured) | `opencode.json` (native MCP) | Configurable; common target `.opencode/skill/` |
+| Goose | `.goosehints` (if configured) | No native MCP formatter | Configurable; e.g. `.agents/skills/` |
+| Qwen Code | `AGENTS.md` (if configured) | No native MCP formatter (`.qwen/settings.json` can be symlinked manually) | Configurable |
+| RooCode | `AGENTS.md` (if configured) | No native MCP formatter (`.roo/mcp.json` can be symlinked manually) | Configurable; e.g. `.roo/skills/` |
+| Zed | `AGENTS.md` (if configured) | No native MCP formatter (`.zed/settings.json` can be symlinked manually) | Configurable |
+| Trae AI | `.trae/rules/project_rules.md` (if configured) | No native MCP formatter | Configurable |
+| Warp | `WARP.md` (if configured) | No native MCP formatter | Configurable |
+| Kiro | `.kiro/steering/ruler_kiro_instructions.md` (if configured) | No native MCP formatter (`.kiro/settings/mcp.json` can be symlinked manually) | Configurable |
+| Firebender | `firebender.json` (if configured) | No native MCP formatter (single JSON file can be symlinked/managed manually) | Configurable |
+| Factory Droid | `AGENTS.md` (if configured) | No native MCP formatter (`.factory/mcp.json` can be symlinked manually) | Configurable; e.g. `.factory/skills/` |
+| Mistral Vibe | `AGENTS.md` (if configured) | No native MCP formatter (`.vibe/config.toml` can be symlinked manually) | Configurable; e.g. `.vibe/skills/` |
+| JetBrains AI Assistant | `.aiassistant/rules/AGENTS.md` (if configured) | No native MCP formatter | Configurable |
+
+### What "configurable" means in practice
+
+- Define the rules target under `[agents.<name>.targets.<target-id>]`.
+- Point `source` to your canonical file in `.agents/` and `destination` to the tool-specific location.
+- For non-native MCP agents, manage MCP by symlinking a pre-authored config file as another target.
+
 ### Target Types
 
 | Type | Description |
