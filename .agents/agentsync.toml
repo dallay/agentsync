@@ -69,7 +69,7 @@ type = "symlink"
 
 [agents.opencode.targets.skills]
 source = "skills"
-destination = ".opencode/skill"
+destination = ".opencode/skills"
 type = "symlink-contents"
 
 [agents.opencode.targets.commands]

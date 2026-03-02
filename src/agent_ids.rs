@@ -76,7 +76,7 @@ pub fn known_ignore_patterns(agent_name: &str) -> &'static [&'static str] {
                 ".gemini/commands/",
                 ".gemini/skills/",
             ],
-            "opencode" => &["opencode.json", ".opencode/command/", ".opencode/skill/"],
+            "opencode" => &["opencode.json", ".opencode/command/", ".opencode/skills/"],
             "cursor" => &[".cursor/mcp.json", ".cursor/skills/"],
             "vscode" => &[".vscode/mcp.json"],
             _ => &[],
@@ -430,7 +430,7 @@ mod tests {
         let patterns = known_ignore_patterns("opencode");
         assert!(patterns.contains(&"opencode.json"));
         assert!(patterns.contains(&".opencode/command/"));
-        assert!(patterns.contains(&".opencode/skill/"));
+        assert!(patterns.contains(&".opencode/skills/"));
     }
 
     #[test]
