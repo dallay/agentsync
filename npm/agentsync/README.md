@@ -97,7 +97,7 @@ agentsync clean
    {
      "scripts": {
        "precommit": "pnpm exec agentsync apply --dry-run",
-       "prepare": "pnpm exec agentsync apply"
+       "prepare": "! command -v agentsync >/dev/null 2>&1 || agentsync apply"
      }
    }
    ```

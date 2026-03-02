@@ -169,12 +169,12 @@ We recommend adding the apply command to your `prepare` script to ensure symlink
 ```json
 {
   "scripts": {
-    "prepare": "agentsync apply || true"
+    "prepare": "! command -v agentsync >/dev/null 2>&1 || agentsync apply"
   }
 }
 ```
 
-> **Note:** `|| true` ensures the install process does not fail if `agentsync` is not yet installed, such as on a fresh clone or in CI environments.
+> **Note:** The `command -v` check ensures the install process does not fail if `agentsync` is not yet installed (e.g., on a fresh clone or in CI), while still reporting actual synchronization errors when the tool is present.
 
 ## Next Steps
 
