@@ -53,7 +53,7 @@
 		"@dallay/agentsync-darwin-x64": "1.28.0",
 		"@dallay/agentsync-darwin-arm64": "1.28.0",
 		"@dallay/agentsync-windows-x64": "1.28.0",
-		"@dallay/agentsync-windows-arm64": "1.28.0"
+		"@dallay/agentsync-windows-arm64": "1.29.0"
 	},
 	"engines": {
 		"node": ">=18"
