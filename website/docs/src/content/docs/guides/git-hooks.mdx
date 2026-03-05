@@ -1,0 +1,106 @@
+---
+title: Git Hooks Integration
+description: Guide for integrating AgentSync with popular Git Hooks tools like Lefthook, Husky, and pre-commit.
+---
+
+Integrating AgentSync with Git Hooks is an excellent way to ensure your AI agent symlinks are always up-to-date and synchronized for the entire team.
+
+## Why use Git Hooks?
+
+AgentSync uses symbolic links to connect your "source of truth" in `.agents/` with the files expected by different agents (like `CLAUDE.md` or `.cursor/mcp.json`). By using Git Hooks, you can automate the execution of `agentsync apply` so that:
+
+1. New team members have links configured automatically after cloning.
+2. Configuration changes are applied immediately after a `git pull`.
+3. You avoid orphaned or out-of-sync files.
+
+## Popular Tools
+
+### Lefthook
+
+[Lefthook](https://github.com/evilmartians/lefthook) is a fast and powerful tool written in Go. It is the tool we use in the AgentSync repository itself.
+
+Add the following to your `lefthook.yml`:
+
+```yaml
+# lefthook.yml
+
+post-checkout:
+  commands:
+    agentsync:
+      run: agentsync apply
+
+post-merge:
+  commands:
+    agentsync:
+      run: agentsync apply
+```
+
+### Husky
+
+[Husky](https://typicode.github.io/husky/) is the most popular tool in the JavaScript ecosystem.
+
+You can configure AgentSync in the `post-merge` and `post-checkout` hooks:
+
+```bash
+# .husky/post-merge
+npx @dallay/agentsync apply
+```
+
+```bash
+# .husky/post-checkout
+npx @dallay/agentsync apply
+```
+
+If you prefer using the `prepare` script in `package.json`:
+
+```json
+{
+  "scripts": {
+    "prepare": "husky && agentsync apply"
+  }
+}
+```
+
+### pre-commit
+
+[pre-commit](https://pre-commit.com/) is a multi-language framework common in Python projects and enterprise environments.
+
+Add this to your `.pre-commit-config.yaml`:
+
+```yaml
+# .pre-commit-config.yaml
+
+repo: local
+hooks:
+  - id: agentsync-apply
+    name: agentsync apply
+    entry: agentsync apply
+    language: system
+    always_run: true
+    stages: [post-checkout, post-merge]
+```
+
+### Simple Git Hooks
+
+[Simple Git Hooks](https://github.com/toplenboren/simple-git-hooks) is a lightweight and minimalist alternative for Node.js projects.
+
+Configure it in your `package.json`:
+
+```json
+{
+  "simple-git-hooks": {
+    "post-checkout": "npx @dallay/agentsync apply",
+    "post-merge": "npx @dallay/agentsync apply"
+  }
+}
+```
+
+## CI/CD Considerations
+
+In Continuous Integration (CI) environments, you typically don't need symbolic links unless you are running agent-specific tests. If you decide to run AgentSync in CI, make sure the binary is available or use `npx`.
+
+We recommend using the `|| true` pattern to prevent the installation process from failing if `agentsync` is not present in a specific environment:
+
+```bash
+agentsync apply || true
+```
