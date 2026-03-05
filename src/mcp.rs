@@ -6,7 +6,7 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 use serde_json::{Map, Value, json};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use toml::{Table as TomlTable, Value as TomlValue};
@@ -205,8 +205,12 @@ fn sorted_json_map_from_pairs<I>(pairs: I) -> Map<String, Value>
 where
     I: IntoIterator<Item = (String, Value)>,
 {
-    let sorted: BTreeMap<String, Value> = pairs.into_iter().collect();
-    sorted.into_iter().collect()
+    let mut entries: Vec<(String, Value)> = pairs.into_iter().collect();
+    // Sort by key to ensure deterministic output order in the final JSON.
+    // Using Vec + sort_by is generally more efficient than BTreeMap for small
+    // numbers of servers typical in these configurations.
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    entries.into_iter().collect()
 }
 
 /// Build a JSON object from server configs using lexicographic key order.
@@ -225,20 +229,16 @@ where
 }
 
 /// Build a JSON object from existing JSON values using lexicographic key order.
-fn sorted_json_map_from_values(values: &HashMap<String, Value>) -> Map<String, Value> {
-    sorted_json_map_from_pairs(
-        values
-            .iter()
-            .map(|(name, value)| (name.clone(), value.clone())),
-    )
+fn sorted_json_map_from_values(values: HashMap<String, Value>) -> Map<String, Value> {
+    sorted_json_map_from_pairs(values)
 }
 
 /// Build a JSON object from string key/value pairs using lexicographic key order.
-fn sorted_json_map_from_string_map(values: &HashMap<String, String>) -> Map<String, Value> {
+fn sorted_json_map_from_string_map(values: HashMap<String, String>) -> Map<String, Value> {
     sorted_json_map_from_pairs(
         values
-            .iter()
-            .map(|(name, value)| (name.clone(), Value::String(value.clone()))),
+            .into_iter()
+            .map(|(name, value)| (name, Value::String(value))),
     )
 }
 
@@ -253,13 +253,13 @@ fn format_standard_mcp(servers: &HashMap<String, &McpServerConfig>) -> Value {
 
 /// Parse standard MCP config structure
 fn parse_standard_mcp(content: &str, context_msg: &str) -> Result<HashMap<String, Value>> {
-    let parsed: Value = serde_json::from_str(content).context(context_msg.to_string())?;
+    let mut parsed: Value = serde_json::from_str(content).context(context_msg.to_string())?;
 
-    let servers = parsed
-        .get("mcpServers")
-        .and_then(|v| v.as_object())
-        .map(|obj| obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
-        .unwrap_or_default();
+    let servers = if let Some(obj) = parsed.get_mut("mcpServers").and_then(|v| v.as_object_mut()) {
+        std::mem::take(obj).into_iter().collect()
+    } else {
+        HashMap::new()
+    };
 
     Ok(servers)
 }
@@ -278,7 +278,7 @@ fn merge_standard_mcp(
     }
 
     let output = json!({
-        "mcpServers": sorted_json_map_from_values(&existing)
+        "mcpServers": sorted_json_map_from_values(existing)
     });
 
     serde_json::to_string_pretty(&output).context("Failed to serialize merged config")
@@ -286,11 +286,11 @@ fn merge_standard_mcp(
 
 /// Merge new servers into standard MCP config structure with pre-filtered existing servers
 fn merge_standard_mcp_filtered(
-    existing_servers: &HashMap<String, Value>,
+    existing_servers: HashMap<String, Value>,
     new_servers: &HashMap<String, &McpServerConfig>,
     _context_msg: &str,
 ) -> Result<String> {
-    let mut existing = existing_servers.clone();
+    let mut existing = existing_servers;
 
     // New servers override existing ones with same name
     for (name, config) in new_servers {
@@ -298,7 +298,7 @@ fn merge_standard_mcp_filtered(
     }
 
     let output = json!({
-        "mcpServers": sorted_json_map_from_values(&existing)
+        "mcpServers": sorted_json_map_from_values(existing)
     });
 
     serde_json::to_string_pretty(&output).context("Failed to serialize merged config")
@@ -354,7 +354,7 @@ impl McpFormatter for ClaudeCodeFormatter {
 
         // Now merge with new servers (this will override any matching ones)
         merge_standard_mcp_filtered(
-            &filtered_existing,
+            filtered_existing,
             new_servers,
             "Failed to parse existing MCP config as JSON",
         )
@@ -411,7 +411,7 @@ impl McpFormatter for GithubCopilotFormatter {
             .collect();
 
         merge_standard_mcp_filtered(
-            &filtered_existing,
+            filtered_existing,
             new_servers,
             "Failed to parse existing Copilot MCP config as JSON",
         )
@@ -457,12 +457,12 @@ impl McpFormatter for CodexCliFormatter {
     }
 
     fn parse_existing(&self, content: &str) -> Result<HashMap<String, Value>> {
-        let doc = parse_codex_doc(content)?;
-        let servers = doc
-            .get("mcp_servers")
-            .and_then(|v| v.as_table())
-            .cloned()
-            .unwrap_or_default();
+        let mut doc = parse_codex_doc(content)?;
+        let servers = if let Some(TomlValue::Table(table)) = doc.remove("mcp_servers") {
+            table
+        } else {
+            TomlTable::new()
+        };
 
         let parsed = servers
             .into_iter()
@@ -478,11 +478,12 @@ impl McpFormatter for CodexCliFormatter {
         new_servers: &HashMap<String, &McpServerConfig>,
     ) -> Result<String> {
         let mut doc = parse_codex_doc(existing_content)?;
-        let mut existing_servers = doc
-            .get("mcp_servers")
-            .and_then(|v| v.as_table())
-            .cloned()
-            .unwrap_or_default();
+        let mut existing_servers = if let Some(TomlValue::Table(table)) = doc.remove("mcp_servers")
+        {
+            table
+        } else {
+            TomlTable::new()
+        };
 
         for (name, config) in new_servers {
             existing_servers.insert(name.clone(), server_to_codex_toml(config));
@@ -503,11 +504,11 @@ impl McpFormatter for CodexCliFormatter {
         new_servers: &HashMap<String, &McpServerConfig>,
     ) -> Result<String> {
         let mut doc = parse_codex_doc(existing_content)?;
-        let existing_servers = doc
-            .get("mcp_servers")
-            .and_then(|v| v.as_table())
-            .cloned()
-            .unwrap_or_default();
+        let existing_servers = if let Some(TomlValue::Table(table)) = doc.remove("mcp_servers") {
+            table
+        } else {
+            TomlTable::new()
+        };
 
         let mut filtered_servers: TomlTable = existing_servers
             .into_iter()
@@ -558,14 +559,15 @@ impl McpFormatter for GeminiCliFormatter {
     }
 
     fn parse_existing(&self, content: &str) -> Result<HashMap<String, Value>> {
-        let parsed: Value = serde_json::from_str(content)
+        let mut parsed: Value = serde_json::from_str(content)
             .context("Failed to parse existing Gemini settings as JSON")?;
 
-        let servers = parsed
-            .get("mcpServers")
-            .and_then(|v| v.as_object())
-            .map(|obj| obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
-            .unwrap_or_default();
+        let servers =
+            if let Some(obj) = parsed.get_mut("mcpServers").and_then(|v| v.as_object_mut()) {
+                std::mem::take(obj).into_iter().collect()
+            } else {
+                HashMap::new()
+            };
 
         Ok(servers)
     }
@@ -579,7 +581,14 @@ impl McpFormatter for GeminiCliFormatter {
         let mut existing_doc: Value =
             serde_json::from_str(existing_content).unwrap_or_else(|_| json!({}));
 
-        let mut existing_servers = self.parse_existing(existing_content)?;
+        let mut existing_servers = if let Some(obj) = existing_doc
+            .get_mut("mcpServers")
+            .and_then(|v| v.as_object_mut())
+        {
+            std::mem::take(obj).into_iter().collect()
+        } else {
+            HashMap::new()
+        };
 
         for (name, config) in new_servers {
             let mut server_json = server_to_json(config);
@@ -593,7 +602,7 @@ impl McpFormatter for GeminiCliFormatter {
         if let Some(doc_obj) = existing_doc.as_object_mut() {
             doc_obj.insert(
                 "mcpServers".to_string(),
-                Value::Object(sorted_json_map_from_values(&existing_servers)),
+                Value::Object(sorted_json_map_from_values(existing_servers)),
             );
         }
 
@@ -609,7 +618,14 @@ impl McpFormatter for GeminiCliFormatter {
         let mut existing_doc: Value =
             serde_json::from_str(existing_content).unwrap_or_else(|_| json!({}));
 
-        let existing_servers = self.parse_existing(existing_content)?;
+        let existing_servers = if let Some(obj) = existing_doc
+            .get_mut("mcpServers")
+            .and_then(|v| v.as_object_mut())
+        {
+            std::mem::take(obj).into_iter().collect()
+        } else {
+            HashMap::new()
+        };
 
         // Filter existing servers to only keep those that are in new_servers
         let filtered_existing: HashMap<String, Value> = existing_servers
@@ -631,7 +647,7 @@ impl McpFormatter for GeminiCliFormatter {
         if let Some(doc_obj) = existing_doc.as_object_mut() {
             doc_obj.insert(
                 "mcpServers".to_string(),
-                Value::Object(sorted_json_map_from_values(&final_servers)),
+                Value::Object(sorted_json_map_from_values(final_servers)),
             );
         }
 
@@ -693,7 +709,7 @@ impl McpFormatter for VsCodeFormatter {
             .collect();
 
         merge_standard_mcp_filtered(
-            &filtered_existing,
+            filtered_existing,
             new_servers,
             "Failed to parse existing VS Code MCP config as JSON",
         )
@@ -750,7 +766,7 @@ impl McpFormatter for CursorFormatter {
             .collect();
 
         merge_standard_mcp_filtered(
-            &filtered_existing,
+            filtered_existing,
             new_servers,
             "Failed to parse existing Cursor MCP config as JSON",
         )
@@ -777,14 +793,14 @@ impl McpFormatter for OpenCodeFormatter {
     }
 
     fn parse_existing(&self, content: &str) -> Result<HashMap<String, Value>> {
-        let parsed: Value = serde_json::from_str(content)
+        let mut parsed: Value = serde_json::from_str(content)
             .context("Failed to parse existing OpenCode MCP config as JSON")?;
 
-        let servers = parsed
-            .get("mcp")
-            .and_then(|v| v.as_object())
-            .map(|obj| obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
-            .unwrap_or_default();
+        let servers = if let Some(obj) = parsed.get_mut("mcp").and_then(|v| v.as_object_mut()) {
+            std::mem::take(obj).into_iter().collect()
+        } else {
+            HashMap::new()
+        };
 
         Ok(servers)
     }
@@ -798,7 +814,12 @@ impl McpFormatter for OpenCodeFormatter {
         let mut existing_doc: Value =
             serde_json::from_str(existing_content).unwrap_or_else(|_| json!({}));
 
-        let mut existing_servers = self.parse_existing(existing_content)?;
+        let mut existing_servers =
+            if let Some(obj) = existing_doc.get_mut("mcp").and_then(|v| v.as_object_mut()) {
+                std::mem::take(obj).into_iter().collect()
+            } else {
+                HashMap::new()
+            };
 
         for (name, config) in new_servers {
             existing_servers.insert(name.clone(), server_to_opencode_json(config));
@@ -808,7 +829,7 @@ impl McpFormatter for OpenCodeFormatter {
         if let Some(doc_obj) = existing_doc.as_object_mut() {
             doc_obj.insert(
                 "mcp".to_string(),
-                Value::Object(sorted_json_map_from_values(&existing_servers)),
+                Value::Object(sorted_json_map_from_values(existing_servers)),
             );
             // Add schema if missing
             if !doc_obj.contains_key("$schema") {
@@ -821,7 +842,7 @@ impl McpFormatter for OpenCodeFormatter {
             // If existing content wasn't an object, overwrite it entirely
             existing_doc = json!({
                 "$schema": "https://opencode.ai/config.json",
-                "mcp": Value::Object(sorted_json_map_from_values(&existing_servers))
+                "mcp": Value::Object(sorted_json_map_from_values(existing_servers))
             });
         }
 
@@ -837,7 +858,12 @@ impl McpFormatter for OpenCodeFormatter {
         let mut existing_doc: Value =
             serde_json::from_str(existing_content).unwrap_or_else(|_| json!({}));
 
-        let existing_servers = self.parse_existing(existing_content)?;
+        let existing_servers =
+            if let Some(obj) = existing_doc.get_mut("mcp").and_then(|v| v.as_object_mut()) {
+                std::mem::take(obj).into_iter().collect()
+            } else {
+                HashMap::new()
+            };
 
         // Filter existing servers to only keep those that are in new_servers
         let filtered_existing: HashMap<String, Value> = existing_servers
@@ -855,7 +881,7 @@ impl McpFormatter for OpenCodeFormatter {
         if let Some(doc_obj) = existing_doc.as_object_mut() {
             doc_obj.insert(
                 "mcp".to_string(),
-                Value::Object(sorted_json_map_from_values(&final_servers)),
+                Value::Object(sorted_json_map_from_values(final_servers)),
             );
             // Add schema if missing
             if !doc_obj.contains_key("$schema") {
@@ -868,7 +894,7 @@ impl McpFormatter for OpenCodeFormatter {
             // If existing content wasn't an object, overwrite it entirely
             existing_doc = json!({
                 "$schema": "https://opencode.ai/config.json",
-                "mcp": Value::Object(sorted_json_map_from_values(&final_servers))
+                "mcp": Value::Object(sorted_json_map_from_values(final_servers))
             });
         }
 
@@ -890,7 +916,7 @@ fn server_to_opencode_json(config: &McpServerConfig) -> Value {
         if !config.headers.is_empty() {
             obj.insert(
                 "headers".to_string(),
-                Value::Object(sorted_json_map_from_string_map(&config.headers)),
+                Value::Object(sorted_json_map_from_string_map(config.headers.clone())),
             );
         }
     } else {
@@ -907,7 +933,7 @@ fn server_to_opencode_json(config: &McpServerConfig) -> Value {
         if !config.env.is_empty() {
             obj.insert(
                 "environment".to_string(),
-                Value::Object(sorted_json_map_from_string_map(&config.env)),
+                Value::Object(sorted_json_map_from_string_map(config.env.clone())),
             );
         }
     }
@@ -937,7 +963,7 @@ fn server_to_json(config: &McpServerConfig) -> Value {
     if !config.env.is_empty() {
         obj.insert(
             "env".to_string(),
-            Value::Object(sorted_json_map_from_string_map(&config.env)),
+            Value::Object(sorted_json_map_from_string_map(config.env.clone())),
         );
     }
 
@@ -948,7 +974,7 @@ fn server_to_json(config: &McpServerConfig) -> Value {
     if !config.headers.is_empty() {
         obj.insert(
             "headers".to_string(),
-            Value::Object(sorted_json_map_from_string_map(&config.headers)),
+            Value::Object(sorted_json_map_from_string_map(config.headers.clone())),
         );
     }
 
@@ -961,9 +987,13 @@ fn server_to_json(config: &McpServerConfig) -> Value {
 
 /// Parse Codex CLI config TOML into a document table
 fn parse_codex_doc(content: &str) -> Result<TomlTable> {
-    let parsed: TomlValue =
+    let mut parsed: TomlValue =
         toml::from_str(content).context("Failed to parse existing Codex config as TOML")?;
-    Ok(parsed.as_table().cloned().unwrap_or_default())
+    if let Some(table) = parsed.as_table_mut() {
+        Ok(std::mem::take(table))
+    } else {
+        Ok(TomlTable::new())
+    }
 }
 
 /// Convert TOML value recursively to JSON value for unified parsing APIs
