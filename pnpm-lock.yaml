@@ -70,8 +70,8 @@ importers:
         specifier: 1.28.0
         version: 1.28.0
       '@dallay/agentsync-windows-x64':
-        specifier: 1.28.0
-        version: 1.28.0
+        specifier: 1.29.0
+        version: 1.29.0
 
   website/docs:
     dependencies:
@@ -309,13 +309,6 @@ packages:
     resolution: {integrity: sha512-4osmj+6Cqy8XnqzZ595pwHJcTDw6yjdh8siahDCmZz1phhW/iYuOWW2M5Cezdj8T0DNmwQG61PA67Ijw7HoF4w==}
     engines: {node: '>=18'}
     cpu: [arm64]
-    os: [win32]
-    hasBin: true
-
-  '@dallay/agentsync-windows-x64@1.28.0':
-    resolution: {integrity: sha512-CBVdE0xQYd9qhF4qP4HGHe86peeso1ekUiPMG56A77+2p/Am6hz4YdP2fD1CxxfVHT76y5qXI8UOJpjzk6j4bA==}
-    engines: {node: '>=18'}
-    cpu: [x64]
     os: [win32]
     hasBin: true
 
@@ -3550,9 +3543,6 @@ snapshots:
     optional: true
 
   '@dallay/agentsync-windows-arm64@1.29.0':
-    optional: true
-
-  '@dallay/agentsync-windows-x64@1.28.0':
     optional: true
 
   '@dallay/agentsync-windows-x64@1.29.0':
