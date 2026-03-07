@@ -9,16 +9,16 @@ description: Detailed documentation for all agentsync commands.
 
 ### `init`
 
-Initializes a new AgentSync configuration in the current directory.
+Initializes a new AgentSync configuration in the current or specified directory.
 
 ```bash
-agentsync init [FLAGS]
+agentsync init [OPTIONS]
 ```
 
-**Flags**:
+**Options**:
 - `-p, --path <PATH>`: Project root directory (defaults to current dir).
 - `-f, --force`: Overwrite existing configuration without prompting.
-- `-w, --wizard`: Run interactive configuration wizard to migrate existing agent files.
+- `-w, --wizard`: Run interactive configuration wizard to migrate existing files.
 
 **Actions**:
 - Creates the `.agents/` directory if it doesn't exist.
@@ -38,17 +38,17 @@ When using the `--wizard` flag, AgentSync will:
 
 ### `apply`
 
-Applies the configuration defined in `agentsync.toml` by creating symbolic links and updating `.gitignore`.
+Applies the configuration from `agentsync.toml` by creating symbolic links and updating `.gitignore`.
 
 ```bash
-agentsync apply [FLAGS]
+agentsync apply [OPTIONS]
 ```
 
-**Flags**:
-- `-p, --path <PATH>`: Path to the project root.
-- `-c, --config <PATH>`: Use a custom configuration file path instead of the default `.agents/agentsync.toml`.
-- `--clean`: Deletes existing symbolic links before applying. Useful for fixing broken links or cleaning up old configurations.
-- `--dry-run`: Shows what actions would be taken without actually making any changes to the filesystem.
+**Options**:
+- `-p, --path <PATH>`: Project root directory.
+- `-c, --config <CONFIG>`: Use a custom configuration file path instead of the default `.agents/agentsync.toml`.
+- `--clean`: Deletes existing symbolic links before applying.
+- `--dry-run`: Shows what actions would be taken without actually making any changes.
 - `-v, --verbose`: Enable verbose logging.
 - `-a, --agents <AGENTS>`: Filter by agent (comma-separated list, e.g., `claude,copilot`). **Overrides** `default_agents` in config.
 - `--no-gitignore`: Disable automatic `.gitignore` updates.
@@ -90,55 +90,75 @@ agentsync clean [FLAGS]
 
 ### `skill`
 
-Manage installable AI agent skills.
+Manage installable AI agent skills from skills.sh/other providers.
 
 ```bash
-agentsync skill [FLAGS] <COMMAND>
+agentsync skill [OPTIONS] <COMMAND>
 ```
 
-**Global Flags**:
-- `--project-root <PATH>`: Root of the project (defaults to current directory).
+**Global Options**:
+- `--project-root <PROJECT_ROOT>`: Root of the project (defaults to CWD).
 
 #### `install`
 
-Install a skill from a provider, local archive, or directory.
+Install a skill from skills.sh or a custom provider.
 
 ```bash
-agentsync skill install [FLAGS] <SKILL_ID>
+agentsync skill install [OPTIONS] <SKILL_ID>
 ```
 
-- `--source <SOURCE>`: Optional. Source directory, archive URL, or provider-specific identifier.
+- `--source <SOURCE>`: Optional source (dir, archive, or URL).
 - `--json`: Output machine-readable JSON.
 
 #### `update`
 
-Update an existing skill.
+Update a skill to the latest version.
 
 ```bash
-agentsync skill update [FLAGS] <SKILL_ID>
+agentsync skill update [OPTIONS] <SKILL_ID>
 ```
 
-- `--source <SOURCE>`: Optional. New source for the update.
+- `--source <SOURCE>`: Optional source (dir, archive, or URL).
 - `--json`: Output machine-readable JSON.
+
+#### `uninstall`
+
+Uninstall a skill.
+
+```bash
+agentsync skill uninstall <SKILL_ID>
+```
 
 #### `list`
 
 List all installed skills.
 
-:::note
-The `list` command is currently under development and not yet implemented.
-:::
-
 ```bash
 agentsync skill list
-
-# Error: list command not implemented
-
 ```
 
 ---
 
-### `--version`
+### `doctor`
+
+Run diagnostic and health check for the synchronization environment.
+
+```bash
+agentsync doctor [OPTIONS]
+```
+
+**Options**:
+- `--project-root <PROJECT_ROOT>`: Project root (defaults to CWD).
+
+**Diagnostics**:
+- Validates `agentsync.toml` existence and syntax.
+- Detects destination conflicts.
+- Audits `.gitignore` with marker-aware parsing.
+- Verifies MCP server executability.
+
+---
+
+### `version`
 
 Shows the current version of the AgentSync CLI.
 
