@@ -125,26 +125,26 @@ The matrix below documents common agent locations and whether AgentSync can hand
 | Crush | `CRUSH.md` (if configured) | No native MCP formatter | Configurable |
 | Amp | `AGENTS.md` (if configured) | No native MCP formatter | Configurable; e.g. `.agents/skills/` |
 | Antigravity | `.agent/rules/ruler.md` (if configured) | No native MCP formatter | Configurable; e.g. `.agent/skills/` |
-| Amazon Q CLI | `.amazonq/rules/ruler_q_rules.md` (if configured) | No native MCP formatter (`.amazonq/mcp.json` can be symlinked manually) | Configurable |
-| Aider | `AGENTS.md`, `.aider.conf.yml` (if configured) | No native MCP formatter (`.mcp.json` can be symlinked manually) | Configurable |
-| Firebase Studio | `.idx/airules.md` (if configured) | No native MCP formatter (`.idx/mcp.json` can be symlinked manually) | Configurable |
-| Open Hands | `.openhands/microagents/repo.md` (if configured) | No native MCP formatter (`config.toml` can be symlinked manually) | Configurable |
-| Gemini CLI | `GEMINI.md` or `AGENTS.md` (if configured) | `.gemini/settings.json` (native MCP, adds `"trust": true`) | Configurable; common target `.gemini/skills/` |
-| Junie | `.junie/guidelines.md` (if configured) | No native MCP formatter | Configurable |
-| AugmentCode | `.augment/rules/ruler_augment_instructions.md` (if configured) | No native MCP formatter | Configurable |
-| Kilo Code | `AGENTS.md` (if configured) | No native MCP formatter (`.kilocode/mcp.json` can be symlinked manually) | Configurable |
-| OpenCode | `AGENTS.md` (if configured) | `opencode.json` (native MCP) | Configurable; common target `.opencode/skills/` |
-| Goose | `.goosehints` (if configured) | No native MCP formatter | Configurable; e.g. `.agents/skills/` |
-| Qwen Code | `AGENTS.md` (if configured) | No native MCP formatter (`.qwen/settings.json` can be symlinked manually) | Configurable |
-| RooCode | `AGENTS.md` (if configured) | No native MCP formatter (`.roo/mcp.json` can be symlinked manually) | Configurable; e.g. `.roo/skills/` |
-| Zed | `AGENTS.md` (if configured) | No native MCP formatter (`.zed/settings.json` can be symlinked manually) | Configurable |
-| Trae AI | `.trae/rules/project_rules.md` (if configured) | No native MCP formatter | Configurable |
-| Warp | `WARP.md` (if configured) | No native MCP formatter | Configurable |
-| Kiro | `.kiro/steering/ruler_kiro_instructions.md` (if configured) | No native MCP formatter (`.kiro/settings/mcp.json` can be symlinked manually) | Configurable |
-| Firebender | `firebender.json` (if configured) | No native MCP formatter (single JSON file can be symlinked/managed manually) | Configurable |
-| Factory Droid | `AGENTS.md` (if configured) | No native MCP formatter (`.factory/mcp.json` can be symlinked manually) | Configurable; e.g. `.factory/skills/` |
-| Mistral Vibe | `AGENTS.md` (if configured) | No native MCP formatter (`.vibe/config.toml` can be symlinked manually) | Configurable; e.g. `.vibe/skills/` |
-| JetBrains AI Assistant | `.aiassistant/rules/AGENTS.md` (if configured) | No native MCP formatter | Configurable |
+| Amazon Q CLI | `.amazonq/rules/` | `.amazonq/mcp.json` | Configurable |
+| Aider | `AGENTS.md` | `.aider.conf.yml`, `.aiderignore` | Configurable |
+| Firebase Studio | `.idx/airules.md` | `.idx/mcp.json` | Configurable |
+| Open Hands | `.openhands/microagents/` | No native MCP formatter | Configurable |
+| Gemini CLI | `GEMINI.md` | `.gemini/settings.json` (native MCP, adds `"trust": true`) | Configurable; common target `.gemini/skills/` |
+| Junie | `.junie/` | No native MCP formatter | Configurable |
+| AugmentCode | `.augment/rules/` | No native MCP formatter | Configurable |
+| Kilo Code | `AGENTS.md` | `.kilocode/mcp.json` | Configurable |
+| OpenCode | `AGENTS.md` | `opencode.json` (native MCP) | Configurable; common target `.opencode/skills/` |
+| Goose | `.goosehints` | No native MCP formatter | Configurable |
+| Qwen Code | `AGENTS.md` | `.qwen/settings.json` | Configurable |
+| RooCode | `.roo/rules/` | `.roo/mcp.json` | Configurable; common target `.roo/skills/` |
+| Zed | `AGENTS.md` | `.zed/settings.json` | Configurable |
+| Trae AI | `.trae/rules/` | No native MCP formatter | Configurable |
+| Warp | `WARP.md` | No native MCP formatter | Configurable |
+| Kiro | `.kiro/steering/` | `.kiro/settings/mcp.json` | Configurable |
+| Firebender | `firebender.json` | No native MCP formatter | Configurable |
+| Factory Droid | `AGENTS.md` | `.factory/mcp.json` | Configurable; common target `.factory/skills/` |
+| Mistral Vibe | `AGENTS.md` | `.vibe/config.toml` | Configurable; common target `.vibe/skills/` |
+| JetBrains AI Assistant | `.aiassistant/rules/` | No native MCP formatter | Configurable |
 
 ### What "configurable" means in practice
 
