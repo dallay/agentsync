@@ -135,7 +135,7 @@ sudo mv agentsync-*/agentsync /usr/local/bin/
 
 ### From Source (Requires Rust 1.89+)
 
-Install directly from the GitHub repository:
+Install directly from the GitHub repository (requires Node.js 22.22.0+ and Rust 1.89+):
 
 ```bash
 cargo install --git https://github.com/dallay/agentsync
@@ -335,6 +335,8 @@ AgentSync supports the following agents and will synchronize corresponding files
 - **VS Code** — `.vscode/mcp.json` (agent id: `vscode`)
 - **OpenCode** — `opencode.json` (agent id: `opencode`)
 
+AgentSync also supports 25+ configurable agents including Windsurf, Cline, Amazon Q, Aider, RooCode, Trae, and more. See the [full list in the documentation](https://dallay.github.io/agentsync/reference/configuration/).
+
 See `website/docs/src/content/docs/guides/mcp.mdx` for formatter details and merge behavior.
 
 #### Merge Behavior
@@ -447,7 +449,7 @@ This project is a monorepo containing a Rust core and a JavaScript/TypeScript wr
 ### Prerequisites
 
 - [**Rust**](https://www.rust-lang.org/tools/install) (1.89+ recommended)
-- [**Node.js**](https://nodejs.org/) (v24.13.0+ recommended for development)
+- [**Node.js**](https://nodejs.org/) (v22.22.0+ recommended for development)
 - [**pnpm**](https://pnpm.io/installation)
 
 ### Setup
@@ -486,11 +488,25 @@ This project uses a `Makefile` to orchestrate common tasks.
     make all
     ```
 
+-   **Run full verification (lint + build + test):**
+
+    ```bash
+    make verify-all
+    ```
+
 -   **Format the code:**
 
     ```bash
     make fmt
     ```
+
+### Release Process
+
+Releases are managed via `semantic-release` and GitHub Actions. To trigger a dry run locally:
+
+```bash
+pnpm run release:dry-run
+```
 
 ## Troubleshooting
 
