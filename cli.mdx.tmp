@@ -130,6 +130,7 @@ agentsync skill uninstall [FLAGS] <SKILL_ID>
 
 - `--json`: Output machine-readable JSON.
 
+
 #### `list`
 
 List all installed skills.
@@ -144,19 +145,6 @@ agentsync skill list
 # Error: list command not implemented
 
 ```
-
----
-
-### `doctor`
-
-Run diagnostic and health check for the synchronization environment.
-
-```bash
-agentsync doctor [FLAGS]
-```
-
-**Flags**:
-- `--project-root <PROJECT_ROOT>`: Project root (defaults to CWD).
 
 ---
 
