@@ -31,9 +31,9 @@ jobs:
     name: Semantic Release
     runs-on: ubuntu-latest
     outputs:
-      new_release_published: ${{ steps.semantic.outputs.new_release_published }}
-      new_release_version: ${{ steps.semantic.outputs.new_release_version }}
-      new_release_git_tag: ${{ steps.semantic.outputs.new_release_git_tag }}
+      new_release_published: ${{ steps.release_meta.outputs.new_release_published }}
+      new_release_version: ${{ steps.release_meta.outputs.new_release_version }}
+      new_release_git_tag: ${{ steps.release_meta.outputs.new_release_git_tag }}
     steps:
       - name: Generate GitHub App Token
         id: app-token
@@ -64,18 +64,50 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ripgrep
 
+      - name: Capture latest tag before release
+        id: before_release
+        shell: bash
+        run: |
+          before_tag="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+          echo "before_tag=${before_tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies for semantic-release
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
       - name: Semantic Release
-        uses: cycjimmy/semantic-release-action@1c8dbaa298552ad40802cf44320879943de90278
-        id: semantic
-        with:
-          extra_plugins: |
-            @semantic-release/changelog
-            @semantic-release/git
-            @semantic-release/exec
-            conventional-changelog-conventionalcommits
-          dry_run: ${{ inputs.dry_run || false }}
+        shell: bash
+        run: |
+          if [[ "${{ inputs.dry_run || false }}" == "true" ]]; then
+            pnpm exec semantic-release --dry-run
+          else
+            pnpm exec semantic-release
+          fi
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      - name: Compute release outputs
+        id: release_meta
+        shell: bash
+        run: |
+          before_tag="${{ steps.before_release.outputs.before_tag }}"
+          after_tag="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+
+          if [[ "${{ inputs.dry_run || false }}" == "true" ]]; then
+            echo "new_release_published=false" >> "$GITHUB_OUTPUT"
+            echo "new_release_version=" >> "$GITHUB_OUTPUT"
+            echo "new_release_git_tag=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ -n "$after_tag" && "$after_tag" != "$before_tag" ]]; then
+            echo "new_release_published=true" >> "$GITHUB_OUTPUT"
+            echo "new_release_git_tag=${after_tag}" >> "$GITHUB_OUTPUT"
+            echo "new_release_version=${after_tag#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "new_release_published=false" >> "$GITHUB_OUTPUT"
+            echo "new_release_version=" >> "$GITHUB_OUTPUT"
+            echo "new_release_git_tag=" >> "$GITHUB_OUTPUT"
+          fi
 
   # ==========================================================================
   # Build Release Binaries - Cross-platform
