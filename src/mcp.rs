@@ -6,7 +6,7 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 use serde_json::{Map, Value, json};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use toml::{Table as TomlTable, Value as TomlValue};
@@ -18,20 +18,21 @@ use crate::config::{McpMergeStrategy, McpServerConfig};
 // MCP Output Format
 // =============================================================================
 
-/// The standard JSON structure for MCP servers
+/// The standard JSON structure for MCP servers.
+/// Uses BTreeMap for deterministic output and performance efficiency.
 #[derive(Debug, Clone)]
 pub struct McpOutput {
     /// The mcpServers object
-    pub servers: HashMap<String, McpServerConfig>,
+    pub servers: BTreeMap<String, McpServerConfig>,
 }
 
 impl McpOutput {
-    pub fn new(servers: HashMap<String, McpServerConfig>) -> Self {
+    pub fn new(servers: BTreeMap<String, McpServerConfig>) -> Self {
         Self { servers }
     }
 
     /// Filter out disabled servers
-    pub fn enabled_servers(&self) -> HashMap<String, &McpServerConfig> {
+    pub fn enabled_servers(&self) -> BTreeMap<String, &McpServerConfig> {
         self.servers
             .iter()
             .filter(|(_, config)| !config.disabled)
@@ -154,23 +155,23 @@ pub trait McpFormatter: Send + Sync {
     ///
     /// This is used as a common in-memory shape across formatters and tests.
     /// On-disk serialization should use `format_to_string()`.
-    fn format(&self, servers: &HashMap<String, &McpServerConfig>) -> Value;
+    fn format(&self, servers: &BTreeMap<String, &McpServerConfig>) -> Value;
 
     /// Format MCP servers into the agent-specific file content.
     /// By default this returns pretty JSON for agents that use JSON configs.
-    fn format_to_string(&self, servers: &HashMap<String, &McpServerConfig>) -> Result<String> {
+    fn format_to_string(&self, servers: &BTreeMap<String, &McpServerConfig>) -> Result<String> {
         let output = self.format(servers);
         serde_json::to_string_pretty(&output).context("Failed to serialize MCP config")
     }
 
     /// Parse existing configuration file to extract mcpServers
-    fn parse_existing(&self, content: &str) -> Result<HashMap<String, Value>>;
+    fn parse_existing(&self, content: &str) -> Result<BTreeMap<String, Value>>;
 
     /// Merge new servers with existing configuration
     fn merge(
         &self,
         existing_content: &str,
-        new_servers: &HashMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<String, &McpServerConfig>,
     ) -> Result<String>;
 
     /// Remove servers that are no longer in the configuration
@@ -178,7 +179,7 @@ pub trait McpFormatter: Send + Sync {
     fn cleanup_removed_servers(
         &self,
         existing_content: &str,
-        new_servers: &HashMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<String, &McpServerConfig>,
     ) -> Result<String> {
         self.merge(existing_content, new_servers)
     }
@@ -200,51 +201,39 @@ pub trait McpFormatter: Send + Sync {
 // Standard MCP Helper Functions
 // =============================================================================
 
-/// Build a JSON object from key/value pairs in deterministic lexicographic key order.
-fn sorted_json_map_from_pairs<I>(pairs: I) -> Map<String, Value>
+/// Build a JSON object from key/value pairs.
+/// Order is deterministic if the iterator is from a BTreeMap. This eliminates
+/// the need for manual sorting (O(N log N)) during every serialization run.
+fn json_map_from_pairs<I>(pairs: I) -> Map<String, Value>
 where
     I: IntoIterator<Item = (String, Value)>,
 {
-    let mut entries: Vec<(String, Value)> = pairs.into_iter().collect();
-    // Sort by key to ensure deterministic output order in the final JSON.
-    // Using Vec + sort_by is generally more efficient than BTreeMap for small
-    // numbers of servers typical in these configurations.
-    entries.sort_by(|a, b| a.0.cmp(&b.0));
-    entries.into_iter().collect()
+    pairs.into_iter().collect()
 }
 
-/// Build a JSON object from server configs using lexicographic key order.
-fn sorted_json_map_from_server_refs<F>(
-    servers: &HashMap<String, &McpServerConfig>,
+/// Build a JSON object from server configs.
+fn json_map_from_server_refs<F>(
+    servers: &BTreeMap<String, &McpServerConfig>,
     mut server_to_value: F,
 ) -> Map<String, Value>
 where
     F: FnMut(&McpServerConfig) -> Value,
 {
-    sorted_json_map_from_pairs(
+    json_map_from_pairs(
         servers
             .iter()
             .map(|(name, config)| (name.clone(), server_to_value(config))),
     )
 }
 
-/// Build a JSON object from existing JSON values using lexicographic key order.
-fn sorted_json_map_from_values(values: HashMap<String, Value>) -> Map<String, Value> {
-    sorted_json_map_from_pairs(values)
-}
-
-/// Build a JSON object from string key/value pairs using lexicographic key order.
-fn sorted_json_map_from_string_map(values: HashMap<String, String>) -> Map<String, Value> {
-    sorted_json_map_from_pairs(
-        values
-            .into_iter()
-            .map(|(name, value)| (name, Value::String(value))),
-    )
+/// Build a JSON object from existing JSON values.
+fn json_map_from_values(values: BTreeMap<String, Value>) -> Map<String, Value> {
+    json_map_from_pairs(values)
 }
 
 /// Format servers into standard { "mcpServers": { ... } } structure
-fn format_standard_mcp(servers: &HashMap<String, &McpServerConfig>) -> Value {
-    let mcp_servers = sorted_json_map_from_server_refs(servers, server_to_json);
+fn format_standard_mcp(servers: &BTreeMap<String, &McpServerConfig>) -> Value {
+    let mcp_servers = json_map_from_server_refs(servers, server_to_json);
 
     json!({
         "mcpServers": mcp_servers
@@ -252,13 +241,13 @@ fn format_standard_mcp(servers: &HashMap<String, &McpServerConfig>) -> Value {
 }
 
 /// Parse standard MCP config structure
-fn parse_standard_mcp(content: &str, context_msg: &str) -> Result<HashMap<String, Value>> {
+fn parse_standard_mcp(content: &str, context_msg: &str) -> Result<BTreeMap<String, Value>> {
     let mut parsed: Value = serde_json::from_str(content).context(context_msg.to_string())?;
 
     let servers = if let Some(obj) = parsed.get_mut("mcpServers").and_then(|v| v.as_object_mut()) {
         std::mem::take(obj).into_iter().collect()
     } else {
-        HashMap::new()
+        BTreeMap::new()
     };
 
     Ok(servers)
@@ -267,7 +256,7 @@ fn parse_standard_mcp(content: &str, context_msg: &str) -> Result<HashMap<String
 /// Merge new servers into standard MCP config structure
 fn merge_standard_mcp(
     existing_content: &str,
-    new_servers: &HashMap<String, &McpServerConfig>,
+    new_servers: &BTreeMap<String, &McpServerConfig>,
     context_msg: &str,
 ) -> Result<String> {
     let mut existing = parse_standard_mcp(existing_content, context_msg)?;
@@ -278,7 +267,7 @@ fn merge_standard_mcp(
     }
 
     let output = json!({
-        "mcpServers": sorted_json_map_from_values(existing)
+        "mcpServers": json_map_from_values(existing)
     });
 
     serde_json::to_string_pretty(&output).context("Failed to serialize merged config")
@@ -286,8 +275,8 @@ fn merge_standard_mcp(
 
 /// Merge new servers into standard MCP config structure with pre-filtered existing servers
 fn merge_standard_mcp_filtered(
-    existing_servers: HashMap<String, Value>,
-    new_servers: &HashMap<String, &McpServerConfig>,
+    existing_servers: BTreeMap<String, Value>,
+    new_servers: &BTreeMap<String, &McpServerConfig>,
     _context_msg: &str,
 ) -> Result<String> {
     let mut existing = existing_servers;
@@ -298,7 +287,7 @@ fn merge_standard_mcp_filtered(
     }
 
     let output = json!({
-        "mcpServers": sorted_json_map_from_values(existing)
+        "mcpServers": json_map_from_values(existing)
     });
 
     serde_json::to_string_pretty(&output).context("Failed to serialize merged config")
@@ -314,18 +303,18 @@ fn merge_standard_mcp_filtered(
 pub struct ClaudeCodeFormatter;
 
 impl McpFormatter for ClaudeCodeFormatter {
-    fn format(&self, servers: &HashMap<String, &McpServerConfig>) -> Value {
+    fn format(&self, servers: &BTreeMap<String, &McpServerConfig>) -> Value {
         format_standard_mcp(servers)
     }
 
-    fn parse_existing(&self, content: &str) -> Result<HashMap<String, Value>> {
+    fn parse_existing(&self, content: &str) -> Result<BTreeMap<String, Value>> {
         parse_standard_mcp(content, "Failed to parse existing MCP config as JSON")
     }
 
     fn merge(
         &self,
         existing_content: &str,
-        new_servers: &HashMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<String, &McpServerConfig>,
     ) -> Result<String> {
         merge_standard_mcp(
             existing_content,
@@ -337,7 +326,7 @@ impl McpFormatter for ClaudeCodeFormatter {
     fn cleanup_removed_servers(
         &self,
         existing_content: &str,
-        new_servers: &HashMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<String, &McpServerConfig>,
     ) -> Result<String> {
         // For standard MCP format, we can use the same merge function
         // but with a clean slate - only keep servers that are in new_servers
@@ -347,7 +336,7 @@ impl McpFormatter for ClaudeCodeFormatter {
         )?;
 
         // Filter existing servers to only keep those that are in new_servers
-        let filtered_existing: HashMap<String, Value> = existing
+        let filtered_existing: BTreeMap<String, Value> = existing
             .into_iter()
             .filter(|(name, _)| new_servers.contains_key(name))
             .collect();
@@ -371,11 +360,11 @@ impl McpFormatter for ClaudeCodeFormatter {
 pub struct GithubCopilotFormatter;
 
 impl McpFormatter for GithubCopilotFormatter {
-    fn format(&self, servers: &HashMap<String, &McpServerConfig>) -> Value {
+    fn format(&self, servers: &BTreeMap<String, &McpServerConfig>) -> Value {
         format_standard_mcp(servers)
     }
 
-    fn parse_existing(&self, content: &str) -> Result<HashMap<String, Value>> {
+    fn parse_existing(&self, content: &str) -> Result<BTreeMap<String, Value>> {
         parse_standard_mcp(
             content,
             "Failed to parse existing Copilot MCP config as JSON",
@@ -385,7 +374,7 @@ impl McpFormatter for GithubCopilotFormatter {
     fn merge(
         &self,
         existing_content: &str,
-        new_servers: &HashMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<String, &McpServerConfig>,
     ) -> Result<String> {
         merge_standard_mcp(
             existing_content,
@@ -397,7 +386,7 @@ impl McpFormatter for GithubCopilotFormatter {
     fn cleanup_removed_servers(
         &self,
         existing_content: &str,
-        new_servers: &HashMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<String, &McpServerConfig>,
     ) -> Result<String> {
         // Same logic as Claude Code - use standard MCP format
         let existing = parse_standard_mcp(
@@ -405,7 +394,7 @@ impl McpFormatter for GithubCopilotFormatter {
             "Failed to parse existing Copilot MCP config as JSON",
         )?;
 
-        let filtered_existing: HashMap<String, Value> = existing
+        let filtered_existing: BTreeMap<String, Value> = existing
             .into_iter()
             .filter(|(name, _)| new_servers.contains_key(name))
             .collect();
@@ -431,7 +420,7 @@ impl McpFormatter for CodexCliFormatter {
     /// Returns a logical Value representation (`mcp_servers`) for parity with the
     /// formatter trait. Codex file output is TOML and is produced by
     /// `format_to_string()`.
-    fn format(&self, servers: &HashMap<String, &McpServerConfig>) -> Value {
+    fn format(&self, servers: &BTreeMap<String, &McpServerConfig>) -> Value {
         let mut mcp_servers = Map::new();
 
         for (name, config) in servers {
@@ -443,7 +432,7 @@ impl McpFormatter for CodexCliFormatter {
         })
     }
 
-    fn format_to_string(&self, servers: &HashMap<String, &McpServerConfig>) -> Result<String> {
+    fn format_to_string(&self, servers: &BTreeMap<String, &McpServerConfig>) -> Result<String> {
         let mut doc = TomlTable::new();
         let mut mcp_servers = TomlTable::new();
 
@@ -456,7 +445,7 @@ impl McpFormatter for CodexCliFormatter {
         toml::to_string_pretty(&TomlValue::Table(doc)).context("Failed to serialize Codex config")
     }
 
-    fn parse_existing(&self, content: &str) -> Result<HashMap<String, Value>> {
+    fn parse_existing(&self, content: &str) -> Result<BTreeMap<String, Value>> {
         let mut doc = parse_codex_doc(content)?;
         let servers = if let Some(TomlValue::Table(table)) = doc.remove("mcp_servers") {
             table
@@ -475,7 +464,7 @@ impl McpFormatter for CodexCliFormatter {
     fn merge(
         &self,
         existing_content: &str,
-        new_servers: &HashMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<String, &McpServerConfig>,
     ) -> Result<String> {
         let mut doc = parse_codex_doc(existing_content)?;
         let mut existing_servers = if let Some(TomlValue::Table(table)) = doc.remove("mcp_servers")
@@ -501,7 +490,7 @@ impl McpFormatter for CodexCliFormatter {
     fn cleanup_removed_servers(
         &self,
         existing_content: &str,
-        new_servers: &HashMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<String, &McpServerConfig>,
     ) -> Result<String> {
         let mut doc = parse_codex_doc(existing_content)?;
         let existing_servers = if let Some(TomlValue::Table(table)) = doc.remove("mcp_servers") {
@@ -543,8 +532,8 @@ impl McpFormatter for CodexCliFormatter {
 pub struct GeminiCliFormatter; // keep type name
 
 impl McpFormatter for GeminiCliFormatter {
-    fn format(&self, servers: &HashMap<String, &McpServerConfig>) -> Value {
-        let mcp_servers = sorted_json_map_from_server_refs(servers, |config| {
+    fn format(&self, servers: &BTreeMap<String, &McpServerConfig>) -> Value {
+        let mcp_servers = json_map_from_server_refs(servers, |config| {
             let mut server_json = server_to_json(config);
             // Gemini requires trust: true for non-interactive execution
             if let Some(obj) = server_json.as_object_mut() {
@@ -558,7 +547,7 @@ impl McpFormatter for GeminiCliFormatter {
         })
     }
 
-    fn parse_existing(&self, content: &str) -> Result<HashMap<String, Value>> {
+    fn parse_existing(&self, content: &str) -> Result<BTreeMap<String, Value>> {
         let mut parsed: Value = serde_json::from_str(content)
             .context("Failed to parse existing Gemini settings as JSON")?;
 
@@ -566,7 +555,7 @@ impl McpFormatter for GeminiCliFormatter {
             if let Some(obj) = parsed.get_mut("mcpServers").and_then(|v| v.as_object_mut()) {
                 std::mem::take(obj).into_iter().collect()
             } else {
-                HashMap::new()
+                BTreeMap::new()
             };
 
         Ok(servers)
@@ -575,7 +564,7 @@ impl McpFormatter for GeminiCliFormatter {
     fn merge(
         &self,
         existing_content: &str,
-        new_servers: &HashMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<String, &McpServerConfig>,
     ) -> Result<String> {
         // For Gemini, we need to preserve other settings in the file
         let mut existing_doc: Value =
@@ -587,7 +576,7 @@ impl McpFormatter for GeminiCliFormatter {
         {
             std::mem::take(obj).into_iter().collect()
         } else {
-            HashMap::new()
+            BTreeMap::new()
         };
 
         for (name, config) in new_servers {
@@ -602,7 +591,7 @@ impl McpFormatter for GeminiCliFormatter {
         if let Some(doc_obj) = existing_doc.as_object_mut() {
             doc_obj.insert(
                 "mcpServers".to_string(),
-                Value::Object(sorted_json_map_from_values(existing_servers)),
+                Value::Object(json_map_from_values(existing_servers)),
             );
         }
 
@@ -612,7 +601,7 @@ impl McpFormatter for GeminiCliFormatter {
     fn cleanup_removed_servers(
         &self,
         existing_content: &str,
-        new_servers: &HashMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<String, &McpServerConfig>,
     ) -> Result<String> {
         // For Gemini, we need to preserve other settings but clean up removed servers
         let mut existing_doc: Value =
@@ -624,11 +613,11 @@ impl McpFormatter for GeminiCliFormatter {
         {
             std::mem::take(obj).into_iter().collect()
         } else {
-            HashMap::new()
+            BTreeMap::new()
         };
 
         // Filter existing servers to only keep those that are in new_servers
-        let filtered_existing: HashMap<String, Value> = existing_servers
+        let filtered_existing: BTreeMap<String, Value> = existing_servers
             .into_iter()
             .filter(|(name, _)| new_servers.contains_key(name))
             .collect();
@@ -647,7 +636,7 @@ impl McpFormatter for GeminiCliFormatter {
         if let Some(doc_obj) = existing_doc.as_object_mut() {
             doc_obj.insert(
                 "mcpServers".to_string(),
-                Value::Object(sorted_json_map_from_values(final_servers)),
+                Value::Object(json_map_from_values(final_servers)),
             );
         }
 
@@ -669,11 +658,11 @@ impl McpFormatter for GeminiCliFormatter {
 pub struct VsCodeFormatter;
 
 impl McpFormatter for VsCodeFormatter {
-    fn format(&self, servers: &HashMap<String, &McpServerConfig>) -> Value {
+    fn format(&self, servers: &BTreeMap<String, &McpServerConfig>) -> Value {
         format_standard_mcp(servers)
     }
 
-    fn parse_existing(&self, content: &str) -> Result<HashMap<String, Value>> {
+    fn parse_existing(&self, content: &str) -> Result<BTreeMap<String, Value>> {
         parse_standard_mcp(
             content,
             "Failed to parse existing VS Code MCP config as JSON",
@@ -683,7 +672,7 @@ impl McpFormatter for VsCodeFormatter {
     fn merge(
         &self,
         existing_content: &str,
-        new_servers: &HashMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<String, &McpServerConfig>,
     ) -> Result<String> {
         merge_standard_mcp(
             existing_content,
@@ -695,7 +684,7 @@ impl McpFormatter for VsCodeFormatter {
     fn cleanup_removed_servers(
         &self,
         existing_content: &str,
-        new_servers: &HashMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<String, &McpServerConfig>,
     ) -> Result<String> {
         // Same logic as Claude Code - use standard MCP format
         let existing = parse_standard_mcp(
@@ -703,7 +692,7 @@ impl McpFormatter for VsCodeFormatter {
             "Failed to parse existing VS Code MCP config as JSON",
         )?;
 
-        let filtered_existing: HashMap<String, Value> = existing
+        let filtered_existing: BTreeMap<String, Value> = existing
             .into_iter()
             .filter(|(name, _)| new_servers.contains_key(name))
             .collect();
@@ -726,11 +715,11 @@ impl McpFormatter for VsCodeFormatter {
 pub struct CursorFormatter;
 
 impl McpFormatter for CursorFormatter {
-    fn format(&self, servers: &HashMap<String, &McpServerConfig>) -> Value {
+    fn format(&self, servers: &BTreeMap<String, &McpServerConfig>) -> Value {
         format_standard_mcp(servers)
     }
 
-    fn parse_existing(&self, content: &str) -> Result<HashMap<String, Value>> {
+    fn parse_existing(&self, content: &str) -> Result<BTreeMap<String, Value>> {
         parse_standard_mcp(
             content,
             "Failed to parse existing Cursor MCP config as JSON",
@@ -740,7 +729,7 @@ impl McpFormatter for CursorFormatter {
     fn merge(
         &self,
         existing_content: &str,
-        new_servers: &HashMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<String, &McpServerConfig>,
     ) -> Result<String> {
         merge_standard_mcp(
             existing_content,
@@ -752,7 +741,7 @@ impl McpFormatter for CursorFormatter {
     fn cleanup_removed_servers(
         &self,
         existing_content: &str,
-        new_servers: &HashMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<String, &McpServerConfig>,
     ) -> Result<String> {
         // Same logic as Claude Code - use standard MCP format
         let existing = parse_standard_mcp(
@@ -760,7 +749,7 @@ impl McpFormatter for CursorFormatter {
             "Failed to parse existing Cursor MCP config as JSON",
         )?;
 
-        let filtered_existing: HashMap<String, Value> = existing
+        let filtered_existing: BTreeMap<String, Value> = existing
             .into_iter()
             .filter(|(name, _)| new_servers.contains_key(name))
             .collect();
@@ -783,8 +772,8 @@ impl McpFormatter for CursorFormatter {
 pub struct OpenCodeFormatter;
 
 impl McpFormatter for OpenCodeFormatter {
-    fn format(&self, servers: &HashMap<String, &McpServerConfig>) -> Value {
-        let mcp_servers = sorted_json_map_from_server_refs(servers, server_to_opencode_json);
+    fn format(&self, servers: &BTreeMap<String, &McpServerConfig>) -> Value {
+        let mcp_servers = json_map_from_server_refs(servers, server_to_opencode_json);
 
         json!({
             "$schema": "https://opencode.ai/config.json",
@@ -792,14 +781,14 @@ impl McpFormatter for OpenCodeFormatter {
         })
     }
 
-    fn parse_existing(&self, content: &str) -> Result<HashMap<String, Value>> {
+    fn parse_existing(&self, content: &str) -> Result<BTreeMap<String, Value>> {
         let mut parsed: Value = serde_json::from_str(content)
             .context("Failed to parse existing OpenCode MCP config as JSON")?;
 
         let servers = if let Some(obj) = parsed.get_mut("mcp").and_then(|v| v.as_object_mut()) {
             std::mem::take(obj).into_iter().collect()
         } else {
-            HashMap::new()
+            BTreeMap::new()
         };
 
         Ok(servers)
@@ -808,7 +797,7 @@ impl McpFormatter for OpenCodeFormatter {
     fn merge(
         &self,
         existing_content: &str,
-        new_servers: &HashMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<String, &McpServerConfig>,
     ) -> Result<String> {
         // Parse existing document to preserve other fields
         let mut existing_doc: Value =
@@ -818,7 +807,7 @@ impl McpFormatter for OpenCodeFormatter {
             if let Some(obj) = existing_doc.get_mut("mcp").and_then(|v| v.as_object_mut()) {
                 std::mem::take(obj).into_iter().collect()
             } else {
-                HashMap::new()
+                BTreeMap::new()
             };
 
         for (name, config) in new_servers {
@@ -829,7 +818,7 @@ impl McpFormatter for OpenCodeFormatter {
         if let Some(doc_obj) = existing_doc.as_object_mut() {
             doc_obj.insert(
                 "mcp".to_string(),
-                Value::Object(sorted_json_map_from_values(existing_servers)),
+                Value::Object(json_map_from_values(existing_servers)),
             );
             // Add schema if missing
             if !doc_obj.contains_key("$schema") {
@@ -842,7 +831,7 @@ impl McpFormatter for OpenCodeFormatter {
             // If existing content wasn't an object, overwrite it entirely
             existing_doc = json!({
                 "$schema": "https://opencode.ai/config.json",
-                "mcp": Value::Object(sorted_json_map_from_values(existing_servers))
+                "mcp": Value::Object(json_map_from_values(existing_servers))
             });
         }
 
@@ -852,7 +841,7 @@ impl McpFormatter for OpenCodeFormatter {
     fn cleanup_removed_servers(
         &self,
         existing_content: &str,
-        new_servers: &HashMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<String, &McpServerConfig>,
     ) -> Result<String> {
         // For OpenCode, preserve other settings but clean up removed servers
         let mut existing_doc: Value =
@@ -862,11 +851,11 @@ impl McpFormatter for OpenCodeFormatter {
             if let Some(obj) = existing_doc.get_mut("mcp").and_then(|v| v.as_object_mut()) {
                 std::mem::take(obj).into_iter().collect()
             } else {
-                HashMap::new()
+                BTreeMap::new()
             };
 
         // Filter existing servers to only keep those that are in new_servers
-        let filtered_existing: HashMap<String, Value> = existing_servers
+        let filtered_existing: BTreeMap<String, Value> = existing_servers
             .into_iter()
             .filter(|(name, _)| new_servers.contains_key(name))
             .collect();
@@ -881,7 +870,7 @@ impl McpFormatter for OpenCodeFormatter {
         if let Some(doc_obj) = existing_doc.as_object_mut() {
             doc_obj.insert(
                 "mcp".to_string(),
-                Value::Object(sorted_json_map_from_values(final_servers)),
+                Value::Object(json_map_from_values(final_servers)),
             );
             // Add schema if missing
             if !doc_obj.contains_key("$schema") {
@@ -894,7 +883,7 @@ impl McpFormatter for OpenCodeFormatter {
             // If existing content wasn't an object, overwrite it entirely
             existing_doc = json!({
                 "$schema": "https://opencode.ai/config.json",
-                "mcp": Value::Object(sorted_json_map_from_values(final_servers))
+                "mcp": Value::Object(json_map_from_values(final_servers))
             });
         }
 
@@ -916,7 +905,7 @@ fn server_to_opencode_json(config: &McpServerConfig) -> Value {
         if !config.headers.is_empty() {
             obj.insert(
                 "headers".to_string(),
-                Value::Object(sorted_json_map_from_string_map(config.headers.clone())),
+                serde_json::to_value(&config.headers).unwrap_or_else(|_| json!({})),
             );
         }
     } else {
@@ -933,7 +922,7 @@ fn server_to_opencode_json(config: &McpServerConfig) -> Value {
         if !config.env.is_empty() {
             obj.insert(
                 "environment".to_string(),
-                Value::Object(sorted_json_map_from_string_map(config.env.clone())),
+                serde_json::to_value(&config.env).unwrap_or_else(|_| json!({})),
             );
         }
     }
@@ -948,41 +937,10 @@ fn server_to_opencode_json(config: &McpServerConfig) -> Value {
 // Helper Functions
 // =============================================================================
 
-/// Convert McpServerConfig to JSON Value
+/// Convert McpServerConfig to JSON Value.
+/// Efficiently converts the config using Serde, leveraging BTreeMap for order.
 fn server_to_json(config: &McpServerConfig) -> Value {
-    let mut obj = Map::new();
-
-    if let Some(ref cmd) = config.command {
-        obj.insert("command".to_string(), json!(cmd));
-    }
-
-    if !config.args.is_empty() {
-        obj.insert("args".to_string(), json!(config.args));
-    }
-
-    if !config.env.is_empty() {
-        obj.insert(
-            "env".to_string(),
-            Value::Object(sorted_json_map_from_string_map(config.env.clone())),
-        );
-    }
-
-    if let Some(ref url) = config.url {
-        obj.insert("url".to_string(), json!(url));
-    }
-
-    if !config.headers.is_empty() {
-        obj.insert(
-            "headers".to_string(),
-            Value::Object(sorted_json_map_from_string_map(config.headers.clone())),
-        );
-    }
-
-    if let Some(ref transport) = config.transport_type {
-        obj.insert("type".to_string(), json!(transport));
-    }
-
-    Value::Object(obj)
+    serde_json::to_value(config).unwrap_or_else(|_| json!({}))
 }
 
 /// Parse Codex CLI config TOML into a document table
@@ -1069,14 +1027,14 @@ pub struct McpSyncResult {
 
 /// Generator for MCP configuration files
 pub struct McpGenerator {
-    servers: HashMap<String, McpServerConfig>,
+    servers: BTreeMap<String, McpServerConfig>,
     merge_strategy: McpMergeStrategy,
 }
 
 impl McpGenerator {
     /// Create a new MCP generator
     pub fn new(
-        servers: HashMap<String, McpServerConfig>,
+        servers: BTreeMap<String, McpServerConfig>,
         merge_strategy: McpMergeStrategy,
     ) -> Self {
         Self {
@@ -1101,7 +1059,7 @@ impl McpGenerator {
         &self,
         agent: McpAgent,
         project_root: &Path,
-        enabled_servers: &HashMap<String, &McpServerConfig>,
+        enabled_servers: &BTreeMap<String, &McpServerConfig>,
         dry_run: bool,
     ) -> Result<McpSyncResult> {
         let mut result = McpSyncResult::default();
@@ -1251,7 +1209,7 @@ impl McpGenerator {
     }
 
     /// Helper to get enabled servers as references to avoid clones
-    fn get_enabled_servers(&self) -> HashMap<String, &McpServerConfig> {
+    fn get_enabled_servers(&self) -> BTreeMap<String, &McpServerConfig> {
         self.servers
             .iter()
             .filter(|(_, config)| !config.disabled)
@@ -1261,7 +1219,7 @@ impl McpGenerator {
 
     /// Get the list of agents that should receive MCP configs based on config
     pub fn get_enabled_agents_from_config(
-        agents: &HashMap<String, crate::config::AgentConfig>,
+        agents: &BTreeMap<String, crate::config::AgentConfig>,
     ) -> Vec<McpAgent> {
         // Map agent config keys to MCP agents
         agents
@@ -1343,8 +1301,8 @@ mod tests {
     fn test_codex_formatter_format_to_string() {
         let formatter = CodexCliFormatter;
         let server = create_test_server();
-        let servers: HashMap<String, &McpServerConfig> =
-            HashMap::from([("filesystem".to_string(), &server)]);
+        let servers: BTreeMap<String, &McpServerConfig> =
+            BTreeMap::from([("filesystem".to_string(), &server)]);
 
         let output = formatter.format_to_string(&servers).unwrap();
         let parsed: TomlValue = toml::from_str(&output).unwrap();
@@ -1360,14 +1318,14 @@ mod tests {
         let server = McpServerConfig {
             command: None,
             args: vec![],
-            env: HashMap::new(),
+            env: BTreeMap::new(),
             url: Some("https://example.com/mcp".to_string()),
-            headers: HashMap::from([("Authorization".to_string(), "Bearer test".to_string())]),
+            headers: BTreeMap::from([("Authorization".to_string(), "Bearer test".to_string())]),
             transport_type: Some("http".to_string()),
             disabled: false,
         };
-        let servers: HashMap<String, &McpServerConfig> =
-            HashMap::from([("remote".to_string(), &server)]);
+        let servers: BTreeMap<String, &McpServerConfig> =
+            BTreeMap::from([("remote".to_string(), &server)]);
 
         let output = formatter.format_to_string(&servers).unwrap();
         let parsed: TomlValue = toml::from_str(&output).unwrap();
@@ -1413,8 +1371,8 @@ args = ["server.js"]
 "#;
 
         let new_server = create_test_server();
-        let servers: HashMap<String, &McpServerConfig> =
-            HashMap::from([("filesystem".to_string(), &new_server)]);
+        let servers: BTreeMap<String, &McpServerConfig> =
+            BTreeMap::from([("filesystem".to_string(), &new_server)]);
 
         let merged = formatter.merge(existing, &servers).unwrap();
         let parsed: TomlValue = toml::from_str(&merged).unwrap();
@@ -1439,8 +1397,8 @@ args = ["old-arg"]
 "#;
 
         let new_server = create_test_server();
-        let servers: HashMap<String, &McpServerConfig> =
-            HashMap::from([("filesystem".to_string(), &new_server)]);
+        let servers: BTreeMap<String, &McpServerConfig> =
+            BTreeMap::from([("filesystem".to_string(), &new_server)]);
 
         let merged = formatter.merge(existing, &servers).unwrap();
         let parsed: TomlValue = toml::from_str(&merged).unwrap();
@@ -1481,7 +1439,7 @@ command = "remove-cmd"
 
         let mut keep_server = create_test_server();
         keep_server.command = Some("keep-cmd".to_string());
-        let servers = HashMap::from([("keep".to_string(), keep_server)]);
+        let servers = BTreeMap::from([("keep".to_string(), keep_server)]);
         let refs = servers.iter().map(|(k, v)| (k.clone(), v)).collect();
 
         let cleaned = formatter.cleanup_removed_servers(existing, &refs).unwrap();
@@ -1510,9 +1468,9 @@ command = "remove-cmd"
                 "@modelcontextprotocol/server-filesystem".to_string(),
                 ".".to_string(),
             ],
-            env: HashMap::new(),
+            env: BTreeMap::new(),
             url: None,
-            headers: HashMap::new(),
+            headers: BTreeMap::new(),
             transport_type: None,
             disabled: false,
         }
@@ -1543,8 +1501,8 @@ command = "remove-cmd"
     fn test_claude_formatter_basic() {
         let formatter = ClaudeCodeFormatter;
         let server = create_test_server();
-        let servers: HashMap<String, &McpServerConfig> =
-            HashMap::from([("filesystem".to_string(), &server)]);
+        let servers: BTreeMap<String, &McpServerConfig> =
+            BTreeMap::from([("filesystem".to_string(), &server)]);
 
         let output = formatter.format(&servers);
 
@@ -1582,8 +1540,8 @@ command = "remove-cmd"
         }"#;
 
         let new_server = create_test_server();
-        let servers: HashMap<String, &McpServerConfig> =
-            HashMap::from([("filesystem".to_string(), &new_server)]);
+        let servers: BTreeMap<String, &McpServerConfig> =
+            BTreeMap::from([("filesystem".to_string(), &new_server)]);
 
         let merged = formatter.merge(existing, &servers).unwrap();
         let parsed: Value = serde_json::from_str(&merged).unwrap();
@@ -1607,8 +1565,8 @@ command = "remove-cmd"
         }"#;
 
         let new_server = create_test_server();
-        let servers: HashMap<String, &McpServerConfig> =
-            HashMap::from([("filesystem".to_string(), &new_server)]);
+        let servers: BTreeMap<String, &McpServerConfig> =
+            BTreeMap::from([("filesystem".to_string(), &new_server)]);
 
         let merged = formatter.merge(existing, &servers).unwrap();
         let parsed: Value = serde_json::from_str(&merged).unwrap();
@@ -1622,7 +1580,7 @@ command = "remove-cmd"
     fn test_claude_formatter_orders_servers_deterministically() {
         let formatter = ClaudeCodeFormatter;
         let server = create_test_server();
-        let servers: HashMap<String, &McpServerConfig> = HashMap::from([
+        let servers: BTreeMap<String, &McpServerConfig> = BTreeMap::from([
             ("zeta".to_string(), &server),
             ("alpha".to_string(), &server),
             ("mid".to_string(), &server),
@@ -1640,8 +1598,8 @@ command = "remove-cmd"
     fn test_gemini_formatter_adds_trust() {
         let formatter = GeminiCliFormatter;
         let server = create_test_server();
-        let servers: HashMap<String, &McpServerConfig> =
-            HashMap::from([("filesystem".to_string(), &server)]);
+        let servers: BTreeMap<String, &McpServerConfig> =
+            BTreeMap::from([("filesystem".to_string(), &server)]);
 
         let output = formatter.format(&servers);
         let fs_server = output.get("mcpServers").unwrap().get("filesystem").unwrap();
@@ -1664,8 +1622,8 @@ command = "remove-cmd"
         }"#;
 
         let new_server = create_test_server();
-        let servers: HashMap<String, &McpServerConfig> =
-            HashMap::from([("filesystem".to_string(), &new_server)]);
+        let servers: BTreeMap<String, &McpServerConfig> =
+            BTreeMap::from([("filesystem".to_string(), &new_server)]);
 
         let merged = formatter.merge(existing, &servers).unwrap();
         let parsed: Value = serde_json::from_str(&merged).unwrap();
@@ -1692,8 +1650,8 @@ command = "remove-cmd"
     fn test_opencode_formatter_basic() {
         let formatter = OpenCodeFormatter;
         let server = create_test_server();
-        let servers: HashMap<String, &McpServerConfig> =
-            HashMap::from([("filesystem".to_string(), &server)]);
+        let servers: BTreeMap<String, &McpServerConfig> =
+            BTreeMap::from([("filesystem".to_string(), &server)]);
 
         let output = formatter.format(&servers);
 
@@ -1732,8 +1690,8 @@ command = "remove-cmd"
         }"#;
 
         let new_server = create_test_server();
-        let servers: HashMap<String, &McpServerConfig> =
-            HashMap::from([("filesystem".to_string(), &new_server)]);
+        let servers: BTreeMap<String, &McpServerConfig> =
+            BTreeMap::from([("filesystem".to_string(), &new_server)]);
 
         let merged = formatter.merge(existing, &servers).unwrap();
         let parsed: Value = serde_json::from_str(&merged).unwrap();
@@ -1763,8 +1721,8 @@ command = "remove-cmd"
         }"#;
 
         let server = create_test_server();
-        let servers: HashMap<String, &McpServerConfig> =
-            HashMap::from([("mid".to_string(), &server)]);
+        let servers: BTreeMap<String, &McpServerConfig> =
+            BTreeMap::from([("mid".to_string(), &server)]);
 
         let merged = formatter.merge(existing, &servers).unwrap();
         assert_nested_object_keys_in_order(&merged, &["mcp"], &["alpha", "mid", "zeta"]);
@@ -1777,7 +1735,7 @@ command = "remove-cmd"
     #[test]
     fn test_generator_creates_config() {
         let temp_dir = TempDir::new().unwrap();
-        let servers = HashMap::from([("filesystem".to_string(), create_test_server())]);
+        let servers = BTreeMap::from([("filesystem".to_string(), create_test_server())]);
 
         let generator = McpGenerator::new(servers, McpMergeStrategy::Overwrite);
         let result = generator
@@ -1805,7 +1763,7 @@ command = "remove-cmd"
     #[test]
     fn test_generator_dry_run() {
         let temp_dir = TempDir::new().unwrap();
-        let servers = HashMap::from([("filesystem".to_string(), create_test_server())]);
+        let servers = BTreeMap::from([("filesystem".to_string(), create_test_server())]);
 
         let generator = McpGenerator::new(servers, McpMergeStrategy::Overwrite);
         let result = generator
@@ -1833,7 +1791,7 @@ command = "remove-cmd"
         }"#;
         fs::write(temp_dir.path().join(".mcp.json"), existing).unwrap();
 
-        let servers = HashMap::from([("filesystem".to_string(), create_test_server())]);
+        let servers = BTreeMap::from([("filesystem".to_string(), create_test_server())]);
 
         let generator = McpGenerator::new(servers, McpMergeStrategy::Merge);
         let result = generator
@@ -1876,7 +1834,7 @@ command = "remove-cmd"
         server1.command = Some("new-cmd1".to_string());
         server3.command = Some("new-cmd3".to_string());
 
-        let servers = HashMap::from([
+        let servers = BTreeMap::from([
             ("server1".to_string(), server1),
             ("server3".to_string(), server3),
         ]);
@@ -1938,7 +1896,7 @@ command = "remove-cmd"
         let mut server = create_test_server();
         server.command = Some("new-cmd".to_string());
 
-        let servers = HashMap::from([("keep_this".to_string(), server)]);
+        let servers = BTreeMap::from([("keep_this".to_string(), server)]);
 
         let generator = McpGenerator::new(servers, McpMergeStrategy::Merge);
         let result = generator
@@ -1991,7 +1949,7 @@ command = "remove-cmd"
         new1.command = Some("new1".to_string());
         new2.command = Some("new2".to_string());
 
-        let servers = HashMap::from([("new1".to_string(), new1), ("new2".to_string(), new2)]);
+        let servers = BTreeMap::from([("new1".to_string(), new1), ("new2".to_string(), new2)]);
 
         let generator = McpGenerator::new(servers, McpMergeStrategy::Merge);
         let result = generator
@@ -2037,7 +1995,7 @@ command = "remove-cmd"
         let mut server = create_test_server();
         server.command = Some("keep-cmd".to_string());
 
-        let servers = HashMap::from([("keep".to_string(), server)]);
+        let servers = BTreeMap::from([("keep".to_string(), server)]);
         let refs = servers.iter().map(|(k, v)| (k.clone(), v)).collect();
 
         let formatter = OpenCodeFormatter;
@@ -2081,7 +2039,7 @@ command = "remove-cmd"
         let mut server = create_test_server();
         server.command = Some("node".to_string());
 
-        let servers = HashMap::from([("keep".to_string(), server)]);
+        let servers = BTreeMap::from([("keep".to_string(), server)]);
         let refs = servers.iter().map(|(k, v)| (k.clone(), v)).collect();
 
         let formatter = GeminiCliFormatter;
@@ -2124,7 +2082,7 @@ command = "remove-cmd"
         }"#;
         fs::write(temp_dir.path().join(".mcp.json"), existing).unwrap();
 
-        let servers = HashMap::from([("filesystem".to_string(), create_test_server())]);
+        let servers = BTreeMap::from([("filesystem".to_string(), create_test_server())]);
 
         let generator = McpGenerator::new(servers, McpMergeStrategy::Overwrite);
         generator
@@ -2157,7 +2115,7 @@ command = "remove-cmd"
         let opencode_path = temp_dir.path().join("opencode.json");
         fs::write(&opencode_path, existing).unwrap();
 
-        let servers = HashMap::from([("filesystem".to_string(), create_test_server())]);
+        let servers = BTreeMap::from([("filesystem".to_string(), create_test_server())]);
 
         let generator = McpGenerator::new(servers, McpMergeStrategy::Overwrite);
         let result = generator
@@ -2196,7 +2154,7 @@ command = "remove-cmd"
 
         let mut server = create_test_server();
         server.command = Some("new-cmd".to_string());
-        let servers = HashMap::from([("new-server".to_string(), server)]);
+        let servers = BTreeMap::from([("new-server".to_string(), server)]);
 
         let generator = McpGenerator::new(servers, McpMergeStrategy::Overwrite);
         generator
@@ -2227,7 +2185,7 @@ command = "remove-cmd"
     #[test]
     fn test_generator_creates_parent_directories() {
         let temp_dir = TempDir::new().unwrap();
-        let servers = HashMap::from([("filesystem".to_string(), create_test_server())]);
+        let servers = BTreeMap::from([("filesystem".to_string(), create_test_server())]);
 
         let generator = McpGenerator::new(servers, McpMergeStrategy::Overwrite);
         generator
@@ -2242,7 +2200,7 @@ command = "remove-cmd"
     #[test]
     fn test_generator_creates_parent_directories_codex() {
         let temp_dir = TempDir::new().unwrap();
-        let servers = HashMap::from([("filesystem".to_string(), create_test_server())]);
+        let servers = BTreeMap::from([("filesystem".to_string(), create_test_server())]);
 
         let generator = McpGenerator::new(servers, McpMergeStrategy::Overwrite);
         generator
@@ -2260,7 +2218,7 @@ command = "remove-cmd"
         let mut disabled_server = create_test_server();
         disabled_server.disabled = true;
 
-        let servers = HashMap::from([("disabled".to_string(), disabled_server)]);
+        let servers = BTreeMap::from([("disabled".to_string(), disabled_server)]);
 
         let generator = McpGenerator::new(servers, McpMergeStrategy::Overwrite);
         let result = generator
@@ -2275,7 +2233,7 @@ command = "remove-cmd"
     #[test]
     fn test_generator_generate_all() {
         let temp_dir = TempDir::new().unwrap();
-        let servers = HashMap::from([("filesystem".to_string(), create_test_server())]);
+        let servers = BTreeMap::from([("filesystem".to_string(), create_test_server())]);
 
         let generator = McpGenerator::new(servers, McpMergeStrategy::Overwrite);
         let agents = vec![McpAgent::ClaudeCode, McpAgent::GithubCopilot];
@@ -2298,7 +2256,7 @@ command = "remove-cmd"
         let mut disabled = create_test_server();
         disabled.disabled = true;
 
-        let servers = HashMap::from([
+        let servers = BTreeMap::from([
             ("enabled".to_string(), create_test_server()),
             ("disabled".to_string(), disabled),
         ]);
@@ -2320,9 +2278,9 @@ command = "remove-cmd"
         let server = McpServerConfig {
             command: Some("npx".to_string()),
             args: vec!["-y".to_string(), "server".to_string()],
-            env: HashMap::from([("DEBUG".to_string(), "true".to_string())]),
+            env: BTreeMap::from([("DEBUG".to_string(), "true".to_string())]),
             url: None,
-            headers: HashMap::new(),
+            headers: BTreeMap::new(),
             transport_type: Some("stdio".to_string()),
             disabled: false,
         };
@@ -2343,9 +2301,9 @@ command = "remove-cmd"
         let server = McpServerConfig {
             command: None,
             args: vec![],
-            env: HashMap::new(),
+            env: BTreeMap::new(),
             url: Some("https://api.example.com".to_string()),
-            headers: HashMap::from([("Authorization".to_string(), "Bearer token".to_string())]),
+            headers: BTreeMap::from([("Authorization".to_string(), "Bearer token".to_string())]),
             transport_type: None,
             disabled: false,
         };
@@ -2367,12 +2325,12 @@ command = "remove-cmd"
         let server = McpServerConfig {
             command: Some("npx".to_string()),
             args: vec![],
-            env: HashMap::from([
+            env: BTreeMap::from([
                 ("ZZZ".to_string(), "1".to_string()),
                 ("AAA".to_string(), "2".to_string()),
             ]),
             url: None,
-            headers: HashMap::from([
+            headers: BTreeMap::from([
                 ("X-Zebra".to_string(), "z".to_string()),
                 ("X-Alpha".to_string(), "a".to_string()),
             ]),
@@ -2410,13 +2368,13 @@ command = "remove-cmd"
     fn test_get_enabled_agents_from_config() {
         use crate::config::AgentConfig;
 
-        let agents = HashMap::from([
+        let agents = BTreeMap::from([
             (
                 "claude".to_string(),
                 AgentConfig {
                     enabled: true,
                     description: String::new(),
-                    targets: HashMap::new(),
+                    targets: BTreeMap::new(),
                 },
             ),
             (
@@ -2424,7 +2382,7 @@ command = "remove-cmd"
                 AgentConfig {
                     enabled: true,
                     description: String::new(),
-                    targets: HashMap::new(),
+                    targets: BTreeMap::new(),
                 },
             ),
             (
@@ -2432,7 +2390,7 @@ command = "remove-cmd"
                 AgentConfig {
                     enabled: true,
                     description: String::new(),
-                    targets: HashMap::new(),
+                    targets: BTreeMap::new(),
                 },
             ),
             (
@@ -2440,7 +2398,7 @@ command = "remove-cmd"
                 AgentConfig {
                     enabled: false,
                     description: String::new(),
-                    targets: HashMap::new(),
+                    targets: BTreeMap::new(),
                 },
             ),
             (
@@ -2448,7 +2406,7 @@ command = "remove-cmd"
                 AgentConfig {
                     enabled: true,
                     description: String::new(),
-                    targets: HashMap::new(),
+                    targets: BTreeMap::new(),
                 },
             ),
         ]);

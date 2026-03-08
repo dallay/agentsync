@@ -1,7 +1,7 @@
 use agentsync::config::McpServerConfig;
 use agentsync::mcp::{ClaudeCodeFormatter, McpFormatter};
 use anyhow::Result;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fs;
 use tempfile::TempDir;
 
@@ -9,9 +9,9 @@ fn create_test_server() -> McpServerConfig {
     McpServerConfig {
         command: Some("new-cmd".to_string()),
         args: vec![],
-        env: std::collections::HashMap::new(),
+        env: std::collections::BTreeMap::new(),
         url: None,
-        headers: std::collections::HashMap::new(),
+        headers: std::collections::BTreeMap::new(),
         transport_type: None,
         disabled: false,
     }
@@ -36,7 +36,7 @@ fn test_merge_cleanup_bug() -> Result<()> {
     fs::write(temp_dir.path().join(".mcp.json"), existing).unwrap();
 
     // New config only has server3 (server1 and server2 should be REMOVED)
-    let new_servers = HashMap::from([("server3".to_string(), create_test_server())]);
+    let new_servers = BTreeMap::from([("server3".to_string(), create_test_server())]);
 
     let formatter = ClaudeCodeFormatter;
 

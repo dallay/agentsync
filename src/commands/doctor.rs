@@ -308,7 +308,7 @@ pub fn validate_destinations(destinations: &[(String, String, String)]) -> Vec<C
     // Check for overlapping paths (one is parent of another)
     // To avoid repeated overlaps and handle duplicates gracefully:
     // 1. Get a deduplicated list of unique destinations for overlap checking
-    let mut unique_dests_info = std::collections::HashMap::new();
+    let mut unique_dests_info = std::collections::BTreeMap::new();
     for (dest, agent, target) in destinations {
         unique_dests_info
             .entry(dest)
