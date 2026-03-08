@@ -27,8 +27,14 @@ pub struct McpOutput {
 }
 
 impl McpOutput {
-    pub fn new(servers: BTreeMap<String, McpServerConfig>) -> Self {
-        Self { servers }
+    /// Create a new McpOutput from an iterator of server configurations.
+    pub fn new<I>(servers: I) -> Self
+    where
+        I: IntoIterator<Item = (String, McpServerConfig)>,
+    {
+        Self {
+            servers: servers.into_iter().collect(),
+        }
     }
 
     /// Filter out disabled servers
@@ -1032,13 +1038,13 @@ pub struct McpGenerator {
 }
 
 impl McpGenerator {
-    /// Create a new MCP generator
-    pub fn new(
-        servers: BTreeMap<String, McpServerConfig>,
-        merge_strategy: McpMergeStrategy,
-    ) -> Self {
+    /// Create a new MCP generator from an iterator of server configurations.
+    pub fn new<I>(servers: I, merge_strategy: McpMergeStrategy) -> Self
+    where
+        I: IntoIterator<Item = (String, McpServerConfig)>,
+    {
         Self {
-            servers,
+            servers: servers.into_iter().collect(),
             merge_strategy,
         }
     }
