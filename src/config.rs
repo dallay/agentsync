@@ -6,7 +6,7 @@
 use crate::agent_ids;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -35,8 +35,10 @@ pub struct Config {
     pub default_agents: Vec<String>,
 
     /// A map of agent configurations, where the key is the agent's name (e.g., "claude").
+    /// Uses BTreeMap to ensure deterministic ordering in config and generated files
+    /// while avoiding redundant sorting overhead.
     #[serde(default)]
-    pub agents: HashMap<String, AgentConfig>,
+    pub agents: BTreeMap<String, AgentConfig>,
 
     /// Settings for managing the project's `.gitignore` file.
     #[serde(default)]
@@ -47,8 +49,9 @@ pub struct Config {
     pub mcp: McpGlobalConfig,
 
     /// A map of MCP server configurations, where the key is a unique server name.
+    /// Uses BTreeMap to maintain deterministic order without manual sorting.
     #[serde(default)]
-    pub mcp_servers: HashMap<String, McpServerConfig>,
+    pub mcp_servers: BTreeMap<String, McpServerConfig>,
 }
 
 fn default_source_dir() -> String {
@@ -70,7 +73,7 @@ pub struct AgentConfig {
     /// A map of synchronization targets for this agent, where the key is a logical name
     /// for the target (e.g., "instructions").
     #[serde(default)]
-    pub targets: HashMap<String, TargetConfig>,
+    pub targets: BTreeMap<String, TargetConfig>,
 }
 
 fn default_true() -> bool {
@@ -189,16 +192,16 @@ pub struct McpServerConfig {
     pub args: Vec<String>,
 
     /// Environment variables
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub env: HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub env: BTreeMap<String, String>,
 
     /// URL for HTTP/SSE transport
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
 
     /// HTTP headers (for remote servers)
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub headers: HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub headers: BTreeMap<String, String>,
 
     /// Transport type (stdio, http, sse)
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
@@ -1172,9 +1175,9 @@ mod tests {
         let server = McpServerConfig {
             command: Some("npx".to_string()),
             args: vec!["-y".to_string(), "server".to_string()],
-            env: HashMap::from([("DEBUG".to_string(), "true".to_string())]),
+            env: BTreeMap::from([("DEBUG".to_string(), "true".to_string())]),
             url: None,
-            headers: HashMap::new(),
+            headers: BTreeMap::new(),
             transport_type: Some("stdio".to_string()),
             disabled: false,
         };

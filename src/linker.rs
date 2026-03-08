@@ -6,7 +6,7 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
@@ -51,8 +51,8 @@ pub struct Linker {
     config_path: PathBuf,
     project_root: PathBuf,
     source_dir: PathBuf,
-    path_cache: RefCell<HashMap<PathBuf, PathBuf>>,
-    compression_cache: RefCell<HashMap<PathBuf, String>>,
+    path_cache: RefCell<BTreeMap<PathBuf, PathBuf>>,
+    compression_cache: RefCell<BTreeMap<PathBuf, String>>,
     ensured_outputs: RefCell<HashSet<PathBuf>>,
 }
 
@@ -67,8 +67,8 @@ impl Linker {
             config_path,
             project_root,
             source_dir,
-            path_cache: RefCell::new(HashMap::new()),
-            compression_cache: RefCell::new(HashMap::new()),
+            path_cache: RefCell::new(BTreeMap::new()),
+            compression_cache: RefCell::new(BTreeMap::new()),
             ensured_outputs: RefCell::new(HashSet::new()),
         }
     }

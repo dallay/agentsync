@@ -41,3 +41,9 @@
 **Learning:** Merging configuration structures by reference was forcing deep clones of entire configuration trees (JSON/TOML) even when the original structure was about to be discarded. By shifting to an ownership-based model and using `std::mem::take` on parsed values, we eliminated redundant heap allocations during MCP synchronization.
 
 **Action:** Prefer taking owned collections in transformation functions if the caller doesn't need them anymore. Use `std::mem::take` to extract data from mutable structures like `serde_json::Value` or `toml::Value` to avoid `.clone()` calls on large maps and arrays.
+
+## 2026-03-08 - Eliminating Redundant Sorting via BTreeMap
+
+**Learning:** Using `HashMap` for configuration maps forced redundant (N \log N)$ sorting and cloning operations during every serialization run to ensure deterministic file output. For the typical small number of agents and servers in this app, `BTreeMap` eliminates this overhead entirely while avoiding the hashing cost of the default DOS-resistant hasher.
+
+**Action:** Use `BTreeMap` for configuration structures that require deterministic serialization. This simplifies the code by removing manual sorting logic and leverages Serde's efficient ordered map handling.
