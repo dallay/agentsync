@@ -104,6 +104,16 @@ agentsync init
 
 This creates a `.agents/` directory with an initial `agentsync.toml` and an `AGENTS.md` file.
 
+When run interactively, `agentsync init` also asks whether to install the bundled AgentSync skill
+at `.agents/skills/agentsync/SKILL.md`.
+
+For automation/non-interactive usage, you can control behavior explicitly:
+
+```bash
+agentsync init --install-agentsync-skill
+agentsync init --no-install-agentsync-skill
+```
+
 #### Existing Projects with Agent Files
 
 If you already have agent configuration files (like `CLAUDE.md`, `.cursor/`, or `.github/copilot-instructions.md`), use the interactive wizard:
