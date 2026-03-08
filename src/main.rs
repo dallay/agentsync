@@ -6,7 +6,6 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use std::env;
-use std::io::IsTerminal;
 use std::path::PathBuf;
 
 use agentsync::{Linker, SyncOptions, config::Config, gitignore, init};
@@ -75,18 +74,6 @@ enum Commands {
             help = "Run interactive configuration wizard to migrate existing files"
         )]
         wizard: bool,
-        #[arg(
-            long,
-            conflicts_with = "no_install_agentsync_skill",
-            help = "Install bundled AgentSync skill during initialization"
-        )]
-        install_agentsync_skill: bool,
-        #[arg(
-            long,
-            conflicts_with = "install_agentsync_skill",
-            help = "Skip installing bundled AgentSync skill during initialization"
-        )]
-        no_install_agentsync_skill: bool,
     },
     /// Apply the configuration from agentsync.toml
     Apply {
@@ -148,8 +135,6 @@ fn main() -> Result<()> {
             path,
             force,
             wizard,
-            install_agentsync_skill,
-            no_install_agentsync_skill,
         } => {
             let project_root = path.unwrap_or_else(|| env::current_dir().unwrap());
             print_header();
@@ -163,38 +148,11 @@ fn main() -> Result<()> {
                 println!("{}", "Initializing agentsync configuration...\n".cyan());
                 init::init(&project_root, force)?;
             }
-
-            let should_install_skill = if install_agentsync_skill {
-                true
-            } else if no_install_agentsync_skill {
-                false
-            } else if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
-                use dialoguer::{Confirm, theme::ColorfulTheme};
-                println!();
-                Confirm::with_theme(&ColorfulTheme::default())
-                    .with_prompt("Install and configure the bundled AgentSync skill now?")
-                    .default(true)
-                    .interact()?
-            } else {
-                false
-            };
-
-            if should_install_skill {
-                println!("\n{}", "Installing bundled AgentSync skill...".cyan());
-                init::install_agentsync_skill(&project_root, force)?;
-            } else {
-                println!(
-                    "\n{}",
-                    "Skipping bundled AgentSync skill installation.".dimmed()
-                );
-            }
-
             println!("\n{}", "✨ Initialization complete!".green().bold());
             println!(
-                "\nNext steps:\n  1. Edit {} with your project instructions\n  2. Run {} to create symlinks\n  3. (Optional) Use {} to validate managed links",
+                "\nNext steps:\n  1. Edit {} with your project instructions\n  2. Run {} to create symlinks",
                 ".agents/AGENTS.md".cyan(),
-                "agentsync apply".cyan(),
-                "agentsync status".cyan()
+                "agentsync apply".cyan()
             );
         }
         Commands::Apply {

@@ -1,29 +1,3 @@
-## [1.30.0](https://github.com/dallay/agentsync/compare/v1.29.0...v1.30.0) (2026-03-08)
-
-### ✨ Features
-
-* **init:** add bundled agentsync skill installation flow ([2db0403](https://github.com/dallay/agentsync/commit/2db0403647ef03c1584501ebab2f65ac6eb18d7b))
-* **init:** expand scan_agent_files to detect 32 agents; add tests; cargo test passes ([#203](https://github.com/dallay/agentsync/issues/203)) ([9b29ac6](https://github.com/dallay/agentsync/commit/9b29ac60bddaf1fbdddcda04475e23b52a8e726d))
-
-### 🐛 Bug Fixes
-
-* add `checks: write` permission for rustsec/audit-check ([#204](https://github.com/dallay/agentsync/issues/204)) ([a3cef14](https://github.com/dallay/agentsync/commit/a3cef1438dda015b998ec37faec308e4c1765a40))
-* **linker:** streamline dry-run directory creation logging ([b2d5b30](https://github.com/dallay/agentsync/commit/b2d5b304f4e10539b39f00d4c35a80dca9d9c077))
-* use plural .opencode/skills/ directory for OpenCode ([#209](https://github.com/dallay/agentsync/issues/209)) ([ecf7c9e](https://github.com/dallay/agentsync/commit/ecf7c9e5d6ae2e08c592128d8fe6db7b998d17c2))
-
-### 🚀 Performance
-
-* implement I/O and compression caching in Linker ([fd71b66](https://github.com/dallay/agentsync/commit/fd71b66792ec8db772bd6b10e19601d102e9d87f))
-* optimize I/O, compression caching, and dry-run messaging ([f04c0f7](https://github.com/dallay/agentsync/commit/f04c0f7fb141ad4762befff6e2871510a98d7f37))
-* optimize MCP configuration generation and merging ([#214](https://github.com/dallay/agentsync/issues/214)) ([6242318](https://github.com/dallay/agentsync/commit/62423182a4c4772083415d5dc44eb5b01e105936))
-* refine Linker caching and dry-run messaging ([23c345c](https://github.com/dallay/agentsync/commit/23c345cc7d7e6e8414f0ba6ecfb4bd58cbc9776c))
-
-### 📝 Documentation
-
-* audit and update monorepo documentation for CLI accuracy ([a021344](https://github.com/dallay/agentsync/commit/a021344a81e1a096a1550c8b94c0324b57dbb85f))
-* improve accuracy of symlink-contents description in README.md ([6f10f58](https://github.com/dallay/agentsync/commit/6f10f58145e3f32e9538d18c9e154d5cac072cd7))
-* improve accuracy of symlink-contents description in README.md ([c905380](https://github.com/dallay/agentsync/commit/c90538055053881f48484e2d853ad2177180edb4))
-
 ## [1.28.0](https://github.com/dallay/agentsync/compare/v1.27.2...v1.28.0) (2026-02-09)
 
 ### ✨ Features

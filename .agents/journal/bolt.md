@@ -44,6 +44,6 @@
 
 ## 2026-03-08 - Eliminating Redundant Sorting via BTreeMap
 
-**Learning:** Using `HashMap` for configuration maps forced redundant (N \log N)$ sorting and cloning operations during every serialization run to ensure deterministic file output. For the typical small number of agents and servers in this app, `BTreeMap` eliminates this overhead entirely while avoiding the hashing cost of the default DOS-resistant hasher.
+**Learning:** Using `HashMap` for configuration maps forced redundant $(N \log N)$ sorting and cloning operations during every serialization run to ensure deterministic file output. For the typical small number of agents and servers in this app, `BTreeMap` eliminates this overhead entirely while avoiding the hashing cost of the default DOS-resistant hasher.
 
 **Action:** Use `BTreeMap` for configuration structures that require deterministic serialization. This simplifies the code by removing manual sorting logic and leverages Serde's efficient ordered map handling.

@@ -314,8 +314,7 @@ pub fn validate_destinations(destinations: &[(String, String, String)]) -> Vec<C
             .entry(dest)
             .or_insert_with(|| format!("{}/{}", agent, target));
     }
-    let mut unique_dests: Vec<_> = unique_dests_info.keys().cloned().collect();
-    unique_dests.sort();
+    let unique_dests: Vec<_> = unique_dests_info.keys().cloned().collect();
 
     let mut seen_overlaps = HashSet::new();
     for (i, d1) in unique_dests.iter().enumerate() {

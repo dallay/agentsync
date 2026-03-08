@@ -165,9 +165,6 @@ agentsync init
 
 This creates `.agents/agentsync.toml` with a default configuration.
 
-During initialization, AgentSync also asks whether you want to install the bundled
-`agentsync` skill at `.agents/skills/agentsync/SKILL.md`.
-
 ### Existing Projects with Agent Files
 
 If you already have agent configuration files scattered across your project (like `CLAUDE.md`, `.cursor/`, or `.github/copilot-instructions.md`), use the interactive wizard:
@@ -204,12 +201,6 @@ agentsync apply
 ```bash
 # Initialize a new configuration
 agentsync init
-
-# Initialize and install bundled AgentSync skill
-agentsync init --install-agentsync-skill
-
-# Initialize and skip skill installation (useful for CI/non-interactive runs)
-agentsync init --no-install-agentsync-skill
 
 # Initialize with interactive wizard (for existing projects with agent files)
 agentsync init --wizard
@@ -417,12 +408,6 @@ AgentSync gracefully handles CI environments where the binary isn't available:
 ```
 
 The symlinks are primarily for local development. CI builds typically don't need them.
-
-Tip: for deterministic non-interactive setup in CI, use:
-
-```bash
-agentsync init --no-install-agentsync-skill
-```
 
 ### Installing in CI
 
