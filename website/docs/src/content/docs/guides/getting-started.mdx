@@ -77,7 +77,7 @@ sudo mv agentsync-*/agentsync /usr/local/bin/
 
 ### From Source (Requires Rust 1.89+)
 
-If you have Rust (1.89+) and Node.js (22.22.0+) installed, you can install directly from [crates.io](https://crates.io/crates/agentsync) or from the repository:
+If you have Rust installed, you can install directly from [crates.io](https://crates.io/crates/agentsync) or from the repository:
 
 ```bash
 
@@ -103,16 +103,6 @@ agentsync init
 ```
 
 This creates a `.agents/` directory with an initial `agentsync.toml` and an `AGENTS.md` file.
-
-When run interactively, `agentsync init` also asks whether to install the bundled AgentSync skill
-at `.agents/skills/agentsync/SKILL.md`.
-
-For automation/non-interactive usage, you can control behavior explicitly:
-
-```bash
-agentsync init --install-agentsync-skill
-agentsync init --no-install-agentsync-skill
-```
 
 #### Existing Projects with Agent Files
 

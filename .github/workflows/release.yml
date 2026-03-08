@@ -65,7 +65,7 @@ jobs:
           sudo apt-get install -y ripgrep
 
       - name: Semantic Release
-        uses: cycjimmy/semantic-release-action@17c68674d8eefe34b5d2e0db12684eaed1deb93a
+        uses: cycjimmy/semantic-release-action@1c8dbaa298552ad40802cf44320879943de90278
         id: semantic
         with:
           extra_plugins: |
@@ -136,7 +136,7 @@ jobs:
           g++ --version
 
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9
+        uses: dtolnay/rust-toolchain@f7ccc83f9ed1e5b9c81d8a67d7ad1a747e22a561
         with:
           toolchain: stable
           targets: ${{ matrix.target }}
@@ -531,7 +531,7 @@ jobs:
           ref: ${{ needs.semantic-release.outputs.new_release_git_tag }}
 
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9
+        uses: dtolnay/rust-toolchain@f7ccc83f9ed1e5b9c81d8a67d7ad1a747e22a561
         with:
           toolchain: stable
 

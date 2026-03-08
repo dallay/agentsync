@@ -133,81 +133,6 @@ pub const DEFAULT_AGENTS_MD: &str = r#"# AI Agent Instructions
 <!-- Describe your testing approach -->
 "#;
 
-/// Bundled AgentSync skill template
-pub const AGENTSYNC_SKILL_MD: &str = r#"---
-name: agentsync
-description: Automate AgentSync initialization and synchronization workflows for local development and CI.
-version: 1.0.0
----
-
-# AgentSync Workflow Skill
-
-Use this skill when you need to set up or keep AI agent configuration files synchronized across tools.
-
-## Source of Truth
-
-- Keep canonical files in `.agents/`.
-- Main files:
-  - `.agents/AGENTS.md`
-  - `.agents/agentsync.toml`
-  - `.agents/skills/`
-
-## Core Commands
-
-```bash
-# Initialize in a project
-agentsync init
-
-# Sync links and generated configs
-agentsync apply
-
-# Validate current link status
-agentsync status
-
-# Show planned operations only
-agentsync apply --dry-run
-
-# Remove managed links
-agentsync clean
-```
-
-## Safe Operations
-
-- AgentSync creates symlinks instead of copying files.
-- If a destination already exists, AgentSync creates timestamped backups (for example `file.bak.<timestamp>`).
-- AgentSync updates `.gitignore` using a managed marker block.
-
-## Cross-Platform Notes
-
-- Linux and macOS: symlinks work out of the box in standard terminals.
-- Windows: enable Developer Mode or run terminal as Administrator to create symlinks.
-
-## Package Manager Integration
-
-Use one of these patterns to keep sync automatic in project workflows:
-
-```json
-{
-  "scripts": {
-    "agents:sync": "agentsync apply",
-    "prepare": "agentsync apply || true"
-  }
-}
-```
-
-- npm: `npm install -g @dallay/agentsync`
-- pnpm: `pnpm add -g @dallay/agentsync`
-- yarn: `yarn global add @dallay/agentsync`
-- bun: `bun add -g @dallay/agentsync`
-
-## Suggested Automation Flow
-
-1. Run `agentsync init` once per repository.
-2. Maintain instructions in `.agents/AGENTS.md`.
-3. Run `agentsync apply` after updates.
-4. Use `agentsync status --json` in CI for validation.
-"#;
-
 /// Initialize a new configuration in the given directory
 pub fn init(project_root: &Path, force: bool) -> Result<()> {
     use colored::Colorize;
@@ -262,39 +187,6 @@ pub fn init(project_root: &Path, force: bool) -> Result<()> {
     }
 
     Ok(())
-}
-
-/// Install the bundled AgentSync skill into `.agents/skills/agentsync/SKILL.md`.
-pub fn install_agentsync_skill(project_root: &Path, force: bool) -> Result<bool> {
-    use colored::Colorize;
-
-    let skill_path = project_root
-        .join(".agents")
-        .join("skills")
-        .join("agentsync")
-        .join("SKILL.md");
-
-    if skill_path.exists() && !force {
-        println!(
-            "  {} AgentSync skill already exists: {} (use --force to overwrite)",
-            "!".yellow(),
-            skill_path.display()
-        );
-        return Ok(false);
-    }
-
-    if let Some(parent) = skill_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-
-    fs::write(&skill_path, AGENTSYNC_SKILL_MD)?;
-    println!(
-        "  {} Installed bundled skill: {}",
-        "✔".green(),
-        skill_path.display()
-    );
-
-    Ok(true)
 }
 
 /// Discovered agent-related file
@@ -1262,73 +1154,6 @@ mod tests {
         assert!(DEFAULT_AGENTS_MD.contains("## Code Style"));
         assert!(DEFAULT_AGENTS_MD.contains("## Architecture"));
         assert!(DEFAULT_AGENTS_MD.contains("## Testing"));
-    }
-
-    #[test]
-    fn test_agentsync_skill_manifest_contains_expected_fields() {
-        assert!(AGENTSYNC_SKILL_MD.contains("name: agentsync"));
-        assert!(AGENTSYNC_SKILL_MD.contains("description:"));
-        assert!(AGENTSYNC_SKILL_MD.contains("agentsync apply"));
-        assert!(AGENTSYNC_SKILL_MD.contains(".agents/"));
-    }
-
-    #[test]
-    fn test_install_agentsync_skill_creates_skill_file() {
-        let temp_dir = TempDir::new().unwrap();
-
-        let installed = install_agentsync_skill(temp_dir.path(), false).unwrap();
-        assert!(installed);
-
-        let skill_path = temp_dir
-            .path()
-            .join(".agents")
-            .join("skills")
-            .join("agentsync")
-            .join("SKILL.md");
-        assert!(skill_path.exists());
-
-        let content = fs::read_to_string(&skill_path).unwrap();
-        assert!(content.contains("name: agentsync"));
-    }
-
-    #[test]
-    fn test_install_agentsync_skill_does_not_overwrite_without_force() {
-        let temp_dir = TempDir::new().unwrap();
-        let skill_path = temp_dir
-            .path()
-            .join(".agents")
-            .join("skills")
-            .join("agentsync")
-            .join("SKILL.md");
-
-        fs::create_dir_all(skill_path.parent().unwrap()).unwrap();
-        fs::write(&skill_path, "custom skill content").unwrap();
-
-        let installed = install_agentsync_skill(temp_dir.path(), false).unwrap();
-        assert!(!installed);
-
-        let content = fs::read_to_string(&skill_path).unwrap();
-        assert_eq!(content, "custom skill content");
-    }
-
-    #[test]
-    fn test_install_agentsync_skill_overwrites_with_force() {
-        let temp_dir = TempDir::new().unwrap();
-        let skill_path = temp_dir
-            .path()
-            .join(".agents")
-            .join("skills")
-            .join("agentsync")
-            .join("SKILL.md");
-
-        fs::create_dir_all(skill_path.parent().unwrap()).unwrap();
-        fs::write(&skill_path, "custom skill content").unwrap();
-
-        let installed = install_agentsync_skill(temp_dir.path(), true).unwrap();
-        assert!(installed);
-
-        let content = fs::read_to_string(&skill_path).unwrap();
-        assert!(content.contains("name: agentsync"));
     }
 
     // ==========================================================================

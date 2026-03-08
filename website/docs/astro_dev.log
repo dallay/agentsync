@@ -1,0 +1,30 @@
+
+> agentsync-docs@0.0.1 dev /app/website/docs
+> astro dev
+
+19:29:35 [types] Generated 1ms
+19:29:36 [content] Syncing content
+19:29:36 [content] Synced content
+19:29:36 [vite] Re-optimizing dependencies because vite config has changed
+
+ astro  v5.17.1 ready in 2303 ms
+
+┃ Local    http://localhost:4321/agentsync
+┃ Network  use --host to expose
+
+19:29:36 watching for file changes...
+
+ update  ▶ New version of Astro available: 5.18.0
+  Run pnpm dlx @astrojs/upgrade to update
+
+19:30:11 [200] / 550ms
+19:30:45 [200] HEAD / 68ms
+19:30:51 [200] / 28ms
+19:31:01 [200] / 29ms
+19:31:05 [200] /guides/getting-started/ 269ms
+19:31:11 [200] /guides/getting-started/ 30ms
+19:31:47 [200] /guides/getting-started/ 27ms
+19:31:55 [200] /guides/getting-started/ 28ms
+19:31:56 [200] /guides/git-hooks/ 103ms
+19:31:56 [200] /guides/git-hooks/ 25ms
+11:12:46 [starlight-docs-loader] Reloaded data from guides/git-hooks.mdx

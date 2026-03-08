@@ -35,9 +35,3 @@
 **Learning:** The `compress_agents_md_content` function was performing $O(N)$ string allocations, where $N$ is the number of lines in `AGENTS.md`. By refactoring helper functions to use mutable buffer passing and switching code fence state to use string slices (`&str`), we eliminated almost all heap allocations in the compression loop.
 
 **Action:** Avoid returning `String` from functions called inside loops processing large text files. Instead, pass a mutable `&mut String` buffer to be filled. Use `Option<&str>` instead of `Option<String>` for state that refers to parts of the input buffer.
-
-## 2026-03-05 - Ownership-Based Configuration Merging
-
-**Learning:** Merging configuration structures by reference was forcing deep clones of entire configuration trees (JSON/TOML) even when the original structure was about to be discarded. By shifting to an ownership-based model and using `std::mem::take` on parsed values, we eliminated redundant heap allocations during MCP synchronization.
-
-**Action:** Prefer taking owned collections in transformation functions if the caller doesn't need them anymore. Use `std::mem::take` to extract data from mutable structures like `serde_json::Value` or `toml::Value` to avoid `.clone()` calls on large maps and arrays.

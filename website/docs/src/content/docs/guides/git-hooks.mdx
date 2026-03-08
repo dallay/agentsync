@@ -70,15 +70,22 @@ Add this to your `.pre-commit-config.yaml`:
 ```yaml
 # .pre-commit-config.yaml
 
-repo: local
-hooks:
-  - id: agentsync-apply
-    name: agentsync apply
-    entry: agentsync apply
-    language: system
-    always_run: true
-    stages: [post-checkout, post-merge]
+repos:
+  - repo: local
+    hooks:
+      - id: agentsync-apply
+        name: agentsync apply
+        entry: agentsync apply
+        language: system
+        always_run: true
+        stages: [post-checkout, post-merge]
 ```
+
+> **Important:** By default, `pre-commit` only installs the `pre-commit` hook type. To enable the hooks for checkout and merge, you must install them explicitly:
+>
+> ```bash
+> pre-commit install --hook-type post-checkout --hook-type post-merge
+> ```
 
 ### Simple Git Hooks
 
@@ -99,8 +106,10 @@ Configure it in your `package.json`:
 
 In Continuous Integration (CI) environments, you typically don't need symbolic links unless you are running agent-specific tests. If you decide to run AgentSync in CI, make sure the binary is available or use `npx`.
 
-We recommend using the `|| true` pattern to prevent the installation process from failing if `agentsync` is not present in a specific environment:
+We recommend explicitly checking for the presence of the `agentsync` binary before running it, rather than masking all potential errors:
 
 ```bash
-agentsync apply || true
+if command -v agentsync >/dev/null 2>&1; then
+  agentsync apply
+fi
 ```

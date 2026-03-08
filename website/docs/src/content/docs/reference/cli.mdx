@@ -9,24 +9,21 @@ description: Detailed documentation for all agentsync commands.
 
 ### `init`
 
-Initializes a new AgentSync configuration in the current or specified directory.
+Initializes a new AgentSync configuration in the current directory.
 
 ```bash
-agentsync init [OPTIONS]
+agentsync init [FLAGS]
 ```
 
-**Options**:
+**Flags**:
 - `-p, --path <PATH>`: Project root directory (defaults to current dir).
 - `-f, --force`: Overwrite existing configuration without prompting.
-- `-w, --wizard`: Run interactive configuration wizard to migrate existing files.
-- `--install-agentsync-skill`: Install bundled `agentsync` skill during initialization.
-- `--no-install-agentsync-skill`: Skip bundled skill installation during initialization (useful for CI/non-interactive runs).
+- `-w, --wizard`: Run interactive configuration wizard to migrate existing agent files.
 
 **Actions**:
 - Creates the `.agents/` directory if it doesn't exist.
 - Creates a default `.agents/agentsync.toml` file.
 - Creates a template `.agents/AGENTS.md` file.
-- Prompts to optionally install bundled `.agents/skills/agentsync/SKILL.md` when running interactively.
 
 **Wizard Mode**:
 When using the `--wizard` flag, AgentSync will:
@@ -41,17 +38,17 @@ When using the `--wizard` flag, AgentSync will:
 
 ### `apply`
 
-Applies the configuration from `agentsync.toml` by creating symbolic links and updating `.gitignore`.
+Applies the configuration defined in `agentsync.toml` by creating symbolic links and updating `.gitignore`.
 
 ```bash
-agentsync apply [OPTIONS]
+agentsync apply [FLAGS]
 ```
 
-**Options**:
-- `-p, --path <PATH>`: Project root directory.
-- `-c, --config <CONFIG>`: Use a custom configuration file path instead of the default `.agents/agentsync.toml`.
-- `--clean`: Deletes existing symbolic links before applying.
-- `--dry-run`: Shows what actions would be taken without actually making any changes.
+**Flags**:
+- `-p, --path <PATH>`: Path to the project root.
+- `-c, --config <PATH>`: Use a custom configuration file path instead of the default `.agents/agentsync.toml`.
+- `--clean`: Deletes existing symbolic links before applying. Useful for fixing broken links or cleaning up old configurations.
+- `--dry-run`: Shows what actions would be taken without actually making any changes to the filesystem.
 - `-v, --verbose`: Enable verbose logging.
 - `-a, --agents <AGENTS>`: Filter by agent (comma-separated list, e.g., `claude,copilot`). **Overrides** `default_agents` in config.
 - `--no-gitignore`: Disable automatic `.gitignore` updates.
@@ -93,75 +90,55 @@ agentsync clean [FLAGS]
 
 ### `skill`
 
-Manage installable AI agent skills from skills.sh/other providers.
+Manage installable AI agent skills.
 
 ```bash
-agentsync skill [OPTIONS] <COMMAND>
+agentsync skill [FLAGS] <COMMAND>
 ```
 
-**Global Options**:
-- `--project-root <PROJECT_ROOT>`: Root of the project (defaults to CWD).
+**Global Flags**:
+- `--project-root <PATH>`: Root of the project (defaults to current directory).
 
 #### `install`
 
-Install a skill from skills.sh or a custom provider.
+Install a skill from a provider, local archive, or directory.
 
 ```bash
-agentsync skill install [OPTIONS] <SKILL_ID>
+agentsync skill install [FLAGS] <SKILL_ID>
 ```
 
-- `--source <SOURCE>`: Optional source (dir, archive, or URL).
+- `--source <SOURCE>`: Optional. Source directory, archive URL, or provider-specific identifier.
 - `--json`: Output machine-readable JSON.
 
 #### `update`
 
-Update a skill to the latest version.
+Update an existing skill.
 
 ```bash
-agentsync skill update [OPTIONS] <SKILL_ID>
+agentsync skill update [FLAGS] <SKILL_ID>
 ```
 
-- `--source <SOURCE>`: Optional source (dir, archive, or URL).
+- `--source <SOURCE>`: Optional. New source for the update.
 - `--json`: Output machine-readable JSON.
-
-#### `uninstall`
-
-Uninstall a skill.
-
-```bash
-agentsync skill uninstall <SKILL_ID>
-```
 
 #### `list`
 
 List all installed skills.
 
+:::note
+The `list` command is currently under development and not yet implemented.
+:::
+
 ```bash
 agentsync skill list
+
+# Error: list command not implemented
+
 ```
 
 ---
 
-### `doctor`
-
-Run diagnostic and health check for the synchronization environment.
-
-```bash
-agentsync doctor [OPTIONS]
-```
-
-**Options**:
-- `--project-root <PROJECT_ROOT>`: Project root (defaults to CWD).
-
-**Diagnostics**:
-- Validates `agentsync.toml` existence and syntax.
-- Detects destination conflicts.
-- Audits `.gitignore` with marker-aware parsing.
-- Verifies MCP server executability.
-
----
-
-### `version`
+### `--version`
 
 Shows the current version of the AgentSync CLI.
 
