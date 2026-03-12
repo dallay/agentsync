@@ -47,3 +47,9 @@
 **Learning:** Using `HashMap` for configuration maps forced redundant $(N \log N)$ sorting and cloning operations during every serialization run to ensure deterministic file output. For the typical small number of agents and servers in this app, `BTreeMap` eliminates this overhead entirely while avoiding the hashing cost of the default DOS-resistant hasher.
 
 **Action:** Use `BTreeMap` for configuration structures that require deterministic serialization. This simplifies the code by removing manual sorting logic and leverages Serde's efficient ordered map handling.
+
+## 2026-03-20 - Eliminating Redundant I/O via Path Tracking
+
+**Learning:** When multiple AI agents share the same source files (like `AGENTS.md`) or the same Model Context Protocol (MCP) configuration paths (like VS Code and GitHub Copilot sharing `.vscode/mcp.json`), the synchronization process was performing redundant disk I/O, parsing, and merging logic. Even with in-memory content caching, the filesystem equality checks and file writing were repeated $O(N)$ times where $N$ is the number of sharing agents.
+
+**Action:** Use set-based tracking (like `HashSet` or `BTreeSet`) to record which destination paths have been successfully processed in a single run. Before entering a high-I/O or CPU-intensive block (like Markdown compression or MCP merging), check if the destination path has already been handled and skip if so. This reduces complexity from $O(N)$ to $O(1)$ for shared resources.

@@ -6,7 +6,7 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 use serde_json::{Map, Value, json};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use toml::{Table as TomlTable, Value as TomlValue};
@@ -1192,7 +1192,17 @@ impl McpGenerator {
             return Ok(total_result);
         }
 
+        // Optimization: Track handled configuration paths to avoid redundant I/O, parsing,
+        // and merging (O(N) -> O(1)) for agents sharing the same config file (e.g. VS Code and Copilot).
+        let mut handled_paths = BTreeSet::new();
+
         for agent in enabled_agents {
+            let config_path = agent.config_path();
+            if handled_paths.contains(config_path) {
+                total_result.skipped += 1;
+                continue;
+            }
+
             match self.generate_for_agent_with_servers(
                 *agent,
                 project_root,
@@ -1203,6 +1213,7 @@ impl McpGenerator {
                     total_result.created += result.created;
                     total_result.updated += result.updated;
                     total_result.skipped += result.skipped;
+                    handled_paths.insert(config_path);
                 }
                 Err(e) => {
                     tracing::error!(agent = %agent.name(), error = %e, "Error generating agent config");
