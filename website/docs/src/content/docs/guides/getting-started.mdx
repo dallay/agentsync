@@ -57,21 +57,50 @@ bunx @dallay/agentsync apply
 
 ### From GitHub Releases
 
-Download the latest release for your platform:
+Download the latest release for your platform from the [GitHub Releases](https://github.com/dallay/agentsync/releases) page. When downloading manually, ensure you substitute the real tag for the `<version>` placeholder in the examples below.
 
-#### macOS (Apple Silicon)
-
-```bash
-curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-aarch64-apple-darwin.tar.gz
-tar xzf agentsync-aarch64-apple-darwin.tar.gz
-sudo mv agentsync-*/agentsync /usr/local/bin/
-```
-
-#### Linux (x86_64)
+To install via terminal on macOS or Linux, you can use the following script which automatically detects your architecture (replace `<version>` with the latest version number, e.g., `1.28.0`):
 
 ```bash
-curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-x86_64-unknown-linux-gnu.tar.gz
-tar xzf agentsync-x86_64-unknown-linux-gnu.tar.gz
+# Define version
+VERSION="<version>"
+
+# Detect Platform
+OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+ARCH="$(uname -m)"
+case "${OS}" in
+  darwin)  PLATFORM_OS="apple-darwin" ;;
+  linux)   PLATFORM_OS="unknown-linux-gnu" ;;
+  *)       echo "Unsupported OS: ${OS}"; exit 1 ;;
+esac
+
+case "${ARCH}" in
+  x86_64)  PLATFORM_ARCH="x86_64" ;;
+  arm64|aarch64) PLATFORM_ARCH="aarch64" ;;
+  *)       echo "Unsupported architecture: ${ARCH}"; exit 1 ;;
+esac
+
+PLATFORM="${PLATFORM_ARCH}-${PLATFORM_OS}"
+TARBALL="agentsync-${VERSION}-${PLATFORM}.tar.gz"
+
+# Download binary and checksum
+curl -LO "https://github.com/dallay/agentsync/releases/download/v${VERSION}/${TARBALL}"
+curl -LO "https://github.com/dallay/agentsync/releases/download/v${VERSION}/${TARBALL}.sha256"
+
+# Verify integrity
+if command -v sha256sum >/dev/null; then
+  sha256sum --check "${TARBALL}.sha256"
+else
+  shasum -a 256 --check "${TARBALL}.sha256"
+fi
+
+if [ $? -ne 0 ]; then
+  echo "Error: Checksum verification failed!"
+  exit 1
+fi
+
+# Extract and install
+tar xzf "${TARBALL}"
 sudo mv agentsync-*/agentsync /usr/local/bin/
 ```
 

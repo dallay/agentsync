@@ -7,7 +7,16 @@
 
 A fast, portable CLI tool for synchronizing AI agent configurations and MCP servers across multiple
 AI coding assistants using symbolic links.
+
 ![synchro.webp](website/docs/src/assets/synchro.webp)
+
+## Project Overview
+
+AgentSync is a high-performance, polyglot mono-repo that simplifies the management of AI agent instructions, commands, and MCP (Model Context Protocol) configurations. It provides:
+
+- **Rust Core**: A blazing-fast CLI for symlink management and config generation.
+- **Node.js Wrapper**: Seamless integration with JS/TS workflows via `pnpm`, `npm`, and `yarn`.
+- **Unified Configuration**: A single `agentsync.toml` to rule all your AI tools.
 
 ## Why AgentSync?
 
@@ -102,14 +111,30 @@ cargo install agentsync
 
 ### From GitHub Releases (Pre-built Binaries)
 
-Download the latest release for your platform from the [GitHub Releases](https://github.com/dallay/agentsync/releases) page.
+Download the latest release for your platform from the [GitHub Releases](https://github.com/dallay/agentsync/releases) page. When downloading manually, ensure you substitute the real tag for the `<version>` placeholder in the examples below.
 
-To install via terminal, you can use the following script (replace `VERSION` with the latest version number, e.g., `1.28.0`):
+To install via terminal on macOS or Linux, you can use the following script which automatically detects your architecture (replace `<version>` with the latest version number, e.g., `1.28.0`):
 
 ```bash
-# Define version and platform
-VERSION="1.28.0"
-PLATFORM="x86_64-apple-darwin" # e.g., aarch64-apple-darwin, x86_64-unknown-linux-gnu
+# Define version
+VERSION="<version>"
+
+# Detect Platform
+OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+ARCH="$(uname -m)"
+case "${OS}" in
+  darwin)  PLATFORM_OS="apple-darwin" ;;
+  linux)   PLATFORM_OS="unknown-linux-gnu" ;;
+  *)       echo "Unsupported OS: ${OS}"; exit 1 ;;
+esac
+
+case "${ARCH}" in
+  x86_64)  PLATFORM_ARCH="x86_64" ;;
+  arm64|aarch64) PLATFORM_ARCH="aarch64" ;;
+  *)       echo "Unsupported architecture: ${ARCH}"; exit 1 ;;
+esac
+
+PLATFORM="${PLATFORM_ARCH}-${PLATFORM_OS}"
 TARBALL="agentsync-${VERSION}-${PLATFORM}.tar.gz"
 
 # Download binary and checksum
@@ -325,17 +350,19 @@ args = ["-y", "@modelcontextprotocol/server-git", "--repository", "."]
 
 #### Supported Agents (canonical)
 
-AgentSync supports the following agents and will synchronize corresponding files/locations. This list is canonical — keep it in sync with `src/mcp.rs` (authoritative).
+AgentSync supports the following agents with native MCP generation. This list is canonical — keep it in sync with `src/mcp.rs` (authoritative).
 
-- **Claude Code** — `.mcp.json` (agent id: `claude`)
-- **GitHub Copilot** — `.vscode/mcp.json` (agent id: `copilot`)
-- **OpenAI Codex CLI** — `.codex/config.toml` (agent id: `codex`) — TOML format with `[mcp_servers.<name>]` tables. AgentSync maps `headers` to Codex `http_headers`.
-- **Gemini CLI** — `.gemini/settings.json` (agent id: `gemini`) — AgentSync will add `trust: true` when generating Gemini configs.
-- **Cursor** — `.cursor/mcp.json` (agent id: `cursor`)
-- **VS Code** — `.vscode/mcp.json` (agent id: `vscode`)
-- **OpenCode** — `opencode.json` (agent id: `opencode`)
+| Agent | Config File | ID |
+|-------|-------------|----|
+| **Claude Code** | `.mcp.json` | `claude` |
+| **GitHub Copilot** | `.vscode/mcp.json` | `copilot` |
+| **OpenAI Codex CLI** | `.codex/config.toml` | `codex` |
+| **Gemini CLI** | `.gemini/settings.json` | `gemini` |
+| **Cursor** | `.cursor/mcp.json` | `cursor` |
+| **VS Code** | `.vscode/mcp.json` | `vscode` |
+| **OpenCode** | `opencode.json` | `opencode` |
 
-AgentSync also supports 25+ configurable agents including Windsurf, Cline, Amazon Q, Aider, RooCode, Trae, and more. See the [full list in the documentation](https://dallay.github.io/agentsync/reference/configuration/).
+AgentSync also supports 25+ configurable agents including **Windsurf**, **Cline**, **Amazon Q**, **Aider**, **RooCode**, **Trae**, **Zed**, **Goose**, and more. See the [full list in the documentation](https://dallay.github.io/agentsync/reference/configuration/).
 
 See `website/docs/src/content/docs/guides/mcp.mdx` for formatter details and merge behavior.
 
@@ -360,6 +387,8 @@ filter which items to link.
 
 ## Project Structure
 
+AgentSync organizes all AI-related configuration in a central `.agents/` directory.
+
 ```
 .agents/
 ├── agentsync.toml      # Configuration file (source of truth for MCP)
@@ -367,12 +396,16 @@ filter which items to link.
 ├── command/            # Agent commands
 │   ├── review.agent.md
 │   └── test.agent.md
-├── skills/             # Shared knowledge/skills
-│   └── kotlin/
+├── skills/             # Shared knowledge/skills (kebab-case directories)
+│   └── kotlin-pro/
 │       └── SKILL.md
 └── prompts/            # Reusable prompts
     └── code-review.prompt.md
 ```
+
+### Skills Convention
+
+Skills live under `.agents/skills/`. Each skill should have its own directory named in **kebab-case** and contain a `SKILL.md` manifest. For more details, see the [Skills Guide](https://dallay.github.io/agentsync/guides/skills/).
 
 After running `agentsync apply`:
 
@@ -470,35 +503,15 @@ This project is a monorepo containing a Rust core and a JavaScript/TypeScript wr
 
 This project uses a `Makefile` to orchestrate common tasks.
 
--   **Run Rust tests:**
-
-    ```bash
-    make rust-test
-    ```
-
--   **Run JavaScript tests:**
-
-    ```bash
-    make js-test
-    ```
-
--   **Build all components:**
-
-    ```bash
-    make all
-    ```
-
--   **Run full verification (lint + build + test):**
-
-    ```bash
-    make verify-all
-    ```
-
--   **Format the code:**
-
-    ```bash
-    make fmt
-    ```
+-   **Install all dependencies:** `make install`
+-   **Run Rust unit tests:** `make rust-test`
+-   **Run JavaScript tests:** `make js-test`
+-   **Build all components (JS + Rust):** `make all`
+-   **Run full verification (lint + build + test):** `make verify-all`
+-   **Format the code:** `make fmt`
+-   **Build documentation site:** `make docs-build`
+-   **Start docs in dev mode:** `make docs-dev`
+-   **Clean artifacts:** `make clean`
 
 ### Release Process
 

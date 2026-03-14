@@ -10,11 +10,30 @@ Effortlessly synchronize AI agent configurations across tools like Copilot, Clau
 
 ---
 
+## Project Overview
+
+AgentSync is a high-performance, polyglot mono-repo that simplifies the management of AI agent instructions, commands, and MCP (Model Context Protocol) configurations. It provides:
+
+- **Rust Core**: A blazing-fast CLI for symlink management and config generation.
+- **Node.js Wrapper**: Seamless integration with JS/TS workflows via `pnpm`, `npm`, and `yarn`.
+- **Unified Configuration**: A single `agentsync.toml` to rule all your AI tools.
+
 ## ✨ Key Features
 
 - **Simple CLI**: Manage symbolic links with minimal setup.
 - **Multi-assistant support**: Compatible across Copilot, Claude, Gemini, Cursor, VS Code, OpenCode and 25+ more assistants.
-    See the full list and file locations in the main documentation: https://dallay.github.io/agentsync/ (or the repo README).
+
+| Agent | Config File | ID |
+|-------|-------------|----|
+| **Claude Code** | `.mcp.json` | `claude` |
+| **GitHub Copilot** | `.vscode/mcp.json` | `copilot` |
+| **OpenAI Codex CLI** | `.codex/config.toml` | `codex` |
+| **Gemini CLI** | `.gemini/settings.json` | `gemini` |
+| **Cursor** | `.cursor/mcp.json` | `cursor` |
+| **VS Code** | `.vscode/mcp.json` | `vscode` |
+| **OpenCode** | `opencode.json` | `opencode` |
+
+See the full list and file locations in the main documentation: https://dallay.github.io/agentsync/ (or the repo README).
 - **Cross-platform binaries**: Available for Linux, MacOS, and Windows.
 - **Node.js integration**: Use programmatically within your applications.
 
@@ -133,23 +152,20 @@ This package is part of the [AgentSync mono-repo](https://github.com/dallay/agen
 2. Install dependencies:
 
    ```bash
-   pnpm install
+   # From root: install JS deps and build Rust core
+   make install
    ```
 
-3. Build:
+3. Build JS wrapper:
 
    ```bash
    make js-build
-   # or
-   pnpm run build
    ```
 
 4. Run tests and type checks:
 
    ```bash
    make js-test
-   # or
-   pnpm run typecheck
    ```
 
 5. Format:
@@ -157,6 +173,8 @@ This package is part of the [AgentSync mono-repo](https://github.com/dallay/agen
    ```bash
    make fmt
    ```
+
+For advanced development, refer to the [Workspaces Reference](https://dallay.github.io/agentsync/reference/workspaces/) in our full documentation.
 
 ---
 
