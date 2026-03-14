@@ -13,6 +13,7 @@ Thank you for your interest in contributing to AgentSync! To maintain high code 
    - **Full Suite**: Run `make verify-all` from the root. This runs all tests, linters, and builds the documentation.
    - For Rust: `make rust-test`, `cargo fmt`, and `cargo clippy`.
    - For TypeScript: `make js-test`, `make js-build` and `make fmt`.
+   - **Environment**: Ensure you are using the recommended versions (Node.js 22.22.0+, Rust 1.89+, pnpm 10+).
 4. **Open a Pull Request** with a clear description of the changes and why they are needed.
 
 ## Code Style
@@ -51,3 +52,5 @@ We follow the [Conventional Commits](https://www.conventionalcommits.org/) speci
 ## Getting Help
 
 If you have questions, feel free to open a GitHub Issue or start a Discussion.
+
+---

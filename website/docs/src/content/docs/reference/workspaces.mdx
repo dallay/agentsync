@@ -3,15 +3,14 @@ title: Workspaces Reference
 description: Detailed guide to the repository structure and polyglot development environment.
 ---
 
-`agentsync` is a multi-language project that combines a high-performance Rust core with a TypeScript distribution layer.
+`agentsync` is a multi-language project that combines a high-performance Rust core with a TypeScript distribution layer. This polyglot architecture ensures maximum performance where it matters, while providing a seamless installation experience for the JavaScript ecosystem.
 
 ## Repository Structure
 
-- `src/`: Core logic and CLI implementation in **Rust**.
-- `npm/agentsync/`: **TypeScript** wrapper used for NPM distribution.
+- `src/`: Core logic and CLI implementation in **Rust**. This is the heart of AgentSync.
+- `npm/agentsync/`: **TypeScript** wrapper used for NPM distribution. It handles binary resolution for different platforms.
 - `website/docs/`: Documentation site built with **Starlight**.
-- `website/`: Main project website.
-- `tests/`: Integration tests for the CLI.
+- `tests/`: Integration tests for the CLI, including E2E tests.
 
 ---
 
@@ -50,15 +49,26 @@ The JS workspace acts as a wrapper to provide an easy installation path via `pnp
 
 ---
 
+## Cross-Stack Workflow
+
+The mono-repo is designed for tight integration between Rust and TypeScript:
+
+1.  **Development**: Core features are implemented in Rust (`src/`).
+2.  **Wrapper Sync**: The TypeScript wrapper (`npm/agentsync/`) is kept in sync with the core's version and CLI API.
+3.  **Unified Build**: We use a central `Makefile` to ensure consistent builds across environments.
+
 ## Modern Tooling
 
 We use a **Makefile** to orchestrate tasks across both Rust and JavaScript stacks.
 
-- **`make install`**: Install all dependencies (JS and Rust).
-- **`make verify-all`**: Run the full verification suite (tests, linters, docs build).
-- **`make rust-test`**: Run Rust unit tests.
-- **`make js-test`**: Run JavaScript unit tests.
-- **`make fmt`**: Format all code (Rust and JS).
+- **`make install`**: Bootstraps the development environment. Runs `pnpm install` and `cargo build`.
+- **`make verify-all`**: Our CI-in-a-box command. Runs all tests (JS + Rust), linters (Biome + Clippy), and builds the documentation.
+- **`make rust-test`**: Runs all Rust unit and integration tests.
+- **`make js-test`**: Runs Vitest suites for the TypeScript wrapper.
+- **`make js-build`**: Compiles TypeScript and prepares the NPM package.
+- **`make docs-build`**: Verifies that the documentation site builds correctly.
+- **`make fmt`**: Auto-formats the entire repository using `rustfmt` and `biome`.
+- **`make clean`**: Removes build artifacts (`target/`, `dist/`, etc.).
 
 We also recommend these modern CLI tools:
 - `bat`: Syntax-highlighted file viewing (replaces `cat`).
