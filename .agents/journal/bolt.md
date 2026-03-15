@@ -47,3 +47,9 @@
 **Learning:** Using `HashMap` for configuration maps forced redundant $(N \log N)$ sorting and cloning operations during every serialization run to ensure deterministic file output. For the typical small number of agents and servers in this app, `BTreeMap` eliminates this overhead entirely while avoiding the hashing cost of the default DOS-resistant hasher.
 
 **Action:** Use `BTreeMap` for configuration structures that require deterministic serialization. This simplifies the code by removing manual sorting logic and leverages Serde's efficient ordered map handling.
+
+## 2026-03-12 - Deduplicating Shared Configuration Paths and I/O
+
+**Learning:** `McpGenerator::generate_all` was re-processing and re-writing shared configuration paths (e.g., `.vscode/mcp.json` used by both VS Code and GitHub Copilot) for every agent that referenced them. By implementing a `BTreeSet` to track handled paths and adding a content comparison check before disk writes, we eliminated redundant CPU-intensive formatting and unnecessary disk I/O.
+
+**Action:** When a process involves multiple entities sharing the same output destination, track handled paths to avoid redundant processing. Always perform a content-check before writing to disk to preserve modification times and reduce I/O.

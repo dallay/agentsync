@@ -6,7 +6,7 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 use serde_json::{Map, Value, json};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use toml::{Table as TomlTable, Value as TomlValue};
@@ -1121,9 +1121,8 @@ impl McpGenerator {
         };
 
         // Create parent directories if needed
-        if let Some(parent) = config_path.parent()
-            && !parent.exists()
-        {
+        if let Some(parent) = config_path.parent() {
+            if !parent.exists() {
             if dry_run {
                 println!(
                     "  {} Would create directory: {}",
@@ -1133,11 +1132,23 @@ impl McpGenerator {
             } else {
                 fs::create_dir_all(parent)?;
             }
+            }
+        }
+
+        // Check if content has changed before writing to avoid redundant I/O
+        let was_existing = config_path.exists();
+        if was_existing {
+            if let Ok(existing) = fs::read_to_string(&config_path) {
+                if existing == content {
+                    result.skipped += 1;
+                    return Ok(result);
+                }
+            }
         }
 
         // Write the file
         if dry_run {
-            if config_path.exists() {
+            if was_existing {
                 println!(
                     "  {} Would update MCP config: {}",
                     "→".cyan(),
@@ -1153,7 +1164,6 @@ impl McpGenerator {
                 result.created += 1;
             }
         } else {
-            let was_existing = config_path.exists();
             fs::write(&config_path, &content).with_context(|| {
                 format!("Failed to write MCP config: {}", config_path.display())
             })?;
@@ -1187,12 +1197,19 @@ impl McpGenerator {
     ) -> Result<McpSyncResult> {
         let mut total_result = McpSyncResult::default();
         let enabled_servers = self.get_enabled_servers();
+        let mut handled_paths = BTreeSet::new();
 
         if enabled_servers.is_empty() {
             return Ok(total_result);
         }
 
         for agent in enabled_agents {
+            let path = agent.config_path();
+            if handled_paths.contains(path) {
+                continue;
+            }
+            handled_paths.insert(path);
+
             match self.generate_for_agent_with_servers(
                 *agent,
                 project_root,
@@ -2424,5 +2441,46 @@ command = "remove-cmd"
         assert!(enabled.contains(&McpAgent::GithubCopilot));
         assert!(enabled.contains(&McpAgent::CodexCli));
         assert_eq!(enabled.len(), 3);
+    }
+
+    #[test]
+    fn test_generator_deduplicates_shared_paths() {
+        let temp_dir = TempDir::new().unwrap();
+        let servers = BTreeMap::from([("filesystem".to_string(), create_test_server())]);
+
+        let generator = McpGenerator::new(servers, McpMergeStrategy::Overwrite);
+        // VS Code and Copilot share ".vscode/mcp.json"
+        let agents = vec![McpAgent::VsCode, McpAgent::GithubCopilot];
+
+        let result = generator
+            .generate_all(temp_dir.path(), &agents, false)
+            .unwrap();
+
+        // WITHOUT OPTIMIZATION: One is created, the other is updated
+        // WITH OPTIMIZATION: Only one operation total
+        assert_eq!(result.created + result.updated, 1);
+    }
+
+    #[test]
+    fn test_generator_skips_identical_content() {
+        let temp_dir = TempDir::new().unwrap();
+        let servers = BTreeMap::from([("filesystem".to_string(), create_test_server())]);
+
+        let generator = McpGenerator::new(servers, McpMergeStrategy::Overwrite);
+        let agents = vec![McpAgent::ClaudeCode];
+
+        // First run - creates the file
+        let result1 = generator
+            .generate_all(temp_dir.path(), &agents, false)
+            .unwrap();
+        assert_eq!(result1.created, 1);
+
+        // Second run - should skip write as content is identical
+        let result2 = generator
+            .generate_all(temp_dir.path(), &agents, false)
+            .unwrap();
+        assert_eq!(result2.skipped, 1);
+        assert_eq!(result2.created, 0);
+        assert_eq!(result2.updated, 0);
     }
 }
