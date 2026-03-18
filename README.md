@@ -7,6 +7,7 @@
 
 A fast, portable CLI tool for synchronizing AI agent configurations and MCP servers across multiple
 AI coding assistants using symbolic links.
+
 ![synchro.webp](website/docs/src/assets/synchro.webp)
 
 ## Why AgentSync?
@@ -102,13 +103,13 @@ cargo install agentsync
 
 ### From GitHub Releases (Pre-built Binaries)
 
-Download the latest release for your platform from the [GitHub Releases](https://github.com/dallay/agentsync/releases) page.
+Visit the [GitHub Releases](https://github.com/dallay/agentsync/releases) page to find the latest version number and correct platform identifier for your system.
 
-To install via terminal, you can use the following script (replace `VERSION` with the latest version number, e.g., `1.28.0`):
+To install via terminal, you can use the following script (be sure to replace the `<version>` placeholder with a real tag, e.g., `1.28.0`):
 
 ```bash
 # Define version and platform
-VERSION="1.28.0"
+VERSION="<version>"
 PLATFORM="x86_64-apple-darwin" # e.g., aarch64-apple-darwin, x86_64-unknown-linux-gnu
 TARBALL="agentsync-${VERSION}-${PLATFORM}.tar.gz"
 
@@ -335,9 +336,9 @@ AgentSync supports the following agents and will synchronize corresponding files
 - **VS Code** — `.vscode/mcp.json` (agent id: `vscode`)
 - **OpenCode** — `opencode.json` (agent id: `opencode`)
 
-AgentSync also supports 25+ configurable agents including Windsurf, Cline, Amazon Q, Aider, RooCode, Trae, and more. See the [full list in the documentation](https://dallay.github.io/agentsync/reference/configuration/).
+AgentSync also supports 32+ agents (7 native MCP agents and 25+ configurable agents) including Windsurf, Cline, Amazon Q, Aider, RooCode, Trae, and more. See the [full list in the documentation](https://dallay.github.io/agentsync/reference/configuration/).
 
-See `website/docs/src/content/docs/guides/mcp.mdx` for formatter details and merge behavior.
+See the [MCP Integration Guide](https://dallay.github.io/agentsync/guides/mcp/) for formatter details and merge behavior.
 
 #### Merge Behavior
 
