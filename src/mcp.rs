@@ -1121,8 +1121,7 @@ impl McpGenerator {
         };
 
         // Create parent directories if needed
-        if let Some(parent) = config_path.parent() {
-            if !parent.exists() {
+        if let Some(parent) = config_path.parent().filter(|p| !p.exists()) {
             if dry_run {
                 println!(
                     "  {} Would create directory: {}",
@@ -1132,18 +1131,15 @@ impl McpGenerator {
             } else {
                 fs::create_dir_all(parent)?;
             }
-            }
         }
 
         // Check if content has changed before writing to avoid redundant I/O
         let was_existing = config_path.exists();
-        if was_existing {
-            if let Ok(existing) = fs::read_to_string(&config_path) {
-                if existing == content {
-                    result.skipped += 1;
-                    return Ok(result);
-                }
-            }
+        if was_existing
+            && fs::read_to_string(&config_path).is_ok_and(|existing| existing == content)
+        {
+            result.skipped += 1;
+            return Ok(result);
         }
 
         // Write the file
