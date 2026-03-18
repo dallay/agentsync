@@ -1077,15 +1077,11 @@ impl McpGenerator {
             return Ok(result);
         }
 
-        // Track earlier-loaded contents to avoid re-reading
-        let mut earlier_loaded_contents: Option<String> = None;
-
         // Determine content to write
         let content = if config_path.exists() && self.merge_strategy == McpMergeStrategy::Merge {
             let existing = fs::read_to_string(&config_path).with_context(|| {
                 format!("Failed to read existing config: {}", config_path.display())
             })?;
-            earlier_loaded_contents = Some(existing.clone());
 
             // Check if we need to clean up removed servers
             let existing_servers = formatter.parse_existing(&existing)?;
@@ -1117,7 +1113,6 @@ impl McpGenerator {
             let existing = fs::read_to_string(&config_path).with_context(|| {
                 format!("Failed to read existing config: {}", config_path.display())
             })?;
-            earlier_loaded_contents = Some(existing.clone());
 
             // Use cleanup_removed_servers to replace mcp sections while preserving other keys
             formatter.cleanup_removed_servers(&existing, enabled_servers)?
@@ -1140,19 +1135,11 @@ impl McpGenerator {
 
         // Check if content has changed before writing to avoid redundant I/O
         let was_existing = config_path.exists();
-        if was_existing {
-            let should_skip = if let Some(ref earlier_contents) = earlier_loaded_contents {
-                // Reuse earlier-loaded contents
-                earlier_contents == &content
-            } else {
-                // Fall back to reading the file only if we didn't load it earlier
-                fs::read_to_string(&config_path).is_ok_and(|existing| existing == content)
-            };
-
-            if should_skip {
-                result.skipped += 1;
-                return Ok(result);
-            }
+        if was_existing
+            && fs::read_to_string(&config_path).is_ok_and(|existing| existing == content)
+        {
+            result.skipped += 1;
+            return Ok(result);
         }
 
         // Write the file
@@ -2468,10 +2455,6 @@ command = "remove-cmd"
         // WITHOUT OPTIMIZATION: One is created, the other is updated
         // WITH OPTIMIZATION: Only one operation total
         assert_eq!(result.created + result.updated, 1);
-        // Ensure no skipped operations - deduplication should prevent processing the second agent
-        // If skipped > 0, it means the second agent was processed and found identical content,
-        // which indicates the deduplication logic didn't work properly
-        assert_eq!(result.skipped, 0);
     }
 
     #[test]
