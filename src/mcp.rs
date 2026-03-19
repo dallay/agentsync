@@ -1077,6 +1077,8 @@ impl McpGenerator {
             return Ok(result);
         }
 
+        let mut existing_content = None;
+
         // Determine content to write
         let content = if config_path.exists() && self.merge_strategy == McpMergeStrategy::Merge {
             let existing = fs::read_to_string(&config_path).with_context(|| {
@@ -1090,7 +1092,7 @@ impl McpGenerator {
                 .filter(|name| !enabled_servers.contains_key(name.as_str()))
                 .collect();
 
-            if !removed_servers.is_empty() {
+            let merged = if !removed_servers.is_empty() {
                 // Only perform cleanup if the existing and enabled server counts differ.
                 // This prevents clobbering unrelated existing entries in simple merge cases
                 // where the counts match but names differ (keep existing entries).
@@ -1104,7 +1106,9 @@ impl McpGenerator {
             } else {
                 // No servers removed, use normal merge
                 formatter.merge(&existing, enabled_servers)?
-            }
+            };
+            existing_content = Some(existing);
+            merged
         } else if config_path.exists()
             && self.merge_strategy == McpMergeStrategy::Overwrite
             && formatter.preserve_on_overwrite()
@@ -1115,7 +1119,9 @@ impl McpGenerator {
             })?;
 
             // Use cleanup_removed_servers to replace mcp sections while preserving other keys
-            formatter.cleanup_removed_servers(&existing, enabled_servers)?
+            let preserved = formatter.cleanup_removed_servers(&existing, enabled_servers)?;
+            existing_content = Some(existing);
+            preserved
         } else {
             formatter.format_to_string(enabled_servers)?
         };
@@ -1135,11 +1141,17 @@ impl McpGenerator {
 
         // Check if content has changed before writing to avoid redundant I/O
         let was_existing = config_path.exists();
-        if was_existing
-            && fs::read_to_string(&config_path).is_ok_and(|existing| existing == content)
-        {
-            result.skipped += 1;
-            return Ok(result);
+        if was_existing {
+            let is_identical = if let Some(existing) = existing_content {
+                existing == content
+            } else {
+                fs::read_to_string(&config_path).is_ok_and(|existing| existing == content)
+            };
+
+            if is_identical {
+                result.skipped += 1;
+                return Ok(result);
+            }
         }
 
         // Write the file
