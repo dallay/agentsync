@@ -38,11 +38,11 @@ impl McpOutput {
     }
 
     /// Filter out disabled servers
-    pub fn enabled_servers(&self) -> BTreeMap<String, &McpServerConfig> {
+    pub fn enabled_servers(&self) -> BTreeMap<&str, &McpServerConfig> {
         self.servers
             .iter()
             .filter(|(_, config)| !config.disabled)
-            .map(|(name, config)| (name.clone(), config))
+            .map(|(name, config)| (name.as_str(), config))
             .collect()
     }
 }
@@ -161,11 +161,11 @@ pub trait McpFormatter: Send + Sync {
     ///
     /// This is used as a common in-memory shape across formatters and tests.
     /// On-disk serialization should use `format_to_string()`.
-    fn format(&self, servers: &BTreeMap<String, &McpServerConfig>) -> Value;
+    fn format(&self, servers: &BTreeMap<&str, &McpServerConfig>) -> Value;
 
     /// Format MCP servers into the agent-specific file content.
     /// By default this returns pretty JSON for agents that use JSON configs.
-    fn format_to_string(&self, servers: &BTreeMap<String, &McpServerConfig>) -> Result<String> {
+    fn format_to_string(&self, servers: &BTreeMap<&str, &McpServerConfig>) -> Result<String> {
         let output = self.format(servers);
         serde_json::to_string_pretty(&output).context("Failed to serialize MCP config")
     }
@@ -177,7 +177,7 @@ pub trait McpFormatter: Send + Sync {
     fn merge(
         &self,
         existing_content: &str,
-        new_servers: &BTreeMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<&str, &McpServerConfig>,
     ) -> Result<String>;
 
     /// Remove servers that are no longer in the configuration
@@ -185,7 +185,7 @@ pub trait McpFormatter: Send + Sync {
     fn cleanup_removed_servers(
         &self,
         existing_content: &str,
-        new_servers: &BTreeMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<&str, &McpServerConfig>,
     ) -> Result<String> {
         self.merge(existing_content, new_servers)
     }
@@ -219,7 +219,7 @@ where
 
 /// Build a JSON object from server configs.
 fn json_map_from_server_refs<F>(
-    servers: &BTreeMap<String, &McpServerConfig>,
+    servers: &BTreeMap<&str, &McpServerConfig>,
     mut server_to_value: F,
 ) -> Map<String, Value>
 where
@@ -228,7 +228,7 @@ where
     json_map_from_pairs(
         servers
             .iter()
-            .map(|(name, config)| (name.clone(), server_to_value(config))),
+            .map(|(name, config)| ((*name).to_string(), server_to_value(config))),
     )
 }
 
@@ -238,7 +238,7 @@ fn json_map_from_values(values: BTreeMap<String, Value>) -> Map<String, Value> {
 }
 
 /// Format servers into standard { "mcpServers": { ... } } structure
-fn format_standard_mcp(servers: &BTreeMap<String, &McpServerConfig>) -> Value {
+fn format_standard_mcp(servers: &BTreeMap<&str, &McpServerConfig>) -> Value {
     let mcp_servers = json_map_from_server_refs(servers, server_to_json);
 
     json!({
@@ -262,14 +262,14 @@ fn parse_standard_mcp(content: &str, context_msg: &str) -> Result<BTreeMap<Strin
 /// Merge new servers into standard MCP config structure
 fn merge_standard_mcp(
     existing_content: &str,
-    new_servers: &BTreeMap<String, &McpServerConfig>,
+    new_servers: &BTreeMap<&str, &McpServerConfig>,
     context_msg: &str,
 ) -> Result<String> {
     let mut existing = parse_standard_mcp(existing_content, context_msg)?;
 
     // New servers override existing ones with same name
     for (name, config) in new_servers {
-        existing.insert(name.clone(), server_to_json(config));
+        existing.insert((*name).to_string(), server_to_json(config));
     }
 
     let output = json!({
@@ -282,14 +282,14 @@ fn merge_standard_mcp(
 /// Merge new servers into standard MCP config structure with pre-filtered existing servers
 fn merge_standard_mcp_filtered(
     existing_servers: BTreeMap<String, Value>,
-    new_servers: &BTreeMap<String, &McpServerConfig>,
+    new_servers: &BTreeMap<&str, &McpServerConfig>,
     _context_msg: &str,
 ) -> Result<String> {
     let mut existing = existing_servers;
 
     // New servers override existing ones with same name
     for (name, config) in new_servers {
-        existing.insert(name.clone(), server_to_json(config));
+        existing.insert((*name).to_string(), server_to_json(config));
     }
 
     let output = json!({
@@ -309,7 +309,7 @@ fn merge_standard_mcp_filtered(
 pub struct ClaudeCodeFormatter;
 
 impl McpFormatter for ClaudeCodeFormatter {
-    fn format(&self, servers: &BTreeMap<String, &McpServerConfig>) -> Value {
+    fn format(&self, servers: &BTreeMap<&str, &McpServerConfig>) -> Value {
         format_standard_mcp(servers)
     }
 
@@ -320,7 +320,7 @@ impl McpFormatter for ClaudeCodeFormatter {
     fn merge(
         &self,
         existing_content: &str,
-        new_servers: &BTreeMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<&str, &McpServerConfig>,
     ) -> Result<String> {
         merge_standard_mcp(
             existing_content,
@@ -332,7 +332,7 @@ impl McpFormatter for ClaudeCodeFormatter {
     fn cleanup_removed_servers(
         &self,
         existing_content: &str,
-        new_servers: &BTreeMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<&str, &McpServerConfig>,
     ) -> Result<String> {
         // For standard MCP format, we can use the same merge function
         // but with a clean slate - only keep servers that are in new_servers
@@ -344,7 +344,7 @@ impl McpFormatter for ClaudeCodeFormatter {
         // Filter existing servers to only keep those that are in new_servers
         let filtered_existing: BTreeMap<String, Value> = existing
             .into_iter()
-            .filter(|(name, _)| new_servers.contains_key(name))
+            .filter(|(name, _)| new_servers.contains_key(name.as_str()))
             .collect();
 
         // Now merge with new servers (this will override any matching ones)
@@ -366,7 +366,7 @@ impl McpFormatter for ClaudeCodeFormatter {
 pub struct GithubCopilotFormatter;
 
 impl McpFormatter for GithubCopilotFormatter {
-    fn format(&self, servers: &BTreeMap<String, &McpServerConfig>) -> Value {
+    fn format(&self, servers: &BTreeMap<&str, &McpServerConfig>) -> Value {
         format_standard_mcp(servers)
     }
 
@@ -380,7 +380,7 @@ impl McpFormatter for GithubCopilotFormatter {
     fn merge(
         &self,
         existing_content: &str,
-        new_servers: &BTreeMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<&str, &McpServerConfig>,
     ) -> Result<String> {
         merge_standard_mcp(
             existing_content,
@@ -392,7 +392,7 @@ impl McpFormatter for GithubCopilotFormatter {
     fn cleanup_removed_servers(
         &self,
         existing_content: &str,
-        new_servers: &BTreeMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<&str, &McpServerConfig>,
     ) -> Result<String> {
         // Same logic as Claude Code - use standard MCP format
         let existing = parse_standard_mcp(
@@ -402,7 +402,7 @@ impl McpFormatter for GithubCopilotFormatter {
 
         let filtered_existing: BTreeMap<String, Value> = existing
             .into_iter()
-            .filter(|(name, _)| new_servers.contains_key(name))
+            .filter(|(name, _)| new_servers.contains_key(name.as_str()))
             .collect();
 
         merge_standard_mcp_filtered(
@@ -426,11 +426,11 @@ impl McpFormatter for CodexCliFormatter {
     /// Returns a logical Value representation (`mcp_servers`) for parity with the
     /// formatter trait. Codex file output is TOML and is produced by
     /// `format_to_string()`.
-    fn format(&self, servers: &BTreeMap<String, &McpServerConfig>) -> Value {
+    fn format(&self, servers: &BTreeMap<&str, &McpServerConfig>) -> Value {
         let mut mcp_servers = Map::new();
 
         for (name, config) in servers {
-            mcp_servers.insert(name.clone(), server_to_json(config));
+            mcp_servers.insert((*name).to_string(), server_to_json(config));
         }
 
         json!({
@@ -438,12 +438,12 @@ impl McpFormatter for CodexCliFormatter {
         })
     }
 
-    fn format_to_string(&self, servers: &BTreeMap<String, &McpServerConfig>) -> Result<String> {
+    fn format_to_string(&self, servers: &BTreeMap<&str, &McpServerConfig>) -> Result<String> {
         let mut doc = TomlTable::new();
         let mut mcp_servers = TomlTable::new();
 
         for (name, config) in servers {
-            mcp_servers.insert(name.clone(), server_to_codex_toml(config));
+            mcp_servers.insert((*name).to_string(), server_to_codex_toml(config));
         }
 
         doc.insert("mcp_servers".to_string(), TomlValue::Table(mcp_servers));
@@ -470,7 +470,7 @@ impl McpFormatter for CodexCliFormatter {
     fn merge(
         &self,
         existing_content: &str,
-        new_servers: &BTreeMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<&str, &McpServerConfig>,
     ) -> Result<String> {
         let mut doc = parse_codex_doc(existing_content)?;
         let mut existing_servers = if let Some(TomlValue::Table(table)) = doc.remove("mcp_servers")
@@ -481,7 +481,7 @@ impl McpFormatter for CodexCliFormatter {
         };
 
         for (name, config) in new_servers {
-            existing_servers.insert(name.clone(), server_to_codex_toml(config));
+            existing_servers.insert((*name).to_string(), server_to_codex_toml(config));
         }
 
         doc.insert(
@@ -496,7 +496,7 @@ impl McpFormatter for CodexCliFormatter {
     fn cleanup_removed_servers(
         &self,
         existing_content: &str,
-        new_servers: &BTreeMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<&str, &McpServerConfig>,
     ) -> Result<String> {
         let mut doc = parse_codex_doc(existing_content)?;
         let existing_servers = if let Some(TomlValue::Table(table)) = doc.remove("mcp_servers") {
@@ -507,11 +507,11 @@ impl McpFormatter for CodexCliFormatter {
 
         let mut filtered_servers: TomlTable = existing_servers
             .into_iter()
-            .filter(|(name, _)| new_servers.contains_key(name))
+            .filter(|(name, _)| new_servers.contains_key(name.as_str()))
             .collect();
 
         for (name, config) in new_servers {
-            filtered_servers.insert(name.clone(), server_to_codex_toml(config));
+            filtered_servers.insert((*name).to_string(), server_to_codex_toml(config));
         }
 
         doc.insert(
@@ -538,7 +538,7 @@ impl McpFormatter for CodexCliFormatter {
 pub struct GeminiCliFormatter; // keep type name
 
 impl McpFormatter for GeminiCliFormatter {
-    fn format(&self, servers: &BTreeMap<String, &McpServerConfig>) -> Value {
+    fn format(&self, servers: &BTreeMap<&str, &McpServerConfig>) -> Value {
         let mcp_servers = json_map_from_server_refs(servers, |config| {
             let mut server_json = server_to_json(config);
             // Gemini requires trust: true for non-interactive execution
@@ -570,7 +570,7 @@ impl McpFormatter for GeminiCliFormatter {
     fn merge(
         &self,
         existing_content: &str,
-        new_servers: &BTreeMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<&str, &McpServerConfig>,
     ) -> Result<String> {
         // For Gemini, we need to preserve other settings in the file
         let mut existing_doc: Value =
@@ -590,7 +590,7 @@ impl McpFormatter for GeminiCliFormatter {
             if let Some(obj) = server_json.as_object_mut() {
                 obj.insert("trust".to_string(), json!(true));
             }
-            existing_servers.insert(name.clone(), server_json);
+            existing_servers.insert((*name).to_string(), server_json);
         }
 
         // Update only the mcpServers key, preserving other settings
@@ -607,7 +607,7 @@ impl McpFormatter for GeminiCliFormatter {
     fn cleanup_removed_servers(
         &self,
         existing_content: &str,
-        new_servers: &BTreeMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<&str, &McpServerConfig>,
     ) -> Result<String> {
         // For Gemini, we need to preserve other settings but clean up removed servers
         let mut existing_doc: Value =
@@ -625,7 +625,7 @@ impl McpFormatter for GeminiCliFormatter {
         // Filter existing servers to only keep those that are in new_servers
         let filtered_existing: BTreeMap<String, Value> = existing_servers
             .into_iter()
-            .filter(|(name, _)| new_servers.contains_key(name))
+            .filter(|(name, _)| new_servers.contains_key(name.as_str()))
             .collect();
 
         // Add new servers (with trust: true)
@@ -635,7 +635,7 @@ impl McpFormatter for GeminiCliFormatter {
             if let Some(obj) = server_json.as_object_mut() {
                 obj.insert("trust".to_string(), json!(true));
             }
-            final_servers.insert(name.clone(), server_json);
+            final_servers.insert((*name).to_string(), server_json);
         }
 
         // Update only the mcpServers key, preserving other settings
@@ -664,7 +664,7 @@ impl McpFormatter for GeminiCliFormatter {
 pub struct VsCodeFormatter;
 
 impl McpFormatter for VsCodeFormatter {
-    fn format(&self, servers: &BTreeMap<String, &McpServerConfig>) -> Value {
+    fn format(&self, servers: &BTreeMap<&str, &McpServerConfig>) -> Value {
         format_standard_mcp(servers)
     }
 
@@ -678,7 +678,7 @@ impl McpFormatter for VsCodeFormatter {
     fn merge(
         &self,
         existing_content: &str,
-        new_servers: &BTreeMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<&str, &McpServerConfig>,
     ) -> Result<String> {
         merge_standard_mcp(
             existing_content,
@@ -690,7 +690,7 @@ impl McpFormatter for VsCodeFormatter {
     fn cleanup_removed_servers(
         &self,
         existing_content: &str,
-        new_servers: &BTreeMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<&str, &McpServerConfig>,
     ) -> Result<String> {
         // Same logic as Claude Code - use standard MCP format
         let existing = parse_standard_mcp(
@@ -700,7 +700,7 @@ impl McpFormatter for VsCodeFormatter {
 
         let filtered_existing: BTreeMap<String, Value> = existing
             .into_iter()
-            .filter(|(name, _)| new_servers.contains_key(name))
+            .filter(|(name, _)| new_servers.contains_key(name.as_str()))
             .collect();
 
         merge_standard_mcp_filtered(
@@ -721,7 +721,7 @@ impl McpFormatter for VsCodeFormatter {
 pub struct CursorFormatter;
 
 impl McpFormatter for CursorFormatter {
-    fn format(&self, servers: &BTreeMap<String, &McpServerConfig>) -> Value {
+    fn format(&self, servers: &BTreeMap<&str, &McpServerConfig>) -> Value {
         format_standard_mcp(servers)
     }
 
@@ -735,7 +735,7 @@ impl McpFormatter for CursorFormatter {
     fn merge(
         &self,
         existing_content: &str,
-        new_servers: &BTreeMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<&str, &McpServerConfig>,
     ) -> Result<String> {
         merge_standard_mcp(
             existing_content,
@@ -747,7 +747,7 @@ impl McpFormatter for CursorFormatter {
     fn cleanup_removed_servers(
         &self,
         existing_content: &str,
-        new_servers: &BTreeMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<&str, &McpServerConfig>,
     ) -> Result<String> {
         // Same logic as Claude Code - use standard MCP format
         let existing = parse_standard_mcp(
@@ -757,7 +757,7 @@ impl McpFormatter for CursorFormatter {
 
         let filtered_existing: BTreeMap<String, Value> = existing
             .into_iter()
-            .filter(|(name, _)| new_servers.contains_key(name))
+            .filter(|(name, _)| new_servers.contains_key(name.as_str()))
             .collect();
 
         merge_standard_mcp_filtered(
@@ -778,7 +778,7 @@ impl McpFormatter for CursorFormatter {
 pub struct OpenCodeFormatter;
 
 impl McpFormatter for OpenCodeFormatter {
-    fn format(&self, servers: &BTreeMap<String, &McpServerConfig>) -> Value {
+    fn format(&self, servers: &BTreeMap<&str, &McpServerConfig>) -> Value {
         let mcp_servers = json_map_from_server_refs(servers, server_to_opencode_json);
 
         json!({
@@ -803,7 +803,7 @@ impl McpFormatter for OpenCodeFormatter {
     fn merge(
         &self,
         existing_content: &str,
-        new_servers: &BTreeMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<&str, &McpServerConfig>,
     ) -> Result<String> {
         // Parse existing document to preserve other fields
         let mut existing_doc: Value =
@@ -817,7 +817,7 @@ impl McpFormatter for OpenCodeFormatter {
             };
 
         for (name, config) in new_servers {
-            existing_servers.insert(name.clone(), server_to_opencode_json(config));
+            existing_servers.insert((*name).to_string(), server_to_opencode_json(config));
         }
 
         // Update only the mcp key
@@ -847,7 +847,7 @@ impl McpFormatter for OpenCodeFormatter {
     fn cleanup_removed_servers(
         &self,
         existing_content: &str,
-        new_servers: &BTreeMap<String, &McpServerConfig>,
+        new_servers: &BTreeMap<&str, &McpServerConfig>,
     ) -> Result<String> {
         // For OpenCode, preserve other settings but clean up removed servers
         let mut existing_doc: Value =
@@ -863,13 +863,13 @@ impl McpFormatter for OpenCodeFormatter {
         // Filter existing servers to only keep those that are in new_servers
         let filtered_existing: BTreeMap<String, Value> = existing_servers
             .into_iter()
-            .filter(|(name, _)| new_servers.contains_key(name))
+            .filter(|(name, _)| new_servers.contains_key(name.as_str()))
             .collect();
 
         // Add new servers
         let mut final_servers = filtered_existing;
         for (name, config) in new_servers {
-            final_servers.insert(name.clone(), server_to_opencode_json(config));
+            final_servers.insert((*name).to_string(), server_to_opencode_json(config));
         }
 
         // Update only the mcp key, preserving other settings
@@ -1065,7 +1065,7 @@ impl McpGenerator {
         &self,
         agent: McpAgent,
         project_root: &Path,
-        enabled_servers: &BTreeMap<String, &McpServerConfig>,
+        enabled_servers: &BTreeMap<&str, &McpServerConfig>,
         dry_run: bool,
     ) -> Result<McpSyncResult> {
         let mut result = McpSyncResult::default();
@@ -1087,7 +1087,7 @@ impl McpGenerator {
             let existing_servers = formatter.parse_existing(&existing)?;
             let removed_servers: Vec<&String> = existing_servers
                 .keys()
-                .filter(|name| !enabled_servers.contains_key(*name))
+                .filter(|name| !enabled_servers.contains_key(name.as_str()))
                 .collect();
 
             if !removed_servers.is_empty() {
@@ -1228,11 +1228,11 @@ impl McpGenerator {
     }
 
     /// Helper to get enabled servers as references to avoid clones
-    fn get_enabled_servers(&self) -> BTreeMap<String, &McpServerConfig> {
+    fn get_enabled_servers(&self) -> BTreeMap<&str, &McpServerConfig> {
         self.servers
             .iter()
             .filter(|(_, config)| !config.disabled)
-            .map(|(name, config)| (name.clone(), config))
+            .map(|(name, config)| (name.as_str(), config))
             .collect()
     }
 
@@ -1320,8 +1320,7 @@ mod tests {
     fn test_codex_formatter_format_to_string() {
         let formatter = CodexCliFormatter;
         let server = create_test_server();
-        let servers: BTreeMap<String, &McpServerConfig> =
-            BTreeMap::from([("filesystem".to_string(), &server)]);
+        let servers: BTreeMap<&str, &McpServerConfig> = BTreeMap::from([("filesystem", &server)]);
 
         let output = formatter.format_to_string(&servers).unwrap();
         let parsed: TomlValue = toml::from_str(&output).unwrap();
@@ -1343,8 +1342,7 @@ mod tests {
             transport_type: Some("http".to_string()),
             disabled: false,
         };
-        let servers: BTreeMap<String, &McpServerConfig> =
-            BTreeMap::from([("remote".to_string(), &server)]);
+        let servers: BTreeMap<&str, &McpServerConfig> = BTreeMap::from([("remote", &server)]);
 
         let output = formatter.format_to_string(&servers).unwrap();
         let parsed: TomlValue = toml::from_str(&output).unwrap();
@@ -1390,8 +1388,8 @@ args = ["server.js"]
 "#;
 
         let new_server = create_test_server();
-        let servers: BTreeMap<String, &McpServerConfig> =
-            BTreeMap::from([("filesystem".to_string(), &new_server)]);
+        let servers: BTreeMap<&str, &McpServerConfig> =
+            BTreeMap::from([("filesystem", &new_server)]);
 
         let merged = formatter.merge(existing, &servers).unwrap();
         let parsed: TomlValue = toml::from_str(&merged).unwrap();
@@ -1416,8 +1414,8 @@ args = ["old-arg"]
 "#;
 
         let new_server = create_test_server();
-        let servers: BTreeMap<String, &McpServerConfig> =
-            BTreeMap::from([("filesystem".to_string(), &new_server)]);
+        let servers: BTreeMap<&str, &McpServerConfig> =
+            BTreeMap::from([("filesystem", &new_server)]);
 
         let merged = formatter.merge(existing, &servers).unwrap();
         let parsed: TomlValue = toml::from_str(&merged).unwrap();
@@ -1459,7 +1457,7 @@ command = "remove-cmd"
         let mut keep_server = create_test_server();
         keep_server.command = Some("keep-cmd".to_string());
         let servers = BTreeMap::from([("keep".to_string(), keep_server)]);
-        let refs = servers.iter().map(|(k, v)| (k.clone(), v)).collect();
+        let refs = servers.iter().map(|(k, v)| (k.as_str(), v)).collect();
 
         let cleaned = formatter.cleanup_removed_servers(existing, &refs).unwrap();
         let parsed: TomlValue = toml::from_str(&cleaned).unwrap();
@@ -1520,8 +1518,7 @@ command = "remove-cmd"
     fn test_claude_formatter_basic() {
         let formatter = ClaudeCodeFormatter;
         let server = create_test_server();
-        let servers: BTreeMap<String, &McpServerConfig> =
-            BTreeMap::from([("filesystem".to_string(), &server)]);
+        let servers: BTreeMap<&str, &McpServerConfig> = BTreeMap::from([("filesystem", &server)]);
 
         let output = formatter.format(&servers);
 
@@ -1559,8 +1556,8 @@ command = "remove-cmd"
         }"#;
 
         let new_server = create_test_server();
-        let servers: BTreeMap<String, &McpServerConfig> =
-            BTreeMap::from([("filesystem".to_string(), &new_server)]);
+        let servers: BTreeMap<&str, &McpServerConfig> =
+            BTreeMap::from([("filesystem", &new_server)]);
 
         let merged = formatter.merge(existing, &servers).unwrap();
         let parsed: Value = serde_json::from_str(&merged).unwrap();
@@ -1584,8 +1581,8 @@ command = "remove-cmd"
         }"#;
 
         let new_server = create_test_server();
-        let servers: BTreeMap<String, &McpServerConfig> =
-            BTreeMap::from([("filesystem".to_string(), &new_server)]);
+        let servers: BTreeMap<&str, &McpServerConfig> =
+            BTreeMap::from([("filesystem", &new_server)]);
 
         let merged = formatter.merge(existing, &servers).unwrap();
         let parsed: Value = serde_json::from_str(&merged).unwrap();
@@ -1599,11 +1596,8 @@ command = "remove-cmd"
     fn test_claude_formatter_orders_servers_deterministically() {
         let formatter = ClaudeCodeFormatter;
         let server = create_test_server();
-        let servers: BTreeMap<String, &McpServerConfig> = BTreeMap::from([
-            ("zeta".to_string(), &server),
-            ("alpha".to_string(), &server),
-            ("mid".to_string(), &server),
-        ]);
+        let servers: BTreeMap<&str, &McpServerConfig> =
+            BTreeMap::from([("zeta", &server), ("alpha", &server), ("mid", &server)]);
 
         let output = serde_json::to_string_pretty(&formatter.format(&servers)).unwrap();
         assert_nested_object_keys_in_order(&output, &["mcpServers"], &["alpha", "mid", "zeta"]);
@@ -1617,8 +1611,7 @@ command = "remove-cmd"
     fn test_gemini_formatter_adds_trust() {
         let formatter = GeminiCliFormatter;
         let server = create_test_server();
-        let servers: BTreeMap<String, &McpServerConfig> =
-            BTreeMap::from([("filesystem".to_string(), &server)]);
+        let servers: BTreeMap<&str, &McpServerConfig> = BTreeMap::from([("filesystem", &server)]);
 
         let output = formatter.format(&servers);
         let fs_server = output.get("mcpServers").unwrap().get("filesystem").unwrap();
@@ -1641,8 +1634,8 @@ command = "remove-cmd"
         }"#;
 
         let new_server = create_test_server();
-        let servers: BTreeMap<String, &McpServerConfig> =
-            BTreeMap::from([("filesystem".to_string(), &new_server)]);
+        let servers: BTreeMap<&str, &McpServerConfig> =
+            BTreeMap::from([("filesystem", &new_server)]);
 
         let merged = formatter.merge(existing, &servers).unwrap();
         let parsed: Value = serde_json::from_str(&merged).unwrap();
@@ -1669,8 +1662,7 @@ command = "remove-cmd"
     fn test_opencode_formatter_basic() {
         let formatter = OpenCodeFormatter;
         let server = create_test_server();
-        let servers: BTreeMap<String, &McpServerConfig> =
-            BTreeMap::from([("filesystem".to_string(), &server)]);
+        let servers: BTreeMap<&str, &McpServerConfig> = BTreeMap::from([("filesystem", &server)]);
 
         let output = formatter.format(&servers);
 
@@ -1709,8 +1701,8 @@ command = "remove-cmd"
         }"#;
 
         let new_server = create_test_server();
-        let servers: BTreeMap<String, &McpServerConfig> =
-            BTreeMap::from([("filesystem".to_string(), &new_server)]);
+        let servers: BTreeMap<&str, &McpServerConfig> =
+            BTreeMap::from([("filesystem", &new_server)]);
 
         let merged = formatter.merge(existing, &servers).unwrap();
         let parsed: Value = serde_json::from_str(&merged).unwrap();
@@ -1740,8 +1732,7 @@ command = "remove-cmd"
         }"#;
 
         let server = create_test_server();
-        let servers: BTreeMap<String, &McpServerConfig> =
-            BTreeMap::from([("mid".to_string(), &server)]);
+        let servers: BTreeMap<&str, &McpServerConfig> = BTreeMap::from([("mid", &server)]);
 
         let merged = formatter.merge(existing, &servers).unwrap();
         assert_nested_object_keys_in_order(&merged, &["mcp"], &["alpha", "mid", "zeta"]);
@@ -2015,7 +2006,7 @@ command = "remove-cmd"
         server.command = Some("keep-cmd".to_string());
 
         let servers = BTreeMap::from([("keep".to_string(), server)]);
-        let refs = servers.iter().map(|(k, v)| (k.clone(), v)).collect();
+        let refs = servers.iter().map(|(k, v)| (k.as_str(), v)).collect();
 
         let formatter = OpenCodeFormatter;
         let result = formatter.cleanup_removed_servers(existing, &refs).unwrap();
@@ -2059,7 +2050,7 @@ command = "remove-cmd"
         server.command = Some("node".to_string());
 
         let servers = BTreeMap::from([("keep".to_string(), server)]);
-        let refs = servers.iter().map(|(k, v)| (k.clone(), v)).collect();
+        let refs = servers.iter().map(|(k, v)| (k.as_str(), v)).collect();
 
         let formatter = GeminiCliFormatter;
         let result = formatter.cleanup_removed_servers(existing, &refs).unwrap();
