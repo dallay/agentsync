@@ -162,7 +162,7 @@ This package is part of the [AgentSync mono-repo](https://github.com/dallay/agen
    make js-build
    ```
 
-4. Run tests and type checks:
+4. Run type checks:
 
    ```bash
    make js-test

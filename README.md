@@ -124,7 +124,15 @@ OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH="$(uname -m)"
 case "${OS}" in
   darwin)  PLATFORM_OS="apple-darwin" ;;
-  linux)   PLATFORM_OS="unknown-linux-gnu" ;;
+  linux)
+    if ldd --version 2>&1 | grep -q "musl"; then
+      PLATFORM_OS="unknown-linux-musl"
+    elif getconf GNU_LIBC_VERSION >/dev/null 2>&1; then
+      PLATFORM_OS="unknown-linux-gnu"
+    else
+      PLATFORM_OS="unknown-linux-musl" # Fallback to musl if glibc not found
+    fi
+    ;;
   *)       echo "Unsupported OS: ${OS}"; exit 1 ;;
 esac
 
@@ -505,7 +513,7 @@ This project uses a `Makefile` to orchestrate common tasks.
 
 -   **Install all dependencies:** `make install`
 -   **Run Rust unit tests:** `make rust-test`
--   **Run JavaScript tests:** `make js-test`
+-   **Run JavaScript type checks:** `make js-test`
 -   **Build all components (JS + Rust):** `make all`
 -   **Run full verification (lint + build + test):** `make verify-all`
 -   **Format the code:** `make fmt`

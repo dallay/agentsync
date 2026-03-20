@@ -64,7 +64,7 @@ We use a **Makefile** to orchestrate tasks across both Rust and JavaScript stack
 - **`make install`**: Bootstraps the development environment. Runs `pnpm install` and `cargo build`.
 - **`make verify-all`**: Our CI-in-a-box command. Runs all tests (JS + Rust), linters (Biome + Clippy), and builds the documentation.
 - **`make rust-test`**: Runs all Rust unit and integration tests.
-- **`make js-test`**: Runs Vitest suites for the TypeScript wrapper.
+- **`make js-test`**: Runs type checks for the TypeScript wrapper.
 - **`make js-build`**: Compiles TypeScript and prepares the NPM package.
 - **`make docs-build`**: Verifies that the documentation site builds correctly.
 - **`make fmt`**: Auto-formats the entire repository using `rustfmt` and `biome`.

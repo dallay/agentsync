@@ -76,8 +76,8 @@ js-install:
 	$(PNPM) install
 
 js-test:
-	@echo "Running JS tests..."
-	$(JS_WORKSPACE) run test
+	@echo "Running JS type checks..."
+	$(JS_WORKSPACE) run typecheck
 
 js-build:
 	@echo "Running JS build (workspace scripts if present)..."

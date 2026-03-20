@@ -68,7 +68,9 @@ entries = []
 - **`marker`**: The text used in comments to identify the AgentSync section in `.gitignore`.
 - **`entries`**: A list of additional file paths to add to the ignore list. This is only needed for files not covered by AgentSync's known patterns.
 
-**Note on Automatic Ignoring**: AgentSync also automatically ignores backup files (e.g., `*.bak`, `*.bak.*`) for both managed targets and skills to keep your repository clean during migrations and updates.
+**Note on Automatic Ignoring**: AgentSync automatically adds ignore patterns for backup files to keep your repository clean. These patterns are specific to the type of content:
+- **Managed targets**: `<destination>.bak.*` (e.g., `CLAUDE.md.bak.20250101`)
+- **Skills**: `.agents/skills/*.bak` (defensive pattern for skill migrations)
 
 ### Known Ignore Patterns
 

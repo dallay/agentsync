@@ -52,5 +52,3 @@ We follow the [Conventional Commits](https://www.conventionalcommits.org/) speci
 ## Getting Help
 
 If you have questions, feel free to open a GitHub Issue or start a Discussion.
-
----
