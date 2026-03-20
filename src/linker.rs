@@ -9,7 +9,6 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use walkdir::WalkDir;
 
 use crate::config::{Config, SyncType, TargetConfig};
 
@@ -448,9 +447,13 @@ impl Linker {
         self.ensure_directory(dest_dir, options)?;
 
         // Iterate through source directory contents
-        for entry in WalkDir::new(source_dir).min_depth(1).max_depth(1) {
-            let entry = entry?;
-            let item_name = entry.file_name().to_string_lossy();
+        for entry in fs::read_dir(source_dir)
+            .with_context(|| format!("Failed to read source directory: {}", source_dir.display()))?
+        {
+            let entry = entry
+                .with_context(|| format!("Failed to read entry in: {}", source_dir.display()))?;
+            let file_name = entry.file_name();
+            let item_name = file_name.to_string_lossy();
 
             // Apply pattern filter if specified
             if let Some(pat) = pattern
@@ -462,7 +465,7 @@ impl Linker {
             let source_path = entry.path();
             let dest_path = dest_dir.join(entry.file_name());
 
-            let resolved = self.resolve_source_path(source_path, target, options)?;
+            let resolved = self.resolve_source_path(&source_path, target, options)?;
             let item_result = self.create_symlink(&resolved, &dest_path, options)?;
             result.created += item_result.created;
             result.updated += item_result.updated;
@@ -540,8 +543,12 @@ impl Linker {
                     result.removed += 1;
                 } else if dest.is_dir() && target_config.sync_type == SyncType::SymlinkContents {
                     // For symlink-contents, remove symlinks inside the directory
-                    for entry in WalkDir::new(&dest).min_depth(1).max_depth(1) {
-                        let entry = entry?;
+                    for entry in fs::read_dir(&dest).with_context(|| {
+                        format!("Failed to read destination directory: {}", dest.display())
+                    })? {
+                        let entry = entry.with_context(|| {
+                            format!("Failed to read entry in: {}", dest.display())
+                        })?;
                         if entry.path().is_symlink() {
                             if options.dry_run {
                                 println!(

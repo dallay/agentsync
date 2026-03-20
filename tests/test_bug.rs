@@ -41,7 +41,7 @@ fn test_merge_cleanup_bug() -> Result<()> {
     let formatter = ClaudeCodeFormatter;
 
     // This should call cleanup and remove server1 and server2
-    let refs = new_servers.iter().map(|(k, v)| (k.clone(), v)).collect();
+    let refs = new_servers.iter().map(|(k, v)| (k.as_str(), v)).collect();
     let result = formatter.cleanup_removed_servers(existing, &refs).unwrap();
 
     // Parse result and verify
