@@ -52,6 +52,7 @@ agentsync apply [OPTIONS]
 - `-v, --verbose`: Enable verbose logging.
 - `-a, --agents <AGENTS>`: Filter by agent (comma-separated list, e.g., `claude,copilot`). **Overrides** `default_agents` in config.
 - `--no-gitignore`: Disable automatic `.gitignore` updates.
+- `--project-root <PATH>`: Project root directory (alias for `-p, --path`).
 
 **Agent Selection Priority**:
 When running `agentsync apply`, agents are selected in this order:
@@ -81,7 +82,7 @@ agentsync clean [FLAGS]
 ```
 
 **Flags**:
-- `-p, --path <PATH>`: Path to the project root.
+- `-p, --path <PATH>`: Path to the project root (alias for `--project-root`).
 - `-c, --config <PATH>`: Path to a custom configuration file.
 - `--dry-run`: Shows what would be removed without actually deleting anything.
 - `-v, --verbose`: Enable verbose logging.

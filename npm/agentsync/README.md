@@ -51,7 +51,7 @@ bun add -g @dallay/agentsync
 Verify installation:
 
 ```bash
-agentsync --help
+agentsync --version
 ```
 
 ---
@@ -60,12 +60,26 @@ agentsync --help
 
 ### Managing Configurations
 
+#### Initialize Project:
+
+```bash
+agentsync init
+# or with interactive wizard
+agentsync init --wizard
+```
+
 #### Sync Configurations:
 
 Run the following to create symbolic links across your AI coding assistants:
 
 ```bash
 agentsync apply
+```
+
+#### Show Status:
+
+```bash
+agentsync status
 ```
 
 #### Clean Configurations:
@@ -121,6 +135,14 @@ This package is part of the [AgentSync mono-repo](https://github.com/dallay/agen
 - [Node.js](https://nodejs.org/) >= 22.22.0 (for development).
 - [Rust](https://www.rust-lang.org/): For building the core CLI.
 
+### Mono-repo Structure
+
+This package is a Node.js wrapper for the Rust-based CLI.
+
+- `src/`: Core CLI logic in **Rust**.
+- `npm/agentsync/`: **TypeScript** source for this package.
+- `website/docs/`: Starlight-based documentation site.
+
 ### Steps
 
 1. Clone the repository:
@@ -136,23 +158,27 @@ This package is part of the [AgentSync mono-repo](https://github.com/dallay/agen
    pnpm install
    ```
 
-3. Build:
+3. Build components:
 
    ```bash
-   make js-build
-   # or
-   pnpm run build
+   make js-build    # Compiles TypeScript
+   make rust-build  # Compiles the Rust binary
    ```
 
 4. Run tests and type checks:
 
    ```bash
-   make js-test
-   # or
-   pnpm run typecheck
+   make js-test     # Runs typecheck
+   make rust-test   # Runs Rust tests
    ```
 
-5. Format:
+5. Run full verification:
+
+   ```bash
+   make verify-all  # Recommended before PRs
+   ```
+
+6. Format code:
 
    ```bash
    make fmt

@@ -12,7 +12,7 @@ AI coding assistants using symbolic links.
 
 ## Why AgentSync?
 
-Different AI coding tools expect configuration files in various locations:
+Different AI coding tools expect configuration files in various locations. AgentSync supports **32+ agents** (7 native MCP agents and 25+ configurable agents):
 
 | Tool               | Instructions                      | Commands             | Skills             |
 |--------------------|-----------------------------------|----------------------|--------------------|
@@ -25,7 +25,7 @@ Different AI coding tools expect configuration files in various locations:
 | **OpenAI Codex**   | -                                 | -                    | `.codex/skills/`   |
 
 AgentSync maintains a **single source of truth** in `.agents/` and creates symlinks to all required
-locations.
+locations. See the [full compatibility matrix](https://dallay.github.io/agentsync/reference/configuration/#agent-compatibility-matrix) for more agents like Windsurf, Cline, RooCode, and Trae.
 
 ## Features
 
@@ -201,25 +201,16 @@ agentsync apply
 
 ```bash
 # Initialize a new configuration
-agentsync init
+agentsync init [--path <path>] [--force]
 
 # Initialize with interactive wizard (for existing projects with agent files)
-agentsync init --wizard
+agentsync init --wizard [--path <path>] [--force]
 
 # Apply configuration (create symlinks)
-agentsync apply
-
-# Clean existing symlinks before applying
-agentsync apply --clean
+agentsync apply [--project-root <path>] [--config <path>] [--clean] [--dry-run]
 
 # Remove all managed symlinks
-agentsync clean
-
-# Use a custom config file
-agentsync apply --config /path/to/config.toml
-
-# Dry run (show what would be done without making changes)
-agentsync apply --dry-run
+agentsync clean [--project-root <path>] [--config <path>] [--dry-run]
 
 # Filter by agent
 agentsync apply --agents claude,copilot
@@ -227,19 +218,17 @@ agentsync apply --agents claude,copilot
 # Disable gitignore updates
 agentsync apply --no-gitignore
 
-# Verbose output
-agentsync apply --verbose
-
 # Show status of managed symlinks
-agentsync status
+agentsync status [--project-root <path>] [--json]
 
 # Run diagnostic and health check
 agentsync doctor [--project-root <path>]
 
 # Manage skills
-agentsync skill install <skill-id>
+agentsync skill install <skill-id> [--source <path/url>]
 agentsync skill update <skill-id>
 agentsync skill uninstall <skill-id>
+agentsync skill list
 ```
 
 ### Status
@@ -361,16 +350,17 @@ filter which items to link.
 
 ## Project Structure
 
+AgentSync uses a dedicated directory for all agent-related source files. We recommend following these conventions for your `.agents/` directory:
+
 ```
 .agents/
 ├── agentsync.toml      # Configuration file (source of truth for MCP)
 ├── AGENTS.md           # Main agent instructions (single source)
-├── command/            # Agent commands
+├── command/            # Agent commands (e.g. .claude/commands/)
 │   ├── review.agent.md
 │   └── test.agent.md
-├── skills/             # Shared knowledge/skills
-│   └── kotlin/
-│       └── SKILL.md
+├── skills/             # Reusable skills/knowledge (e.g. .claude/skills/)
+│   └── registry.json   # Managed by 'agentsync skill'
 └── prompts/            # Reusable prompts
     └── code-review.prompt.md
 ```
@@ -436,70 +426,45 @@ If you need agentsync in CI, you can download the latest version automatically u
     sudo mv agentsync-*/agentsync /usr/local/bin/
 ```
 
-## Getting Started (Development)
+## Development
 
-This project is a monorepo containing a Rust core and a JavaScript/TypeScript wrapper.
+This project is a monorepo containing a high-performance Rust core and a TypeScript distribution layer.
 
-### Repository Structure
+### Mono-repo Structure
 
-- `src/`: Core logic and CLI implementation in **Rust**.
-- `npm/agentsync/`: **TypeScript** wrapper used for NPM distribution.
-- `website/docs/`: Documentation site built with **Starlight**.
-- `tests/`: Integration tests for the CLI.
+- `src/`: Core logic and CLI implementation in **Rust**. This is where the main `agentsync` binary is built.
+- `npm/agentsync/`: **TypeScript** wrapper and NPM package. It manages platform-specific binary downloads for Node.js users.
+- `website/docs/`: Documentation site built with **Starlight** (Astro).
+- `scripts/`: Internal utility scripts for setup and releases.
+- `tests/`: Integration and E2E tests for the CLI.
 
 ### Prerequisites
 
-- [**Rust**](https://www.rust-lang.org/tools/install) (1.89+ recommended)
-- [**Node.js**](https://nodejs.org/) (v22.22.0+ recommended for development)
-- [**pnpm**](https://pnpm.io/installation)
+- [**Rust**](https://www.rust-lang.org/tools/install) (1.89+)
+- [**Node.js**](https://nodejs.org/) (v22.22.0+)
+- [**pnpm**](https://pnpm.io/installation) (v10+)
 
 ### Setup
 
-1.  **Install JavaScript dependencies:**
+1. **Install dependencies:**
+   ```bash
+   pnpm install
+   ```
+2. **Build everything (Rust + JS):**
+   ```bash
+   make all
+   ```
 
-    ```bash
-    pnpm install
-    ```
+### Common Development Commands
 
-2.  **Build the Rust binary:**
+We use a `Makefile` to orchestrate tasks across the polyglot stack:
 
-    ```bash
-    cargo build
-    ```
-
-### Common Commands
-
-This project uses a `Makefile` to orchestrate common tasks.
-
--   **Run Rust tests:**
-
-    ```bash
-    make rust-test
-    ```
-
--   **Run JavaScript tests:**
-
-    ```bash
-    make js-test
-    ```
-
--   **Build all components:**
-
-    ```bash
-    make all
-    ```
-
--   **Run full verification (lint + build + test):**
-
-    ```bash
-    make verify-all
-    ```
-
--   **Format the code:**
-
-    ```bash
-    make fmt
-    ```
+- `make verify-all`: **Run this before every PR.** It runs all linters (Biome, Clippy), builds all components, and executes all tests (Rust and JS).
+- `make rust-test`: Run Rust unit and integration tests.
+- `make js-test`: Run TypeScript type checks and tests.
+- `make rust-build`: Compile the Rust binary.
+- `make fmt`: Format all code (Rust via `rustfmt`, TS/JS via `biome`).
+- `make docs-dev`: Start the documentation site in development mode.
 
 ### Release Process
 
