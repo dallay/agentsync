@@ -522,11 +522,7 @@ impl Linker {
             .parent()
             .map(|p| {
                 let s = p.to_string_lossy().into_owned();
-                if s.is_empty() {
-                    ".".to_string()
-                } else {
-                    s
-                }
+                if s.is_empty() { ".".to_string() } else { s }
             })
             .unwrap_or_else(|| ".".to_string());
 
@@ -539,7 +535,30 @@ impl Linker {
 
     /// Process a `NestedGlob` target: walk `search_root`, match files against
     /// `glob_pattern`, skip excluded paths, and create a symlink for each
-    /// discovered file using `dest_template` to determine the destination.
+    /// Discovers files in a directory tree matching a glob pattern and creates
+    /// symlinks to each matched file.
+    ///
+    /// # Arguments
+    /// * `search_root` - Directory to walk for file discovery
+    /// * `glob_pattern` - Glob pattern with `**` support (e.g., `**/AGENTS.md`)
+    /// * `excludes` - Optional list of glob patterns to exclude from syncing
+    /// * `dest_template` - Destination path template supporting:
+    ///   - `{relative_path}` - Path relative to search root (`.` for root files)
+    ///   - `{file_name}` - Original filename with extension
+    ///   - `{stem}` - Filename without extension
+    ///   - `{ext}` - File extension (without leading dot)
+    /// * `options` - Sync options controlling verbose output and dry-run mode
+    ///
+    /// # Behavior
+    /// - Walks `search_root` recursively (following `follow_links = false` for safety)
+    /// - Skips directories and non-file entries
+    /// - Matches files against `glob_pattern` using `**` glob support
+    /// - Applies exclusion patterns if file matches any exclude, it is skipped
+    /// - Creates symlinks using `create_symlink()` which handles existing links
+    ///
+    /// # Performance Considerations
+    /// - Uses `find()` instead of `any()` for exclusion checks to enable early-exit
+    /// - Avoids exclusion iteration when `excludes` list is empty
     fn process_nested_glob(
         &self,
         search_root: &Path,
@@ -589,15 +608,19 @@ impl Linker {
                 continue;
             }
 
-            // Check exclusion patterns
-            if excludes
+            // Check exclusion patterns.
+            // Uses `find()` instead of `any()` to:
+            // 1. Skip iteration when excludes list is empty (short-circuit)
+            // 2. Determine which pattern matched (for verbose logging)
+            if let Some(matched_exclude) = excludes
                 .iter()
-                .any(|excl| matches_path_glob(&rel_str, excl))
+                .find(|excl| matches_path_glob(&rel_str, excl))
             {
                 if options.verbose {
                     println!(
-                        "  {} Excluded: {}",
+                        "  {} Excluded by '{}': {}",
                         "○".yellow(),
+                        matched_exclude,
                         full_path.display()
                     );
                 }
@@ -697,10 +720,8 @@ impl Linker {
                         if !search_root.exists() || !search_root.is_dir() {
                             continue;
                         }
-                        let glob_pattern = target_config
-                            .pattern
-                            .as_deref()
-                            .unwrap_or("**/AGENTS.md");
+                        let glob_pattern =
+                            target_config.pattern.as_deref().unwrap_or("**/AGENTS.md");
                         let dest_template = &target_config.destination;
                         let excludes = &target_config.exclude;
 
@@ -1170,14 +1191,26 @@ mod tests {
 
     #[test]
     fn test_path_glob_double_star_in_middle() {
-        assert!(matches_path_glob("clients/agent-runtime/AGENTS.md", "clients/**/AGENTS.md"));
-        assert!(matches_path_glob("clients/AGENTS.md", "clients/**/AGENTS.md"));
-        assert!(!matches_path_glob("other/agent-runtime/AGENTS.md", "clients/**/AGENTS.md"));
+        assert!(matches_path_glob(
+            "clients/agent-runtime/AGENTS.md",
+            "clients/**/AGENTS.md"
+        ));
+        assert!(matches_path_glob(
+            "clients/AGENTS.md",
+            "clients/**/AGENTS.md"
+        ));
+        assert!(!matches_path_glob(
+            "other/agent-runtime/AGENTS.md",
+            "clients/**/AGENTS.md"
+        ));
     }
 
     #[test]
     fn test_path_glob_exclusion_patterns() {
-        assert!(matches_path_glob("node_modules/foo/bar.md", "node_modules/**"));
+        assert!(matches_path_glob(
+            "node_modules/foo/bar.md",
+            "node_modules/**"
+        ));
         assert!(matches_path_glob("target/debug/foo.md", "**/target/**"));
         assert!(!matches_path_glob("src/main.rs", "node_modules/**"));
     }
@@ -1198,14 +1231,8 @@ mod tests {
             Linker::expand_destination_template("{file_name}", rel),
             "AGENTS.md"
         );
-        assert_eq!(
-            Linker::expand_destination_template("{stem}", rel),
-            "AGENTS"
-        );
-        assert_eq!(
-            Linker::expand_destination_template("{ext}", rel),
-            "md"
-        );
+        assert_eq!(Linker::expand_destination_template("{stem}", rel), "AGENTS");
+        assert_eq!(Linker::expand_destination_template("{ext}", rel), "md");
     }
 
     #[test]
@@ -2701,14 +2728,18 @@ mod tests {
         let result = linker.sync(&SyncOptions::default()).unwrap();
 
         assert_eq!(result.created, 2);
-        assert!(temp_dir
-            .path()
-            .join("clients/agent-runtime/CLAUDE.md")
-            .is_symlink());
-        assert!(temp_dir
-            .path()
-            .join("modules/core-kmp/CLAUDE.md")
-            .is_symlink());
+        assert!(
+            temp_dir
+                .path()
+                .join("clients/agent-runtime/CLAUDE.md")
+                .is_symlink()
+        );
+        assert!(
+            temp_dir
+                .path()
+                .join("modules/core-kmp/CLAUDE.md")
+                .is_symlink()
+        );
     }
 
     #[test]
@@ -2752,10 +2783,12 @@ mod tests {
         // Only the non-excluded file should be linked
         assert_eq!(result.created, 1);
         assert!(temp_dir.path().join("clients/CLAUDE.md").is_symlink());
-        assert!(!temp_dir
-            .path()
-            .join("node_modules/some-pkg/CLAUDE.md")
-            .exists());
+        assert!(
+            !temp_dir
+                .path()
+                .join("node_modules/some-pkg/CLAUDE.md")
+                .exists()
+        );
     }
 
     #[test]
