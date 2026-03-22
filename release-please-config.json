@@ -2,37 +2,26 @@
 	"$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
 	"release-type": "rust",
 	"include-component-in-tag": false,
-	"include-void-in-tag": false,
 	"versioning": "default",
 	"changelog-sections": [
-		"feat",
-		"fix",
-		"perf",
-		"revert",
-		"docs",
-		"style",
-		"refactor",
-		"build",
-		"ci",
-		"test",
-		"chore"
+		{ "type": "feat", "section": "Features" },
+		{ "type": "fix", "section": "Bug Fixes" },
+		{ "type": "perf", "section": "Performance" },
+		{ "type": "revert", "section": "Reverts" },
+		{ "type": "docs", "section": "Documentation" },
+		{ "type": "style", "section": "Styles" },
+		{ "type": "refactor", "section": "Code Refactoring" },
+		{ "type": "build", "section": "Build System" },
+		{ "type": "ci", "section": "Continuous Integration" },
+		{ "type": "test", "section": "Tests" },
+		{ "type": "chore", "section": "Chores" }
 	],
 	"packages": {
 		".": {
-			"component": "agentsync",
-			"include-void-in-tag": false
+			"component": "agentsync"
 		}
 	},
 	"draft": false,
 	"prerelease": false,
-	"extra-files": [],
-	"single-line": false,
-	"commit-message": "chore: release ${version}",
-	"tag-message": "chore: release ${version}",
-	"pull-request-header": "Release PR",
-	"pull-request-title": "chore: release ${version}",
-	"pull-request-body": "<!-- release-please-action -->",
-	"release-as": null,
-	"indicator": null,
-	"shard-count": null
+	"extra-files": []
 }

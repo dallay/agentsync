@@ -54,11 +54,9 @@ jobs:
         with:
           token: ${{ steps.app-token.outputs.token }}
           config-file: release-please-config.json
-          default-branch: main
-          dry-run: ${{ inputs.dry_run || false }}
+          target-branch: main
           fork: false
           skip-labeling: false
-          skip-publish: true
 
   # ==========================================================================
   # Build Release Binaries - Cross-platform
@@ -172,7 +170,7 @@ jobs:
           
           # Move to workspace root for upload
           mv "$ARCHIVE_NAME.tar.gz" ../../../
-          mv "$ARCHIVE_NAME.tar.gz.sha256" ../../../../
+          mv "$ARCHIVE_NAME.tar.gz.sha256" ../../../
 
       - name: Prepare artifact (Windows)
         if: runner.os == 'Windows'
@@ -196,7 +194,7 @@ jobs:
           
           # Move to workspace root
           Move-Item "$ARCHIVE_NAME.zip" ../../../
-          Move-Item "$ARCHIVE_NAME.zip.sha256" ../../../../
+          Move-Item "$ARCHIVE_NAME.zip.sha256" ../../..
 
       - name: Upload artifact
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0

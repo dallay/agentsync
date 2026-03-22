@@ -5,7 +5,6 @@
 		"npm/agentsync"
 	],
 	"scripts": {
-		"release": "release-please",
 		"update-deps": "pnpm update -i -r --latest",
 		"preinstall": "npx only-allow pnpm",
 		"prepare": "node scripts/setup.js",
