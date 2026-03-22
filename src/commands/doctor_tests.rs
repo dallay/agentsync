@@ -6,7 +6,7 @@ mod tests {
     };
     use agentsync::config::{Config, SyncType};
     use std::fs;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use tempfile::TempDir;
 
     fn module_map_config(toml_suffix: &str) -> Config {
@@ -271,17 +271,16 @@ entry1
 
         let destinations = expand_target_destinations("claude", "modules", target);
         assert_eq!(destinations.len(), 2);
+        // Use ends_with for cross-platform path comparison (Windows uses \ separator)
+        assert!(destinations.iter().any(|(dest, agent, target)| {
+            Path::new(dest).ends_with("src/api/CLAUDE.md")
+                && *agent == "claude"
+                && *target == "modules"
+        }));
         assert!(
             destinations
                 .iter()
-                .any(|(dest, agent, target)| dest == "src/api/CLAUDE.md"
-                    && agent == "claude"
-                    && target == "modules")
-        );
-        assert!(
-            destinations
-                .iter()
-                .any(|(dest, _, _)| dest == "src/ui/CLAUDE.md")
+                .any(|(dest, _, _)| { Path::new(dest).ends_with("src/ui/CLAUDE.md") })
         );
     }
 
@@ -312,9 +311,10 @@ entry1
         destinations.extend(expand_target_destinations("codex", "main", regular_target));
 
         let conflicts = validate_destinations(&destinations);
-        assert!(conflicts.iter().any(
-            |conflict| matches!(conflict, Conflict::Duplicate(dest) if dest == "src/api/CLAUDE.md")
-        ));
+        // Use Path for cross-platform comparison (Windows uses \ separator)
+        assert!(conflicts.iter().any(|conflict| {
+            matches!(conflict, Conflict::Duplicate(dest) if Path::new(dest).ends_with("src/api/CLAUDE.md"))
+        }));
     }
 
     #[test]
