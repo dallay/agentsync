@@ -285,6 +285,11 @@ impl Linker {
         dest: &Path,
         options: &SyncOptions,
     ) -> Result<()> {
+        // Optimization: skip if this output file was already ensured in this run.
+        if self.ensured_outputs.borrow().contains(dest) {
+            return Ok(());
+        }
+
         let compressed = {
             let mut cache = self.compression_cache.borrow_mut();
             if let Some(cached) = cache.get(source) {
@@ -301,6 +306,7 @@ impl Linker {
         if let Ok(existing) = fs::read_to_string(dest)
             && existing == compressed
         {
+            self.ensured_outputs.borrow_mut().insert(dest.to_path_buf());
             return Ok(());
         }
 
@@ -309,7 +315,10 @@ impl Linker {
         }
 
         fs::write(dest, &compressed)
-            .with_context(|| format!("Failed to write compressed AGENTS.md: {}", dest.display()))
+            .with_context(|| format!("Failed to write compressed AGENTS.md: {}", dest.display()))?;
+
+        self.ensured_outputs.borrow_mut().insert(dest.to_path_buf());
+        Ok(())
     }
 
     /// Create a single symlink
