@@ -34,6 +34,7 @@ npm/agentsync/*.tgz
 node_modules/
 .pnpm-store/
 pnpm-debug.log
+perf_test_data/
 # START AI Agent Symlinks
 .claude/commands/
 .claude/skills/
@@ -49,4 +50,3 @@ AGENTS.md
 CLAUDE.md
 opencode.json
 # END AI Agent Symlinks
-perf_test_data/

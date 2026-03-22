@@ -42,30 +42,34 @@ help:
 
 all: install js-build
 
-verify-all: fmt
-	@printf "\n========================================\n"
-	@echo " Running full verification suite"
-	@printf "========================================\n\n"
-	@echo "→ Verifying JS workspace (build + test)..."
-	@$(MAKE) js-build
-	@$(MAKE) js-test
-	@echo "→ Verifying Docs build..."
-	@$(MAKE) docs-build
-	@echo "→ Running JS lint (biome)..."
-	@if $(PNPM) exec biome --version >/dev/null 2>&1; then \
-		$(PNPM) exec biome check .; \
-	else \
-		echo "biome not available; skipping"; \
-	fi
-	@echo "→ Running cargo clippy..."
+verify-all: check-all
+
+check-all: check-rust check-js check-docs
+	@printf "\n✅ All checks passed successfully!\n"
+
+check-rust:
+	@printf "\n🦀 Verifying Rust...\n"
+	@echo "→ Checking formatting..."
+	@$(CARGO) fmt -- --check
+	@echo "→ Running clippy (strict)..."
 	@$(CARGO) clippy --all-targets --all-features -- -D warnings
-	@echo "→ Running cargo test..."
+	@echo "→ Running tests..."
 	@$(CARGO) test
-	@if [ "${RUN_E2E}" = "1" ]; then \
-		echo "→ Running E2E tests (docker)..."; \
-		$(MAKE) e2e-test; \
-	fi
-	@printf "\nAll verification checks passed. ✅\n"
+
+check-js:
+	@printf "\n📜 Verifying JavaScript/TypeScript...\n"
+	@echo "→ Installing dependencies..."
+	@$(PNPM) install --silent
+	@echo "→ Running Biome check..."
+	@$(PNPM) run biome:check
+	@echo "→ Typechecking and building NPM package..."
+	@$(PNPM) --filter @dallay/agentsync run test
+	@$(PNPM) --filter @dallay/agentsync run build
+
+check-docs:
+	@printf "\n📚 Verifying Documentation...\n"
+	@echo "→ Building docs to check for errors..."
+	@$(PNPM) --filter agentsync-docs run build
 
 install: js-install rust-build
 	@echo "Installation complete."

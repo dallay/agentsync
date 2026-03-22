@@ -22,9 +22,9 @@
 	"devDependencies": {
 		"@biomejs/biome": "2.4.8",
 		"@dallay/agentsync": "catalog:",
-		"conventional-changelog-conventionalcommits": "^9.1.0",
-		"lefthook": "^2.0.15",
+		"conventional-changelog-conventionalcommits": "^9.3.0",
+		"lefthook": "^2.1.4",
 		"release-please": "^17.3.0"
 	},
-	"version": "1.28.0"
+	"version": "1.31.0"
 }
