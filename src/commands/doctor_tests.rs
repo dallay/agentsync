@@ -285,7 +285,7 @@ entry1
     }
 
     #[test]
-    fn test_validate_destinations_detects_module_map_overlap_with_regular_target() {
+    fn test_validate_destinations_detects_duplicate_between_module_map_and_regular_target() {
         let module_map = module_map_config(
             r#"
             [[agents.claude.targets.modules.mappings]]
