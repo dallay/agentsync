@@ -5,6 +5,16 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use agentsync::config::{SyncType, TargetConfig};
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct MissingSourceIssue {
+    pub agent: String,
+    pub target: String,
+    pub mapping: Option<String>,
+    pub path: PathBuf,
+}
+
 pub fn run_doctor(project_root: PathBuf) -> Result<()> {
     println!("{}", "🩺 Running AgentSync Diagnostic...".bold().cyan());
 
@@ -63,15 +73,36 @@ pub fn run_doctor(project_root: PathBuf) -> Result<()> {
             continue;
         }
         for (target_name, target) in &agent.targets {
-            let target_source = source_dir.join(&target.source);
-            if !target_source.exists() {
+            for warning in target_configuration_warnings(target) {
                 println!(
-                    "  {} Missing source for agent {} (target {}): {}",
-                    "✗".red(),
+                    "  {} {} for agent {} (target {})",
+                    "⚠".yellow(),
+                    warning,
                     agent_name.bold(),
-                    target_name.dimmed(),
-                    target_source.display()
+                    target_name.dimmed()
                 );
+                issues += 1;
+            }
+
+            for missing in collect_missing_sources(&source_dir, agent_name, target_name, target) {
+                if let Some(mapping) = &missing.mapping {
+                    println!(
+                        "  {} Missing mapping source for agent {} (target {}, mapping {}): {}",
+                        "✗".red(),
+                        missing.agent.bold(),
+                        missing.target.dimmed(),
+                        mapping.dimmed(),
+                        missing.path.display()
+                    );
+                } else {
+                    println!(
+                        "  {} Missing source for agent {} (target {}): {}",
+                        "✗".red(),
+                        missing.agent.bold(),
+                        missing.target.dimmed(),
+                        missing.path.display()
+                    );
+                }
                 issues += 1;
                 missing_targets += 1;
             }
@@ -88,8 +119,7 @@ pub fn run_doctor(project_root: PathBuf) -> Result<()> {
             continue;
         }
         for (target_name, target) in &agent.targets {
-            let normalized = normalize_path(&target.destination);
-            destinations.push((normalized, agent_name.clone(), target_name.clone()));
+            destinations.extend(expand_target_destinations(agent_name, target_name, target));
         }
     }
 
@@ -344,6 +374,86 @@ pub fn validate_destinations(destinations: &[(String, String, String)]) -> Vec<C
     }
 
     conflicts
+}
+
+pub fn target_configuration_warnings(target: &TargetConfig) -> Vec<&'static str> {
+    let mut warnings = Vec::new();
+
+    match target.sync_type {
+        SyncType::ModuleMap if target.mappings.is_empty() => {
+            warnings.push("module-map target has no mappings configured")
+        }
+        SyncType::ModuleMap => {}
+        _ if !target.mappings.is_empty() => {
+            warnings.push("mappings is only used by module-map targets")
+        }
+        _ => {}
+    }
+
+    warnings
+}
+
+pub fn collect_missing_sources(
+    source_dir: &Path,
+    agent_name: &str,
+    target_name: &str,
+    target: &TargetConfig,
+) -> Vec<MissingSourceIssue> {
+    match target.sync_type {
+        SyncType::ModuleMap => target
+            .mappings
+            .iter()
+            .filter_map(|mapping| {
+                let path = source_dir.join(&mapping.source);
+                (!path.exists()).then(|| MissingSourceIssue {
+                    agent: agent_name.to_string(),
+                    target: target_name.to_string(),
+                    mapping: Some(mapping.source.clone()),
+                    path,
+                })
+            })
+            .collect(),
+        _ => {
+            let path = source_dir.join(&target.source);
+            if path.exists() {
+                Vec::new()
+            } else {
+                vec![MissingSourceIssue {
+                    agent: agent_name.to_string(),
+                    target: target_name.to_string(),
+                    mapping: None,
+                    path,
+                }]
+            }
+        }
+    }
+}
+
+pub fn expand_target_destinations(
+    agent_name: &str,
+    target_name: &str,
+    target: &TargetConfig,
+) -> Vec<(String, String, String)> {
+    match target.sync_type {
+        SyncType::ModuleMap => target
+            .mappings
+            .iter()
+            .map(|mapping| {
+                let filename = agentsync::config::resolve_module_map_filename(mapping, agent_name);
+                let dest_path = format!("{}/{}", mapping.destination, filename);
+                (
+                    normalize_path(&dest_path),
+                    agent_name.to_string(),
+                    target_name.to_string(),
+                )
+            })
+            .collect(),
+        _ => vec![(
+            normalize_path(&target.destination),
+            agent_name.to_string(),
+            target_name.to_string(),
+        )],
+    }
 }
 
 pub fn normalize_path(path_str: &str) -> String {

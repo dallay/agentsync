@@ -118,6 +118,12 @@ pub struct TargetConfig {
     /// `**/.git/**`.  Has no effect on other target types.
     #[serde(default)]
     pub exclude: Vec<String>,
+
+    /// Mappings for `module-map` targets. Each mapping defines a
+    /// source file and destination directory pair. Ignored for other
+    /// sync types.
+    #[serde(default)]
+    pub mappings: Vec<ModuleMapping>,
 }
 
 /// The type of synchronization operation to perform for a target.
@@ -134,6 +140,43 @@ pub enum SyncType {
     /// (relative to the project root) and creates a symlink for each one at the
     /// path produced by expanding the `destination` template.
     NestedGlob,
+    /// Maps centrally-managed source files to specific module directories,
+    /// creating a symlink per mapping with convention-based filenames.
+    ModuleMap,
+}
+
+/// A single source-to-destination mapping within a `module-map` target.
+/// Maps a centrally-managed source file to a specific module directory
+/// with an optional filename override.
+#[derive(Debug, Deserialize, Clone)]
+pub struct ModuleMapping {
+    /// Source file path, relative to `source_dir` (e.g., "api-context.md").
+    pub source: String,
+
+    /// Destination directory, relative to project root (e.g., "src/api").
+    pub destination: String,
+
+    /// Override the output filename. If `None`, uses the agent's convention
+    /// filename (e.g., CLAUDE.md for claude) or falls back to the source
+    /// file's basename.
+    #[serde(default)]
+    pub filename_override: Option<String>,
+}
+
+/// Resolve the output filename for a module-map mapping.
+///
+/// Priority: filename_override > agent convention > source basename.
+pub fn resolve_module_map_filename(mapping: &ModuleMapping, agent_name: &str) -> String {
+    if let Some(ref override_name) = mapping.filename_override {
+        return override_name.clone();
+    }
+    if let Some(convention) = crate::agent_ids::agent_convention_filename(agent_name) {
+        return convention.to_string();
+    }
+    std::path::Path::new(&mapping.source)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| mapping.source.clone())
 }
 
 /// Configuration for managing the `.gitignore` file.
@@ -315,6 +358,16 @@ impl Config {
                     // NestedGlob destinations are templates, not literal paths –
                     // skip them to avoid polluting .gitignore with raw template strings.
                     if target.sync_type == SyncType::NestedGlob {
+                        continue;
+                    }
+                    // ModuleMap targets expand each mapping into its own gitignore entry
+                    if target.sync_type == SyncType::ModuleMap {
+                        for mapping in &target.mappings {
+                            let filename = resolve_module_map_filename(mapping, agent_name);
+                            let entry = format!("{}/{}", mapping.destination, filename);
+                            entries.insert(entry.clone());
+                            entries.insert(format!("{}.bak.*", entry));
+                        }
                         continue;
                     }
                     entries.insert(target.destination.clone());
@@ -1361,5 +1414,282 @@ mod tests {
         assert!(entries.contains(&"OUTPUT.md".to_string()));
         assert!(entries.contains(&"OUTPUT.md.bak.*".to_string()));
         assert!(entries.contains(&".agents/skills/*.bak".to_string()));
+    }
+
+    // ==========================================================================
+    // MODULE-MAP TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_parse_module_map_sync_type() {
+        let toml = r#"
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.modules]
+            source = "."
+            destination = "."
+            type = "module-map"
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        assert_eq!(
+            config.agents["claude"].targets["modules"].sync_type,
+            SyncType::ModuleMap
+        );
+    }
+
+    #[test]
+    fn test_parse_module_mapping_struct() {
+        let toml = r#"
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.modules]
+            source = "."
+            destination = "."
+            type = "module-map"
+
+            [[agents.claude.targets.modules.mappings]]
+            source = "api-context.md"
+            destination = "src/api"
+
+            [[agents.claude.targets.modules.mappings]]
+            source = "ui-context.md"
+            destination = "src/ui"
+            filename_override = "custom.md"
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        let mappings = &config.agents["claude"].targets["modules"].mappings;
+        assert_eq!(mappings.len(), 2);
+        assert_eq!(mappings[0].source, "api-context.md");
+        assert_eq!(mappings[0].destination, "src/api");
+        assert!(mappings[0].filename_override.is_none());
+        assert_eq!(mappings[1].source, "ui-context.md");
+        assert_eq!(mappings[1].destination, "src/ui");
+        assert_eq!(mappings[1].filename_override.as_deref(), Some("custom.md"));
+    }
+
+    #[test]
+    fn test_parse_target_config_without_mappings_defaults() {
+        let toml = r#"
+            [agents.test]
+            enabled = true
+
+            [agents.test.targets.main]
+            source = "README.md"
+            destination = "OUTPUT.md"
+            type = "symlink"
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        // mappings should default to empty vec when not specified
+        assert!(config.agents["test"].targets["main"].mappings.is_empty());
+    }
+
+    #[test]
+    fn test_resolve_module_map_filename_override() {
+        let mapping = ModuleMapping {
+            source: "api-context.md".to_string(),
+            destination: "src/api".to_string(),
+            filename_override: Some("custom-name.md".to_string()),
+        };
+        assert_eq!(
+            resolve_module_map_filename(&mapping, "claude"),
+            "custom-name.md"
+        );
+    }
+
+    #[test]
+    fn test_resolve_module_map_filename_convention_claude() {
+        let mapping = ModuleMapping {
+            source: "api-context.md".to_string(),
+            destination: "src/api".to_string(),
+            filename_override: None,
+        };
+        assert_eq!(resolve_module_map_filename(&mapping, "claude"), "CLAUDE.md");
+    }
+
+    #[test]
+    fn test_resolve_module_map_filename_convention_is_case_insensitive() {
+        let mapping = ModuleMapping {
+            source: "api-context.md".to_string(),
+            destination: "src/api".to_string(),
+            filename_override: None,
+        };
+        assert_eq!(resolve_module_map_filename(&mapping, "Claude"), "CLAUDE.md");
+    }
+
+    #[test]
+    fn test_resolve_module_map_filename_convention_copilot() {
+        let mapping = ModuleMapping {
+            source: "api-context.md".to_string(),
+            destination: "src/api".to_string(),
+            filename_override: None,
+        };
+        assert_eq!(
+            resolve_module_map_filename(&mapping, "copilot"),
+            ".github/copilot-instructions.md"
+        );
+    }
+
+    #[test]
+    fn test_resolve_module_map_filename_fallback_unknown_agent() {
+        let mapping = ModuleMapping {
+            source: "api-context.md".to_string(),
+            destination: "src/api".to_string(),
+            filename_override: None,
+        };
+        // Unknown agent → falls back to source basename
+        assert_eq!(
+            resolve_module_map_filename(&mapping, "unknown-agent"),
+            "api-context.md"
+        );
+    }
+
+    #[test]
+    fn test_resolve_module_map_filename_override_beats_convention() {
+        let mapping = ModuleMapping {
+            source: "api-context.md".to_string(),
+            destination: "src/api".to_string(),
+            filename_override: Some("MY-RULES.md".to_string()),
+        };
+        // Override should take precedence over claude convention
+        assert_eq!(
+            resolve_module_map_filename(&mapping, "claude"),
+            "MY-RULES.md"
+        );
+    }
+
+    #[test]
+    fn test_all_gitignore_entries_module_map_expands_mappings() {
+        let toml = r#"
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.modules]
+            source = "."
+            destination = "."
+            type = "module-map"
+
+            [[agents.claude.targets.modules.mappings]]
+            source = "api-context.md"
+            destination = "src/api"
+
+            [[agents.claude.targets.modules.mappings]]
+            source = "ui-context.md"
+            destination = "src/ui"
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        let entries = config.all_gitignore_entries();
+
+        // Each mapping should produce a gitignore entry with resolved filename
+        assert!(
+            entries.contains(&"src/api/CLAUDE.md".to_string()),
+            "Expected src/api/CLAUDE.md in {:?}",
+            entries
+        );
+        assert!(
+            entries.contains(&"src/ui/CLAUDE.md".to_string()),
+            "Expected src/ui/CLAUDE.md in {:?}",
+            entries
+        );
+        // Backup patterns too
+        assert!(entries.contains(&"src/api/CLAUDE.md.bak.*".to_string()));
+        assert!(entries.contains(&"src/ui/CLAUDE.md.bak.*".to_string()));
+    }
+
+    #[test]
+    fn test_all_gitignore_entries_module_map_disabled_agent_skipped() {
+        let toml = r#"
+            [agents.claude]
+            enabled = false
+
+            [agents.claude.targets.modules]
+            source = "."
+            destination = "."
+            type = "module-map"
+
+            [[agents.claude.targets.modules.mappings]]
+            source = "api-context.md"
+            destination = "src/api"
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        let entries = config.all_gitignore_entries();
+
+        assert!(
+            !entries.contains(&"src/api/CLAUDE.md".to_string()),
+            "Disabled agent's module-map entries should not appear in gitignore"
+        );
+    }
+
+    #[test]
+    fn test_all_gitignore_entries_module_map_with_filename_override() {
+        let toml = r#"
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.modules]
+            source = "."
+            destination = "."
+            type = "module-map"
+
+            [[agents.claude.targets.modules.mappings]]
+            source = "api-context.md"
+            destination = "src/api"
+            filename_override = "CUSTOM.md"
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        let entries = config.all_gitignore_entries();
+
+        assert!(
+            entries.contains(&"src/api/CUSTOM.md".to_string()),
+            "Override filename should appear in gitignore, got {:?}",
+            entries
+        );
+        assert!(
+            !entries.contains(&"src/api/CLAUDE.md".to_string()),
+            "Convention filename should NOT appear when override is set"
+        );
+    }
+
+    #[test]
+    fn test_all_gitignore_entries_module_map_deduplicates_expanded_entries() {
+        let toml = r#"
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.modules]
+            source = "."
+            destination = "."
+            type = "module-map"
+
+            [[agents.claude.targets.modules.mappings]]
+            source = "api-context.md"
+            destination = "src/shared"
+
+            [agents.codex]
+            enabled = true
+
+            [agents.codex.targets.main]
+            source = "AGENTS.md"
+            destination = "src/shared/AGENTS.md"
+            type = "symlink"
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        let entries = config.all_gitignore_entries();
+
+        assert_eq!(
+            entries
+                .iter()
+                .filter(|entry| *entry == "src/shared/AGENTS.md")
+                .count(),
+            1
+        );
     }
 }

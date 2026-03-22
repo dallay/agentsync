@@ -53,7 +53,8 @@ pub struct Linker {
     source_dir: PathBuf,
     path_cache: RefCell<HashMap<PathBuf, PathBuf>>,
     compression_cache: RefCell<HashMap<PathBuf, String>>,
-    ensured_outputs: RefCell<HashSet<PathBuf>>,
+    ensured_dirs: RefCell<HashSet<PathBuf>>,
+    ensured_compressed: RefCell<HashSet<PathBuf>>,
 }
 
 impl Linker {
@@ -69,7 +70,8 @@ impl Linker {
             source_dir,
             path_cache: RefCell::new(HashMap::new()),
             compression_cache: RefCell::new(HashMap::new()),
-            ensured_outputs: RefCell::new(HashSet::new()),
+            ensured_dirs: RefCell::new(HashSet::new()),
+            ensured_compressed: RefCell::new(HashSet::new()),
         }
     }
 
@@ -109,7 +111,8 @@ impl Linker {
     pub fn sync(&self, options: &SyncOptions) -> Result<SyncResult> {
         // Clear caches at the start of every sync run to prevent stale state.
         self.compression_cache.borrow_mut().clear();
-        self.ensured_outputs.borrow_mut().clear();
+        self.ensured_dirs.borrow_mut().clear();
+        self.ensured_compressed.borrow_mut().clear();
 
         let mut result = SyncResult::default();
 
@@ -170,7 +173,7 @@ impl Linker {
                     println!("  Processing target: {}", target_name.dimmed());
                 }
 
-                match self.process_target(target_config, options) {
+                match self.process_target(agent_name, target_config, options) {
                     Ok(target_result) => {
                         result.created += target_result.created;
                         result.updated += target_result.updated;
@@ -188,7 +191,12 @@ impl Linker {
     }
 
     /// Process a single target configuration
-    fn process_target(&self, target: &TargetConfig, options: &SyncOptions) -> Result<SyncResult> {
+    fn process_target(
+        &self,
+        agent_name: &str,
+        target: &TargetConfig,
+        options: &SyncOptions,
+    ) -> Result<SyncResult> {
         let source = self.source_dir.join(&target.source);
         let dest = self.project_root.join(&target.destination);
 
@@ -215,6 +223,7 @@ impl Linker {
                     options,
                 )
             }
+            SyncType::ModuleMap => self.process_module_map(agent_name, target, options),
         }
     }
 
@@ -260,18 +269,23 @@ impl Linker {
             && is_agents_md_path(source)
     }
 
-    /// Ensure a directory exists, using the ensured_outputs cache to avoid redundant I/O.
+    /// Ensure a directory exists, using the ensured_dirs cache to avoid redundant I/O.
     /// Respects dry_run and verbose options.
     fn ensure_directory(&self, dir: &Path, options: &SyncOptions) -> Result<()> {
-        let mut ensured = self.ensured_outputs.borrow_mut();
+        let mut ensured = self.ensured_dirs.borrow_mut();
         if !ensured.contains(dir) {
-            if options.dry_run && !dir.exists() && options.verbose {
-                println!("  {} Would create directory: {}", "→".cyan(), dir.display());
-            } else if !dir.exists() {
-                fs::create_dir_all(dir)
-                    .with_context(|| format!("Failed to create directory: {}", dir.display()))?;
-                if options.verbose {
-                    println!("  {} Created directory: {}", "✔".green(), dir.display());
+            if !dir.exists() {
+                if options.dry_run {
+                    if options.verbose {
+                        println!("  {} Would create directory: {}", "→".cyan(), dir.display());
+                    }
+                } else {
+                    fs::create_dir_all(dir).with_context(|| {
+                        format!("Failed to create directory: {}", dir.display())
+                    })?;
+                    if options.verbose {
+                        println!("  {} Created directory: {}", "✔".green(), dir.display());
+                    }
                 }
             }
             ensured.insert(dir.to_path_buf());
@@ -286,7 +300,7 @@ impl Linker {
         options: &SyncOptions,
     ) -> Result<()> {
         // Optimization: skip if this output file was already ensured in this run.
-        if self.ensured_outputs.borrow().contains(dest) {
+        if self.ensured_compressed.borrow().contains(dest) {
             return Ok(());
         }
 
@@ -306,7 +320,9 @@ impl Linker {
         if let Ok(existing) = fs::read_to_string(dest)
             && existing == compressed
         {
-            self.ensured_outputs.borrow_mut().insert(dest.to_path_buf());
+            self.ensured_compressed
+                .borrow_mut()
+                .insert(dest.to_path_buf());
             return Ok(());
         }
 
@@ -317,7 +333,9 @@ impl Linker {
         fs::write(dest, &compressed)
             .with_context(|| format!("Failed to write compressed AGENTS.md: {}", dest.display()))?;
 
-        self.ensured_outputs.borrow_mut().insert(dest.to_path_buf());
+        self.ensured_compressed
+            .borrow_mut()
+            .insert(dest.to_path_buf());
         Ok(())
     }
 
@@ -666,6 +684,51 @@ impl Linker {
         Ok(result)
     }
 
+    /// Process a `module-map` target: iterate mappings and create a symlink
+    /// for each one, resolving the destination filename from:
+    /// 1. mapping.filename_override (explicit user choice)
+    /// 2. agent_convention_filename (per-agent convention)
+    /// 3. source file basename (fallback)
+    fn process_module_map(
+        &self,
+        agent_name: &str,
+        target: &TargetConfig,
+        options: &SyncOptions,
+    ) -> Result<SyncResult> {
+        let mut result = SyncResult::default();
+
+        if target.mappings.is_empty() {
+            if options.verbose {
+                println!(
+                    "  {} No mappings defined for module-map target",
+                    "!".yellow()
+                );
+            }
+            return Ok(result);
+        }
+
+        for mapping in &target.mappings {
+            let source_path = self.source_dir.join(&mapping.source);
+
+            // Resolve destination filename
+            let filename = crate::config::resolve_module_map_filename(mapping, agent_name);
+
+            let dest = self.project_root.join(&mapping.destination).join(&filename);
+
+            let resolved = ResolvedSource {
+                path: source_path.clone(),
+                exists: source_path.exists(),
+            };
+
+            let item_result = self.create_symlink(&resolved, &dest, options)?;
+            result.created += item_result.created;
+            result.updated += item_result.updated;
+            result.skipped += item_result.skipped;
+        }
+
+        Ok(result)
+    }
+
     /// Get the canonical path for a given path, using a cache to avoid
     /// redundant I/O operations.
     fn canonicalize_cached(&self, path: &Path) -> Result<PathBuf> {
@@ -720,7 +783,7 @@ impl Linker {
 
         println!("{}", "Cleaning managed symlinks...".cyan());
 
-        for agent_config in self.config.agents.values() {
+        for (agent_name, agent_config) in &self.config.agents {
             for target_config in agent_config.targets.values() {
                 match target_config.sync_type {
                     SyncType::NestedGlob => {
@@ -821,6 +884,23 @@ impl Linker {
                                 println!("  {} Removed: {}", "✔".green(), dest.display());
                             }
                             result.removed += 1;
+                        }
+                    }
+                    SyncType::ModuleMap => {
+                        for mapping in &target_config.mappings {
+                            let filename =
+                                crate::config::resolve_module_map_filename(mapping, agent_name);
+                            let dest = self.project_root.join(&mapping.destination).join(&filename);
+
+                            if dest.is_symlink() {
+                                if options.dry_run {
+                                    println!("  {} Would remove: {}", "→".cyan(), dest.display());
+                                } else {
+                                    fs::remove_file(&dest)?;
+                                    println!("  {} Removed: {}", "✔".green(), dest.display());
+                                }
+                                result.removed += 1;
+                            }
                         }
                     }
                 }
@@ -2907,5 +2987,457 @@ mod tests {
         let result = linker.sync(&SyncOptions::default()).unwrap();
         assert_eq!(result.skipped, 1);
         assert_eq!(result.created, 0);
+    }
+
+    // =========================================================================
+    // MODULE-MAP INTEGRATION TESTS
+    // =========================================================================
+
+    #[test]
+    #[cfg(unix)]
+    fn test_module_map_creates_symlinks() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        let claude_dir = agents_dir.join("claude");
+        fs::create_dir_all(&claude_dir).unwrap();
+        fs::write(claude_dir.join("api-context.md"), "# API Context").unwrap();
+        fs::write(claude_dir.join("ui-context.md"), "# UI Context").unwrap();
+
+        // Create destination directories
+        fs::create_dir_all(temp_dir.path().join("src/api")).unwrap();
+        fs::create_dir_all(temp_dir.path().join("src/ui")).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "claude"
+
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.modules]
+            source = "."
+            destination = "."
+            type = "module-map"
+
+            [[agents.claude.targets.modules.mappings]]
+            source = "api-context.md"
+            destination = "src/api"
+
+            [[agents.claude.targets.modules.mappings]]
+            source = "ui-context.md"
+            destination = "src/ui"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker.sync(&SyncOptions::default()).unwrap();
+        assert_eq!(result.created, 2);
+
+        // Convention filename for claude = CLAUDE.md
+        assert!(temp_dir.path().join("src/api/CLAUDE.md").is_symlink());
+        assert!(temp_dir.path().join("src/ui/CLAUDE.md").is_symlink());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_module_map_filename_override() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        let claude_dir = agents_dir.join("claude");
+        fs::create_dir_all(&claude_dir).unwrap();
+        fs::write(claude_dir.join("api-context.md"), "# API").unwrap();
+
+        fs::create_dir_all(temp_dir.path().join("src/api")).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "claude"
+
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.modules]
+            source = "."
+            destination = "."
+            type = "module-map"
+
+            [[agents.claude.targets.modules.mappings]]
+            source = "api-context.md"
+            destination = "src/api"
+            filename_override = "CUSTOM-RULES.md"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker.sync(&SyncOptions::default()).unwrap();
+        assert_eq!(result.created, 1);
+
+        // Override should be used instead of convention
+        assert!(temp_dir.path().join("src/api/CUSTOM-RULES.md").is_symlink());
+        assert!(!temp_dir.path().join("src/api/CLAUDE.md").exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_module_map_unknown_agent_uses_source_basename() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        let custom_dir = agents_dir.join("custom-agent");
+        fs::create_dir_all(&custom_dir).unwrap();
+        fs::write(custom_dir.join("rules.md"), "# Rules").unwrap();
+
+        fs::create_dir_all(temp_dir.path().join("src/api")).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "custom-agent"
+
+            [agents.custom-agent]
+            enabled = true
+
+            [agents.custom-agent.targets.modules]
+            source = "."
+            destination = "."
+            type = "module-map"
+
+            [[agents.custom-agent.targets.modules.mappings]]
+            source = "rules.md"
+            destination = "src/api"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker.sync(&SyncOptions::default()).unwrap();
+        assert_eq!(result.created, 1);
+
+        // Unknown agent → fallback to source basename
+        assert!(temp_dir.path().join("src/api/rules.md").is_symlink());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_module_map_nested_convention_path_creates_intermediate_directories() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        let copilot_dir = agents_dir.join("copilot");
+        fs::create_dir_all(&copilot_dir).unwrap();
+        fs::write(copilot_dir.join("api-context.md"), "# API").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "copilot"
+
+            [agents.copilot]
+            enabled = true
+
+            [agents.copilot.targets.modules]
+            source = "placeholder"
+            destination = "placeholder"
+            type = "module-map"
+
+            [[agents.copilot.targets.modules.mappings]]
+            source = "api-context.md"
+            destination = "src/api"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker.sync(&SyncOptions::default()).unwrap();
+        assert_eq!(result.created, 1);
+        assert!(
+            temp_dir
+                .path()
+                .join("src/api/.github/copilot-instructions.md")
+                .is_symlink()
+        );
+        assert!(temp_dir.path().join("src/api/.github").is_dir());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_module_map_missing_source_skipped_and_other_mappings_continue() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        let claude_dir = agents_dir.join("claude");
+        fs::create_dir_all(&claude_dir).unwrap();
+        fs::write(claude_dir.join("api-context.md"), "# API").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "claude"
+
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.modules]
+            source = "placeholder"
+            destination = "placeholder"
+            type = "module-map"
+
+            [[agents.claude.targets.modules.mappings]]
+            source = "api-context.md"
+            destination = "src/api"
+
+            [[agents.claude.targets.modules.mappings]]
+            source = "missing.md"
+            destination = "src/missing"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker.sync(&SyncOptions::default()).unwrap();
+        assert_eq!(result.created, 1);
+        assert_eq!(result.skipped, 1);
+        assert!(temp_dir.path().join("src/api/CLAUDE.md").is_symlink());
+        assert!(!temp_dir.path().join("src/missing/CLAUDE.md").exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_module_map_sync_is_idempotent_when_symlink_already_matches() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        let claude_dir = agents_dir.join("claude");
+        fs::create_dir_all(&claude_dir).unwrap();
+        fs::write(claude_dir.join("api-context.md"), "# API").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "claude"
+
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.modules]
+            source = "placeholder"
+            destination = "placeholder"
+            type = "module-map"
+
+            [[agents.claude.targets.modules.mappings]]
+            source = "api-context.md"
+            destination = "src/api"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let first = linker.sync(&SyncOptions::default()).unwrap();
+        let second = linker.sync(&SyncOptions::default()).unwrap();
+
+        assert_eq!(first.created, 1);
+        assert_eq!(second.created, 0);
+        assert_eq!(second.skipped, 1);
+        assert!(temp_dir.path().join("src/api/CLAUDE.md").is_symlink());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_module_map_clean_removes_symlinks() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        let claude_dir = agents_dir.join("claude");
+        fs::create_dir_all(&claude_dir).unwrap();
+        fs::write(claude_dir.join("api-context.md"), "# API").unwrap();
+
+        fs::create_dir_all(temp_dir.path().join("src/api")).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "claude"
+
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.modules]
+            source = "."
+            destination = "."
+            type = "module-map"
+
+            [[agents.claude.targets.modules.mappings]]
+            source = "api-context.md"
+            destination = "src/api"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        // Sync first
+        linker.sync(&SyncOptions::default()).unwrap();
+        assert!(temp_dir.path().join("src/api/CLAUDE.md").is_symlink());
+
+        // Clean should remove
+        let result = linker.clean(&SyncOptions::default()).unwrap();
+        assert_eq!(result.removed, 1);
+        assert!(!temp_dir.path().join("src/api/CLAUDE.md").exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_module_map_clean_dry_run() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        let claude_dir = agents_dir.join("claude");
+        fs::create_dir_all(&claude_dir).unwrap();
+        fs::write(claude_dir.join("api-context.md"), "# API").unwrap();
+
+        fs::create_dir_all(temp_dir.path().join("src/api")).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "claude"
+
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.modules]
+            source = "."
+            destination = "."
+            type = "module-map"
+
+            [[agents.claude.targets.modules.mappings]]
+            source = "api-context.md"
+            destination = "src/api"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        // Sync first
+        linker.sync(&SyncOptions::default()).unwrap();
+        assert!(temp_dir.path().join("src/api/CLAUDE.md").is_symlink());
+
+        // Dry-run clean should NOT remove
+        let result = linker
+            .clean(&SyncOptions {
+                dry_run: true,
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(result.removed, 1); // counted but not removed
+        assert!(temp_dir.path().join("src/api/CLAUDE.md").is_symlink());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_module_map_clean_skips_non_symlink_files() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+        fs::create_dir_all(temp_dir.path().join("src/api")).unwrap();
+        let dest = temp_dir.path().join("src/api/CLAUDE.md");
+        fs::write(&dest, "not a symlink").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.modules]
+            source = "placeholder"
+            destination = "placeholder"
+            type = "module-map"
+
+            [[agents.claude.targets.modules.mappings]]
+            source = "api-context.md"
+            destination = "src/api"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker.clean(&SyncOptions::default()).unwrap();
+        assert_eq!(result.removed, 0);
+        assert!(dest.exists());
+        assert!(!dest.is_symlink());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_module_map_sync_dry_run() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        let claude_dir = agents_dir.join("claude");
+        fs::create_dir_all(&claude_dir).unwrap();
+        fs::write(claude_dir.join("api-context.md"), "# API").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "claude"
+
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.modules]
+            source = "."
+            destination = "."
+            type = "module-map"
+
+            [[agents.claude.targets.modules.mappings]]
+            source = "api-context.md"
+            destination = "src/api"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker
+            .sync(&SyncOptions {
+                dry_run: true,
+                ..Default::default()
+            })
+            .unwrap();
+
+        // Dry run should not create symlinks on disk
+        assert!(!temp_dir.path().join("src/api/CLAUDE.md").exists());
+        assert!(!temp_dir.path().join("src/api").exists());
+        // dry_run still counts what *would* be created (consistent with create_symlink behavior)
+        assert_eq!(result.created, 1);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_module_map_empty_mappings() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.modules]
+            source = "."
+            destination = "."
+            type = "module-map"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        // Should not crash with no mappings
+        let result = linker.sync(&SyncOptions::default()).unwrap();
+        assert_eq!(result.created, 0);
+        assert_eq!(result.errors, 0);
     }
 }

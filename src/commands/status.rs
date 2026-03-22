@@ -22,6 +22,63 @@ pub struct StatusEntry {
     pub expected_source: Option<String>,
 }
 
+pub fn collect_status_entries(linker: &Linker, config_path: &Path) -> Vec<StatusEntry> {
+    let mut entries: Vec<StatusEntry> = Vec::new();
+
+    for (agent_name, agent) in &linker.config().agents {
+        if !agent.enabled {
+            continue;
+        }
+        for target in agent.targets.values() {
+            if target.sync_type == agentsync::config::SyncType::ModuleMap {
+                for mapping in &target.mappings {
+                    let filename =
+                        agentsync::config::resolve_module_map_filename(mapping, agent_name);
+                    let dest = linker
+                        .project_root()
+                        .join(&mapping.destination)
+                        .join(&filename);
+                    let source = linker
+                        .config()
+                        .source_dir(config_path)
+                        .join(&mapping.source);
+
+                    entries.push(build_status_entry(dest, Some(source)));
+                }
+                continue;
+            }
+
+            let dest = linker.project_root().join(&target.destination);
+            let source = linker.config().source_dir(config_path).join(&target.source);
+            let expected = linker.expected_source_path(&source, target);
+            entries.push(build_status_entry(dest, expected));
+        }
+    }
+
+    entries
+}
+
+fn build_status_entry(dest: PathBuf, expected_source: Option<PathBuf>) -> StatusEntry {
+    let metadata = std::fs::symlink_metadata(&dest);
+    let exists = metadata.is_ok();
+    let is_symlink = metadata
+        .as_ref()
+        .map(|m| m.file_type().is_symlink())
+        .unwrap_or(false);
+    let mut points_to = None;
+    if is_symlink && let Ok(link) = std::fs::read_link(&dest) {
+        points_to = Some(link.display().to_string());
+    }
+
+    StatusEntry {
+        destination: dest.display().to_string(),
+        exists,
+        is_symlink,
+        points_to,
+        expected_source: expected_source.map(|path| path.display().to_string()),
+    }
+}
+
 pub fn run_status(json: bool, project_root: PathBuf) -> Result<()> {
     // Find and load config
     // project_root is already resolved by the caller
@@ -30,44 +87,7 @@ pub fn run_status(json: bool, project_root: PathBuf) -> Result<()> {
     let config = agentsync::config::Config::load(&config_path)?;
     let linker = Linker::new(config, config_path.clone());
 
-    let mut entries: Vec<StatusEntry> = Vec::new();
-
-    for agent in linker.config().agents.values() {
-        if !agent.enabled {
-            continue;
-        }
-        for target in agent.targets.values() {
-            let dest = linker.project_root().join(&target.destination);
-            // Access source dir via public API on Config
-            let source = linker
-                .config()
-                .source_dir(&config_path)
-                .join(&target.source);
-
-            let metadata = std::fs::symlink_metadata(&dest);
-            let exists = metadata.is_ok();
-            let is_symlink = metadata
-                .as_ref()
-                .map(|m| m.file_type().is_symlink())
-                .unwrap_or(false);
-            let mut points_to = None;
-            if is_symlink && let Ok(link) = std::fs::read_link(&dest) {
-                points_to = Some(link.display().to_string());
-            }
-
-            let expected = linker
-                .expected_source_path(&source, target)
-                .map(|path| path.display().to_string());
-
-            entries.push(StatusEntry {
-                destination: dest.display().to_string(),
-                exists,
-                is_symlink,
-                points_to,
-                expected_source: expected,
-            });
-        }
-    }
+    let entries = collect_status_entries(&linker, &config_path);
 
     // helper to canonicalize with a sensible fallback
     // local helper inside run_status (used to canonicalize paths for comparison);
