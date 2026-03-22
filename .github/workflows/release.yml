@@ -25,15 +25,15 @@ env:
 
 jobs:
   # ==========================================================================
-  # Semantic Release - Determine version
+  # Release Please - Determine version
   # ==========================================================================
-  semantic-release:
-    name: Semantic Release
+  release-please:
+    name: Release Please
     runs-on: ubuntu-latest
     outputs:
-      new_release_published: ${{ steps.semantic.outputs.new_release_published }}
-      new_release_version: ${{ steps.semantic.outputs.new_release_version }}
-      new_release_git_tag: ${{ steps.semantic.outputs.new_release_git_tag }}
+      new_release_created: ${{ steps.release.outputs.release_created }}
+      release_version: ${{ steps.release.outputs.version }}
+      release_git_tag: ${{ steps.release.outputs.tag_name }}
     steps:
       - name: Generate GitHub App Token
         id: app-token
@@ -48,42 +48,25 @@ jobs:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+      - name: Release Please
+        id: release
+        uses: google-github-actions/release-please-action@0613c7756c1b6bfb52e5d8e8a12a8aa7b4e4e91a # v4
         with:
-          node-version: "24.13"
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4
-        with:
-          version: 10
-
-      - name: Install ripgrep (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ripgrep
-
-      - name: Semantic Release
-        uses: cycjimmy/semantic-release-action@17c68674d8eefe34b5d2e0db12684eaed1deb93a
-        id: semantic
-        with:
-          extra_plugins: |
-            @semantic-release/changelog
-            @semantic-release/git
-            @semantic-release/exec
-            conventional-changelog-conventionalcommits
-          dry_run: ${{ inputs.dry_run || false }}
-        env:
-          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: release-please-config.json
+          default-branch: main
+          dry-run: ${{ inputs.dry_run || false }}
+          fork: false
+          skip-labeling: false
+          skip-publish: true
 
   # ==========================================================================
   # Build Release Binaries - Cross-platform
   # ==========================================================================
   build-binaries:
     name: Build (${{ matrix.target }})
-    needs: semantic-release
-    if: needs.semantic-release.outputs.new_release_published == 'true'
+    needs: release-please
+    if: needs.release-please.outputs.new_release_created == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -123,7 +106,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          ref: ${{ needs.semantic-release.outputs.new_release_git_tag }}
+          ref: ${{ needs.release-please.outputs.release_git_tag }}
 
       - name: Install and configure gcc-12 (Linux)
         if: runner.os == 'Linux'
@@ -173,7 +156,7 @@ jobs:
         run: |
           cd target/${{ matrix.target }}/release
           BINARY_NAME="agentsync"
-          ARCHIVE_NAME="agentsync-${{ needs.semantic-release.outputs.new_release_version }}-${{ matrix.target }}"
+          ARCHIVE_NAME="agentsync-${{ needs.release-please.outputs.release_version }}-${{ matrix.target }}"
           
           # Create archive directory
           mkdir -p "$ARCHIVE_NAME"
@@ -189,7 +172,7 @@ jobs:
           
           # Move to workspace root for upload
           mv "$ARCHIVE_NAME.tar.gz" ../../../
-          mv "$ARCHIVE_NAME.tar.gz.sha256" ../../../
+          mv "$ARCHIVE_NAME.tar.gz.sha256" ../../../../
 
       - name: Prepare artifact (Windows)
         if: runner.os == 'Windows'
@@ -197,7 +180,7 @@ jobs:
         run: |
           cd target/${{ matrix.target }}/release
           $BINARY_NAME = "agentsync.exe"
-          $ARCHIVE_NAME = "agentsync-${{ needs.semantic-release.outputs.new_release_version }}-${{ matrix.target }}"
+          $ARCHIVE_NAME = "agentsync-${{ needs.release-please.outputs.release_version }}-${{ matrix.target }}"
           
           # Create archive directory
           New-Item -ItemType Directory -Force -Path $ARCHIVE_NAME
@@ -213,7 +196,7 @@ jobs:
           
           # Move to workspace root
           Move-Item "$ARCHIVE_NAME.zip" ../../../
-          Move-Item "$ARCHIVE_NAME.zip.sha256" ../../../
+          Move-Item "$ARCHIVE_NAME.zip.sha256" ../../../../
 
       - name: Upload artifact
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
@@ -229,7 +212,7 @@ jobs:
   # ==========================================================================
   upload-assets:
     name: Upload Release Assets
-    needs: [semantic-release, build-binaries]
+    needs: [release-please, build-binaries]
     runs-on: ubuntu-latest
     steps:
       - name: Generate GitHub App Token
@@ -252,7 +235,7 @@ jobs:
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
         with:
-          tag_name: ${{ needs.semantic-release.outputs.new_release_git_tag }}
+          tag_name: ${{ needs.release-please.outputs.release_git_tag }}
           files: artifacts/*
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -262,8 +245,8 @@ jobs:
   # ==========================================================================
   publish-npm-binaries:
     name: Publish NPM (${{ matrix.config.name }})
-    needs: [semantic-release, build-binaries]
-    if: needs.semantic-release.outputs.new_release_published == 'true'
+    needs: [release-please, build-binaries]
+    if: needs.release-please.outputs.new_release_created == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -297,7 +280,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          ref: ${{ needs.semantic-release.outputs.new_release_git_tag }}
+          ref: ${{ needs.release-please.outputs.release_git_tag }}
 
       - name: Install and configure gcc-12 (Linux)
         if: runner.os == 'Linux'
@@ -331,8 +314,8 @@ jobs:
         run: |
           cd npm
           
-          # Set version from semantic release
-          export node_version="${{ needs.semantic-release.outputs.new_release_version }}"
+          # Set version from release-please
+          export node_version="${{ needs.release-please.outputs.release_version }}"
           export node_os="${{ matrix.config.os }}"
           export node_arch="${{ matrix.config.arch }}"
           export node_pkg="agentsync-${{ matrix.config.name }}"
@@ -454,14 +437,14 @@ jobs:
   # ==========================================================================
   publish-npm-base:
     name: Publish NPM Base Package
-    needs: [semantic-release, publish-npm-binaries]
+    needs: [release-please, publish-npm-binaries]
     if: needs.publish-npm-binaries.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          ref: ${{ needs.semantic-release.outputs.new_release_git_tag }}
+          ref: ${{ needs.release-please.outputs.release_git_tag }}
 
       - name: Install and configure gcc-12 (Linux)
         if: runner.os == 'Linux'
@@ -488,7 +471,7 @@ jobs:
         run: |
           cd npm/agentsync
           # Update version in package.json
-          VERSION="${{ needs.semantic-release.outputs.new_release_version }}"
+          VERSION="${{ needs.release-please.outputs.release_version }}"
           
           # Update main package version and all optionalDependencies versions
           node -e "
@@ -522,13 +505,13 @@ jobs:
   # ==========================================================================
   publish-crates:
     name: Publish to crates.io
-    needs: [semantic-release, build-binaries]
+    needs: [release-please, build-binaries]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          ref: ${{ needs.semantic-release.outputs.new_release_git_tag }}
+          ref: ${{ needs.release-please.outputs.release_git_tag }}
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9
@@ -545,7 +528,7 @@ jobs:
   # ==========================================================================
   publish-docker:
     name: Publish Docker Image
-    needs: [semantic-release, build-binaries]
+    needs: [release-please, build-binaries]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -554,7 +537,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          ref: ${{ needs.semantic-release.outputs.new_release_git_tag }}
+          ref: ${{ needs.release-please.outputs.release_git_tag }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
@@ -583,9 +566,9 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/agentsync
             ghcr.io/${{ github.repository }}
           tags: |
-            type=semver,pattern={{version}},value=${{ needs.semantic-release.outputs.new_release_version }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ needs.semantic-release.outputs.new_release_version }}
-            type=semver,pattern={{major}},value=${{ needs.semantic-release.outputs.new_release_version }}
+            type=semver,pattern={{version}},value=${{ needs.release-please.outputs.release_version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.release-please.outputs.release_version }}
+            type=semver,pattern={{major}},value=${{ needs.release-please.outputs.release_version }}
             type=raw,value=latest
 
       - name: Build and push Docker image
@@ -604,22 +587,22 @@ jobs:
   # ==========================================================================
   release-summary:
     name: Release Summary
-    needs: [semantic-release, build-binaries, upload-assets, publish-crates, publish-docker, publish-npm-base]
+    needs: [release-please, build-binaries, upload-assets, publish-crates, publish-docker, publish-npm-base]
     runs-on: ubuntu-latest
-    if: always() && needs.semantic-release.outputs.new_release_published == 'true'
+    if: always() && needs.release-please.outputs.new_release_created == 'true'
     steps:
       - name: Generate Summary
         run: |
           {
             echo "# 🎉 AgentSync Release Summary"
             echo ""
-            echo "## Version: ${{ needs.semantic-release.outputs.new_release_version }}"
+            echo "## Version: ${{ needs.release-please.outputs.release_version }}"
             echo ""
             echo "### Build Status"
             echo ""
             echo "| Component | Status |"
             echo "|-----------|--------|"
-            echo "| Semantic Release | ✅ ${{ needs.semantic-release.result }} |"
+            echo "| Release Please | ✅ ${{ needs.release-please.result }} |"
             echo "| Build Binaries | ${{ needs.build-binaries.result == 'success' && '✅' || '❌' }} ${{ needs.build-binaries.result }} |"
             echo "| Upload Assets | ${{ needs.upload-assets.result == 'success' && '✅' || '❌' }} ${{ needs.upload-assets.result }} |"
             echo "| Publish to crates.io | ${{ needs.publish-crates.result == 'success' && '✅' || '❌' }} ${{ needs.publish-crates.result }} |"
@@ -630,24 +613,24 @@ jobs:
             echo ""
             echo '```bash'
             echo "# NPM / npx (easiest!)"
-            echo "npx agentsync@${{ needs.semantic-release.outputs.new_release_version }} --help"
+            echo "npx agentsync@${{ needs.release-please.outputs.release_version }} --help"
             echo ""
             echo "# Or install globally"
-            echo "npm install -g agentsync@${{ needs.semantic-release.outputs.new_release_version }}"
+            echo "npm install -g agentsync@${{ needs.release-please.outputs.release_version }}"
             echo ""
             echo "# Cargo"
             echo "cargo install agentsync"
             echo ""
             echo "# macOS (Apple Silicon)"
-            echo "curl -LO https://github.com/dallay/agentsync/releases/download/${{ needs.semantic-release.outputs.new_release_git_tag }}/agentsync-${{ needs.semantic-release.outputs.new_release_version }}-aarch64-apple-darwin.tar.gz"
+            echo "curl -LO https://github.com/dallay/agentsync/releases/download/${{ needs.release-please.outputs.release_git_tag }}/agentsync-${{ needs.release-please.outputs.release_version }}-aarch64-apple-darwin.tar.gz"
             echo ""
             echo "# Linux (x86_64)"
-            echo "curl -LO https://github.com/dallay/agentsync/releases/download/${{ needs.semantic-release.outputs.new_release_git_tag }}/agentsync-${{ needs.semantic-release.outputs.new_release_version }}-x86_64-unknown-linux-gnu.tar.gz"
+            echo "curl -LO https://github.com/dallay/agentsync/releases/download/${{ needs.release-please.outputs.release_git_tag }}/agentsync-${{ needs.release-please.outputs.release_version }}-x86_64-unknown-linux-gnu.tar.gz"
             echo ""
             echo "# Docker Hub"
-            echo "docker pull yacosta738/agentsync:${{ needs.semantic-release.outputs.new_release_version }}"
+            echo "docker pull yacosta738/agentsync:${{ needs.release-please.outputs.release_version }}"
             echo ""
             echo "# GitHub Container Registry"
-            echo "docker pull ghcr.io/${{ github.repository }}:${{ needs.semantic-release.outputs.new_release_version }}"
+            echo "docker pull ghcr.io/${{ github.repository }}:${{ needs.release-please.outputs.release_version }}"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
