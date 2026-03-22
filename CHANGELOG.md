@@ -8,6 +8,14 @@
 
 * update README.md for accuracy and formatting ([#159](https://github.com/dallay/agentsync/issues/159)) ([8cb9f19](https://github.com/dallay/agentsync/commit/8cb9f19b2302456f0e4536f7a37ad9af5645e605))
 
+## [1.33.1](https://github.com/dallay/agentsync/compare/v1.33.0...v1.33.1) (2026-03-22)
+
+
+### Chores
+
+* **deps:** lock file maintenance ([#223](https://github.com/dallay/agentsync/issues/223)) ([75f82ed](https://github.com/dallay/agentsync/commit/75f82ed56ecde06e389974949f90df4fda4bde62))
+* **deps:** update github actions ([#244](https://github.com/dallay/agentsync/issues/244)) ([d266a22](https://github.com/dallay/agentsync/commit/d266a22ad0687f250ff83b7f3fd8db4b4abb65b8))
+
 ## [1.33.0](https://github.com/dallay/agentsync/compare/v1.32.0...v1.33.0) (2026-03-22)
 
 
