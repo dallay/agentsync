@@ -21,7 +21,7 @@ help:
 	@echo "  make verify-all      -> run all tests and linters"
 	@echo "  make install         -> install dependencies (pnpm + cargo build deps)"
 	@echo "  make js-install      -> pnpm install (workspace root)"
-	@echo "  make js-test         -> run JS tests (pnpm test)"
+	@echo "  make js-test         -> run JS type checks (pnpm run typecheck)"
 	@echo "  make js-build        -> build JS packages (if 'build' script exists)"
 	@echo "  make js-release      -> release JS (pnpm run release)"
 	@echo "  make rust-build      -> cargo build"
