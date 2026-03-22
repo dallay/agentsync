@@ -8,6 +8,36 @@
 
 * update README.md for accuracy and formatting ([#159](https://github.com/dallay/agentsync/issues/159)) ([8cb9f19](https://github.com/dallay/agentsync/commit/8cb9f19b2302456f0e4536f7a37ad9af5645e605))
 
+## [1.32.0](https://github.com/dallay/agentsync/compare/v1.31.0...v1.32.0) (2026-03-22)
+
+
+### Features
+
+* nested agent context ([#242](https://github.com/dallay/agentsync/issues/242)) ([79bc0fa](https://github.com/dallay/agentsync/commit/79bc0fa5660e09dc799c0b86400b82aeb64bfe53))
+
+
+### Bug Fixes
+
+* **ci:** skip contributor-report for bot-authored PRs ([414b465](https://github.com/dallay/agentsync/commit/414b46555a276c2c443363dd09609d31740762e8))
+* update release-please-action to googleapis/release-please-action@v4.4.0 ([b30474d](https://github.com/dallay/agentsync/commit/b30474d4fe30059908ff046b0ee37380211a1d35))
+
+
+### Performance
+
+* skip redundant I/O in write_compressed_agents_md ([#240](https://github.com/dallay/agentsync/issues/240)) ([9fcd4ae](https://github.com/dallay/agentsync/commit/9fcd4ae3fce2e75ff1bdeea30bb9911dedd88782))
+
+
+### Continuous Integration
+
+* Configure SonarCloud project and organization keys ([4cf4971](https://github.com/dallay/agentsync/commit/4cf4971350f54ccef8bcddb753c1427d19363b9a))
+
+
+### Chores
+
+* **deps:** update actions/create-github-app-token digest to fee1f7d ([#245](https://github.com/dallay/agentsync/issues/245)) ([bc37660](https://github.com/dallay/agentsync/commit/bc376601ed118e3e5c36758456f22c5262d2a81e))
+* **deps:** update actions/setup-node digest to 53b8394 ([#220](https://github.com/dallay/agentsync/issues/220)) ([788147a](https://github.com/dallay/agentsync/commit/788147a615676770cc333d6f2cc7d1c14b93b23b))
+* **deps:** update devdependencies ([#238](https://github.com/dallay/agentsync/issues/238)) ([1154a97](https://github.com/dallay/agentsync/commit/1154a97f022370a8f760716f1a23e670d9ef6d0b))
+
 ## [1.31.0](https://github.com/dallay/agentsync/compare/v1.30.0...v1.31.0) (2026-03-22)
 
 
