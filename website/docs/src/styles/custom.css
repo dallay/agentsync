@@ -114,6 +114,15 @@
 	--sl-color-text-invert: #ffffff;
 }
 
+/* --- Links - Base styles first (lowest specificity) --- */
+a {
+	transition: color var(--as-transition-fast);
+}
+
+a:hover {
+	color: var(--as-primary);
+}
+
 /* Fix link contrast in light mode */
 [data-theme="light"] a:hover {
 	color: var(--as-secondary);
@@ -231,8 +240,10 @@ body {
 	background: var(--as-bg-elevated);
 }
 
-.sidebar-content a[aria-current="page"]:hover {
-	color: var(--sl-color-text-invert) !important;
+/* Higher specificity to override Starlight without !important */
+.sidebar-content a[aria-current="page"]:hover,
+.sidebar-content a[aria-current="page"]:focus {
+	color: var(--sl-color-text-invert);
 }
 
 /* Code blocks */
@@ -271,15 +282,6 @@ pre code {
 /* Force readable text color in inline code for light mode */
 [data-theme="light"] code {
 	color: #334155;
-}
-
-/* Links */
-a {
-	transition: color var(--as-transition-fast);
-}
-
-a:hover {
-	color: var(--as-primary);
 }
 
 /* --- Animation Utilities --- */

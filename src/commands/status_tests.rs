@@ -1,8 +1,10 @@
 #[cfg(test)]
 mod tests {
-    use crate::commands::status::StatusEntry;
-    use crate::commands::status::entry_is_problematic;
+    use crate::commands::status::{StatusEntry, collect_status_entries, entry_is_problematic};
+    use agentsync::{Linker, config::Config, linker::SyncOptions};
+    use std::fs;
     use std::path::PathBuf;
+    use tempfile::TempDir;
 
     // simple canonicalize that just joins relative paths to base and returns Some
     fn normalize_path(p: PathBuf) -> PathBuf {
@@ -35,6 +37,16 @@ mod tests {
             std::env::current_dir().unwrap().join(p)
         };
         Some(normalize_path(joined))
+    }
+
+    fn load_linker(temp_dir: &TempDir, config_content: &str) -> (Linker, PathBuf) {
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+        let config_path = agents_dir.join("agentsync.toml");
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        (Linker::new(config, config_path.clone()), config_path)
     }
 
     #[test]
@@ -85,5 +97,102 @@ mod tests {
             expected_source: Some("/expected/place".into()),
         };
         assert!(entry_is_problematic(&e, fake_canonicalize));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_collect_status_entries_expands_module_map_entries() {
+        let temp_dir = TempDir::new().unwrap();
+        let claude_dir = temp_dir.path().join(".agents/claude");
+        fs::create_dir_all(&claude_dir).unwrap();
+        fs::write(claude_dir.join("api.md"), "# API").unwrap();
+        fs::write(claude_dir.join("ui.md"), "# UI").unwrap();
+
+        let config = r#"
+            source_dir = "claude"
+
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.modules]
+            source = "placeholder"
+            destination = "placeholder"
+            type = "module-map"
+
+            [[agents.claude.targets.modules.mappings]]
+            source = "api.md"
+            destination = "src/api"
+
+            [[agents.claude.targets.modules.mappings]]
+            source = "ui.md"
+            destination = "src/ui"
+
+            [[agents.claude.targets.modules.mappings]]
+            source = "missing.md"
+            destination = "src/missing"
+        "#;
+
+        let (linker, config_path) = load_linker(&temp_dir, config);
+        linker.sync(&SyncOptions::default()).unwrap();
+
+        let entries = collect_status_entries(&linker, &config_path);
+        assert_eq!(entries.len(), 3);
+        assert!(entries.iter().any(|entry| {
+            entry.destination.ends_with("src/api/CLAUDE.md") && entry.exists && entry.is_symlink
+        }));
+        assert!(entries.iter().any(|entry| {
+            entry.destination.ends_with("src/ui/CLAUDE.md") && entry.exists && entry.is_symlink
+        }));
+        assert!(entries.iter().any(|entry| {
+            entry.destination.ends_with("src/missing/CLAUDE.md") && !entry.exists
+        }));
+
+        let json = serde_json::to_value(&entries).unwrap();
+        assert_eq!(json.as_array().unwrap().len(), 3);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_collect_status_entries_reports_stale_module_map_symlink() {
+        let temp_dir = TempDir::new().unwrap();
+        let claude_dir = temp_dir.path().join(".agents/claude");
+        fs::create_dir_all(&claude_dir).unwrap();
+        fs::write(claude_dir.join("expected.md"), "# Expected").unwrap();
+        fs::write(claude_dir.join("other.md"), "# Other").unwrap();
+        fs::create_dir_all(temp_dir.path().join("src/api")).unwrap();
+
+        let config = r#"
+            source_dir = "claude"
+
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.modules]
+            source = "placeholder"
+            destination = "placeholder"
+            type = "module-map"
+
+            [[agents.claude.targets.modules.mappings]]
+            source = "expected.md"
+            destination = "src/api"
+        "#;
+
+        let (linker, config_path) = load_linker(&temp_dir, config);
+        let dest = temp_dir.path().join("src/api/CLAUDE.md");
+        std::os::unix::fs::symlink("../../.agents/claude/other.md", &dest).unwrap();
+
+        let entries = collect_status_entries(&linker, &config_path);
+        assert_eq!(entries.len(), 1);
+        let entry = &entries[0];
+        assert!(entry.is_symlink);
+        assert!(entry.points_to.as_deref().unwrap().contains("other.md"));
+        assert!(
+            entry
+                .expected_source
+                .as_deref()
+                .unwrap()
+                .ends_with("expected.md")
+        );
+        assert!(entry_is_problematic(entry, fake_canonicalize));
     }
 }

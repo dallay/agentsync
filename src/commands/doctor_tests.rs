@@ -1,9 +1,30 @@
 #[cfg(test)]
 mod tests {
     use crate::commands::doctor::{
-        Conflict, extract_managed_entries, normalize_path, validate_destinations,
+        Conflict, collect_missing_sources, expand_target_destinations, extract_managed_entries,
+        normalize_path, target_configuration_warnings, validate_destinations,
     };
-    use std::path::PathBuf;
+    use agentsync::config::{Config, SyncType};
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use tempfile::TempDir;
+
+    fn module_map_config(toml_suffix: &str) -> Config {
+        let toml = format!(
+            r#"
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.modules]
+            source = "placeholder"
+            destination = "placeholder"
+            type = "module-map"
+            {toml_suffix}
+            "#
+        );
+
+        toml::from_str(&toml).unwrap()
+    }
 
     #[test]
     fn test_extract_managed_entries() {
@@ -195,5 +216,147 @@ entry1
         // ParentDir handling
         assert_eq!(normalize_path("a/../b"), expected(&["b"]));
         assert_eq!(normalize_path("../a"), expected(&["..", "a"]));
+    }
+
+    #[test]
+    fn test_collect_missing_sources_ignores_module_map_placeholder_target_source() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(temp_dir.path().join("api-context.md"), "# API").unwrap();
+
+        let config = module_map_config(
+            r#"
+            [[agents.claude.targets.modules.mappings]]
+            source = "api-context.md"
+            destination = "src/api"
+            "#,
+        );
+        let target = &config.agents["claude"].targets["modules"];
+
+        let issues = collect_missing_sources(
+            temp_dir.path(),
+            temp_dir.path(),
+            "claude",
+            "modules",
+            target,
+        );
+        assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn test_collect_missing_sources_reports_missing_module_map_mapping_source() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = module_map_config(
+            r#"
+            [[agents.claude.targets.modules.mappings]]
+            source = "missing.md"
+            destination = "src/api"
+            "#,
+        );
+        let target = &config.agents["claude"].targets["modules"];
+
+        let issues = collect_missing_sources(
+            temp_dir.path(),
+            temp_dir.path(),
+            "claude",
+            "modules",
+            target,
+        );
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].mapping.as_deref(), Some("missing.md"));
+        assert!(issues[0].path.ends_with("missing.md"));
+    }
+
+    #[test]
+    fn test_expand_target_destinations_expands_module_map_destinations() {
+        let config = module_map_config(
+            r#"
+            [[agents.claude.targets.modules.mappings]]
+            source = "api.md"
+            destination = "src/api"
+
+            [[agents.claude.targets.modules.mappings]]
+            source = "ui.md"
+            destination = "src/ui"
+            "#,
+        );
+        let target = &config.agents["claude"].targets["modules"];
+
+        let destinations = expand_target_destinations("claude", "modules", target);
+        assert_eq!(destinations.len(), 2);
+        // Use ends_with for cross-platform path comparison (Windows uses \ separator)
+        assert!(destinations.iter().any(|(dest, agent, target)| {
+            Path::new(dest).ends_with("src/api/CLAUDE.md")
+                && *agent == "claude"
+                && *target == "modules"
+        }));
+        assert!(
+            destinations
+                .iter()
+                .any(|(dest, _, _)| { Path::new(dest).ends_with("src/ui/CLAUDE.md") })
+        );
+    }
+
+    #[test]
+    fn test_validate_destinations_detects_duplicate_between_module_map_and_regular_target() {
+        let module_map = module_map_config(
+            r#"
+            [[agents.claude.targets.modules.mappings]]
+            source = "api.md"
+            destination = "src/api"
+            "#,
+        );
+        let module_target = &module_map.agents["claude"].targets["modules"];
+
+        let regular_toml = r#"
+            [agents.codex]
+            enabled = true
+
+            [agents.codex.targets.main]
+            source = "AGENTS.md"
+            destination = "src/api/CLAUDE.md"
+            type = "symlink"
+        "#;
+        let regular: Config = toml::from_str(regular_toml).unwrap();
+        let regular_target = &regular.agents["codex"].targets["main"];
+
+        let mut destinations = expand_target_destinations("claude", "modules", module_target);
+        destinations.extend(expand_target_destinations("codex", "main", regular_target));
+
+        let conflicts = validate_destinations(&destinations);
+        // Use Path for cross-platform comparison (Windows uses \ separator)
+        assert!(conflicts.iter().any(|conflict| {
+            matches!(conflict, Conflict::Duplicate(dest) if Path::new(dest).ends_with("src/api/CLAUDE.md"))
+        }));
+    }
+
+    #[test]
+    fn test_target_configuration_warnings_for_module_map_edge_cases() {
+        let empty_module_map = module_map_config("");
+        let empty_target = &empty_module_map.agents["claude"].targets["modules"];
+        assert_eq!(
+            target_configuration_warnings(empty_target),
+            vec!["module-map target has no mappings configured"]
+        );
+
+        let wrong_type_toml = r#"
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.main]
+            source = "source.md"
+            destination = "dest.md"
+            type = "symlink"
+
+            [[agents.claude.targets.main.mappings]]
+            source = "api.md"
+            destination = "src/api"
+        "#;
+        let wrong_type: Config = toml::from_str(wrong_type_toml).unwrap();
+        let wrong_type_target = &wrong_type.agents["claude"].targets["main"];
+        assert_eq!(wrong_type_target.sync_type, SyncType::Symlink);
+        assert_eq!(
+            target_configuration_warnings(wrong_type_target),
+            vec!["mappings is only used by module-map targets"]
+        );
     }
 }

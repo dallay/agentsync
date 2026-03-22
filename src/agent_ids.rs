@@ -25,7 +25,7 @@ pub fn canonical_mcp_agent_id(id: &str) -> Option<&'static str> {
 /// This covers all agents that are supported via configurable symlink targets
 /// but do not have native MCP generation. Returns a canonical string for use
 /// in `known_ignore_patterns`.
-fn canonical_configurable_agent_id(id: &str) -> Option<&'static str> {
+pub fn canonical_configurable_agent_id(id: &str) -> Option<&'static str> {
     match id.to_lowercase().as_str() {
         // Rules-only agents with a unique rules file location
         "windsurf" => Some("windsurf"),
@@ -55,6 +55,33 @@ fn canonical_configurable_agent_id(id: &str) -> Option<&'static str> {
         }
         "pi" | "pi-coding" | "pi_coding" | "pi-coding-agent" | "pi_coding_agent" => Some("pi"),
         "jules" => Some("jules"),
+        _ => None,
+    }
+}
+
+/// Return the convention instruction filename for a known agent.
+///
+/// Uses canonical ID resolution so aliases (e.g., "claude-code", "codex-cli")
+/// map to the same filename as their canonical form.
+///
+/// Returns `None` for unknown agents — callers should fall back to the
+/// source file's basename.
+pub fn agent_convention_filename(agent_name: &str) -> Option<&'static str> {
+    let canonical = canonical_mcp_agent_id(agent_name)
+        .or_else(|| canonical_configurable_agent_id(agent_name))
+        .unwrap_or(agent_name);
+
+    match canonical {
+        "claude" => Some("CLAUDE.md"),
+        "copilot" => Some(".github/copilot-instructions.md"),
+        "codex" => Some("AGENTS.md"),
+        "gemini" => Some("GEMINI.md"),
+        "cursor" => Some(".cursor/rules/agentsync.mdc"),
+        "windsurf" => Some(".windsurfrules"),
+        "opencode" => Some("OPENCODE.md"),
+        "crush" => Some("CRUSH.md"),
+        "warp" => Some("WARP.md"),
+        "amp" => Some("AMPCODE.md"),
         _ => None,
     }
 }
@@ -437,5 +464,61 @@ mod tests {
     fn test_known_ignore_patterns_unknown_returns_empty() {
         let patterns = known_ignore_patterns("nonexistent-agent-xyz");
         assert!(patterns.is_empty());
+    }
+
+    // -------------------------------------------------------------------------
+    // agent_convention_filename
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_agent_convention_filename_known_agents() {
+        assert_eq!(agent_convention_filename("claude"), Some("CLAUDE.md"));
+        assert_eq!(
+            agent_convention_filename("copilot"),
+            Some(".github/copilot-instructions.md")
+        );
+        assert_eq!(agent_convention_filename("codex"), Some("AGENTS.md"));
+        assert_eq!(agent_convention_filename("gemini"), Some("GEMINI.md"));
+        assert_eq!(
+            agent_convention_filename("cursor"),
+            Some(".cursor/rules/agentsync.mdc")
+        );
+        assert_eq!(
+            agent_convention_filename("windsurf"),
+            Some(".windsurfrules")
+        );
+        assert_eq!(agent_convention_filename("opencode"), Some("OPENCODE.md"));
+        assert_eq!(agent_convention_filename("crush"), Some("CRUSH.md"));
+        assert_eq!(agent_convention_filename("warp"), Some("WARP.md"));
+        assert_eq!(agent_convention_filename("amp"), Some("AMPCODE.md"));
+    }
+
+    #[test]
+    fn test_agent_convention_filename_aliases() {
+        // MCP aliases
+        assert_eq!(agent_convention_filename("claude-code"), Some("CLAUDE.md"));
+        assert_eq!(agent_convention_filename("claude_code"), Some("CLAUDE.md"));
+        assert_eq!(
+            agent_convention_filename("github-copilot"),
+            Some(".github/copilot-instructions.md")
+        );
+        assert_eq!(agent_convention_filename("codex-cli"), Some("AGENTS.md"));
+        assert_eq!(agent_convention_filename("gemini-cli"), Some("GEMINI.md"));
+        assert_eq!(agent_convention_filename("open-code"), Some("OPENCODE.md"));
+    }
+
+    #[test]
+    fn test_agent_convention_filename_unknown() {
+        assert_eq!(agent_convention_filename("unknown-xyz"), None);
+        assert_eq!(agent_convention_filename("my-custom-agent"), None);
+    }
+
+    #[test]
+    fn test_agent_convention_filename_case_insensitive() {
+        assert_eq!(agent_convention_filename("Claude"), Some("CLAUDE.md"));
+        assert_eq!(
+            agent_convention_filename("GitHub-Copilot"),
+            Some(".github/copilot-instructions.md")
+        );
     }
 }
