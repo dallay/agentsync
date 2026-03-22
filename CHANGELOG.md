@@ -8,6 +8,23 @@
 
 * update README.md for accuracy and formatting ([#159](https://github.com/dallay/agentsync/issues/159)) ([8cb9f19](https://github.com/dallay/agentsync/commit/8cb9f19b2302456f0e4536f7a37ad9af5645e605))
 
+## [1.33.0](https://github.com/dallay/agentsync/compare/v1.32.0...v1.33.0) (2026-03-22)
+
+
+### Features
+
+* add background version check with local cache ([d6b66e6](https://github.com/dallay/agentsync/commit/d6b66e635a142abb98fc7c32aaac13df5ee88463)), closes [#242](https://github.com/dallay/agentsync/issues/242)
+
+
+### Bug Fixes
+
+* **deps:** update major upgrades ([#243](https://github.com/dallay/agentsync/issues/243)) ([abfaca4](https://github.com/dallay/agentsync/commit/abfaca44cac466759120253983e6f270636bc153))
+
+
+### Chores
+
+* update Cargo.lock after adding is-terminal dependency ([0ef6738](https://github.com/dallay/agentsync/commit/0ef6738828bea189d8a2fc297b45008d414178c4))
+
 ## [1.32.0](https://github.com/dallay/agentsync/compare/v1.31.0...v1.32.0) (2026-03-22)
 
 
