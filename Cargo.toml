@@ -61,6 +61,9 @@ lazy_static = "1.4"
 # Semantic versioning for skill update resolution
 semver = "1.0"
 
+# Terminal detection for update check
+is-terminal = "0.4"
+
 # Temp directories for skill archive extraction
 tempfile = "3.15"
 urlencoding = "2.1"

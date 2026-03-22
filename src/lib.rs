@@ -11,6 +11,7 @@ pub mod init;
 pub mod linker;
 pub mod mcp;
 pub mod skills;
+pub mod update_check;
 
 pub use config::Config;
 pub use linker::{Linker, SyncOptions, SyncResult};

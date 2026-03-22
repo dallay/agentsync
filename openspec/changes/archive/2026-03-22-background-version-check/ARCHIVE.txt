@@ -1,0 +1,47 @@
+# Archive Manifest: background-version-check
+
+**Date Archived:** 2026-03-22
+**Archived By:** opencode (SDD ARCHIVE sub-agent)
+
+---
+
+## Verdict from Verify
+
+**PASS**
+
+All 12 acceptance criteria satisfied. 333 tests pass (290 lib + 34 binary + 9 integration), 0 failures. cargo clippy and fmt clean. Minor naming discrepancies had no behavioral impact.
+
+---
+
+## Summary of Implementation
+
+Implemented a non-blocking background version check that:
+
+1. Spawns a detached daemon thread (`"agentsync-update-check"`) before CLI parsing in `src/main.rs:119`
+2. Queries `https://crates.io/api/v1/crates/agentsync` with a 3s timeout via `reqwest::blocking::Client`
+3. Caches results at `~/.cache/agentsync/update-check.json` with 24h TTL
+4. Respects `AGENTSYNC_NO_UPDATE_CHECK=1` and `CI=true` env var opt-outs
+5. Only prints to stderr when connected to a TTY
+6. Compares versions via `semver::Version`, ignoring pre-releases
+7. Prints a one-time hint per new version (tracked via `notified_for_version`)
+8. All errors silently dropped — zero impact on CLI execution
+
+### Files Added
+- `src/update_check.rs` — module with `Cache`, `CheckedVersion`, and `spawn()` function
+
+### Files Modified
+- `Cargo.toml` — added `is-terminal = "0.4"` dependency
+- `src/lib.rs` — added `pub(crate) mod update_check;`
+- `src/main.rs` — added `agentsync::update_check::spawn()` call
+
+### Tests
+- Unit tests for cache load/save, version comparison, pre-release skipping
+- All 333 tests pass
+
+---
+
+## Delta Spec Location
+`openspec/changes/archive/2026-03-22-background-version-check/specs/version-check/spec.md`
+
+## Main Spec Location
+`openspec/specs/version-check/spec.md`
