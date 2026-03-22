@@ -38,12 +38,13 @@ pub fn collect_status_entries(linker: &Linker, config_path: &Path) -> Vec<Status
                         .project_root()
                         .join(&mapping.destination)
                         .join(&filename);
-                    let source = linker
+                    let source_path = linker
                         .config()
                         .source_dir(config_path)
                         .join(&mapping.source);
+                    let expected = linker.expected_source_path(&source_path, target);
 
-                    entries.push(build_status_entry(dest, Some(source)));
+                    entries.push(build_status_entry(dest, expected));
                 }
                 continue;
             }

@@ -84,7 +84,13 @@ pub fn run_doctor(project_root: PathBuf) -> Result<()> {
                 issues += 1;
             }
 
-            for missing in collect_missing_sources(&source_dir, agent_name, target_name, target) {
+            for missing in collect_missing_sources(
+                &source_dir,
+                linker.project_root(),
+                agent_name,
+                target_name,
+                target,
+            ) {
                 if let Some(mapping) = &missing.mapping {
                     println!(
                         "  {} Missing mapping source for agent {} (target {}, mapping {}): {}",
@@ -395,6 +401,7 @@ pub fn target_configuration_warnings(target: &TargetConfig) -> Vec<&'static str>
 
 pub fn collect_missing_sources(
     source_dir: &Path,
+    project_root: &Path,
     agent_name: &str,
     target_name: &str,
     target: &TargetConfig,
@@ -413,6 +420,20 @@ pub fn collect_missing_sources(
                 })
             })
             .collect(),
+        SyncType::NestedGlob => {
+            // For NestedGlob, source is relative to project_root, not source_dir
+            let search_root = project_root.join(&target.source);
+            if search_root.exists() {
+                Vec::new()
+            } else {
+                vec![MissingSourceIssue {
+                    agent: agent_name.to_string(),
+                    target: target_name.to_string(),
+                    mapping: None,
+                    path: search_root,
+                }]
+            }
+        }
         _ => {
             let path = source_dir.join(&target.source);
             if path.exists() {

@@ -113,6 +113,7 @@ impl Linker {
         self.compression_cache.borrow_mut().clear();
         self.ensured_dirs.borrow_mut().clear();
         self.ensured_compressed.borrow_mut().clear();
+        self.path_cache.borrow_mut().clear();
 
         let mut result = SyncResult::default();
 
@@ -713,6 +714,22 @@ impl Linker {
             // Resolve destination filename
             let filename = crate::config::resolve_module_map_filename(mapping, agent_name);
 
+            // Validate: dest components must be relative and safe
+            if let Some(err) =
+                Self::validate_module_map_path_components(&mapping.destination, &filename)
+            {
+                if options.verbose {
+                    println!(
+                        "  {} Skipping mapping {}: {}",
+                        "!".yellow(),
+                        mapping.source,
+                        err
+                    );
+                }
+                result.skipped += 1;
+                continue;
+            }
+
             let dest = self.project_root.join(&mapping.destination).join(&filename);
 
             let resolved = ResolvedSource {
@@ -890,6 +907,23 @@ impl Linker {
                         for mapping in &target_config.mappings {
                             let filename =
                                 crate::config::resolve_module_map_filename(mapping, agent_name);
+
+                            // Validate: dest components must be relative and safe
+                            if let Some(err) = Self::validate_module_map_path_components(
+                                &mapping.destination,
+                                &filename,
+                            ) {
+                                if options.verbose {
+                                    println!(
+                                        "  {} Skipping mapping {}: {}",
+                                        "!".yellow(),
+                                        mapping.source,
+                                        err
+                                    );
+                                }
+                                continue;
+                            }
+
                             let dest = self.project_root.join(&mapping.destination).join(&filename);
 
                             if dest.is_symlink() {
@@ -908,6 +942,38 @@ impl Linker {
         }
 
         Ok(result)
+    }
+
+    /// Validate that destination directory and filename components are safe for joining
+    /// to project_root (i.e., they are relative and contain no parent-dir traversal).
+    ///
+    /// Returns `Some(error_message)` if validation fails, `None` if safe.
+    fn validate_module_map_path_components(dest_dir: &str, filename: &str) -> Option<String> {
+        // Check destination directory
+        if Path::new(dest_dir).is_absolute() {
+            return Some(format!("destination directory is absolute: {dest_dir}"));
+        }
+        if Path::new(dest_dir)
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+        {
+            return Some(format!(
+                "destination directory contains parent-dir component: {dest_dir}"
+            ));
+        }
+        // Check filename
+        if Path::new(filename).is_absolute() {
+            return Some(format!("filename is absolute: {filename}"));
+        }
+        if Path::new(filename)
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+        {
+            return Some(format!(
+                "filename contains parent-dir component: {filename}"
+            ));
+        }
+        None
     }
 
     /// Sync MCP configurations for enabled agents

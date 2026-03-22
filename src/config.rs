@@ -1669,7 +1669,7 @@ mod tests {
             type = "module-map"
 
             [[agents.claude.targets.modules.mappings]]
-            source = "api-context.md"
+            source = "AGENTS.md"
             destination = "src/shared"
 
             [agents.codex]

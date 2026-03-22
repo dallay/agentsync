@@ -232,7 +232,13 @@ entry1
         );
         let target = &config.agents["claude"].targets["modules"];
 
-        let issues = collect_missing_sources(temp_dir.path(), "claude", "modules", target);
+        let issues = collect_missing_sources(
+            temp_dir.path(),
+            temp_dir.path(),
+            "claude",
+            "modules",
+            target,
+        );
         assert!(issues.is_empty());
     }
 
@@ -248,7 +254,13 @@ entry1
         );
         let target = &config.agents["claude"].targets["modules"];
 
-        let issues = collect_missing_sources(temp_dir.path(), "claude", "modules", target);
+        let issues = collect_missing_sources(
+            temp_dir.path(),
+            temp_dir.path(),
+            "claude",
+            "modules",
+            target,
+        );
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].mapping.as_deref(), Some("missing.md"));
         assert!(issues[0].path.ends_with("missing.md"));
