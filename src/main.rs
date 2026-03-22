@@ -116,6 +116,7 @@ enum Commands {
 fn main() -> Result<()> {
     // Initialize tracing subscriber for structured logging. Respects RUST_LOG env var.
     tracing_subscriber::fmt::init();
+    agentsync::update_check::spawn();
     let cli = Cli::parse();
 
     match cli.command {
