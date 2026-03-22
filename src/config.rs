@@ -85,39 +85,19 @@ fn default_true() -> bool {
 #[derive(Debug, Deserialize)]
 pub struct TargetConfig {
     /// The source file or directory, relative to `Config.source_dir`.
-    /// For `nested-glob` targets this is the root directory to search, relative
-    /// to the project root (not `source_dir`).
     pub source: String,
 
     /// The destination path for the symlink, relative to the project root.
-    /// For `nested-glob` targets this is a template string where the following
-    /// placeholders are replaced for each discovered file:
-    ///   - `{relative_path}` – the parent directory of the matched file,
-    ///     relative to the search root (e.g. `clients/agent-runtime`)
-    ///   - `{file_name}` – the matched file's name (e.g. `AGENTS.md`)
-    ///   - `{stem}` – the file name without its extension (e.g. `AGENTS`)
-    ///   - `{ext}` – the file extension without the leading dot (e.g. `md`)
     pub destination: String,
 
     /// The type of synchronization to perform.
     #[serde(rename = "type")]
     pub sync_type: SyncType,
 
-    /// An optional glob pattern.
-    ///
-    /// * For `symlink-contents`: filters which items inside `source` are linked
-    ///   (e.g. `*.md` links only Markdown files).
-    /// * For `nested-glob`: the recursive glob pattern used to discover files
-    ///   under the search root (e.g. `**/AGENTS.md`).
+    /// An optional glob pattern to filter files when using `symlink-contents`.
+    /// For example, `*.md` would only link Markdown files.
     #[serde(default)]
     pub pattern: Option<String>,
-
-    /// Glob patterns that exclude paths from a `nested-glob` search.
-    /// Each pattern is matched against the path of a discovered file relative
-    /// to the search root.  Common defaults include `node_modules/**` and
-    /// `**/.git/**`.  Has no effect on other target types.
-    #[serde(default)]
-    pub exclude: Vec<String>,
 }
 
 /// The type of synchronization operation to perform for a target.
@@ -130,10 +110,6 @@ pub enum SyncType {
     /// Creates symlinks for each item *inside* the `source` directory at the `destination`.
     /// The `destination` directory will be created if it doesn't exist.
     SymlinkContents,
-    /// Recursively discovers files matching a glob `pattern` under `source`
-    /// (relative to the project root) and creates a symlink for each one at the
-    /// path produced by expanding the `destination` template.
-    NestedGlob,
 }
 
 /// Configuration for managing the `.gitignore` file.
@@ -312,11 +288,6 @@ impl Config {
             if agent.enabled {
                 // Add target destinations
                 for target in agent.targets.values() {
-                    // NestedGlob destinations are templates, not literal paths –
-                    // skip them to avoid polluting .gitignore with raw template strings.
-                    if target.sync_type == SyncType::NestedGlob {
-                        continue;
-                    }
                     entries.insert(target.destination.clone());
                     entries.insert(format!("{}.bak.*", target.destination));
                 }
@@ -464,51 +435,6 @@ mod tests {
 
         let result: Result<Config, _> = toml::from_str(toml);
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_parse_nested_glob_target() {
-        let toml = r#"
-            [agents.claude]
-            enabled = true
-
-            [agents.claude.targets.nested]
-            source = "."
-            pattern = "**/AGENTS.md"
-            exclude = [".agents/**", "node_modules/**"]
-            destination = "{relative_path}/CLAUDE.md"
-            type = "nested-glob"
-        "#;
-
-        let config: Config = toml::from_str(toml).unwrap();
-        let target = &config.agents["claude"].targets["nested"];
-        assert_eq!(target.sync_type, SyncType::NestedGlob);
-        assert_eq!(target.source, ".");
-        assert_eq!(target.pattern.as_deref(), Some("**/AGENTS.md"));
-        assert_eq!(target.destination, "{relative_path}/CLAUDE.md");
-        assert_eq!(target.exclude, vec![".agents/**", "node_modules/**"]);
-    }
-
-    #[test]
-    fn test_nested_glob_destination_not_added_to_gitignore() {
-        let toml = r#"
-            [agents.claude]
-            enabled = true
-
-            [agents.claude.targets.nested]
-            source = "."
-            pattern = "**/AGENTS.md"
-            destination = "{relative_path}/CLAUDE.md"
-            type = "nested-glob"
-        "#;
-
-        let config: Config = toml::from_str(toml).unwrap();
-        let entries = config.all_gitignore_entries();
-        // Template string should not appear in gitignore entries
-        assert!(
-            !entries.contains(&"{relative_path}/CLAUDE.md".to_string()),
-            "Template destination must not be added to gitignore verbatim"
-        );
     }
 
     #[test]

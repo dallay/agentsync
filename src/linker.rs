@@ -9,7 +9,6 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use walkdir::WalkDir;
 
 use crate::config::{Config, SyncType, TargetConfig};
 
@@ -204,17 +203,6 @@ impl Linker {
                 target,
                 options,
             ),
-            SyncType::NestedGlob => {
-                // For NestedGlob, `source` is relative to the project root (not source_dir).
-                let search_root = self.project_root.join(&target.source);
-                self.process_nested_glob(
-                    &search_root,
-                    target.pattern.as_deref().unwrap_or("**/AGENTS.md"),
-                    &target.exclude,
-                    &target.destination,
-                    options,
-                )
-            }
         }
     }
 
@@ -487,176 +475,6 @@ impl Linker {
         Ok(result)
     }
 
-    /// Expand a destination template for a single discovered file.
-    ///
-    /// Replaces the following placeholders:
-    /// * `{relative_path}` – parent directory of the matched file relative to
-    ///   the search root (e.g. `clients/agent-runtime`).  When the file is
-    ///   directly inside the search root, this is `.` (current directory).
-    /// * `{file_name}` – the file's name (e.g. `AGENTS.md`)
-    /// * `{stem}` – the file name without its extension (e.g. `AGENTS`)
-    /// * `{ext}` – the file's extension without the dot (e.g. `md`)
-    fn expand_destination_template(
-        template: &str,
-        rel_path: &Path, // path of the discovered file relative to search root
-    ) -> String {
-        let file_name = rel_path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
-
-        let stem = rel_path
-            .file_stem()
-            .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or_default();
-
-        let ext = rel_path
-            .extension()
-            .map(|e| e.to_string_lossy().into_owned())
-            .unwrap_or_default();
-
-        // Use "." for files directly inside the search root so that
-        // templates like "{relative_path}/CLAUDE.md" produce a valid relative
-        // path ("./CLAUDE.md") rather than an absolute path ("/CLAUDE.md").
-        let dir = rel_path
-            .parent()
-            .map(|p| {
-                let s = p.to_string_lossy().into_owned();
-                if s.is_empty() { ".".to_string() } else { s }
-            })
-            .unwrap_or_else(|| ".".to_string());
-
-        template
-            .replace("{relative_path}", &dir)
-            .replace("{file_name}", &file_name)
-            .replace("{stem}", &stem)
-            .replace("{ext}", &ext)
-    }
-
-    /// Process a `NestedGlob` target: walk `search_root`, match files against
-    /// `glob_pattern`, skip excluded paths, and create a symlink for each
-    /// Discovers files in a directory tree matching a glob pattern and creates
-    /// symlinks to each matched file.
-    ///
-    /// # Arguments
-    /// * `search_root` - Directory to walk for file discovery
-    /// * `glob_pattern` - Glob pattern with `**` support (e.g., `**/AGENTS.md`)
-    /// * `excludes` - Optional list of glob patterns to exclude from syncing
-    /// * `dest_template` - Destination path template supporting:
-    ///   - `{relative_path}` - Path relative to search root (`.` for root files)
-    ///   - `{file_name}` - Original filename with extension
-    ///   - `{stem}` - Filename without extension
-    ///   - `{ext}` - File extension (without leading dot)
-    /// * `options` - Sync options controlling verbose output and dry-run mode
-    ///
-    /// # Behavior
-    /// - Walks `search_root` recursively (following `follow_links = false` for safety)
-    /// - Skips directories and non-file entries
-    /// - Matches files against `glob_pattern` using `**` glob support
-    /// - Applies exclusion patterns if file matches any exclude, it is skipped
-    /// - Creates symlinks using `create_symlink()` which handles existing links
-    ///
-    /// # Performance Considerations
-    /// - Uses `find()` instead of `any()` for exclusion checks to enable early-exit
-    /// - Avoids exclusion iteration when `excludes` list is empty
-    fn process_nested_glob(
-        &self,
-        search_root: &Path,
-        glob_pattern: &str,
-        excludes: &[String],
-        dest_template: &str,
-        options: &SyncOptions,
-    ) -> Result<SyncResult> {
-        let mut result = SyncResult::default();
-
-        if !search_root.exists() || !search_root.is_dir() {
-            println!(
-                "  {} Search root does not exist: {}",
-                "!".yellow(),
-                search_root.display()
-            );
-            result.skipped += 1;
-            return Ok(result);
-        }
-
-        for entry in WalkDir::new(search_root)
-            .follow_links(false)
-            .into_iter()
-            .filter_map(|e| e.ok())
-        {
-            // Only process files
-            if !entry.file_type().is_file() {
-                continue;
-            }
-
-            // Compute path relative to search root
-            let full_path = entry.path();
-            let rel_path = match full_path.strip_prefix(search_root) {
-                Ok(p) => p,
-                Err(_) => continue,
-            };
-
-            // Convert to forward-slash string for pattern matching
-            let rel_str = rel_path
-                .components()
-                .map(|c| c.as_os_str().to_string_lossy().into_owned())
-                .collect::<Vec<_>>()
-                .join("/");
-
-            // Match against the glob pattern
-            if !matches_path_glob(&rel_str, glob_pattern) {
-                continue;
-            }
-
-            // Check exclusion patterns.
-            // Uses `find()` instead of `any()` to:
-            // 1. Skip iteration when excludes list is empty (short-circuit)
-            // 2. Determine which pattern matched (for verbose logging)
-            if let Some(matched_exclude) = excludes
-                .iter()
-                .find(|excl| matches_path_glob(&rel_str, excl))
-            {
-                if options.verbose {
-                    println!(
-                        "  {} Excluded by '{}': {}",
-                        "○".yellow(),
-                        matched_exclude,
-                        full_path.display()
-                    );
-                }
-                continue;
-            }
-
-            // Expand the destination template
-            let dest_str = Self::expand_destination_template(dest_template, rel_path);
-            if dest_str.is_empty() {
-                if options.verbose {
-                    println!(
-                        "  {} Destination template produced empty path for: {}",
-                        "!".yellow(),
-                        full_path.display()
-                    );
-                }
-                result.skipped += 1;
-                continue;
-            }
-
-            let dest = self.project_root.join(&dest_str);
-
-            let resolved = ResolvedSource {
-                path: full_path.to_path_buf(),
-                exists: true,
-            };
-
-            let item_result = self.create_symlink(&resolved, &dest, options)?;
-            result.created += item_result.created;
-            result.updated += item_result.updated;
-            result.skipped += item_result.skipped;
-        }
-
-        Ok(result)
-    }
-
     /// Get the canonical path for a given path, using a cache to avoid
     /// redundant I/O operations.
     fn canonicalize_cached(&self, path: &Path) -> Result<PathBuf> {
@@ -713,106 +531,41 @@ impl Linker {
 
         for agent_config in self.config.agents.values() {
             for target_config in agent_config.targets.values() {
-                match target_config.sync_type {
-                    SyncType::NestedGlob => {
-                        // Re-discover the same files and remove the corresponding symlinks.
-                        let search_root = self.project_root.join(&target_config.source);
-                        if !search_root.exists() || !search_root.is_dir() {
-                            continue;
-                        }
-                        let glob_pattern =
-                            target_config.pattern.as_deref().unwrap_or("**/AGENTS.md");
-                        let dest_template = &target_config.destination;
-                        let excludes = &target_config.exclude;
+                let dest = self.project_root.join(&target_config.destination);
 
-                        for entry in WalkDir::new(&search_root)
-                            .follow_links(false)
-                            .into_iter()
-                            .filter_map(|e| e.ok())
-                        {
-                            if !entry.file_type().is_file() {
-                                continue;
-                            }
-                            let rel_path = match entry.path().strip_prefix(&search_root) {
-                                Ok(p) => p,
-                                Err(_) => continue,
-                            };
-                            let rel_str = rel_path
-                                .components()
-                                .map(|c| c.as_os_str().to_string_lossy().into_owned())
-                                .collect::<Vec<_>>()
-                                .join("/");
-                            if !matches_path_glob(&rel_str, glob_pattern) {
-                                continue;
-                            }
-                            if excludes
-                                .iter()
-                                .any(|excl| matches_path_glob(&rel_str, excl))
-                            {
-                                continue;
-                            }
-                            let dest_str =
-                                Self::expand_destination_template(dest_template, rel_path);
-                            if dest_str.is_empty() {
-                                continue;
-                            }
-                            let dest = self.project_root.join(&dest_str);
-                            if dest.is_symlink() {
-                                if options.dry_run {
-                                    println!("  {} Would remove: {}", "→".cyan(), dest.display());
-                                } else {
-                                    fs::remove_file(&dest)?;
-                                    println!("  {} Removed: {}", "✔".green(), dest.display());
-                                }
-                                result.removed += 1;
-                            }
-                        }
+                if dest.is_symlink() {
+                    if options.dry_run {
+                        println!("  {} Would remove: {}", "→".cyan(), dest.display());
+                    } else {
+                        fs::remove_file(&dest)?;
+                        println!("  {} Removed: {}", "✔".green(), dest.display());
                     }
-                    SyncType::SymlinkContents => {
-                        let dest = self.project_root.join(&target_config.destination);
-                        if dest.is_dir() {
-                            // For symlink-contents, remove symlinks inside the directory
-                            for entry in fs::read_dir(&dest).with_context(|| {
-                                format!("Failed to read destination directory: {}", dest.display())
-                            })? {
-                                let entry = entry.with_context(|| {
-                                    format!("Failed to read entry in: {}", dest.display())
-                                })?;
-                                if entry.path().is_symlink() {
-                                    if options.dry_run {
-                                        println!(
-                                            "  {} Would remove: {}",
-                                            "→".cyan(),
-                                            entry.path().display()
-                                        );
-                                    } else {
-                                        fs::remove_file(entry.path())?;
-                                        println!(
-                                            "  {} Removed: {}",
-                                            "✔".green(),
-                                            entry.path().display()
-                                        );
-                                    }
-                                    result.removed += 1;
-                                }
-                            }
-                            // Try to remove the directory if empty
-                            if !options.dry_run {
-                                let _ = fs::remove_dir(&dest);
-                            }
-                        }
-                    }
-                    SyncType::Symlink => {
-                        let dest = self.project_root.join(&target_config.destination);
-                        if dest.is_symlink() {
+                    result.removed += 1;
+                } else if dest.is_dir() && target_config.sync_type == SyncType::SymlinkContents {
+                    // For symlink-contents, remove symlinks inside the directory
+                    for entry in fs::read_dir(&dest).with_context(|| {
+                        format!("Failed to read destination directory: {}", dest.display())
+                    })? {
+                        let entry = entry.with_context(|| {
+                            format!("Failed to read entry in: {}", dest.display())
+                        })?;
+                        if entry.path().is_symlink() {
                             if options.dry_run {
-                                println!("  {} Would remove: {}", "→".cyan(), dest.display());
+                                println!(
+                                    "  {} Would remove: {}",
+                                    "→".cyan(),
+                                    entry.path().display()
+                                );
                             } else {
-                                fs::remove_file(&dest)?;
-                                println!("  {} Removed: {}", "✔".green(), dest.display());
+                                fs::remove_file(entry.path())?;
+                                println!("  {} Removed: {}", "✔".green(), entry.path().display());
                             }
                             result.removed += 1;
                         }
+                    }
+                    // Try to remove the directory if empty
+                    if !options.dry_run {
+                        let _ = fs::remove_dir(&dest);
                     }
                 }
             }
@@ -1035,58 +788,6 @@ fn matches_pattern(name: &str, pattern: &str) -> bool {
     }
 }
 
-/// Path-aware glob pattern matching that supports the `**` double-star wildcard.
-///
-/// Rules:
-/// * `**` (as a whole path segment) matches any number of path segments,
-///   including zero segments.
-/// * `*` within a segment matches any sequence of characters that does not
-///   include a `/`.
-/// * `?` within a segment matches any single character other than `/`.
-///
-/// The `path` argument must use `/` as the path separator.  Use
-/// [`matches_pattern`] for single-segment (filename-only) matching.
-fn matches_path_glob(path: &str, pattern: &str) -> bool {
-    let path_parts: Vec<&str> = path.split('/').collect();
-    let pattern_parts: Vec<&str> = pattern.split('/').collect();
-    path_glob_match(&path_parts, &pattern_parts)
-}
-
-/// Recursive helper for [`matches_path_glob`].
-fn path_glob_match(path: &[&str], pattern: &[&str]) -> bool {
-    match (path, pattern) {
-        // Both exhausted – success.
-        ([], []) => true,
-        // Pattern exhausted but path still has segments – no match.
-        (_, []) => false,
-        // Leading `**` in pattern.
-        ([_, ..], ["**", rest_pat @ ..]) => {
-            // `**` can match zero segments …
-            if path_glob_match(path, rest_pat) {
-                return true;
-            }
-            // … or one or more segments.
-            for i in 1..=path.len() {
-                if path_glob_match(&path[i..], rest_pat) {
-                    return true;
-                }
-            }
-            false
-        }
-        // `**` at end of pattern matches all remaining path segments.
-        (_, ["**"]) => true,
-        // Pattern starts with `**` but path is empty – matches only if the
-        // rest of the pattern also matches empty path.
-        ([], ["**", rest_pat @ ..]) => path_glob_match(&[], rest_pat),
-        // Normal segment: match the head segment with `matches_pattern` and
-        // recurse on the tails.
-        ([path_head, path_rest @ ..], [pat_head, pat_rest @ ..]) => {
-            matches_pattern(path_head, pat_head) && path_glob_match(path_rest, pat_rest)
-        }
-        _ => false,
-    }
-}
-
 /// Generate a simple timestamp without external dependencies
 fn chrono_lite_timestamp() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -1159,94 +860,8 @@ mod tests {
     }
 
     // ==========================================================================
-    // PATH GLOB MATCHING TESTS
+    // LINKER CREATION TESTS
     // ==========================================================================
-
-    #[test]
-    fn test_path_glob_double_star_matches_nested() {
-        // **/AGENTS.md should match at any depth
-        assert!(matches_path_glob("AGENTS.md", "**/AGENTS.md"));
-        assert!(matches_path_glob("foo/AGENTS.md", "**/AGENTS.md"));
-        assert!(matches_path_glob("foo/bar/AGENTS.md", "**/AGENTS.md"));
-        assert!(matches_path_glob("a/b/c/AGENTS.md", "**/AGENTS.md"));
-    }
-
-    #[test]
-    fn test_path_glob_double_star_does_not_match_wrong_name() {
-        assert!(!matches_path_glob("foo/OTHER.md", "**/AGENTS.md"));
-        assert!(!matches_path_glob("AGENTS.txt", "**/AGENTS.md"));
-    }
-
-    #[test]
-    fn test_path_glob_single_star_does_not_cross_separator() {
-        assert!(matches_path_glob("foo/AGENTS.md", "*/AGENTS.md"));
-        assert!(!matches_path_glob("foo/bar/AGENTS.md", "*/AGENTS.md"));
-    }
-
-    #[test]
-    fn test_path_glob_exact_match() {
-        assert!(matches_path_glob("clients/AGENTS.md", "clients/AGENTS.md"));
-        assert!(!matches_path_glob("other/AGENTS.md", "clients/AGENTS.md"));
-    }
-
-    #[test]
-    fn test_path_glob_double_star_in_middle() {
-        assert!(matches_path_glob(
-            "clients/agent-runtime/AGENTS.md",
-            "clients/**/AGENTS.md"
-        ));
-        assert!(matches_path_glob(
-            "clients/AGENTS.md",
-            "clients/**/AGENTS.md"
-        ));
-        assert!(!matches_path_glob(
-            "other/agent-runtime/AGENTS.md",
-            "clients/**/AGENTS.md"
-        ));
-    }
-
-    #[test]
-    fn test_path_glob_exclusion_patterns() {
-        assert!(matches_path_glob(
-            "node_modules/foo/bar.md",
-            "node_modules/**"
-        ));
-        assert!(matches_path_glob("target/debug/foo.md", "**/target/**"));
-        assert!(!matches_path_glob("src/main.rs", "node_modules/**"));
-    }
-
-    // ==========================================================================
-    // DESTINATION TEMPLATE TESTS
-    // ==========================================================================
-
-    #[test]
-    fn test_expand_destination_template_root_file() {
-        let rel = Path::new("AGENTS.md");
-        // {relative_path} for a root-level file is "." to avoid a leading slash
-        assert_eq!(
-            Linker::expand_destination_template("{relative_path}/{file_name}", rel),
-            "./AGENTS.md"
-        );
-        assert_eq!(
-            Linker::expand_destination_template("{file_name}", rel),
-            "AGENTS.md"
-        );
-        assert_eq!(Linker::expand_destination_template("{stem}", rel), "AGENTS");
-        assert_eq!(Linker::expand_destination_template("{ext}", rel), "md");
-    }
-
-    #[test]
-    fn test_expand_destination_template_nested_file() {
-        let rel = Path::new("clients/agent-runtime/AGENTS.md");
-        assert_eq!(
-            Linker::expand_destination_template("{relative_path}/CLAUDE.md", rel),
-            "clients/agent-runtime/CLAUDE.md"
-        );
-        assert_eq!(
-            Linker::expand_destination_template("{relative_path}/{file_name}", rel),
-            "clients/agent-runtime/AGENTS.md"
-        );
-    }
 
     fn create_test_config() -> Config {
         let toml = r#"
@@ -2685,218 +2300,5 @@ mod tests {
 
         let content_v2 = fs::read_to_string(&compressed_v1).unwrap();
         assert_eq!(content_v2.trim(), "updated content");
-    }
-
-    // ==========================================================================
-    // NESTED GLOB TESTS
-    // ==========================================================================
-
-    #[test]
-    #[cfg(unix)]
-    fn test_nested_glob_creates_symlinks_for_discovered_files() {
-        let temp_dir = TempDir::new().unwrap();
-        let agents_dir = temp_dir.path().join(".agents");
-        fs::create_dir_all(&agents_dir).unwrap();
-
-        // Create nested AGENTS.md files
-        let sub1 = temp_dir.path().join("clients").join("agent-runtime");
-        let sub2 = temp_dir.path().join("modules").join("core-kmp");
-        fs::create_dir_all(&sub1).unwrap();
-        fs::create_dir_all(&sub2).unwrap();
-        fs::write(sub1.join("AGENTS.md"), "# Rust instructions").unwrap();
-        fs::write(sub2.join("AGENTS.md"), "# Kotlin instructions").unwrap();
-
-        let config_path = agents_dir.join("agentsync.toml");
-        let config_content = r#"
-            source_dir = "."
-
-            [agents.claude]
-            enabled = true
-
-            [agents.claude.targets.nested]
-            source = "."
-            pattern = "**/AGENTS.md"
-            exclude = [".agents/**"]
-            destination = "{relative_path}/CLAUDE.md"
-            type = "nested-glob"
-        "#;
-        fs::write(&config_path, config_content).unwrap();
-
-        let config = Config::load(&config_path).unwrap();
-        let linker = Linker::new(config, config_path);
-
-        let result = linker.sync(&SyncOptions::default()).unwrap();
-
-        assert_eq!(result.created, 2);
-        assert!(
-            temp_dir
-                .path()
-                .join("clients/agent-runtime/CLAUDE.md")
-                .is_symlink()
-        );
-        assert!(
-            temp_dir
-                .path()
-                .join("modules/core-kmp/CLAUDE.md")
-                .is_symlink()
-        );
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn test_nested_glob_excludes_patterns() {
-        let temp_dir = TempDir::new().unwrap();
-        let agents_dir = temp_dir.path().join(".agents");
-        fs::create_dir_all(&agents_dir).unwrap();
-
-        // Create an AGENTS.md that should be discovered
-        let sub1 = temp_dir.path().join("clients");
-        fs::create_dir_all(&sub1).unwrap();
-        fs::write(sub1.join("AGENTS.md"), "# Instructions").unwrap();
-
-        // Create one inside node_modules that should be excluded
-        let node_modules = temp_dir.path().join("node_modules").join("some-pkg");
-        fs::create_dir_all(&node_modules).unwrap();
-        fs::write(node_modules.join("AGENTS.md"), "# Should be excluded").unwrap();
-
-        let config_path = agents_dir.join("agentsync.toml");
-        let config_content = r#"
-            source_dir = "."
-
-            [agents.claude]
-            enabled = true
-
-            [agents.claude.targets.nested]
-            source = "."
-            pattern = "**/AGENTS.md"
-            exclude = [".agents/**", "node_modules/**"]
-            destination = "{relative_path}/CLAUDE.md"
-            type = "nested-glob"
-        "#;
-        fs::write(&config_path, config_content).unwrap();
-
-        let config = Config::load(&config_path).unwrap();
-        let linker = Linker::new(config, config_path);
-
-        let result = linker.sync(&SyncOptions::default()).unwrap();
-
-        // Only the non-excluded file should be linked
-        assert_eq!(result.created, 1);
-        assert!(temp_dir.path().join("clients/CLAUDE.md").is_symlink());
-        assert!(
-            !temp_dir
-                .path()
-                .join("node_modules/some-pkg/CLAUDE.md")
-                .exists()
-        );
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn test_nested_glob_dry_run_does_not_create_files() {
-        let temp_dir = TempDir::new().unwrap();
-        let agents_dir = temp_dir.path().join(".agents");
-        fs::create_dir_all(&agents_dir).unwrap();
-
-        let sub1 = temp_dir.path().join("clients");
-        fs::create_dir_all(&sub1).unwrap();
-        fs::write(sub1.join("AGENTS.md"), "# Instructions").unwrap();
-
-        let config_path = agents_dir.join("agentsync.toml");
-        let config_content = r#"
-            source_dir = "."
-
-            [agents.claude]
-            enabled = true
-
-            [agents.claude.targets.nested]
-            source = "."
-            pattern = "**/AGENTS.md"
-            exclude = [".agents/**"]
-            destination = "{relative_path}/CLAUDE.md"
-            type = "nested-glob"
-        "#;
-        fs::write(&config_path, config_content).unwrap();
-
-        let config = Config::load(&config_path).unwrap();
-        let linker = Linker::new(config, config_path);
-
-        let options = SyncOptions {
-            dry_run: true,
-            ..Default::default()
-        };
-        linker.sync(&options).unwrap();
-
-        assert!(!temp_dir.path().join("clients/CLAUDE.md").exists());
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn test_nested_glob_clean_removes_symlinks() {
-        let temp_dir = TempDir::new().unwrap();
-        let agents_dir = temp_dir.path().join(".agents");
-        fs::create_dir_all(&agents_dir).unwrap();
-
-        let sub1 = temp_dir.path().join("clients");
-        fs::create_dir_all(&sub1).unwrap();
-        fs::write(sub1.join("AGENTS.md"), "# Instructions").unwrap();
-
-        let config_path = agents_dir.join("agentsync.toml");
-        let config_content = r#"
-            source_dir = "."
-
-            [agents.claude]
-            enabled = true
-
-            [agents.claude.targets.nested]
-            source = "."
-            pattern = "**/AGENTS.md"
-            exclude = [".agents/**"]
-            destination = "{relative_path}/CLAUDE.md"
-            type = "nested-glob"
-        "#;
-        fs::write(&config_path, config_content).unwrap();
-
-        let config = Config::load(&config_path).unwrap();
-        let linker = Linker::new(config, config_path);
-
-        // First sync to create symlinks
-        linker.sync(&SyncOptions::default()).unwrap();
-        assert!(temp_dir.path().join("clients/CLAUDE.md").is_symlink());
-
-        // Clean should remove them
-        let result = linker.clean(&SyncOptions::default()).unwrap();
-        assert_eq!(result.removed, 1);
-        assert!(!temp_dir.path().join("clients/CLAUDE.md").exists());
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn test_nested_glob_skips_missing_search_root() {
-        let temp_dir = TempDir::new().unwrap();
-        let agents_dir = temp_dir.path().join(".agents");
-        fs::create_dir_all(&agents_dir).unwrap();
-
-        let config_path = agents_dir.join("agentsync.toml");
-        let config_content = r#"
-            source_dir = "."
-
-            [agents.claude]
-            enabled = true
-
-            [agents.claude.targets.nested]
-            source = "nonexistent-dir"
-            pattern = "**/AGENTS.md"
-            destination = "{relative_path}/CLAUDE.md"
-            type = "nested-glob"
-        "#;
-        fs::write(&config_path, config_content).unwrap();
-
-        let config = Config::load(&config_path).unwrap();
-        let linker = Linker::new(config, config_path);
-
-        let result = linker.sync(&SyncOptions::default()).unwrap();
-        assert_eq!(result.skipped, 1);
-        assert_eq!(result.created, 0);
     }
 }
