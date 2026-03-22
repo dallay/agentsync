@@ -340,13 +340,69 @@ When `merge_strategy = "merge"`:
 
 ### Target Types
 
-| Type               | Description                                           |
-|--------------------|-------------------------------------------------------|
-| `symlink`          | Create a symlink to the source file/directory         |
-| `symlink-contents` | Create symlinks for each item in the source directory |
+| Type               | Description                                                   |
+|--------------------|---------------------------------------------------------------|
+| `symlink`          | Create a symlink to the source file/directory                 |
+| `symlink-contents` | Create symlinks for each item in the source directory         |
+| `nested-glob`      | Recursively discover files and create symlinks for each match |
 
 The `symlink-contents` type optionally supports a `pattern` field (glob pattern like `*.md`) to
 filter which items to link.
+
+#### Nested Glob Target (`nested-glob`)
+
+The `nested-glob` type discovers files matching a recursive glob pattern and creates a symlink
+for each discovered file.  This is ideal for **monorepos and multi-module projects** where
+different subdirectories contain their own `AGENTS.md` files.
+
+```toml
+[agents.claude.targets.nested]
+# Root directory to search (relative to the project root)
+source = "."
+
+# Glob pattern – supports ** for multi-level directory matching
+pattern = "**/AGENTS.md"
+
+# Paths to exclude (matched against each file's path relative to source)
+exclude = [
+    ".agents/**",
+    "node_modules/**",
+    "**/target/**",
+    "**/build/**",
+    "**/dist/**",
+    "**/.git/**",
+]
+
+# Destination template – placeholders replaced for each discovered file:
+#   {relative_path}  parent directory relative to `source`  (e.g. clients/agent-runtime)
+#                    For files at the root of `source`, this is "." (not empty)
+#   {file_name}      file name                               (e.g. AGENTS.md)
+#   {stem}           file name without extension             (e.g. AGENTS)
+#   {ext}            file extension without leading dot      (e.g. md)
+destination = "{relative_path}/CLAUDE.md"
+
+type = "nested-glob"
+```
+
+Given the structure:
+
+```
+project-root/
+├── .agents/
+│   └── AGENTS.md          # excluded by .agents/**
+├── clients/
+│   └── agent-runtime/
+│       └── AGENTS.md      # → clients/agent-runtime/CLAUDE.md
+└── modules/
+    └── core-kmp/
+        └── AGENTS.md      # → modules/core-kmp/CLAUDE.md
+```
+
+AgentSync would create:
+
+- `clients/agent-runtime/CLAUDE.md` → symlink to `clients/agent-runtime/AGENTS.md`
+- `modules/core-kmp/CLAUDE.md` → symlink to `modules/core-kmp/AGENTS.md`
+
 
 ## Project Structure
 
