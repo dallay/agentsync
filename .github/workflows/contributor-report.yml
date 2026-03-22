@@ -4,6 +4,10 @@ on:
   pull_request:
     types: [opened, reopened, synchronize, edited]
 
+# Skip bot-authored PRs (e.g., release-please) since contributor-report
+# cannot resolve GitHub App bot users like "dallay-bot[bot]".
+if: ${{ github.event.pull_request.user.type != 'Bot' }}
+
 permissions:
   contents: read
   pull-requests: write
