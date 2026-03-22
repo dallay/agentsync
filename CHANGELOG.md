@@ -8,6 +8,45 @@
 
 * update README.md for accuracy and formatting ([#159](https://github.com/dallay/agentsync/issues/159)) ([8cb9f19](https://github.com/dallay/agentsync/commit/8cb9f19b2302456f0e4536f7a37ad9af5645e605))
 
+## [1.31.0](https://github.com/dallay/agentsync/compare/v1.30.0...v1.31.0) (2026-03-22)
+
+
+### Features
+
+* add `nested-glob` target type for monorepo/multi-module AGENTS.md discovery ([#234](https://github.com/dallay/agentsync/issues/234)) ([4ea1d59](https://github.com/dallay/agentsync/commit/4ea1d59f7fec6dbf237e1f6dd5abdf3715d5326e))
+* migrate from semantic-release to release-please ([#237](https://github.com/dallay/agentsync/issues/237)) ([f531f01](https://github.com/dallay/agentsync/commit/f531f010b74457cd292e7a6d91650b0acc446385))
+* Optimize directory iteration and MCP config generation ([#229](https://github.com/dallay/agentsync/issues/229)) ([9a01e2b](https://github.com/dallay/agentsync/commit/9a01e2bab597ce9416b386beaada3a1427247ad7))
+
+
+### Bug Fixes
+
+* **deps:** update cargo major upgrades ([2841cdf](https://github.com/dallay/agentsync/commit/2841cdf0c9eff4e27cf87cdf3fb300dcb9b47555))
+* update release-please version to 1.30.0 ([57ef42b](https://github.com/dallay/agentsync/commit/57ef42b4f4532f15d56f98cc7eb50e984eb17769))
+* update release-please-action to v4.1.1 (e4dc86b) ([0c7b165](https://github.com/dallay/agentsync/commit/0c7b1651f7ec61d2eb53cdf472ba891e625e512a))
+* use release-please@^17.3.0 instead of ^19.0.0 ([5149476](https://github.com/dallay/agentsync/commit/51494763b9dc362789f1e81c97ddc11db3bda147))
+
+
+### Performance
+
+* Deduplicate MCP shared paths and skip redundant writes ([#227](https://github.com/dallay/agentsync/issues/227)) ([5edafc7](https://github.com/dallay/agentsync/commit/5edafc7f540eea395caa6144dc39da066cf05b64))
+* optimize configuration management and serialization ([be830a7](https://github.com/dallay/agentsync/commit/be830a70accbcd15122214ea6b5e074ad2e77b55))
+* optimize configuration management using BTreeMap ([f5fa2d7](https://github.com/dallay/agentsync/commit/f5fa2d7c94678eca29fc2c34136a3fe02e8fa186))
+
+
+### Documentation
+
+* update README.md for accuracy and project standards ([#228](https://github.com/dallay/agentsync/issues/228)) ([a1cf760](https://github.com/dallay/agentsync/commit/a1cf760b3abbc0e3c185576bf7afe547e3f40efb))
+
+
+### Chores
+
+* **deps:** update dependency astro to v5.18.0 ([f8b5c94](https://github.com/dallay/agentsync/commit/f8b5c947322547e267794d364f70df5e2a7881e1))
+* **deps:** update dependency astro to v5.18.1 ([#232](https://github.com/dallay/agentsync/issues/232)) ([1c328b2](https://github.com/dallay/agentsync/commit/1c328b2323f622ac2ed8c069007a9259af989bef))
+* **deps:** update devdependencies ([#206](https://github.com/dallay/agentsync/issues/206)) ([f8508af](https://github.com/dallay/agentsync/commit/f8508aff3b9d301143f5396c50bcb43497c9d9f1))
+* **deps:** update github actions ([#221](https://github.com/dallay/agentsync/issues/221)) ([42a4349](https://github.com/dallay/agentsync/commit/42a43490303f935a802abec2809a0462e0f1cca6))
+* **deps:** update node.js to v24.14.0 ([#222](https://github.com/dallay/agentsync/issues/222)) ([e02702a](https://github.com/dallay/agentsync/commit/e02702afa38a99025ec380978b526a34b6f138d8))
+* remove old Spec-Driven Development scripts and templates ([0a9209c](https://github.com/dallay/agentsync/commit/0a9209c4204496894d0525c433da066f9f5e6a24))
+
 ## [1.27.2](https://github.com/dallay/agentsync/compare/v1.27.1...v1.27.2) (2026-02-08)
 
 ### 🚀 Performance
