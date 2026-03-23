@@ -43,8 +43,8 @@ importers:
         specifier: 1.28.0
         version: 1.28.0
       '@dallay/agentsync-darwin-x64':
-        specifier: 1.28.0
-        version: 1.28.0
+        specifier: 1.33.1
+        version: 1.33.1
       '@dallay/agentsync-linux-arm64':
         specifier: 1.28.0
         version: 1.28.0
@@ -234,15 +234,15 @@ packages:
     os: [darwin]
     hasBin: true
 
-  '@dallay/agentsync-darwin-x64@1.28.0':
-    resolution: {integrity: sha512-1d58ukKwfM3dy0IR/ydGccxwvwddNDzOSoUjqyX+bFfwDAvWhHQE79K9E7Ze0AUXApt6KBuJBlYXyXKcErJrVw==}
+  '@dallay/agentsync-darwin-x64@1.29.0':
+    resolution: {integrity: sha512-xewoj5yvSrrrDU4x5+PV6jzIWayLE3guStQQvYtx+X5J+/OYHzPjVyn4IgTeN3wqlv2KaEfB+/O78Ng42omThA==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [darwin]
     hasBin: true
 
-  '@dallay/agentsync-darwin-x64@1.29.0':
-    resolution: {integrity: sha512-xewoj5yvSrrrDU4x5+PV6jzIWayLE3guStQQvYtx+X5J+/OYHzPjVyn4IgTeN3wqlv2KaEfB+/O78Ng42omThA==}
+  '@dallay/agentsync-darwin-x64@1.33.1':
+    resolution: {integrity: sha512-Lo7btQH3wpHz1gDqalP5ytno2gAEFg/+dLU3jHycg2nJOrOg5MOj/u5dzXzwRoB8fSrNmmgQzcESU3U5SAVMEw==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [darwin]
@@ -2925,10 +2925,10 @@ snapshots:
   '@dallay/agentsync-darwin-arm64@1.29.0':
     optional: true
 
-  '@dallay/agentsync-darwin-x64@1.28.0':
+  '@dallay/agentsync-darwin-x64@1.29.0':
     optional: true
 
-  '@dallay/agentsync-darwin-x64@1.29.0':
+  '@dallay/agentsync-darwin-x64@1.33.1':
     optional: true
 
   '@dallay/agentsync-linux-arm64@1.28.0':
