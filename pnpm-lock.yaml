@@ -55,8 +55,8 @@ importers:
         specifier: 1.28.0
         version: 1.28.0
       '@dallay/agentsync-windows-x64':
-        specifier: 1.28.0
-        version: 1.28.0
+        specifier: 1.33.1
+        version: 1.33.1
 
   website/docs:
     dependencies:
@@ -290,15 +290,15 @@ packages:
     os: [win32]
     hasBin: true
 
-  '@dallay/agentsync-windows-x64@1.28.0':
-    resolution: {integrity: sha512-CBVdE0xQYd9qhF4qP4HGHe86peeso1ekUiPMG56A77+2p/Am6hz4YdP2fD1CxxfVHT76y5qXI8UOJpjzk6j4bA==}
+  '@dallay/agentsync-windows-x64@1.29.0':
+    resolution: {integrity: sha512-3bGL7G3iGWYWuCoRkeREtE+x7QeFvhosH2uoav+WQyEh8Lh3OiWfSZJql72NTxF0FrEWBiNyIBMvK9Jxh007kg==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
     hasBin: true
 
-  '@dallay/agentsync-windows-x64@1.29.0':
-    resolution: {integrity: sha512-3bGL7G3iGWYWuCoRkeREtE+x7QeFvhosH2uoav+WQyEh8Lh3OiWfSZJql72NTxF0FrEWBiNyIBMvK9Jxh007kg==}
+  '@dallay/agentsync-windows-x64@1.33.1':
+    resolution: {integrity: sha512-tZG3vKnwb9lU8lS2Y6sTud5vEWGoV5p1X+8fyZ8VFuYD/gYRMpu4LbcmcuxE7R0Q3SYhewAHaEbBhrM6+wzqnA==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
@@ -2949,10 +2949,10 @@ snapshots:
   '@dallay/agentsync-windows-arm64@1.29.0':
     optional: true
 
-  '@dallay/agentsync-windows-x64@1.28.0':
+  '@dallay/agentsync-windows-x64@1.29.0':
     optional: true
 
-  '@dallay/agentsync-windows-x64@1.29.0':
+  '@dallay/agentsync-windows-x64@1.33.1':
     optional: true
 
   '@dallay/agentsync@1.29.0':
