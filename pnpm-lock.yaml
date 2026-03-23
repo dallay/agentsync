@@ -49,8 +49,8 @@ importers:
         specifier: 1.28.0
         version: 1.28.0
       '@dallay/agentsync-linux-x64':
-        specifier: 1.28.0
-        version: 1.28.0
+        specifier: 1.33.1
+        version: 1.33.1
       '@dallay/agentsync-windows-arm64':
         specifier: 1.28.0
         version: 1.28.0
@@ -262,15 +262,15 @@ packages:
     os: [linux]
     hasBin: true
 
-  '@dallay/agentsync-linux-x64@1.28.0':
-    resolution: {integrity: sha512-Rmq8P8FuEFsUGz/len+Nk8e7ChRvankCBVXno7etnckxlS8MnfgdB0pwkZM7FUeJ25WknyhAtitTk+D3Wa9dfA==}
+  '@dallay/agentsync-linux-x64@1.29.0':
+    resolution: {integrity: sha512-KLYEj5SZSNAVmPm1QWvZAr4K8P2QUWmENtSGgXC0bVVQNGu5wN8bgiOUnFu/3G8JepdLxE3pYnvc5xKE+Vjn4w==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [linux]
     hasBin: true
 
-  '@dallay/agentsync-linux-x64@1.29.0':
-    resolution: {integrity: sha512-KLYEj5SZSNAVmPm1QWvZAr4K8P2QUWmENtSGgXC0bVVQNGu5wN8bgiOUnFu/3G8JepdLxE3pYnvc5xKE+Vjn4w==}
+  '@dallay/agentsync-linux-x64@1.33.1':
+    resolution: {integrity: sha512-i3nmMqKuWqgmXTgK5Ch58fdHriMW+6WNJuX53QBkU0JE8291UrJojjZFqMjlVtCEgsYiDLPkL2MqOdyO/biTDA==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [linux]
@@ -2937,10 +2937,10 @@ snapshots:
   '@dallay/agentsync-linux-arm64@1.29.0':
     optional: true
 
-  '@dallay/agentsync-linux-x64@1.28.0':
+  '@dallay/agentsync-linux-x64@1.29.0':
     optional: true
 
-  '@dallay/agentsync-linux-x64@1.29.0':
+  '@dallay/agentsync-linux-x64@1.33.1':
     optional: true
 
   '@dallay/agentsync-windows-arm64@1.28.0':
