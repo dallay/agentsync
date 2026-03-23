@@ -8,6 +8,13 @@
 
 * update README.md for accuracy and formatting ([#159](https://github.com/dallay/agentsync/issues/159)) ([8cb9f19](https://github.com/dallay/agentsync/commit/8cb9f19b2302456f0e4536f7a37ad9af5645e605))
 
+## [1.33.2](https://github.com/dallay/agentsync/compare/v1.33.1...v1.33.2) (2026-03-23)
+
+
+### Chores
+
+* update @astrojs/starlight to version 0.38.0 ([06776a6](https://github.com/dallay/agentsync/commit/06776a6ab3684bbaa0a81308c29ebe78ff3f98bf))
+
 ## [1.33.1](https://github.com/dallay/agentsync/compare/v1.33.0...v1.33.1) (2026-03-22)
 
 
