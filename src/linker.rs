@@ -607,15 +607,13 @@ impl Linker {
             return Ok(result);
         }
 
-        for entry in WalkDir::new(search_root)
-            .follow_links(false)
-            .into_iter()
-            .filter_map(|e| e.ok())
-        {
-            // Only process files
-            if !entry.file_type().is_file() {
-                continue;
-            }
+        let mut it = WalkDir::new(search_root).follow_links(false).into_iter();
+
+        while let Some(entry) = it.next() {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
 
             // Compute path relative to search root
             let full_path = entry.path();
@@ -631,9 +629,8 @@ impl Linker {
                 .collect::<Vec<_>>()
                 .join("/");
 
-            // Match against the glob pattern
-            if !matches_path_glob(&rel_str, glob_pattern) {
-                continue;
+            if rel_str.is_empty() {
+                continue; // Skip root itself
             }
 
             // Check exclusion patterns.
@@ -652,6 +649,21 @@ impl Linker {
                         full_path.display()
                     );
                 }
+                // Optimization: if this is a directory and it matches an exclude pattern,
+                // skip its entire subtree to avoid unnecessary I/O.
+                if entry.file_type().is_dir() {
+                    it.skip_current_dir();
+                }
+                continue;
+            }
+
+            // Only process files
+            if !entry.file_type().is_file() {
+                continue;
+            }
+
+            // Match against the glob pattern
+            if !matches_path_glob(&rel_str, glob_pattern) {
                 continue;
             }
 
@@ -814,14 +826,14 @@ impl Linker {
                         let dest_template = &target_config.destination;
                         let excludes = &target_config.exclude;
 
-                        for entry in WalkDir::new(&search_root)
-                            .follow_links(false)
-                            .into_iter()
-                            .filter_map(|e| e.ok())
-                        {
-                            if !entry.file_type().is_file() {
-                                continue;
-                            }
+                        let mut it = WalkDir::new(&search_root).follow_links(false).into_iter();
+
+                        while let Some(entry) = it.next() {
+                            let entry = match entry {
+                                Ok(e) => e,
+                                Err(_) => continue,
+                            };
+
                             let rel_path = match entry.path().strip_prefix(&search_root) {
                                 Ok(p) => p,
                                 Err(_) => continue,
@@ -831,13 +843,28 @@ impl Linker {
                                 .map(|c| c.as_os_str().to_string_lossy().into_owned())
                                 .collect::<Vec<_>>()
                                 .join("/");
-                            if !matches_path_glob(&rel_str, glob_pattern) {
+
+                            if rel_str.is_empty() {
                                 continue;
                             }
+
                             if excludes
                                 .iter()
                                 .any(|excl| matches_path_glob(&rel_str, excl))
                             {
+                                // Optimization: if this is a directory and it matches an exclude pattern,
+                                // skip its entire subtree to avoid unnecessary I/O.
+                                if entry.file_type().is_dir() {
+                                    it.skip_current_dir();
+                                }
+                                continue;
+                            }
+
+                            if !entry.file_type().is_file() {
+                                continue;
+                            }
+
+                            if !matches_path_glob(&rel_str, glob_pattern) {
                                 continue;
                             }
                             let dest_str =
