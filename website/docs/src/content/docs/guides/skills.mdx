@@ -7,6 +7,31 @@ AgentSync supports "skills": small bundles of content, prompts, or helper files 
 
 This guide explains the expected layout and manifest format, how to install/update skills from providers (for example skills.sh), and troubleshooting tips.
 
+## Adopting existing skills (wizard migration)
+
+If you already have skills in agent-specific directories (`.claude/skills/`, `.cursor/skills/`, `.codex/skills/`, `.gemini/skills/`, `.opencode/skills/`, `.roo/skills/`, `.factory/skills/`, `.vibe/skills/`, or `.agent/skills/`), the init wizard will detect and offer to migrate them:
+
+```bash
+agentsync init --wizard
+```
+
+The wizard:
+- **Detects** skill directories across all known agents
+- **Copies** skill contents into the canonical `.agents/skills/` directory
+- **Handles collisions** — if a skill with the same name already exists, it's skipped with a warning
+- **Preserves originals** — optionally backs up source directories
+
+After migration, configure a skills target in `agentsync.toml` so `apply` syncs skills back to each agent:
+
+```toml
+[agents.claude.targets.skills]
+source = "skills"
+destination = ".claude/skills"
+type = "symlink-contents"
+```
+
+> **Note:** Skills migrated via the wizard are NOT registered in `registry.json` — they're managed through the symlink pipeline, not the `skill install` system. Both systems coexist: installed skills live in `.agents/skills/` alongside migrated ones.
+
 ## Directory structure
 
 AgentSync keeps installable skills under the project `.agents/skills/` directory. Each installed skill has its own subdirectory and a `registry.json` file tracks installed skills.

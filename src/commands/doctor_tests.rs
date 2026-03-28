@@ -1,8 +1,9 @@
 #[cfg(test)]
 mod tests {
     use crate::commands::doctor::{
-        Conflict, collect_missing_sources, expand_target_destinations, extract_managed_entries,
-        normalize_path, target_configuration_warnings, validate_destinations,
+        Conflict, check_unmanaged_claude_skills, collect_missing_sources,
+        expand_target_destinations, extract_managed_entries, normalize_path,
+        target_configuration_warnings, validate_destinations,
     };
     use agentsync::config::{Config, SyncType};
     use std::fs;
@@ -358,5 +359,107 @@ entry1
             target_configuration_warnings(wrong_type_target),
             vec!["mappings is only used by module-map targets"]
         );
+    }
+
+    // ==========================================================================
+    // UNMANAGED CLAUDE SKILLS TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_check_unmanaged_claude_skills_warns_when_unmanaged() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path();
+
+        // Create .claude/skills/ with content
+        let skill_dir = project_root.join(".claude/skills/orphan-skill");
+        fs::create_dir_all(&skill_dir).unwrap();
+        fs::write(skill_dir.join("SKILL.md"), "# Orphan").unwrap();
+
+        // Config without a skills target for claude
+        let config: Config = toml::from_str(
+            r#"
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.instructions]
+            source = "AGENTS.md"
+            destination = "CLAUDE.md"
+            type = "symlink"
+            "#,
+        )
+        .unwrap();
+
+        let result = check_unmanaged_claude_skills(project_root, &config);
+        assert!(result.is_some());
+        let warning = result.unwrap();
+        assert!(warning.contains(".claude/skills/"));
+        assert!(warning.contains("init --wizard"));
+    }
+
+    #[test]
+    fn test_check_unmanaged_claude_skills_suppressed_when_managed() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path();
+
+        // Create .claude/skills/ with content
+        let skill_dir = project_root.join(".claude/skills/managed-skill");
+        fs::create_dir_all(&skill_dir).unwrap();
+        fs::write(skill_dir.join("SKILL.md"), "# Managed").unwrap();
+
+        // Config WITH a skills target for claude
+        let config: Config = toml::from_str(
+            r#"
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.skills]
+            source = "skills"
+            destination = ".claude/skills"
+            type = "symlink-contents"
+            "#,
+        )
+        .unwrap();
+
+        let result = check_unmanaged_claude_skills(project_root, &config);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_check_unmanaged_claude_skills_no_warning_when_absent() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path();
+        // No .claude/ directory at all
+
+        let config: Config = toml::from_str(
+            r#"
+            [agents.claude]
+            enabled = true
+            "#,
+        )
+        .unwrap();
+
+        let result = check_unmanaged_claude_skills(project_root, &config);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_check_unmanaged_claude_skills_no_warning_when_empty() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path();
+
+        // Create empty .claude/skills/
+        let skills_dir = project_root.join(".claude/skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        let config: Config = toml::from_str(
+            r#"
+            [agents.claude]
+            enabled = true
+            "#,
+        )
+        .unwrap();
+
+        let result = check_unmanaged_claude_skills(project_root, &config);
+        assert!(result.is_none());
     }
 }

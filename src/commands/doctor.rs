@@ -254,6 +254,12 @@ pub fn run_doctor(project_root: PathBuf) -> Result<()> {
         issues += 1;
     }
 
+    // 7. Unmanaged Claude Skills Check
+    if let Some(warning) = check_unmanaged_claude_skills(linker.project_root(), linker.config()) {
+        println!("  {} {}", "⚠".yellow(), warning);
+        issues += 1;
+    }
+
     if issues == 0 {
         println!("\n{}", "✨ All systems go! No issues found.".green().bold());
     } else {
@@ -502,6 +508,45 @@ pub fn normalize_path(path_str: &str) -> String {
         res.push(c);
     }
     res.to_string_lossy().to_string()
+}
+
+/// Check if .claude/skills/ has content but is not managed by any target.
+pub fn check_unmanaged_claude_skills(
+    project_root: &Path,
+    config: &agentsync::config::Config,
+) -> Option<String> {
+    let claude_skills = project_root.join(".claude").join("skills");
+    if !claude_skills.exists() || !claude_skills.is_dir() {
+        return None;
+    }
+
+    // Check if directory has any children
+    let has_content = fs::read_dir(&claude_skills)
+        .ok()
+        .map(|mut entries| entries.next().is_some())
+        .unwrap_or(false);
+    if !has_content {
+        return None;
+    }
+
+    // Check if any enabled target manages .claude/skills
+    let is_managed = config.agents.values().any(|agent| {
+        agent.enabled
+            && agent
+                .targets
+                .values()
+                .any(|target| target.destination == ".claude/skills")
+    });
+
+    if is_managed {
+        None
+    } else {
+        Some(
+            ".claude/skills/ has content but is not managed by any target. \
+             Run 'agentsync init --wizard' to adopt."
+                .to_string(),
+        )
+    }
 }
 
 pub fn extract_managed_entries(content: &str, start_marker: &str, end_marker: &str) -> Vec<String> {
