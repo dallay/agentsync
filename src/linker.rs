@@ -2149,6 +2149,66 @@ mod tests {
         assert_eq!(linked_canon, compressed_canon);
     }
 
+    #[test]
+    #[cfg(unix)]
+    fn test_sync_symlink_directory_for_skills() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        let skills_dir = agents_dir.join("skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        // Create skill subdirectories with SKILL.md files
+        let debugging_dir = skills_dir.join("debugging");
+        fs::create_dir_all(&debugging_dir).unwrap();
+        fs::write(debugging_dir.join("SKILL.md"), "# Debugging skill").unwrap();
+
+        let testing_dir = skills_dir.join("testing");
+        fs::create_dir_all(&testing_dir).unwrap();
+        fs::write(testing_dir.join("SKILL.md"), "# Testing skill").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            [agents.test]
+            enabled = true
+            [agents.test.targets.skills]
+            source = "skills"
+            destination = "output_skills"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let options = SyncOptions::default();
+        let result = linker.sync(&options).unwrap();
+
+        assert_eq!(result.created, 1);
+
+        // Destination should be a symlink (not a real directory)
+        let dest = temp_dir.path().join("output_skills");
+        assert!(dest.is_symlink(), "Expected output_skills to be a symlink");
+
+        // Symlink should resolve to the source skills directory
+        let target = fs::read_link(&dest).unwrap();
+        let target_str = target.to_string_lossy();
+        assert!(
+            target_str.contains("skills"),
+            "Expected symlink to point to skills dir, got '{target_str}'"
+        );
+
+        // Skill subdirectories should be accessible through the symlink
+        assert!(dest.join("debugging").exists());
+        assert!(dest.join("debugging/SKILL.md").exists());
+        assert!(dest.join("testing").exists());
+        assert!(dest.join("testing/SKILL.md").exists());
+
+        // Verify contents are readable
+        let content = fs::read_to_string(dest.join("debugging/SKILL.md")).unwrap();
+        assert_eq!(content, "# Debugging skill");
+    }
+
     // ==========================================================================
     // CLEAN TESTS
     // ==========================================================================

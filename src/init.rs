@@ -70,7 +70,7 @@ type = "symlink"
 [agents.claude.targets.skills]
 source = "skills"
 destination = ".claude/skills"
-type = "symlink-contents"
+type = "symlink"
 
 [agents.claude.targets.commands]
 source = "commands"
@@ -106,7 +106,7 @@ description = "OpenAI Codex CLI - OpenAI's AI coding agent"
 [agents.codex.targets.skills]
 source = "skills"
 destination = ".codex/skills"
-type = "symlink-contents"
+type = "symlink"
 
 # -----------------------------------------------------------------------------
 # Gemini CLI
@@ -123,7 +123,7 @@ type = "symlink"
 [agents.gemini.targets.skills]
 source = "skills"
 destination = ".gemini/skills"
-type = "symlink-contents"
+type = "symlink"
 
 [agents.gemini.targets.commands]
 source = "commands"
@@ -145,7 +145,7 @@ type = "symlink"
 [agents.opencode.targets.skills]
 source = "skills"
 destination = ".opencode/skills"
-type = "symlink-contents"
+type = "symlink"
 
 # Note: intentionally singular per OpenCode convention (.opencode/command, not .opencode/commands)
 [agents.opencode.targets.commands]
@@ -1644,10 +1644,7 @@ mod tests {
         let skills_target = &claude.targets["skills"];
         assert_eq!(skills_target.source, "skills");
         assert_eq!(skills_target.destination, ".claude/skills");
-        assert_eq!(
-            skills_target.sync_type,
-            crate::config::SyncType::SymlinkContents
-        );
+        assert_eq!(skills_target.sync_type, crate::config::SyncType::Symlink);
     }
 
     #[test]
