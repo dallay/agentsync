@@ -1,0 +1,80 @@
+---
+title: Development Guide
+description: Guide for developing AgentSync across Rust and TypeScript stacks.
+---
+
+AgentSync is a mono-repo project that combines a high-performance Rust core with a TypeScript distribution layer. This guide covers the development workflow for both stacks.
+
+## Mono-repo Structure
+
+- `src/`: Core logic and CLI implementation in **Rust**.
+- `npm/agentsync/`: **TypeScript** wrapper used for NPM distribution.
+- `website/docs/`: Documentation site built with **Starlight**.
+- `tests/`: Integration tests for the CLI.
+
+---
+
+## Rust Development (The Core)
+
+The core logic is written in Rust for speed, safety, and easy distribution as a single binary.
+
+### Tools & Version
+- **Version**: Rust 1.89+ (Edition 2024)
+- **Primary Tool**: `cargo`
+
+### Common Commands
+
+```bash
+cargo build          # Build debug binary
+cargo test           # Run all unit and integration tests
+cargo run -- apply   # Run the CLI locally with arguments
+cargo clippy         # Run linting
+cargo fmt            # Format code
+```
+
+### Error Handling
+We use `thiserror` for defining custom, recoverable errors in the core logic and `anyhow` for high-level error handling in the CLI entry points.
+
+---
+
+## JavaScript/TypeScript Development
+
+The JS workspace acts as a wrapper to provide an easy installation path via `pnpm/npm`. It manages platform-specific binary downloads and provides a programmatic API.
+
+### Tools & Version
+- **Node.js**: v22.22.0+ (recommended for development)
+- **Package Manager**: `pnpm` 10+
+- **Location**: `npm/agentsync/`
+
+### Common Commands
+
+```bash
+pnpm install        # Install dependencies
+pnpm run typecheck  # Verify TypeScript types
+pnpm run build      # Compile TypeScript to JS
+pnpm run test       # Run tests (uses vitest)
+```
+
+---
+
+## Cross-Stack Workflow
+
+We use a **Makefile** at the repository root to orchestrate tasks across both stacks. This is the recommended way to run full verification.
+
+### Orchestration Commands
+
+| Command | Description |
+| :--- | :--- |
+| `make install` | Install all dependencies (JS and Rust). |
+| `make all` | Build both the Rust binary and JS package. |
+| `make verify-all` | Run the full suite: linting, tests, and documentation build. |
+| `make rust-test` | Run only Rust tests. |
+| `make js-test` | Run only JavaScript tests. |
+| `make fmt` | Format all code across the repo. |
+
+### Shared Configuration & Types
+
+The `agentsync.toml` file is the shared configuration format. The Rust core parses this file to determine sync targets, while the JS wrapper handles the distribution of the compiled Rust binary that performs the actual work.
+
+- **Config Schema**: Defined in `src/config.rs`.
+- **MCP Formats**: Handled in `src/mcp.rs`, supporting JSON (Claude, Cursor, VS Code) and TOML (Codex).

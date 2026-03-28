@@ -36,6 +36,7 @@ export default defineConfig({
 						{ label: "Getting Started", slug: "guides/getting-started" },
 						{ label: "MCP Integration", slug: "guides/mcp" },
 						{ label: "Skills", slug: "guides/skills" },
+						{ label: "Development", slug: "guides/development" },
 						{ label: "Contributing", slug: "guides/contributing" },
 					],
 				},

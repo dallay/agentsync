@@ -13,7 +13,7 @@ Effortlessly synchronize AI agent configurations across tools like Copilot, Clau
 ## ✨ Key Features
 
 - **Simple CLI**: Manage symbolic links with minimal setup.
-- **Multi-assistant support**: Compatible across Copilot, Claude, Gemini, Cursor, VS Code, OpenCode and 25+ more assistants.
+- **Multi-assistant support**: Compatible across Copilot, Claude, Gemini, Cursor, VS Code, OpenCode and 32+ more assistants.
     See the full list and file locations in the main documentation: https://dallay.github.io/agentsync/ (or the repo README).
 - **Cross-platform binaries**: Available for Linux, MacOS, and Windows.
 - **Node.js integration**: Use programmatically within your applications.

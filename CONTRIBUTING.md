@@ -1,6 +1,6 @@
 # Contributing to AgentSync
 
-Thank you for your interest in contributing to AgentSync! To maintain high code quality and consistency, please follow these guidelines.
+Thank you for your interest in contributing to AgentSync. To maintain high code quality and consistency, please follow these guidelines.
 
 ## Development Workflow
 
