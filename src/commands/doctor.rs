@@ -530,12 +530,17 @@ pub fn check_unmanaged_claude_skills(
     }
 
     // Check if any enabled target manages .claude/skills
+    // Normalize destination by stripping leading "./" and trailing "/"
     let is_managed = config.agents.values().any(|agent| {
         agent.enabled
-            && agent
-                .targets
-                .values()
-                .any(|target| target.destination == ".claude/skills")
+            && agent.targets.values().any(|target| {
+                let dest = target
+                    .destination
+                    .strip_prefix("./")
+                    .unwrap_or(&target.destination)
+                    .trim_end_matches('/');
+                dest == ".claude/skills"
+            })
     });
 
     if is_managed {

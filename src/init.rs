@@ -147,6 +147,7 @@ source = "skills"
 destination = ".opencode/skills"
 type = "symlink-contents"
 
+# Note: intentionally singular per OpenCode convention (.opencode/command, not .opencode/commands)
 [agents.opencode.targets.commands]
 source = "commands"
 destination = ".opencode/command"
