@@ -1,0 +1,16 @@
+change: universal-agent-adoption
+current_phase: archived
+completed:
+  - explore
+  - propose
+  - spec
+  - design
+  - tasks
+  - apply
+  - verify
+  - archive
+next: none
+updated: 2026-03-28
+verdict: PASS WITH WARNINGS
+archived: 2026-03-28
+archived_to: openspec/changes/archive/2026-03-28-universal-agent-adoption/
