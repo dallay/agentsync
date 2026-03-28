@@ -17,12 +17,12 @@ Different AI coding tools expect configuration files in various locations:
 | Tool               | Instructions                      | Commands             | Skills             |
 |--------------------|-----------------------------------|----------------------|--------------------|
 | **Claude Code**    | `CLAUDE.md`                       | `.claude/commands/`  | `.claude/skills/`  |
-| **GitHub Copilot** | `.github/copilot-instructions.md` | `.github/agents/`    | -                  |
+| **GitHub Copilot** | `.github/copilot-instructions.md` | -                    | -                  |
 | **Gemini CLI**     | `GEMINI.md`                       | `.gemini/commands/`  | `.gemini/skills/`  |
-| **Cursor**         | `AGENTS.md`                       | `.cursor/commands/`  | `.cursor/skills/`  |
-| **VS Code**        | `AGENTS.md` (or `.vscode/*`)      | `.vscode/`           | -                  |
-| **OpenCode**       | `AGENTS.md`                       | `.opencode/command/` | `.opencode/skills/` |
-| **OpenAI Codex**   | -                                 | -                    | `.codex/skills/`   |
+| **Cursor**         | `.cursor/rules/agentsync.mdc`     | -                    | `.cursor/skills/`  |
+| **VS Code**        | -                                 | -                    | -                  |
+| **OpenCode**       | `OPENCODE.md`                     | `.opencode/command/` | `.opencode/skills/` |
+| **OpenAI Codex**   | `AGENTS.md`                       | -                    | `.codex/skills/`   |
 
 AgentSync maintains a **single source of truth** in `.agents/` and creates symlinks to all required
 locations.
@@ -110,7 +110,10 @@ To install via terminal, you can use the following script (be sure to replace th
 ```bash
 # Define version and platform
 VERSION="<version>"
-PLATFORM="x86_64-apple-darwin" # e.g., aarch64-apple-darwin, x86_64-unknown-linux-gnu
+# Detect architecture (macOS)
+PLATFORM=$([ "$(uname -m)" = "arm64" ] && echo "aarch64-apple-darwin" || echo "x86_64-apple-darwin")
+# Or specify manually for Linux, e.g., x86_64-unknown-linux-gnu
+# PLATFORM="x86_64-unknown-linux-gnu"
 TARBALL="agentsync-${VERSION}-${PLATFORM}.tar.gz"
 
 # Download binary and checksum
@@ -356,6 +359,7 @@ When `merge_strategy = "merge"`:
 | `symlink`          | Create a symlink to the source file/directory                 |
 | `symlink-contents` | Create symlinks for each item in the source directory         |
 | `nested-glob`      | Recursively discover files and create symlinks for each match |
+| `module-map`       | Map centrally-managed source files to module directories      |
 
 The `symlink-contents` type optionally supports a `pattern` field (glob pattern like `*.md`) to
 filter which items to link.
@@ -551,6 +555,15 @@ This project uses a `Makefile` to orchestrate common tasks.
     make verify-all
     ```
 
+-   **Lint the code:**
+
+    ```bash
+    # Rust
+    cargo clippy
+    # JavaScript/TypeScript
+    pnpm run biome:check
+    ```
+
 -   **Format the code:**
 
     ```bash
@@ -578,6 +591,10 @@ If `pnpm install` fails during the `lefthook` setup, you can try:
 ```bash
 pnpm install --ignore-scripts
 ```
+
+### Build failures (Rust)
+
+Ensure you have the latest stable Rust toolchain installed. You can update with `rustup update stable`.
 
 ### Symlink creation fails on Windows
 

@@ -81,6 +81,28 @@ AgentSync automatically adds the following patterns to `.gitignore` based on whi
 | **cursor** | `.cursor/mcp.json`, `.cursor/skills/` |
 | **vscode** | `.vscode/mcp.json` |
 | **opencode** | `opencode.json`, `.opencode/command/`, `.opencode/skills/` |
+| **windsurf** | `.windsurf/mcp_config.json` |
+| **cline** | `.clinerules` |
+| **crush** | `CRUSH.md`, `.crush.json` |
+| **antigravity** | `.agent/rules/`, `.agent/skills/` |
+| **amazonq** | `.amazonq/rules/`, `.amazonq/mcp.json` |
+| **aider** | `.aider.conf.yml`, `.aiderignore` |
+| **firebase** | `.idx/airules.md`, `.idx/mcp.json` |
+| **openhands** | `.openhands/microagents/` |
+| **junie** | `.junie/` |
+| **augment** | `.augment/rules/` |
+| **kilocode** | `.kilocode/mcp.json` |
+| **goose** | `.goosehints` |
+| **qwen** | `.qwen/settings.json` |
+| **roo** | `.roo/mcp.json`, `.roo/rules/`, `.roo/skills/` |
+| **zed** | `.zed/settings.json` |
+| **trae** | `.trae/rules/` |
+| **warp** | `WARP.md` |
+| **kiro** | `.kiro/steering/`, `.kiro/settings/mcp.json` |
+| **firebender** | `firebender.json` |
+| **factory** | `.factory/mcp.json`, `.factory/skills/` |
+| **vibe** | `.vibe/config.toml`, `.vibe/skills/` |
+| **jetbrains** | `.aiassistant/rules/` |
 
 **Notes:**
 - The `entries` field in your config is only needed for additional files not covered by the patterns above
@@ -130,37 +152,37 @@ The matrix below documents common agent locations and whether AgentSync can hand
 | Agent | Rules File(s) | MCP Configuration / Notes | Skills Support / Location |
 | :--- | :--- | :--- | :--- |
 | AGENTS.md | `AGENTS.md` | Pseudo-agent pattern via `[agents.root]` target | - |
-| GitHub Copilot | `.github/copilot-instructions.md` (or project `AGENTS.md` if you choose) | `.vscode/mcp.json` (native MCP) | Configurable; common target `.github/skills/` |
-| Claude Code | `CLAUDE.md` | `.mcp.json` (native MCP) | Configurable; common target `.claude/skills/` |
-| OpenAI Codex CLI | `AGENTS.md` (if configured) | `.codex/config.toml` (native MCP, TOML output) | Configurable; common target `.codex/skills/` |
-| Pi Coding Agent | `AGENTS.md` (if configured) | No native MCP formatter | Configurable; e.g. `.pi/skills/` |
-| Jules | `AGENTS.md` (if configured) | No native MCP formatter | Configurable |
-| Cursor | `AGENTS.md` (if configured) | `.cursor/mcp.json` (native MCP) | Configurable; common target `.cursor/skills/` |
-| Windsurf | `AGENTS.md` (if configured) | No native MCP formatter | Configurable |
-| Cline | `.clinerules` (if configured) | No native MCP formatter | Configurable |
-| Crush | `CRUSH.md` (if configured) | No native MCP formatter | Configurable |
-| Amp | `AGENTS.md` (if configured) | No native MCP formatter | Configurable; e.g. `.agents/skills/` |
-| Antigravity | `.agent/rules/ruler.md` (if configured) | No native MCP formatter | Configurable; e.g. `.agent/skills/` |
-| Amazon Q CLI | `.amazonq/rules/` | `.amazonq/mcp.json` | Configurable |
-| Aider | `AGENTS.md` | `.aider.conf.yml`, `.aiderignore` | Configurable |
-| Firebase Studio | `.idx/airules.md` | `.idx/mcp.json` | Configurable |
-| Open Hands | `.openhands/microagents/` | No native MCP formatter | Configurable |
-| Gemini CLI | `GEMINI.md` | `.gemini/settings.json` (native MCP, adds `"trust": true`) | Configurable; common target `.gemini/skills/` |
-| Junie | `.junie/` | No native MCP formatter | Configurable |
-| AugmentCode | `.augment/rules/` | No native MCP formatter | Configurable |
-| Kilo Code | `AGENTS.md` | `.kilocode/mcp.json` | Configurable |
-| OpenCode | `AGENTS.md` | `opencode.json` (native MCP) | Configurable; common target `.opencode/skills/` |
-| Goose | `.goosehints` | No native MCP formatter | Configurable |
-| Qwen Code | `AGENTS.md` | `.qwen/settings.json` | Configurable |
-| RooCode | `.roo/rules/` | `.roo/mcp.json` | Configurable; common target `.roo/skills/` |
-| Zed | `AGENTS.md` | `.zed/settings.json` | Configurable |
-| Trae AI | `.trae/rules/` | No native MCP formatter | Configurable |
+| GitHub Copilot | `.github/copilot-instructions.md` | `.vscode/mcp.json` (native MCP) | Configurable |
+| Claude Code | `CLAUDE.md` | `.mcp.json` (native MCP) | Configurable; `.claude/skills/` |
+| OpenAI Codex CLI | `AGENTS.md` | `.codex/config.toml` (native MCP) | Configurable; `.codex/skills/` |
+| Pi Coding Agent | - | No native MCP formatter | Configurable |
+| Jules | - | No native MCP formatter | Configurable |
+| Cursor | `.cursor/rules/agentsync.mdc` | `.cursor/mcp.json` (native MCP) | Configurable; `.cursor/skills/` |
+| Windsurf | `.windsurfrules` | No native MCP formatter; `.windsurf/mcp_config.json` ignore | Configurable |
+| Cline | `.clinerules` | No native MCP formatter | Configurable |
+| Crush | `CRUSH.md` | No native MCP formatter; `.crush.json` ignore | Configurable |
+| Amp | `AMPCODE.md` | No native MCP formatter | Configurable |
+| Antigravity | - | No native MCP formatter; `.agent/rules/`, `.agent/skills/` ignores | Configurable |
+| Amazon Q CLI | - | No native MCP formatter; `.amazonq/rules/`, `.amazonq/mcp.json` ignores | Configurable |
+| Aider | - | No native MCP formatter; `.aider.conf.yml`, `.aiderignore` ignores | Configurable |
+| Firebase Studio | - | No native MCP formatter; `.idx/airules.md`, `.idx/mcp.json` ignores | Configurable |
+| Open Hands | - | No native MCP formatter; `.openhands/microagents/` ignore | Configurable |
+| Gemini CLI | `GEMINI.md` | `.gemini/settings.json` (native MCP, adds `"trust": true`) | Configurable; `.gemini/skills/` |
+| Junie | - | No native MCP formatter; `.junie/` ignore | Configurable |
+| AugmentCode | - | No native MCP formatter; `.augment/rules/` ignore | Configurable |
+| Kilo Code | - | No native MCP formatter; `.kilocode/mcp.json` ignore | Configurable |
+| OpenCode | `OPENCODE.md` | `opencode.json` (native MCP) | Configurable; `.opencode/skills/` |
+| Goose | - | No native MCP formatter; `.goosehints` ignore | Configurable |
+| Qwen Code | - | No native MCP formatter; `.qwen/settings.json` ignore | Configurable |
+| RooCode | - | No native MCP formatter; `.roo/mcp.json`, `.roo/rules/`, `.roo/skills/` ignores | Configurable |
+| Zed | - | No native MCP formatter; `.zed/settings.json` ignore | Configurable |
+| Trae AI | - | No native MCP formatter; `.trae/rules/` ignore | Configurable |
 | Warp | `WARP.md` | No native MCP formatter | Configurable |
-| Kiro | `.kiro/steering/` | `.kiro/settings/mcp.json` | Configurable |
-| Firebender | `firebender.json` | No native MCP formatter | Configurable |
-| Factory Droid | `AGENTS.md` | `.factory/mcp.json` | Configurable; common target `.factory/skills/` |
-| Mistral Vibe | `AGENTS.md` | `.vibe/config.toml` | Configurable; common target `.vibe/skills/` |
-| JetBrains AI Assistant | `.aiassistant/rules/` | No native MCP formatter | Configurable |
+| Kiro | - | No native MCP formatter; `.kiro/steering/`, `.kiro/settings/mcp.json` ignores | Configurable |
+| Firebender | - | No native MCP formatter; `firebender.json` ignore | Configurable |
+| Factory Droid | - | No native MCP formatter; `.factory/mcp.json`, `.factory/skills/` ignores | Configurable |
+| Mistral Vibe | - | No native MCP formatter; `.vibe/config.toml`, `.vibe/skills/` ignores | Configurable |
+| JetBrains AI Assistant | - | No native MCP formatter; `.aiassistant/rules/` ignore | Configurable |
 
 ### What "configurable" means in practice
 
@@ -174,6 +196,7 @@ The matrix below documents common agent locations and whether AgentSync can hand
 | :--- | :--- |
 | `symlink` | Creates a direct symbolic link from `destination` to `source`. |
 | `symlink-contents` | Creates individual symbolic links for every file inside the `source` directory into the `destination` directory. |
+| `module-map` | Maps centrally-managed source files to specific module directories, creating a symlink per mapping with convention-based filenames. |
 
 #### `symlink-contents` with patterns
 When using `symlink-contents`, you can filter files using a glob pattern:
@@ -185,6 +208,31 @@ destination = ".claude/commands"
 type = "symlink-contents"
 pattern = "*.agent.md"
 ```
+
+#### `module-map` targets
+The `module-map` type allows you to define a list of mappings between source files and destination directories. This is useful for distributing different context files to specific modules in a project.
+
+By default, AgentSync uses the agent's convention filename (e.g., `CLAUDE.md` for Claude) for the symlink name in each destination. You can override this using `filename_override`.
+
+```toml
+[agents.claude.targets.modules]
+source = "." # Base directory for source files relative to source_dir
+destination = "." # Base directory for destinations relative to project root
+type = "module-map"
+
+[[agents.claude.targets.modules.mappings]]
+source = "api-context.md"
+destination = "src/api"
+
+[[agents.claude.targets.modules.mappings]]
+source = "ui-context.md"
+destination = "src/ui"
+filename_override = "CUSTOM-RULES.md"
+```
+
+In this example:
+- `src/api/CLAUDE.md` will point to `.agents/api-context.md`
+- `src/ui/CUSTOM-RULES.md` will point to `.agents/ui-context.md`
 
 ## MCP (Model Context Protocol)
 

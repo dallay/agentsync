@@ -16,7 +16,7 @@ agentsync init [OPTIONS]
 ```
 
 **Options**:
-- `-p, --path <PATH>`: Project root directory (defaults to current dir).
+- `-p, --path <PATH>`: Project root directory (defaults to current dir). Also supports `--project-root` alias.
 - `-f, --force`: Overwrite existing configuration without prompting.
 - `-w, --wizard`: Run interactive configuration wizard to migrate existing files.
 
@@ -48,7 +48,7 @@ agentsync apply [OPTIONS]
 ```
 
 **Options**:
-- `-p, --path <PATH>`: Project root directory.
+- `-p, --path <PATH>`: Project root directory. Also supports `--project-root` alias.
 - `-c, --config <CONFIG>`: Use a custom configuration file path instead of the default `.agents/agentsync.toml`.
 - `--clean`: Deletes existing symbolic links before applying.
 - `--dry-run`: Shows what actions would be taken without actually making any changes.
@@ -84,7 +84,7 @@ agentsync clean [FLAGS]
 ```
 
 **Flags**:
-- `-p, --path <PATH>`: Path to the project root.
+- `-p, --path <PATH>`: Path to the project root. Also supports `--project-root` alias.
 - `-c, --config <PATH>`: Path to a custom configuration file.
 - `--dry-run`: Shows what would be removed without actually deleting anything.
 - `-v, --verbose`: Enable verbose logging.
