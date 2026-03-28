@@ -23,5 +23,46 @@
 	},
 	"draft": false,
 	"prerelease": false,
-	"extra-files": []
+	"extra-files": [
+		{
+			"type": "json",
+			"path": "package.json",
+			"jsonpath": "$.version"
+		},
+		{
+			"type": "json",
+			"path": "npm/agentsync/package.json",
+			"jsonpath": "$.version"
+		},
+		{
+			"type": "json",
+			"path": "npm/agentsync/package.json",
+			"jsonpath": "$.optionalDependencies['@dallay/agentsync-linux-x64']"
+		},
+		{
+			"type": "json",
+			"path": "npm/agentsync/package.json",
+			"jsonpath": "$.optionalDependencies['@dallay/agentsync-linux-arm64']"
+		},
+		{
+			"type": "json",
+			"path": "npm/agentsync/package.json",
+			"jsonpath": "$.optionalDependencies['@dallay/agentsync-darwin-x64']"
+		},
+		{
+			"type": "json",
+			"path": "npm/agentsync/package.json",
+			"jsonpath": "$.optionalDependencies['@dallay/agentsync-darwin-arm64']"
+		},
+		{
+			"type": "json",
+			"path": "npm/agentsync/package.json",
+			"jsonpath": "$.optionalDependencies['@dallay/agentsync-windows-x64']"
+		},
+		{
+			"type": "json",
+			"path": "npm/agentsync/package.json",
+			"jsonpath": "$.optionalDependencies['@dallay/agentsync-windows-arm64']"
+		}
+	]
 }
