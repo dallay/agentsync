@@ -8,6 +8,23 @@
 
 * update README.md for accuracy and formatting ([#159](https://github.com/dallay/agentsync/issues/159)) ([8cb9f19](https://github.com/dallay/agentsync/commit/8cb9f19b2302456f0e4536f7a37ad9af5645e605))
 
+## [1.34.0](https://github.com/dallay/agentsync/compare/v1.33.1...v1.34.0) (2026-03-28)
+
+
+### Features
+
+* detect and migrate existing agent skills, commands, and configs during init wizard ([#259](https://github.com/dallay/agentsync/issues/259)) ([a3a9802](https://github.com/dallay/agentsync/commit/a3a980232901e70cc267dd4b72fc10b81df3c229))
+
+
+### Bug Fixes
+
+* sync release-please config to bump all npm versions automatically ([3c35bb5](https://github.com/dallay/agentsync/commit/3c35bb59d283911c60967bfc17c99f51dbf2e351))
+
+
+### Chores
+
+* update @astrojs/starlight to version 0.38.0 ([06776a6](https://github.com/dallay/agentsync/commit/06776a6ab3684bbaa0a81308c29ebe78ff3f98bf))
+
 ## [1.33.1](https://github.com/dallay/agentsync/compare/v1.33.0...v1.33.1) (2026-03-22)
 
 
