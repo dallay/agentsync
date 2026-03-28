@@ -122,7 +122,23 @@ description = "Claude Code - Anthropic's AI coding assistant"
 source = "AGENTS.md"
 destination = "CLAUDE.md"
 type = "symlink"
+
+[agents.claude.targets.skills]
+source = "skills"
+destination = ".claude/skills"
+type = "symlink-contents"
+
+[agents.claude.targets.commands]
+source = "commands"
+destination = ".claude/commands"
+type = "symlink-contents"
 ```
+
+### Commands
+
+AgentSync supports a canonical `.agents/commands/` directory for agent commands (slash commands, markdown-based prompts, etc.). Commands are synced to agent-specific locations using `symlink-contents`, the same way skills are managed.
+
+The `init` command automatically creates `.agents/commands/` alongside `.agents/skills/`. The wizard detects existing command directories (`.claude/commands/`, `.gemini/commands/`, `.opencode/command/`) and offers to migrate them.
 
 ## Agent Compatibility Matrix
 
