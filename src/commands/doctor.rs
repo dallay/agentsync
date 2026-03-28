@@ -520,12 +520,17 @@ pub fn check_unmanaged_claude_skills(
         return None;
     }
 
-    // Check if directory has any children
-    let has_content = fs::read_dir(&claude_skills)
+    // Check if directory contains at least one valid skill (a subdirectory with SKILL.md)
+    let has_skills = fs::read_dir(&claude_skills)
         .ok()
-        .map(|mut entries| entries.next().is_some())
+        .map(|entries| {
+            entries.filter_map(|e| e.ok()).any(|entry| {
+                entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false)
+                    && entry.path().join("SKILL.md").exists()
+            })
+        })
         .unwrap_or(false);
-    if !has_content {
+    if !has_skills {
         return None;
     }
 

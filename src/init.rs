@@ -2,7 +2,7 @@
 //!
 //! Provides default configuration templates for new projects and interactive wizard.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
 
@@ -330,6 +330,14 @@ enum AgentFileType {
     Other,
 }
 
+/// Check if a directory has at least one entry, propagating IO errors.
+fn dir_has_entries(path: &Path) -> Result<bool> {
+    Ok(fs::read_dir(path)
+        .with_context(|| format!("Failed to read directory: {}", path.display()))?
+        .next()
+        .is_some())
+}
+
 /// Scan project for existing agent-related files
 fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
     let mut discovered = Vec::new();
@@ -352,10 +360,7 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
     let claude_skills_path = project_root.join(".claude").join("skills");
     if claude_skills_path.exists() && claude_skills_path.is_dir() {
         // Only report if directory has at least one child entry
-        let has_content = fs::read_dir(&claude_skills_path)
-            .ok()
-            .map(|mut entries| entries.next().is_some())
-            .unwrap_or(false);
+        let has_content = dir_has_entries(&claude_skills_path)?;
         if has_content {
             discovered.push(DiscoveredFile {
                 path: ".claude/skills".into(),
@@ -368,10 +373,7 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
     // Claude Code: .claude/commands/ directory
     let claude_commands_path = project_root.join(".claude").join("commands");
     if claude_commands_path.exists() && claude_commands_path.is_dir() {
-        let has_content = fs::read_dir(&claude_commands_path)
-            .ok()
-            .map(|mut entries| entries.next().is_some())
-            .unwrap_or(false);
+        let has_content = dir_has_entries(&claude_commands_path)?;
         if has_content {
             discovered.push(DiscoveredFile {
                 path: ".claude/commands".into(),
@@ -414,10 +416,7 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
     // Cursor: .cursor/skills/ directory
     let cursor_skills_path = project_root.join(".cursor").join("skills");
     if cursor_skills_path.exists() && cursor_skills_path.is_dir() {
-        let has_content = fs::read_dir(&cursor_skills_path)
-            .ok()
-            .map(|mut entries| entries.next().is_some())
-            .unwrap_or(false);
+        let has_content = dir_has_entries(&cursor_skills_path)?;
         if has_content {
             discovered.push(DiscoveredFile {
                 path: ".cursor/skills".into(),
@@ -450,10 +449,7 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
     // Gemini CLI: .gemini/skills/ directory
     let gemini_skills_path = project_root.join(".gemini").join("skills");
     if gemini_skills_path.exists() && gemini_skills_path.is_dir() {
-        let has_content = fs::read_dir(&gemini_skills_path)
-            .ok()
-            .map(|mut entries| entries.next().is_some())
-            .unwrap_or(false);
+        let has_content = dir_has_entries(&gemini_skills_path)?;
         if has_content {
             discovered.push(DiscoveredFile {
                 path: ".gemini/skills".into(),
@@ -466,10 +462,7 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
     // Gemini CLI: .gemini/commands/ directory
     let gemini_commands_path = project_root.join(".gemini").join("commands");
     if gemini_commands_path.exists() && gemini_commands_path.is_dir() {
-        let has_content = fs::read_dir(&gemini_commands_path)
-            .ok()
-            .map(|mut entries| entries.next().is_some())
-            .unwrap_or(false);
+        let has_content = dir_has_entries(&gemini_commands_path)?;
         if has_content {
             discovered.push(DiscoveredFile {
                 path: ".gemini/commands".into(),
@@ -492,10 +485,7 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
     // OpenCode: .opencode/skills/ directory
     let opencode_skills_path = project_root.join(".opencode").join("skills");
     if opencode_skills_path.exists() && opencode_skills_path.is_dir() {
-        let has_content = fs::read_dir(&opencode_skills_path)
-            .ok()
-            .map(|mut entries| entries.next().is_some())
-            .unwrap_or(false);
+        let has_content = dir_has_entries(&opencode_skills_path)?;
         if has_content {
             discovered.push(DiscoveredFile {
                 path: ".opencode/skills".into(),
@@ -508,10 +498,7 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
     // OpenCode: .opencode/command/ directory
     let opencode_commands_path = project_root.join(".opencode").join("command");
     if opencode_commands_path.exists() && opencode_commands_path.is_dir() {
-        let has_content = fs::read_dir(&opencode_commands_path)
-            .ok()
-            .map(|mut entries| entries.next().is_some())
-            .unwrap_or(false);
+        let has_content = dir_has_entries(&opencode_commands_path)?;
         if has_content {
             discovered.push(DiscoveredFile {
                 path: ".opencode/command".into(),
@@ -556,10 +543,7 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
     // Codex CLI: .codex/skills/ directory
     let codex_skills_path = project_root.join(".codex").join("skills");
     if codex_skills_path.exists() && codex_skills_path.is_dir() {
-        let has_content = fs::read_dir(&codex_skills_path)
-            .ok()
-            .map(|mut entries| entries.next().is_some())
-            .unwrap_or(false);
+        let has_content = dir_has_entries(&codex_skills_path)?;
         if has_content {
             discovered.push(DiscoveredFile {
                 path: ".codex/skills".into(),
@@ -766,10 +750,7 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
     // Roo Code: .roo/skills/ directory
     let roo_skills_path = project_root.join(".roo").join("skills");
     if roo_skills_path.exists() && roo_skills_path.is_dir() {
-        let has_content = fs::read_dir(&roo_skills_path)
-            .ok()
-            .map(|mut entries| entries.next().is_some())
-            .unwrap_or(false);
+        let has_content = dir_has_entries(&roo_skills_path)?;
         if has_content {
             discovered.push(DiscoveredFile {
                 path: ".roo/skills".into(),
@@ -852,10 +833,7 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
     // Factory: .factory/skills/ directory
     let factory_skills_path = project_root.join(".factory").join("skills");
     if factory_skills_path.exists() && factory_skills_path.is_dir() {
-        let has_content = fs::read_dir(&factory_skills_path)
-            .ok()
-            .map(|mut entries| entries.next().is_some())
-            .unwrap_or(false);
+        let has_content = dir_has_entries(&factory_skills_path)?;
         if has_content {
             discovered.push(DiscoveredFile {
                 path: ".factory/skills".into(),
@@ -888,10 +866,7 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
     // Vibe: .vibe/skills/ directory
     let vibe_skills_path = project_root.join(".vibe").join("skills");
     if vibe_skills_path.exists() && vibe_skills_path.is_dir() {
-        let has_content = fs::read_dir(&vibe_skills_path)
-            .ok()
-            .map(|mut entries| entries.next().is_some())
-            .unwrap_or(false);
+        let has_content = dir_has_entries(&vibe_skills_path)?;
         if has_content {
             discovered.push(DiscoveredFile {
                 path: ".vibe/skills".into(),
@@ -924,10 +899,7 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
     // Antigravity: .agent/skills/ directory
     let antigravity_skills_path = project_root.join(".agent").join("skills");
     if antigravity_skills_path.exists() && antigravity_skills_path.is_dir() {
-        let has_content = fs::read_dir(&antigravity_skills_path)
-            .ok()
-            .map(|mut entries| entries.next().is_some())
-            .unwrap_or(false);
+        let has_content = dir_has_entries(&antigravity_skills_path)?;
         if has_content {
             discovered.push(DiscoveredFile {
                 path: ".agent/skills".into(),
