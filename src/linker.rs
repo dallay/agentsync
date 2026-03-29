@@ -606,11 +606,60 @@ impl Linker {
             return Ok(result);
         }
 
+        self.for_each_nested_glob_match(
+            search_root,
+            glob_pattern,
+            excludes,
+            options,
+            |full_path, rel_path| {
+                let dest_str = Self::expand_destination_template(dest_template, rel_path);
+                if dest_str.is_empty() {
+                    if options.verbose {
+                        println!(
+                            "  {} Destination template produced empty path for: {}",
+                            "!".yellow(),
+                            full_path.display()
+                        );
+                    }
+                    result.skipped += 1;
+                    return Ok(());
+                }
+
+                let dest = self.project_root.join(&dest_str);
+
+                let resolved = ResolvedSource {
+                    path: full_path.to_path_buf(),
+                    exists: true,
+                };
+
+                let item_result = self.create_symlink(&resolved, &dest, options)?;
+                result.created += item_result.created;
+                result.updated += item_result.updated;
+                result.skipped += item_result.skipped;
+
+                Ok(())
+            },
+        )?;
+
+        Ok(result)
+    }
+
+    fn for_each_nested_glob_match<F>(
+        &self,
+        search_root: &Path,
+        glob_pattern: &str,
+        excludes: &[String],
+        options: &SyncOptions,
+        mut on_match: F,
+    ) -> Result<()>
+    where
+        F: FnMut(&Path, &Path) -> Result<()>,
+    {
         let mut it = WalkDir::new(search_root).follow_links(false).into_iter();
 
         while let Some(entry) = it.next() {
             let entry = match entry {
-                Ok(e) => e,
+                Ok(entry) => entry,
                 Err(err) => {
                     if options.verbose {
                         let path = err
@@ -618,42 +667,36 @@ impl Linker {
                             .map(|p| p.display().to_string())
                             .unwrap_or_else(|| "<unknown path>".to_string());
                         println!(
-                            "  {} WalkDir error while scanning {}: {}",
+                            "  {} WalkDir error while traversing {}: {}",
                             "!".yellow(),
                             path,
                             err
                         );
                     }
-                    tracing::debug!(error = %err, path = ?err.path(), "WalkDir entry skipped during nested-glob sync");
+                    tracing::debug!(error = %err, path = ?err.path(), "WalkDir entry skipped during nested-glob traversal");
                     continue;
                 }
             };
 
-            // Compute path relative to search root
             let full_path = entry.path();
             let rel_path = match full_path.strip_prefix(search_root) {
-                Ok(p) => p,
+                Ok(path) => path,
                 Err(_) => continue,
             };
 
-            // Convert to forward-slash string for pattern matching
             let rel_str = rel_path
                 .components()
-                .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                .map(|component| component.as_os_str().to_string_lossy().into_owned())
                 .collect::<Vec<_>>()
                 .join("/");
 
             if rel_str.is_empty() {
-                continue; // Skip root itself
+                continue;
             }
 
-            // Check exclusion patterns.
-            // Uses `find()` instead of `any()` to:
-            // 1. Skip iteration when excludes list is empty (short-circuit)
-            // 2. Determine which pattern matched (for verbose logging)
             if let Some(matched_exclude) = excludes
                 .iter()
-                .find(|excl| matches_path_glob(&rel_str, excl))
+                .find(|exclude| matches_path_glob(&rel_str, exclude))
             {
                 if options.verbose {
                     println!(
@@ -663,52 +706,25 @@ impl Linker {
                         full_path.display()
                     );
                 }
-                // Optimization: if this is a directory and it matches an exclude pattern,
-                // skip its entire subtree to avoid unnecessary I/O.
+
                 if entry.file_type().is_dir() {
                     it.skip_current_dir();
                 }
                 continue;
             }
 
-            // Only process files
             if !entry.file_type().is_file() {
                 continue;
             }
 
-            // Match against the glob pattern
             if !matches_path_glob(&rel_str, glob_pattern) {
                 continue;
             }
 
-            // Expand the destination template
-            let dest_str = Self::expand_destination_template(dest_template, rel_path);
-            if dest_str.is_empty() {
-                if options.verbose {
-                    println!(
-                        "  {} Destination template produced empty path for: {}",
-                        "!".yellow(),
-                        full_path.display()
-                    );
-                }
-                result.skipped += 1;
-                continue;
-            }
-
-            let dest = self.project_root.join(&dest_str);
-
-            let resolved = ResolvedSource {
-                path: full_path.to_path_buf(),
-                exists: true,
-            };
-
-            let item_result = self.create_symlink(&resolved, &dest, options)?;
-            result.created += item_result.created;
-            result.updated += item_result.updated;
-            result.skipped += item_result.skipped;
+            on_match(full_path, rel_path)?;
         }
 
-        Ok(result)
+        Ok(())
     }
 
     /// Process a `module-map` target: iterate mappings and create a symlink
@@ -840,78 +856,36 @@ impl Linker {
                         let dest_template = &target_config.destination;
                         let excludes = &target_config.exclude;
 
-                        let mut it = WalkDir::new(&search_root).follow_links(false).into_iter();
+                        self.for_each_nested_glob_match(
+                            &search_root,
+                            glob_pattern,
+                            excludes,
+                            options,
+                            |_, rel_path| {
+                                let dest_str =
+                                    Self::expand_destination_template(dest_template, rel_path);
+                                if dest_str.is_empty() {
+                                    return Ok(());
+                                }
 
-                        while let Some(entry) = it.next() {
-                            let entry = match entry {
-                                Ok(e) => e,
-                                Err(err) => {
-                                    if options.verbose {
-                                        let path = err
-                                            .path()
-                                            .map(|p| p.display().to_string())
-                                            .unwrap_or_else(|| "<unknown path>".to_string());
+                                let dest = self.project_root.join(&dest_str);
+                                if dest.is_symlink() {
+                                    if options.dry_run {
                                         println!(
-                                            "  {} WalkDir error while cleaning {}: {}",
-                                            "!".yellow(),
-                                            path,
-                                            err
+                                            "  {} Would remove: {}",
+                                            "→".cyan(),
+                                            dest.display()
                                         );
+                                    } else {
+                                        fs::remove_file(&dest)?;
+                                        println!("  {} Removed: {}", "✔".green(), dest.display());
                                     }
-                                    tracing::debug!(error = %err, path = ?err.path(), "WalkDir entry skipped during nested-glob clean");
-                                    continue;
+                                    result.removed += 1;
                                 }
-                            };
 
-                            let rel_path = match entry.path().strip_prefix(&search_root) {
-                                Ok(p) => p,
-                                Err(_) => continue,
-                            };
-                            let rel_str = rel_path
-                                .components()
-                                .map(|c| c.as_os_str().to_string_lossy().into_owned())
-                                .collect::<Vec<_>>()
-                                .join("/");
-
-                            if rel_str.is_empty() {
-                                continue;
-                            }
-
-                            if excludes
-                                .iter()
-                                .any(|excl| matches_path_glob(&rel_str, excl))
-                            {
-                                // Optimization: if this is a directory and it matches an exclude pattern,
-                                // skip its entire subtree to avoid unnecessary I/O.
-                                if entry.file_type().is_dir() {
-                                    it.skip_current_dir();
-                                }
-                                continue;
-                            }
-
-                            if !entry.file_type().is_file() {
-                                continue;
-                            }
-
-                            if !matches_path_glob(&rel_str, glob_pattern) {
-                                continue;
-                            }
-                            let dest_str =
-                                Self::expand_destination_template(dest_template, rel_path);
-                            if dest_str.is_empty() {
-                                continue;
-                            }
-                            let dest = self.project_root.join(&dest_str);
-                            if dest.is_symlink() {
-                                if options.dry_run {
-                                    println!("  {} Would remove: {}", "→".cyan(), dest.display());
-                                } else {
-                                    fs::remove_file(&dest)?;
-                                    println!("  {} Removed: {}", "✔".green(), dest.display());
-                                }
-                                result.removed += 1;
-                            }
-                        }
+                                Ok(())
+                            },
+                        )?;
                     }
                     SyncType::SymlinkContents => {
                         let dest = self.project_root.join(&target_config.destination);
