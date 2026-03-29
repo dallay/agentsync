@@ -8,6 +8,8 @@ use colored::Colorize;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fs;
+#[cfg(windows)]
+use std::os::windows::fs::FileTypeExt;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -1257,7 +1259,7 @@ fn remove_symlink(path: &Path) -> std::io::Result<()> {
     #[cfg(windows)]
     {
         let meta = fs::symlink_metadata(path)?;
-        if meta.file_type().is_dir() {
+        if meta.file_type().is_symlink_dir() {
             return fs::remove_dir(path);
         }
     }

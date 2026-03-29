@@ -20,13 +20,15 @@ All tasks (1.1, 1.2, 2.1, 3.1–3.5, 4.1) are marked `[x]`.
 ## Build & Tests Execution
 
 **Build**: ✅ Passed
-```
+
+```text
 cargo clippy --all-targets --all-features -- -D warnings
 Finished `dev` profile [unoptimized + debuginfo] in 0.99s — zero warnings
 ```
 
 **Format**: ✅ Passed
-```
+
+```text
 cargo fmt --all -- --check — no issues
 ```
 
@@ -82,8 +84,8 @@ Note on PARTIAL for new/rename/delete: These are inherent filesystem properties 
 
 | Scenario | Test | Result |
 |----------|------|--------|
-| Existing symlink-contents config continues to work | `src/linker.rs > test_sync_symlink_contents` (pre-existing, untouched) | ✅ COMPLIANT |
-| Updated binary with old config produces no change | No production code changed in linker.rs — only test added | ✅ COMPLIANT |
+| Existing symlink-contents config continues to work | `src/linker.rs > test_sync_symlink_contents` validates create behavior; `test_clean_symlink_contents` validates cleanup behavior; `test_sync_symlink_contents_with_pattern` validates pattern-filtering behavior | ✅ COMPLIANT |
+| Updated binary with old config produces no change | Verified by unchanged `SyncType::SymlinkContents` observable behavior plus targeted runtime changes in `remove_symlink()` and the `SyncType::Symlink` cleanup path only | ✅ COMPLIANT |
 
 ### Requirement: Clean Transition from symlink-contents to symlink
 
@@ -105,7 +107,7 @@ Note on PARTIAL for new/rename/delete: These are inherent filesystem properties 
 |-------------|------|--------|
 | No New Dependencies | Static: no Cargo.toml changes | ✅ COMPLIANT |
 | No New Sync Types | Static: no changes to SyncType enum or TargetConfig struct | ✅ COMPLIANT |
-| Existing symlink-contents Behavior Unchanged | Static: zero production changes in linker.rs (only test added) | ✅ COMPLIANT |
+| Existing symlink-contents Behavior Unchanged | Behavioral evidence: `test_sync_symlink_contents`, `test_clean_symlink_contents`, and `test_sync_symlink_contents_with_pattern` still pass; runtime changes in `linker.rs` are limited to `remove_symlink()` and `SyncType::Symlink` symlink removal sites | ✅ COMPLIANT |
 
 **Compliance summary**: 12/20 scenarios fully compliant, 8/20 partial
 
@@ -118,8 +120,8 @@ Note on PARTIAL for new/rename/delete: These are inherent filesystem properties 
 | Default Config Includes Claude Skills Target | ✅ Implemented | `init.rs:73` says `type = "symlink"`, test asserts `SyncType::Symlink` |
 | Default Config Uses Symlink for All Agent Skills | ✅ Implemented | All four agents (claude:73, codex:109, gemini:126, opencode:148) use `type = "symlink"` |
 | This Repo's Config Uses Symlink | ✅ Implemented | `.agents/agentsync.toml` lines 73, 96 both say `type = "symlink"` |
-| Apply Creates Directory Symlink | ✅ Implemented | Uses existing `SyncType::Symlink` → `create_symlink()` path, no code changes needed |
-| Backward Compatibility | ✅ Implemented | Zero production code changes in linker.rs |
+| Apply Creates Directory Symlink | ✅ Implemented | Uses `SyncType::Symlink` → `create_symlink()` path; `linker.rs` now also includes `remove_symlink()` for cross-platform symlink cleanup |
+| Backward Compatibility | ✅ Implemented | `linker.rs` production changes are limited to `remove_symlink()` plus the two symlink-removal runtime call sites; `SymlinkContents` behavior remains covered by existing tests |
 | Clean Transition | ✅ Implemented | Pre-existing clean + backup logic handles this |
 | Dry-run Reports Strategy | ✅ Implemented | Pre-existing dry-run output path handles this |
 | No New Dependencies | ✅ Implemented | No Cargo.toml changes |
@@ -152,9 +154,11 @@ None
 1. **Filesystem property tests**: The new/rename/delete scenarios are inherent properties of directory symlinks. Adding explicit tests (create skill after apply, verify visible) would provide stronger behavioral evidence, though it's testing OS behavior rather than application logic.
 2. **Clean transition end-to-end test**: A single test that starts with `symlink-contents` config, syncs, switches to `symlink`, cleans, re-syncs, and verifies the directory symlink would fully cover the migration scenario.
 
+
 ---
 
 ## Verdict
+
 **PASS WITH WARNINGS**
 
-The core change is correct: all skills targets now use `type = "symlink"` in both DEFAULT_CONFIG and this repo's config. The implementation correctly reuses the existing `SyncType::Symlink` code path with zero production code changes. All 380 tests pass, formatting and linting are clean. Backward compatibility is guaranteed since `SymlinkContents` logic was not touched. The warnings are about test coverage gaps for edge scenarios (dry-run output text, per-agent unit assertions), not about correctness.
+The core change is correct: all skills targets now use `type = "symlink"` in both DEFAULT_CONFIG and this repo's config. The implementation reuses the existing `SyncType::Symlink` code path and adds targeted runtime fixes in `linker.rs` for cross-platform symlink removal (`remove_symlink()` plus the two symlink-removal call sites). All tests pass, formatting and linting are clean. Backward compatibility is supported because `SymlinkContents` observable behavior remains unchanged and is still covered by the existing test suite. The warnings are about test coverage gaps for edge scenarios (dry-run output text, filesystem-inherent scenarios), not about correctness.

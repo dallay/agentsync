@@ -714,7 +714,7 @@ The symlink-contents-to-symlink change MUST NOT add new variants to `SyncType` o
 
 ### Requirement: Existing symlink-contents Behavior Unchanged
 
-The implementation of `SyncType::SymlinkContents` in the linker MUST NOT be modified by the symlink change. Its clean logic, create logic, and pattern-filtering behavior MUST remain identical.
+The observable semantics of `SyncType::SymlinkContents` MUST remain identical after the symlink change. Its cleanup behavior, create behavior, and pattern-filtering results MUST remain unchanged for callers and clients, and tests or acceptance criteria MUST continue validating those behaviors as the public contract.
 
 ---
 
@@ -737,7 +737,7 @@ The implementation of `SyncType::SymlinkContents` in the linker MUST NOT be modi
 15. `scan_agent_files()` detects skill directories for all 8 agents (Cursor, Codex, Gemini, OpenCode, Roo, Factory, Vibe, Antigravity) when they exist with content, and ignores them when empty or absent.
 16. `scan_agent_files()` detects command directories for Claude, Gemini, and OpenCode when they exist with content.
 17. `scan_agent_files()` detects `.windsurfrules`, `OPENCODE.md`, and `AMPCODE.md` as instruction files.
-18. `scan_agent_files()` detects the presence of 9 agent-specific MCP configuration files (e.g., `.cursor/mcp.json`, `.copilot/mcp.json`) when present.
+18. `scan_agent_files()` detects the presence of 10 agent-specific MCP configuration files/settings paths (e.g., `.cursor/mcp.json`, `.vscode/mcp.json`) when present.
 19. The wizard migrates command directories into `.agents/commands/` with collision detection.
 20. The wizard notes all detected MCP configs with migration suggestion messages without parsing or copying them.
 21. `init()` creates `.agents/commands/` alongside `.agents/skills/`.

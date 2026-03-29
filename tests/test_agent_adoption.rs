@@ -486,6 +486,10 @@ fn test_adoption_dry_run_no_side_effects() -> Result<()> {
         !root.join(".claude/skills").exists(),
         "Dry-run should not create symlinks"
     );
+    assert!(
+        !root.join(".claude").exists(),
+        "Dry-run should not create parent directories"
+    );
 
     Ok(())
 }
