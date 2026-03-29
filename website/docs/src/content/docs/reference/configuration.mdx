@@ -126,7 +126,7 @@ type = "symlink"
 [agents.claude.targets.skills]
 source = "skills"
 destination = ".claude/skills"
-type = "symlink-contents"
+type = "symlink"
 
 [agents.claude.targets.commands]
 source = "commands"
@@ -134,9 +134,19 @@ destination = ".claude/commands"
 type = "symlink-contents"
 ```
 
+### Skills
+
+Skills targets default to `type = "symlink"`. That keeps the agent-facing skills directory as one directory symlink back to the canonical `.agents/skills/` source.
+
+- Use `symlink` for the common case and for repos already using a correct directory symlink such as `.claude/skills -> .agents/skills`.
+- Use `symlink-contents` only when the destination must remain a real directory and you want AgentSync to link each child entry individually.
+- `agentsync init --wizard` now asks explicitly which mode to use for each migrated skills target, recommends `symlink`, and preserves an already-correct directory symlink by default.
+
+After the wizard writes config, AgentSync runs a compact validation summary. If you override a skills target to `symlink-contents` while the destination is already a directory symlink to `.agents/skills`, the summary warns before your first `agentsync apply`.
+
 ### Commands
 
-AgentSync supports a canonical `.agents/commands/` directory for agent commands (slash commands, markdown-based prompts, etc.). Commands are synced to agent-specific locations using `symlink-contents`, the same way skills are managed.
+AgentSync supports a canonical `.agents/commands/` directory for agent commands (slash commands, markdown-based prompts, etc.). Commands are synced to agent-specific locations using `symlink-contents`.
 
 The `init` command automatically creates `.agents/commands/` alongside `.agents/skills/`. The wizard detects existing command directories (`.claude/commands/`, `.gemini/commands/`, `.opencode/command/`) and offers to migrate them.
 

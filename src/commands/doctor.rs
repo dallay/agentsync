@@ -6,6 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use agentsync::config::{SyncType, TargetConfig};
+use agentsync::skills_layout::{SkillsModeMismatch, detect_skills_mode_mismatch};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct MissingSourceIssue {
@@ -111,6 +112,17 @@ pub fn run_doctor(project_root: PathBuf) -> Result<()> {
                 }
                 issues += 1;
                 missing_targets += 1;
+            }
+
+            if let Some(mismatch) = collect_skills_mode_mismatch(
+                linker.project_root(),
+                &source_dir,
+                agent_name,
+                target_name,
+                target,
+            ) {
+                println!("  {} {}", "⚠".yellow(), mismatch.doctor_warning());
+                issues += 1;
             }
         }
     }
@@ -275,6 +287,23 @@ pub fn run_doctor(project_root: PathBuf) -> Result<()> {
     }
 
     Ok(())
+}
+
+pub fn collect_skills_mode_mismatch(
+    project_root: &Path,
+    source_dir: &Path,
+    agent_name: &str,
+    target_name: &str,
+    target: &TargetConfig,
+) -> Option<SkillsModeMismatch> {
+    let expected_source = source_dir.join(&target.source);
+    detect_skills_mode_mismatch(
+        project_root,
+        &expected_source,
+        agent_name,
+        target_name,
+        target,
+    )
 }
 
 fn command_exists(cmd: &str) -> bool {

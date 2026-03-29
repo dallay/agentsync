@@ -11,6 +11,7 @@ pub mod init;
 pub mod linker;
 pub mod mcp;
 pub mod skills;
+pub mod skills_layout;
 pub mod update_check;
 
 pub use config::Config;
