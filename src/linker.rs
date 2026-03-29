@@ -611,7 +611,22 @@ impl Linker {
         while let Some(entry) = it.next() {
             let entry = match entry {
                 Ok(e) => e,
-                Err(_) => continue,
+                Err(err) => {
+                    if options.verbose {
+                        let path = err
+                            .path()
+                            .map(|p| p.display().to_string())
+                            .unwrap_or_else(|| "<unknown path>".to_string());
+                        println!(
+                            "  {} WalkDir error while scanning {}: {}",
+                            "!".yellow(),
+                            path,
+                            err
+                        );
+                    }
+                    tracing::debug!(error = %err, path = ?err.path(), "WalkDir entry skipped during nested-glob sync");
+                    continue;
+                }
             };
 
             // Compute path relative to search root
@@ -830,7 +845,22 @@ impl Linker {
                         while let Some(entry) = it.next() {
                             let entry = match entry {
                                 Ok(e) => e,
-                                Err(_) => continue,
+                                Err(err) => {
+                                    if options.verbose {
+                                        let path = err
+                                            .path()
+                                            .map(|p| p.display().to_string())
+                                            .unwrap_or_else(|| "<unknown path>".to_string());
+                                        println!(
+                                            "  {} WalkDir error while cleaning {}: {}",
+                                            "!".yellow(),
+                                            path,
+                                            err
+                                        );
+                                    }
+                                    tracing::debug!(error = %err, path = ?err.path(), "WalkDir entry skipped during nested-glob clean");
+                                    continue;
+                                }
                             };
 
                             let rel_path = match entry.path().strip_prefix(&search_root) {
