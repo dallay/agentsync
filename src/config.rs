@@ -113,9 +113,11 @@ pub struct TargetConfig {
     pub pattern: Option<String>,
 
     /// Glob patterns that exclude paths from a `nested-glob` search.
-    /// Each pattern is matched against the path of a discovered file relative
-    /// to the search root.  Common defaults include `node_modules/**` and
-    /// `**/.git/**`.  Has no effect on other target types.
+    /// Each pattern is matched against discovered paths relative to the search
+    /// root, including both files and directories. Directory matches are used
+    /// to prune whole subtrees during traversal, so `node_modules`,
+    /// `node_modules/**`, `.git`, and `**/.git/**` all prevent descending into
+    /// those directories. Has no effect on other target types.
     #[serde(default)]
     pub exclude: Vec<String>,
 
