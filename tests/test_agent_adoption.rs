@@ -121,7 +121,7 @@ fn test_adoption_claude_with_skills_and_instructions() -> Result<()> {
             "claude",
             vec![
                 ("instructions", "AGENTS.md", "CLAUDE.md", "symlink"),
-                ("skills", "skills", ".claude/skills", "symlink-contents"),
+                ("skills", "skills", ".claude/skills", "symlink"),
                 (
                     "commands",
                     "commands",
@@ -153,9 +153,10 @@ fn test_adoption_claude_with_skills_and_instructions() -> Result<()> {
     // CLAUDE.md symlink
     assert_symlink_points_to(root, "CLAUDE.md", "AGENTS.md");
 
-    // Skills symlinks
-    assert_symlink_points_to(root, ".claude/skills/debugging", "debugging");
-    assert_symlink_points_to(root, ".claude/skills/testing", "testing");
+    // Skills: directory symlink pointing to skills source
+    assert_symlink_points_to(root, ".claude/skills", "skills");
+    assert!(root.join(".claude/skills/debugging/SKILL.md").exists());
+    assert!(root.join(".claude/skills/testing/SKILL.md").exists());
 
     // Commands symlink
     assert_symlink_points_to(root, ".claude/commands/review.md", "review.md");
@@ -208,7 +209,7 @@ fn test_adoption_gemini_with_skills_and_commands() -> Result<()> {
             "gemini",
             vec![
                 ("instructions", "AGENTS.md", "GEMINI.md", "symlink"),
-                ("skills", "skills", ".gemini/skills", "symlink-contents"),
+                ("skills", "skills", ".gemini/skills", "symlink"),
                 (
                     "commands",
                     "commands",
@@ -232,7 +233,8 @@ fn test_adoption_gemini_with_skills_and_commands() -> Result<()> {
     // 7. Verify
     assert!(result.errors == 0);
     assert_symlink_points_to(root, "GEMINI.md", "AGENTS.md");
-    assert_symlink_points_to(root, ".gemini/skills/code-review", "code-review");
+    assert_symlink_points_to(root, ".gemini/skills", "skills");
+    assert!(root.join(".gemini/skills/code-review/SKILL.md").exists());
     assert_symlink_points_to(root, ".gemini/commands/analyze.md", "analyze.md");
 
     Ok(())
@@ -273,7 +275,7 @@ fn test_adoption_codex_with_skills() -> Result<()> {
         &root.join(".agents"),
         &[(
             "codex",
-            vec![("skills", "skills", ".codex/skills", "symlink-contents")],
+            vec![("skills", "skills", ".codex/skills", "symlink")],
         )],
     );
 
@@ -288,7 +290,8 @@ fn test_adoption_codex_with_skills() -> Result<()> {
 
     // 7. Verify
     assert!(result.errors == 0);
-    assert_symlink_points_to(root, ".codex/skills/linting", "linting");
+    assert_symlink_points_to(root, ".codex/skills", "skills");
+    assert!(root.join(".codex/skills/linting/SKILL.md").exists());
 
     Ok(())
 }
@@ -360,7 +363,7 @@ fn test_adoption_multi_agent_claude_gemini_codex() -> Result<()> {
                 "claude",
                 vec![
                     ("instructions", "AGENTS.md", "CLAUDE.md", "symlink"),
-                    ("skills", "skills", ".claude/skills", "symlink-contents"),
+                    ("skills", "skills", ".claude/skills", "symlink"),
                     (
                         "commands",
                         "commands",
@@ -373,12 +376,20 @@ fn test_adoption_multi_agent_claude_gemini_codex() -> Result<()> {
                 "gemini",
                 vec![
                     ("instructions", "AGENTS.md", "GEMINI.md", "symlink"),
-                    ("skills", "skills", ".gemini/skills", "symlink-contents"),
+                    ("skills", "skills", ".gemini/skills", "symlink"),
                 ],
             ),
             (
                 "codex",
-                vec![("skills", "skills", ".codex/skills", "symlink-contents")],
+                vec![("skills", "skills", ".codex/skills", "symlink")],
+            ),
+            (
+                "opencode",
+                vec![("skills", "skills", ".opencode/skills", "symlink")],
+            ),
+            (
+                "copilot",
+                vec![("skills", "skills", ".github/skills", "symlink")],
             ),
         ],
     );
@@ -405,21 +416,32 @@ fn test_adoption_multi_agent_claude_gemini_codex() -> Result<()> {
 
     // Claude
     assert_symlink_points_to(root, "CLAUDE.md", "AGENTS.md");
-    assert_symlink_points_to(root, ".claude/skills/debugging", "debugging");
-    assert_symlink_points_to(root, ".claude/skills/review", "review");
-    assert_symlink_points_to(root, ".claude/skills/format", "format");
+    assert_symlink_points_to(root, ".claude/skills", "skills");
+    assert!(root.join(".claude/skills/debugging").exists());
+    assert!(root.join(".claude/skills/review").exists());
+    assert!(root.join(".claude/skills/format").exists());
     assert_symlink_points_to(root, ".claude/commands/fix.md", "fix.md");
 
     // Gemini
     assert_symlink_points_to(root, "GEMINI.md", "AGENTS.md");
-    assert_symlink_points_to(root, ".gemini/skills/debugging", "debugging");
-    assert_symlink_points_to(root, ".gemini/skills/review", "review");
-    assert_symlink_points_to(root, ".gemini/skills/format", "format");
+    assert_symlink_points_to(root, ".gemini/skills", "skills");
+    assert!(root.join(".gemini/skills/debugging").exists());
+    assert!(root.join(".gemini/skills/review").exists());
+    assert!(root.join(".gemini/skills/format").exists());
 
     // Codex
-    assert_symlink_points_to(root, ".codex/skills/debugging", "debugging");
-    assert_symlink_points_to(root, ".codex/skills/review", "review");
-    assert_symlink_points_to(root, ".codex/skills/format", "format");
+    assert_symlink_points_to(root, ".codex/skills", "skills");
+    assert!(root.join(".codex/skills/debugging").exists());
+    assert!(root.join(".codex/skills/review").exists());
+    assert!(root.join(".codex/skills/format").exists());
+
+    // OpenCode
+    assert_symlink_points_to(root, ".opencode/skills", "skills");
+    assert!(root.join(".opencode/skills/debugging").exists());
+
+    // Copilot
+    assert_symlink_points_to(root, ".github/skills", "skills");
+    assert!(root.join(".github/skills/debugging").exists());
 
     Ok(())
 }
@@ -445,7 +467,7 @@ fn test_adoption_dry_run_no_side_effects() -> Result<()> {
         &root.join(".agents"),
         &[(
             "claude",
-            vec![("skills", "skills", ".claude/skills", "symlink-contents")],
+            vec![("skills", "skills", ".claude/skills", "symlink")],
         )],
     );
 
@@ -461,8 +483,12 @@ fn test_adoption_dry_run_no_side_effects() -> Result<()> {
     // 4. Verify — no symlinks created
     assert!(result.errors == 0);
     assert!(
-        !root.join(".claude/skills/my-skill").exists(),
+        !root.join(".claude/skills").exists(),
         "Dry-run should not create symlinks"
+    );
+    assert!(
+        !root.join(".claude").exists(),
+        "Dry-run should not create parent directories"
     );
 
     Ok(())

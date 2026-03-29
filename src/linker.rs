@@ -8,6 +8,8 @@ use colored::Colorize;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fs;
+#[cfg(windows)]
+use std::os::windows::fs::FileTypeExt;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -388,7 +390,7 @@ impl Linker {
                         relative_source.display()
                     );
                 } else {
-                    fs::remove_file(dest)?;
+                    remove_symlink(dest)?;
                     if options.verbose {
                         println!(
                             "  {} Removed old symlink: {} (was -> {})",
@@ -897,7 +899,7 @@ impl Linker {
                             if options.dry_run {
                                 println!("  {} Would remove: {}", "→".cyan(), dest.display());
                             } else {
-                                fs::remove_file(&dest)?;
+                                remove_symlink(&dest)?;
                                 println!("  {} Removed: {}", "✔".green(), dest.display());
                             }
                             result.removed += 1;
@@ -1249,6 +1251,19 @@ fn chrono_lite_timestamp() -> String {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default();
     format!("{}", duration.as_secs())
+}
+
+/// Remove a symlink, handling both file and directory symlinks cross-platform.
+/// On Windows, directory symlinks require `fs::remove_dir()` instead of `fs::remove_file()`.
+fn remove_symlink(path: &Path) -> std::io::Result<()> {
+    #[cfg(windows)]
+    {
+        let meta = fs::symlink_metadata(path)?;
+        if meta.file_type().is_symlink_dir() {
+            return fs::remove_dir(path);
+        }
+    }
+    fs::remove_file(path)
 }
 
 #[cfg(test)]
@@ -2147,6 +2162,138 @@ mod tests {
         let linked_canon = fs::canonicalize(linked).unwrap();
         let compressed_canon = fs::canonicalize(compressed).unwrap();
         assert_eq!(linked_canon, compressed_canon);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_sync_symlink_directory_for_skills() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        let skills_dir = agents_dir.join("skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        // Create skill subdirectories with SKILL.md files
+        let debugging_dir = skills_dir.join("debugging");
+        fs::create_dir_all(&debugging_dir).unwrap();
+        fs::write(debugging_dir.join("SKILL.md"), "# Debugging skill").unwrap();
+
+        let testing_dir = skills_dir.join("testing");
+        fs::create_dir_all(&testing_dir).unwrap();
+        fs::write(testing_dir.join("SKILL.md"), "# Testing skill").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            [agents.test]
+            enabled = true
+            [agents.test.targets.skills]
+            source = "skills"
+            destination = "output_skills"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let options = SyncOptions::default();
+        let result = linker.sync(&options).unwrap();
+
+        assert_eq!(result.created, 1);
+
+        // Destination should be a symlink (not a real directory)
+        let dest = temp_dir.path().join("output_skills");
+        assert!(dest.is_symlink(), "Expected output_skills to be a symlink");
+
+        // Symlink should resolve to the source skills directory
+        let target = fs::read_link(&dest).unwrap();
+        let target_str = target.to_string_lossy();
+        assert!(
+            target_str.contains("skills"),
+            "Expected symlink to point to skills dir, got '{target_str}'"
+        );
+
+        // Skill subdirectories should be accessible through the symlink
+        assert!(dest.join("debugging").exists());
+        assert!(dest.join("debugging/SKILL.md").exists());
+        assert!(dest.join("testing").exists());
+        assert!(dest.join("testing/SKILL.md").exists());
+
+        // Verify contents are readable
+        let content = fs::read_to_string(dest.join("debugging/SKILL.md")).unwrap();
+        assert_eq!(content, "# Debugging skill");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_sync_symlink_directory_upgrades_existing_dir() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        let skills_dir = agents_dir.join("skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        // Create skill subdirectories
+        let debugging_dir = skills_dir.join("debugging");
+        fs::create_dir_all(&debugging_dir).unwrap();
+        fs::write(debugging_dir.join("SKILL.md"), "# Debugging skill").unwrap();
+
+        // Pre-create output_skills as a REAL directory with old files
+        // (simulates the old symlink-contents layout)
+        let output_skills = temp_dir.path().join("output_skills");
+        fs::create_dir_all(&output_skills).unwrap();
+        fs::write(output_skills.join("old-file.txt"), "old content").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            [agents.test]
+            enabled = true
+            [agents.test.targets.skills]
+            source = "skills"
+            destination = "output_skills"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker.sync(&SyncOptions::default()).unwrap();
+
+        // The existing dir was backed up and replaced
+        assert!(result.updated >= 1);
+
+        // A backup directory should exist matching output_skills.bak.*
+        let backup_entries: Vec<_> = fs::read_dir(temp_dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with("output_skills.bak.")
+            })
+            .collect();
+        assert!(
+            !backup_entries.is_empty(),
+            "Expected a backup directory matching output_skills.bak.*"
+        );
+
+        // The backup contains the old files
+        let backup_path = backup_entries[0].path();
+        assert!(
+            backup_path.join("old-file.txt").exists(),
+            "Backup should contain old-file.txt"
+        );
+        let backup_content = fs::read_to_string(backup_path.join("old-file.txt")).unwrap();
+        assert_eq!(backup_content, "old content");
+
+        // output_skills is now a symlink
+        let dest = temp_dir.path().join("output_skills");
+        assert!(dest.is_symlink(), "Expected output_skills to be a symlink");
+
+        // Skill subdirectories are accessible through the symlink
+        assert!(dest.join("debugging").exists());
+        assert!(dest.join("debugging/SKILL.md").exists());
     }
 
     // ==========================================================================

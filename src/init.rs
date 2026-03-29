@@ -70,7 +70,7 @@ type = "symlink"
 [agents.claude.targets.skills]
 source = "skills"
 destination = ".claude/skills"
-type = "symlink-contents"
+type = "symlink"
 
 [agents.claude.targets.commands]
 source = "commands"
@@ -106,7 +106,7 @@ description = "OpenAI Codex CLI - OpenAI's AI coding agent"
 [agents.codex.targets.skills]
 source = "skills"
 destination = ".codex/skills"
-type = "symlink-contents"
+type = "symlink"
 
 # -----------------------------------------------------------------------------
 # Gemini CLI
@@ -123,7 +123,7 @@ type = "symlink"
 [agents.gemini.targets.skills]
 source = "skills"
 destination = ".gemini/skills"
-type = "symlink-contents"
+type = "symlink"
 
 [agents.gemini.targets.commands]
 source = "commands"
@@ -145,7 +145,7 @@ type = "symlink"
 [agents.opencode.targets.skills]
 source = "skills"
 destination = ".opencode/skills"
-type = "symlink-contents"
+type = "symlink"
 
 # Note: intentionally singular per OpenCode convention (.opencode/command, not .opencode/commands)
 [agents.opencode.targets.commands]
@@ -1635,19 +1635,37 @@ mod tests {
     }
 
     #[test]
-    fn test_default_config_claude_has_skills_target() {
+    fn test_default_config_all_agents_have_skills_symlink_target() {
         let config: crate::config::Config = toml::from_str(DEFAULT_CONFIG).unwrap();
 
-        let claude = &config.agents["claude"];
-        assert!(claude.targets.contains_key("skills"));
+        let cases = [
+            ("claude", ".claude/skills"),
+            ("codex", ".codex/skills"),
+            ("gemini", ".gemini/skills"),
+            ("opencode", ".opencode/skills"),
+        ];
 
-        let skills_target = &claude.targets["skills"];
-        assert_eq!(skills_target.source, "skills");
-        assert_eq!(skills_target.destination, ".claude/skills");
-        assert_eq!(
-            skills_target.sync_type,
-            crate::config::SyncType::SymlinkContents
-        );
+        for (agent, expected_destination) in cases {
+            assert!(
+                config.agents[agent].targets.contains_key("skills"),
+                "{agent} should have a skills target"
+            );
+
+            let skills_target = &config.agents[agent].targets["skills"];
+            assert_eq!(
+                skills_target.source, "skills",
+                "{agent} skills source mismatch"
+            );
+            assert_eq!(
+                skills_target.destination, expected_destination,
+                "{agent} skills destination mismatch"
+            );
+            assert_eq!(
+                skills_target.sync_type,
+                crate::config::SyncType::Symlink,
+                "{agent} skills sync_type mismatch"
+            );
+        }
     }
 
     #[test]
