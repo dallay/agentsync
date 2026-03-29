@@ -8,6 +8,13 @@
 
 * update README.md for accuracy and formatting ([#159](https://github.com/dallay/agentsync/issues/159)) ([8cb9f19](https://github.com/dallay/agentsync/commit/8cb9f19b2302456f0e4536f7a37ad9af5645e605))
 
+## [1.35.1](https://github.com/dallay/agentsync/compare/v1.35.0...v1.35.1) (2026-03-29)
+
+
+### Chores
+
+* **deps:** update major upgrades ([#264](https://github.com/dallay/agentsync/issues/264)) ([af72b18](https://github.com/dallay/agentsync/commit/af72b186bb81ffad06468536b04814454e5a427e))
+
 ## [1.35.0](https://github.com/dallay/agentsync/compare/v1.34.0...v1.35.0) (2026-03-29)
 
 
