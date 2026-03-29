@@ -70,7 +70,7 @@ type = "symlink"
 [agents.opencode.targets.skills]
 source = "skills"
 destination = ".opencode/skills"
-type = "symlink-contents"
+type = "symlink"
 
 [agents.opencode.targets.commands]
 source = "command"
@@ -93,7 +93,7 @@ type = "symlink"
 [agents.copilot.targets.skills]
 source = "skills"
 destination = ".github/skills"
-type = "symlink-contents"
+type = "symlink"
 
 [agents.copilot.targets.agents]
 source = "command"

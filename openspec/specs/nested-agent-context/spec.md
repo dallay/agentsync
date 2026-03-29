@@ -295,14 +295,14 @@ The `all_gitignore_entries()` method MUST expand `module-map` targets into indiv
 
 Each expanded entry MUST be the full resolved path (destination dir + resolved filename).
 
-Backup patterns (`{destination}.bak.*`) MUST be generated for each expanded entry.
+Backup patterns (`{destination}.bak`) MUST be generated for each expanded entry.
 
 #### Scenario: Gitignore entries expanded from mappings
 
 - GIVEN a module-map target for agent `"claude"` with mappings to `src/api` and `src/ui`
 - WHEN `all_gitignore_entries()` is called
 - THEN the entries MUST include `src/api/CLAUDE.md` and `src/ui/CLAUDE.md`
-- AND the entries MUST include `src/api/CLAUDE.md.bak.*` and `src/ui/CLAUDE.md.bak.*`
+- AND the entries MUST include `src/api/CLAUDE.md.bak` and `src/ui/CLAUDE.md.bak`
 
 #### Scenario: Gitignore entries with filename_override
 

@@ -148,4 +148,254 @@ else
     exit 1
 fi
 
+# --- 7. TEST: AGENT ADOPTION (Claude with skills + commands) ---
+echo "▶️ Testing: Agent adoption — existing Claude repo with skills and commands"
+ADOPT_DIR="${E2E_BASE_DIR}/app/adopt-test"
+mkdir -p "$ADOPT_DIR"
+cd "$ADOPT_DIR"
+
+# Simulate an existing Claude repo
+mkdir -p .claude/skills/debugging
+cat > .claude/skills/debugging/SKILL.md << 'SKILL_EOF'
+---
+name: debugging
+version: 1.0.0
+description: Debugging helpers
+---
+# Debugging Skill
+SKILL_EOF
+
+mkdir -p .claude/skills/testing
+cat > .claude/skills/testing/SKILL.md << 'SKILL_EOF'
+---
+name: testing
+version: 1.0.0
+description: Testing helpers
+---
+# Testing Skill
+SKILL_EOF
+
+mkdir -p .claude/commands
+echo "# Review the code for issues" > .claude/commands/review.md
+
+echo "# Project Instructions" > CLAUDE.md
+
+# Run init (non-wizard, creates .agents/ structure)
+agentsync init
+
+if [ -d ".agents" ] && [ -f ".agents/agentsync.toml" ]; then
+    echo "✅ Success: .agents/ created via init."
+else
+    echo "❌ Failure: .agents/ not created."
+    exit 1
+fi
+
+# Simulate wizard migration: copy skills and commands into .agents/
+cp -r .claude/skills/debugging .agents/skills/
+cp -r .claude/skills/testing .agents/skills/
+mkdir -p .agents/commands
+cp .claude/commands/review.md .agents/commands/
+cp CLAUDE.md .agents/AGENTS.md
+
+# Write a config with skills + commands targets
+cat > .agents/agentsync.toml << 'CONFIG_EOF'
+source_dir = "."
+
+[gitignore]
+enabled = false
+
+[agents.claude]
+enabled = true
+
+[agents.claude.targets.instructions]
+source = "AGENTS.md"
+destination = "CLAUDE.md"
+type = "symlink"
+
+[agents.claude.targets.skills]
+source = "skills"
+destination = ".claude/skills"
+type = "symlink-contents"
+
+[agents.claude.targets.commands]
+source = "commands"
+destination = ".claude/commands"
+type = "symlink-contents"
+CONFIG_EOF
+
+# Remove originals to prove apply recreates them via symlinks
+rm -rf .claude
+rm -f CLAUDE.md
+
+# Apply
+agentsync apply --verbose
+
+# Verify CLAUDE.md symlink
+if [ -L "CLAUDE.md" ]; then
+    echo "✅ Success: CLAUDE.md symlink created."
+else
+    echo "❌ Failure: CLAUDE.md symlink not found."
+    exit 1
+fi
+
+# Verify skills symlinks
+if [ -L ".claude/skills/debugging" ]; then
+    echo "✅ Success: .claude/skills/debugging symlink created."
+else
+    echo "❌ Failure: .claude/skills/debugging symlink not found."
+    ls -la .claude/skills/ 2>/dev/null || echo "  .claude/skills/ does not exist"
+    exit 1
+fi
+
+if [ -L ".claude/skills/testing" ]; then
+    echo "✅ Success: .claude/skills/testing symlink created."
+else
+    echo "❌ Failure: .claude/skills/testing symlink not found."
+    exit 1
+fi
+
+# Verify commands symlink
+if [ -L ".claude/commands/review.md" ]; then
+    echo "✅ Success: .claude/commands/review.md symlink created."
+else
+    echo "❌ Failure: .claude/commands/review.md symlink not found."
+    ls -la .claude/commands/ 2>/dev/null || echo "  .claude/commands/ does not exist"
+    exit 1
+fi
+
+# Verify content is accessible through symlinks
+if grep -q "Debugging Skill" .claude/skills/debugging/SKILL.md; then
+    echo "✅ Success: Skill content accessible through symlink."
+else
+    echo "❌ Failure: Skill content not accessible through symlink."
+    exit 1
+fi
+
+echo "✅ Agent adoption test passed!"
+
+# --- 8. TEST: MULTI-AGENT ADOPTION (Claude + Gemini + Codex) ---
+echo "▶️ Testing: Multi-agent adoption — Claude + Gemini + Codex"
+MULTI_DIR="${E2E_BASE_DIR}/app/multi-adopt-test"
+mkdir -p "$MULTI_DIR"
+cd "$MULTI_DIR"
+
+# Simulate multi-agent repo
+echo "# Claude rules" > CLAUDE.md
+echo "# Gemini rules" > GEMINI.md
+
+mkdir -p .claude/skills/debug-skill
+cat > .claude/skills/debug-skill/SKILL.md << 'SKILL_EOF'
+---
+name: debug-skill
+version: 1.0.0
+---
+# Debug
+SKILL_EOF
+
+mkdir -p .gemini/skills/review-skill
+cat > .gemini/skills/review-skill/SKILL.md << 'SKILL_EOF'
+---
+name: review-skill
+version: 1.0.0
+---
+# Review
+SKILL_EOF
+
+mkdir -p .codex/skills/format-skill
+cat > .codex/skills/format-skill/SKILL.md << 'SKILL_EOF'
+---
+name: format-skill
+version: 1.0.0
+---
+# Format
+SKILL_EOF
+
+# Init
+agentsync init
+
+# Simulate wizard: merge all skills into .agents/skills/
+cp -r .claude/skills/debug-skill .agents/skills/
+cp -r .gemini/skills/review-skill .agents/skills/
+cp -r .codex/skills/format-skill .agents/skills/
+
+# Merge instructions
+cat CLAUDE.md GEMINI.md > .agents/AGENTS.md
+
+# Config for all three agents
+cat > .agents/agentsync.toml << 'CONFIG_EOF'
+source_dir = "."
+
+[gitignore]
+enabled = false
+
+[agents.claude]
+enabled = true
+
+[agents.claude.targets.instructions]
+source = "AGENTS.md"
+destination = "CLAUDE.md"
+type = "symlink"
+
+[agents.claude.targets.skills]
+source = "skills"
+destination = ".claude/skills"
+type = "symlink-contents"
+
+[agents.gemini]
+enabled = true
+
+[agents.gemini.targets.instructions]
+source = "AGENTS.md"
+destination = "GEMINI.md"
+type = "symlink"
+
+[agents.gemini.targets.skills]
+source = "skills"
+destination = ".gemini/skills"
+type = "symlink-contents"
+
+[agents.codex]
+enabled = true
+
+[agents.codex.targets.skills]
+source = "skills"
+destination = ".codex/skills"
+type = "symlink-contents"
+CONFIG_EOF
+
+# Remove originals
+rm -rf .claude .gemini .codex
+rm -f CLAUDE.md GEMINI.md
+
+# Apply
+agentsync apply --verbose
+
+# Verify all agents get skills from the shared source
+FAIL=0
+for AGENT_DIR in .claude .gemini .codex; do
+    for SKILL in debug-skill review-skill format-skill; do
+        if [ -L "${AGENT_DIR}/skills/${SKILL}" ]; then
+            echo "✅ ${AGENT_DIR}/skills/${SKILL} symlink exists."
+        else
+            echo "❌ ${AGENT_DIR}/skills/${SKILL} symlink missing!"
+            FAIL=1
+        fi
+    done
+done
+
+# Verify instruction symlinks
+if [ -L "CLAUDE.md" ] && [ -L "GEMINI.md" ]; then
+    echo "✅ Success: Instruction symlinks created for Claude and Gemini."
+else
+    echo "❌ Failure: Instruction symlinks missing."
+    FAIL=1
+fi
+
+if [ "$FAIL" -eq 1 ]; then
+    echo "❌ Multi-agent adoption test FAILED."
+    exit 1
+fi
+
+echo "✅ Multi-agent adoption test passed!"
+
 echo "🎉 All E2E tests passed successfully!"

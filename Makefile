@@ -9,7 +9,7 @@ PRETTIER := $(shell command -v npx >/dev/null 2>&1 && echo "npx prettier" || ech
 # Root/workspace helpers
 JS_WORKSPACE := $(PNPM) --filter agentsync
 
-.PHONY: help all install js-install js-test js-build js-release \
+.PHONY: help all install js-install js-test js-build \
         rust-build rust-test rust-run e2e-test fmt docs-dev docs-build docs-preview \
         agents-sync agents-sync-clean clean verify-all
 
@@ -23,7 +23,6 @@ help:
 	@echo "  make js-install      -> pnpm install (workspace root)"
 	@echo "  make js-test         -> run JS tests (pnpm test)"
 	@echo "  make js-build        -> build JS packages (if 'build' script exists)"
-	@echo "  make js-release      -> release JS (pnpm run release)"
 	@echo "  make rust-build      -> cargo build"
 	@echo "  make rust-test       -> cargo test"
 	@echo "  make e2e-test         -> run E2E tests in docker"
@@ -86,10 +85,6 @@ js-test:
 js-build:
 	@echo "Running JS build (workspace scripts if present)..."
 	$(JS_WORKSPACE) run --if-present build
-
-js-release:
-	@echo "Running JS release (semantic-release)..."
-	$(PNPM) run release
 
 # Rust targets
 rust-build:

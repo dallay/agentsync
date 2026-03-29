@@ -16,7 +16,7 @@ agentsync init [OPTIONS]
 ```
 
 **Options**:
-- `-p, --path <PATH>`: Project root directory (defaults to current dir).
+- `-p, --path <PATH>`: Project root directory (defaults to current dir). Also supports `--project-root` alias.
 - `-f, --force`: Overwrite existing configuration without prompting.
 - `-w, --wizard`: Run interactive configuration wizard to migrate existing files.
 
@@ -27,12 +27,17 @@ agentsync init [OPTIONS]
 
 **Wizard Mode**:
 When using the `--wizard` flag, AgentSync will:
-1. Scan your project for existing agent-related files (CLAUDE.md, .cursor/, .mcp.json, .github/copilot-instructions.md, etc.)
+1. Scan your project for existing agent-related files — including instruction files (CLAUDE.md, .windsurfrules, OPENCODE.md, AMPCODE.md, etc.), skill directories (.claude/skills/, .cursor/skills/, .codex/skills/, .gemini/skills/, .opencode/skills/, .roo/skills/, .factory/skills/, .vibe/skills/, .agent/skills/), command directories (.claude/commands/, .gemini/commands/, .opencode/command/), MCP configs (.cursor/mcp.json, .windsurf/mcp_config.json, .roo/mcp.json, etc.), and agent directories (.cursor/, .windsurf/, etc.)
 2. Interactively prompt you to select which files to migrate
-3. For instruction files (.mcp.json, Copilot instructions): Read their content and merge into `.agents/AGENTS.md` (files are not copied or backed up)
-4. For other agent files (e.g., .cursor/): Copy to the `.agents/` directory
-5. Optionally create backups of original files (after user confirmation, only for files that were copied)
-6. Generate a configuration (`.agents/agentsync.toml`) that manages these files with symlinks
+3. For **instruction files**: Read their content and merge into `.agents/AGENTS.md`
+4. For **skill directories**: Copy contents into `.agents/skills/` (with collision detection — duplicates are skipped with a warning)
+5. For **command directories**: Copy contents into `.agents/commands/`
+6. For **MCP configs**: Note their existence and suggest manual migration to `[mcp_servers]` in `agentsync.toml`
+7. For **other agent files** (e.g., .cursor/): Copy to the `.agents/` directory
+8. For each migrated **skills** target, explicitly ask whether it should use `symlink` or `symlink-contents`, recommend `symlink`, and preserve an already-correct directory symlink by default
+9. Generate a configuration (`.agents/agentsync.toml`) that manages these files with symlinks
+10. Run a post-init validation summary that warns if a selected skills target is configured with `symlink-contents` while the destination is already a directory symlink to `.agents/skills`
+11. Optionally create backups of original files (after user confirmation, only for files that were copied)
 
 ---
 
@@ -45,7 +50,7 @@ agentsync apply [OPTIONS]
 ```
 
 **Options**:
-- `-p, --path <PATH>`: Project root directory.
+- `-p, --path <PATH>`: Project root directory. Also supports `--project-root` alias.
 - `-c, --config <CONFIG>`: Use a custom configuration file path instead of the default `.agents/agentsync.toml`.
 - `--clean`: Deletes existing symbolic links before applying.
 - `--dry-run`: Shows what actions would be taken without actually making any changes.
@@ -81,7 +86,7 @@ agentsync clean [FLAGS]
 ```
 
 **Flags**:
-- `-p, --path <PATH>`: Path to the project root.
+- `-p, --path <PATH>`: Path to the project root. Also supports `--project-root` alias.
 - `-c, --config <PATH>`: Path to a custom configuration file.
 - `--dry-run`: Shows what would be removed without actually deleting anything.
 - `-v, --verbose`: Enable verbose logging.
@@ -155,6 +160,8 @@ agentsync doctor [OPTIONS]
 - Detects destination conflicts.
 - Audits `.gitignore` with marker-aware parsing.
 - Verifies MCP server executability.
+- **Detects unmanaged Claude skills** — warns if `.claude/skills/` contains content that isn't managed by any configured target in `agentsync.toml`.
+- **Detects recognized skills mode mismatches** — warns when a skills target is configured as `symlink-contents` but the destination already is the expected directory symlink, so `apply` would cause avoidable churn.
 
 ---
 
@@ -210,6 +217,8 @@ Human-friendly output uses colors and statuses:
 - `✗ Incorrect link` — symlink exists but points somewhere else
 - `! Missing` — destination does not exist
 - `· Exists but not a symlink` — a regular file or directory exists at the destination
+
+If a skills target is otherwise healthy but its configured mode disagrees with a recognized existing layout (for example `symlink-contents` configured while the destination is already the expected directory symlink), `status` keeps the entry as `OK` and prints a focused hint instead of treating it as broken.
 
 Exit codes
 - `0` — no problems detected

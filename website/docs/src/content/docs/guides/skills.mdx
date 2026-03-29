@@ -7,6 +7,42 @@ AgentSync supports "skills": small bundles of content, prompts, or helper files 
 
 This guide explains the expected layout and manifest format, how to install/update skills from providers (for example skills.sh), and troubleshooting tips.
 
+## Adopting existing skills (wizard migration)
+
+If you already have skills in agent-specific directories (`.claude/skills/`, `.cursor/skills/`, `.codex/skills/`, `.gemini/skills/`, `.opencode/skills/`, `.roo/skills/`, `.factory/skills/`, `.vibe/skills/`, or `.agent/skills/`), the init wizard will detect and offer to migrate them:
+
+```bash
+agentsync init --wizard
+```
+
+The wizard:
+- **Detects** skill directories across all known agents
+- **Copies** skill contents into the canonical `.agents/skills/` directory
+- **Handles collisions** — if a skill with the same name already exists, it's skipped with a warning
+- **Preserves originals** — optionally backs up source directories
+
+After migration, configure a skills target in `agentsync.toml` so `apply` syncs skills back to each agent:
+
+```toml
+[agents.claude.targets.skills]
+source = "skills"
+destination = ".claude/skills"
+type = "symlink"
+```
+
+> **Note:** Skills migrated via the wizard are NOT registered in `registry.json` — they're managed through the symlink pipeline, not the `skill install` system. Both systems coexist: installed skills live in `.agents/skills/` alongside migrated ones.
+
+### Choosing `symlink` vs `symlink-contents`
+
+For skills, AgentSync recommends `type = "symlink"` and uses that as the default in generated config.
+
+- `symlink` keeps one directory link from the agent-specific path back to `.agents/skills/`.
+- `symlink-contents` keeps the destination as a real directory and links each child entry individually.
+
+`agentsync init --wizard` now makes that choice explicit for each migrated skills target. If the destination already is a correct directory symlink to `.agents/skills`, the wizard recommends `symlink` and keeps that as the default so an existing healthy layout is preserved.
+
+If you intentionally override to `symlink-contents`, the wizard prints a post-init validation warning before exit. You can also detect the same mismatch later with `agentsync doctor`, and `agentsync status` will show a focused hint while still treating the destination as healthy.
+
 ## Directory structure
 
 AgentSync keeps installable skills under the project `.agents/skills/` directory. Each installed skill has its own subdirectory and a `registry.json` file tracks installed skills.

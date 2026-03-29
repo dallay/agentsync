@@ -2,9 +2,13 @@
 //!
 //! Provides default configuration templates for new projects and interactive wizard.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
+
+use crate::config::{Config, SyncType, TargetConfig};
+use crate::skills_layout::{detect_skills_layout_match, detect_skills_mode_mismatch};
 
 /// Default configuration template
 pub const DEFAULT_CONFIG: &str = r#"# AgentSync Configuration
@@ -67,6 +71,16 @@ source = "AGENTS.md"
 destination = "CLAUDE.md"
 type = "symlink"
 
+[agents.claude.targets.skills]
+source = "skills"
+destination = ".claude/skills"
+type = "symlink"
+
+[agents.claude.targets.commands]
+source = "commands"
+destination = ".claude/commands"
+type = "symlink-contents"
+
 # -----------------------------------------------------------------------------
 # GitHub Copilot
 # -----------------------------------------------------------------------------
@@ -96,6 +110,51 @@ description = "OpenAI Codex CLI - OpenAI's AI coding agent"
 [agents.codex.targets.skills]
 source = "skills"
 destination = ".codex/skills"
+type = "symlink"
+
+# -----------------------------------------------------------------------------
+# Gemini CLI
+# -----------------------------------------------------------------------------
+[agents.gemini]
+enabled = true
+description = "Gemini CLI - Google's AI coding assistant"
+
+[agents.gemini.targets.instructions]
+source = "AGENTS.md"
+destination = "GEMINI.md"
+type = "symlink"
+
+[agents.gemini.targets.skills]
+source = "skills"
+destination = ".gemini/skills"
+type = "symlink"
+
+[agents.gemini.targets.commands]
+source = "commands"
+destination = ".gemini/commands"
+type = "symlink-contents"
+
+# -----------------------------------------------------------------------------
+# OpenCode
+# -----------------------------------------------------------------------------
+[agents.opencode]
+enabled = true
+description = "OpenCode - Open-source AI coding assistant"
+
+[agents.opencode.targets.instructions]
+source = "AGENTS.md"
+destination = "OPENCODE.md"
+type = "symlink"
+
+[agents.opencode.targets.skills]
+source = "skills"
+destination = ".opencode/skills"
+type = "symlink"
+
+# Note: intentionally singular per OpenCode convention (.opencode/command, not .opencode/commands)
+[agents.opencode.targets.commands]
+source = "commands"
+destination = ".opencode/command"
 type = "symlink-contents"
 
 # -----------------------------------------------------------------------------
@@ -159,6 +218,17 @@ pub fn init(project_root: &Path, force: bool) -> Result<()> {
             "  {} Created directory: {}",
             "✔".green(),
             skills_dir.display()
+        );
+    }
+
+    // Create commands directory
+    let commands_dir = agents_dir.join("commands");
+    if !commands_dir.exists() {
+        fs::create_dir_all(&commands_dir)?;
+        println!(
+            "  {} Created directory: {}",
+            "✔".green(),
+            commands_dir.display()
         );
     }
 
@@ -231,12 +301,45 @@ enum AgentFileType {
     VibeDirectory,
     JetBrainsRules,
     GeminiInstructions,
+    OpenCodeInstructions,
+    // Skill directories (contents merged into .agents/skills/ on migration)
+    ClaudeSkills,
+    CursorSkills,
+    CodexSkills,
+    GeminiSkills,
+    OpenCodeSkills,
+    RooSkills,
+    FactorySkills,
+    VibeSkills,
+    AntigravitySkills,
+    // Command directories (contents merged into .agents/commands/ on migration)
+    ClaudeCommands,
+    GeminiCommands,
+    OpenCodeCommands,
     // Directory / config files (copied as-is on migration)
     CursorDirectory,
     WindsurfDirectory,
     // MCP / tooling config (noted, not migrated as content)
     McpConfig,
+    CursorMcpConfig,
+    CopilotMcpConfig,
+    WindsurfMcpConfig,
+    CodexConfig,
+    RooMcpConfig,
+    KiroMcpConfig,
+    AmazonQMcpConfig,
+    KilocodeMcpConfig,
+    FactoryMcpConfig,
+    OpenCodeConfig,
     Other,
+}
+
+/// Check if a directory has at least one entry, propagating IO errors.
+fn dir_has_entries(path: &Path) -> Result<bool> {
+    Ok(fs::read_dir(path)
+        .with_context(|| format!("Failed to read directory: {}", path.display()))?
+        .next()
+        .is_some())
 }
 
 /// Scan project for existing agent-related files
@@ -257,6 +360,33 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
         });
     }
 
+    // Claude Code: .claude/skills/ directory
+    let claude_skills_path = project_root.join(".claude").join("skills");
+    if claude_skills_path.exists() && claude_skills_path.is_dir() {
+        // Only report if directory has at least one child entry
+        let has_content = dir_has_entries(&claude_skills_path)?;
+        if has_content {
+            discovered.push(DiscoveredFile {
+                path: ".claude/skills".into(),
+                file_type: AgentFileType::ClaudeSkills,
+                display_name: "Claude Code skills (.claude/skills/)".to_string(),
+            });
+        }
+    }
+
+    // Claude Code: .claude/commands/ directory
+    let claude_commands_path = project_root.join(".claude").join("commands");
+    if claude_commands_path.exists() && claude_commands_path.is_dir() {
+        let has_content = dir_has_entries(&claude_commands_path)?;
+        if has_content {
+            discovered.push(DiscoveredFile {
+                path: ".claude/commands".into(),
+                file_type: AgentFileType::ClaudeCommands,
+                display_name: "Claude Code commands (.claude/commands/)".to_string(),
+            });
+        }
+    }
+
     // GitHub Copilot: .github/copilot-instructions.md
     let copilot_path = project_root.join(".github").join("copilot-instructions.md");
     if copilot_path.exists() {
@@ -264,6 +394,16 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
             path: ".github/copilot-instructions.md".into(),
             file_type: AgentFileType::CopilotInstructions,
             display_name: ".github/copilot-instructions.md (Copilot instructions)".to_string(),
+        });
+    }
+
+    // Copilot: .vscode/mcp.json
+    let copilot_mcp_path = project_root.join(".vscode").join("mcp.json");
+    if copilot_mcp_path.exists() {
+        discovered.push(DiscoveredFile {
+            path: ".vscode/mcp.json".into(),
+            file_type: AgentFileType::CopilotMcpConfig,
+            display_name: ".vscode/mcp.json (VS Code / Copilot MCP configuration)".to_string(),
         });
     }
 
@@ -277,6 +417,29 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
         });
     }
 
+    // Cursor: .cursor/skills/ directory
+    let cursor_skills_path = project_root.join(".cursor").join("skills");
+    if cursor_skills_path.exists() && cursor_skills_path.is_dir() {
+        let has_content = dir_has_entries(&cursor_skills_path)?;
+        if has_content {
+            discovered.push(DiscoveredFile {
+                path: ".cursor/skills".into(),
+                file_type: AgentFileType::CursorSkills,
+                display_name: "Cursor skills (.cursor/skills/)".to_string(),
+            });
+        }
+    }
+
+    // Cursor: .cursor/mcp.json
+    let cursor_mcp_path = project_root.join(".cursor").join("mcp.json");
+    if cursor_mcp_path.exists() {
+        discovered.push(DiscoveredFile {
+            path: ".cursor/mcp.json".into(),
+            file_type: AgentFileType::CursorMcpConfig,
+            display_name: ".cursor/mcp.json (Cursor MCP configuration)".to_string(),
+        });
+    }
+
     // Gemini CLI: GEMINI.md
     let gemini_path = project_root.join("GEMINI.md");
     if gemini_path.exists() {
@@ -284,6 +447,78 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
             path: "GEMINI.md".into(),
             file_type: AgentFileType::GeminiInstructions,
             display_name: "GEMINI.md (Gemini CLI instructions)".to_string(),
+        });
+    }
+
+    // Gemini CLI: .gemini/skills/ directory
+    let gemini_skills_path = project_root.join(".gemini").join("skills");
+    if gemini_skills_path.exists() && gemini_skills_path.is_dir() {
+        let has_content = dir_has_entries(&gemini_skills_path)?;
+        if has_content {
+            discovered.push(DiscoveredFile {
+                path: ".gemini/skills".into(),
+                file_type: AgentFileType::GeminiSkills,
+                display_name: "Gemini skills (.gemini/skills/)".to_string(),
+            });
+        }
+    }
+
+    // Gemini CLI: .gemini/commands/ directory
+    let gemini_commands_path = project_root.join(".gemini").join("commands");
+    if gemini_commands_path.exists() && gemini_commands_path.is_dir() {
+        let has_content = dir_has_entries(&gemini_commands_path)?;
+        if has_content {
+            discovered.push(DiscoveredFile {
+                path: ".gemini/commands".into(),
+                file_type: AgentFileType::GeminiCommands,
+                display_name: "Gemini commands (.gemini/commands/)".to_string(),
+            });
+        }
+    }
+
+    // OpenCode: OPENCODE.md
+    let opencode_path = project_root.join("OPENCODE.md");
+    if opencode_path.exists() {
+        discovered.push(DiscoveredFile {
+            path: "OPENCODE.md".into(),
+            file_type: AgentFileType::OpenCodeInstructions,
+            display_name: "OPENCODE.md (OpenCode instructions)".to_string(),
+        });
+    }
+
+    // OpenCode: .opencode/skills/ directory
+    let opencode_skills_path = project_root.join(".opencode").join("skills");
+    if opencode_skills_path.exists() && opencode_skills_path.is_dir() {
+        let has_content = dir_has_entries(&opencode_skills_path)?;
+        if has_content {
+            discovered.push(DiscoveredFile {
+                path: ".opencode/skills".into(),
+                file_type: AgentFileType::OpenCodeSkills,
+                display_name: "OpenCode skills (.opencode/skills/)".to_string(),
+            });
+        }
+    }
+
+    // OpenCode: .opencode/command/ directory
+    let opencode_commands_path = project_root.join(".opencode").join("command");
+    if opencode_commands_path.exists() && opencode_commands_path.is_dir() {
+        let has_content = dir_has_entries(&opencode_commands_path)?;
+        if has_content {
+            discovered.push(DiscoveredFile {
+                path: ".opencode/command".into(),
+                file_type: AgentFileType::OpenCodeCommands,
+                display_name: "OpenCode commands (.opencode/command/)".to_string(),
+            });
+        }
+    }
+
+    // OpenCode: opencode.json
+    let opencode_config_path = project_root.join("opencode.json");
+    if opencode_config_path.exists() {
+        discovered.push(DiscoveredFile {
+            path: "opencode.json".into(),
+            file_type: AgentFileType::OpenCodeConfig,
+            display_name: "opencode.json (OpenCode configuration)".to_string(),
         });
     }
 
@@ -309,9 +544,42 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
         });
     }
 
+    // Codex CLI: .codex/skills/ directory
+    let codex_skills_path = project_root.join(".codex").join("skills");
+    if codex_skills_path.exists() && codex_skills_path.is_dir() {
+        let has_content = dir_has_entries(&codex_skills_path)?;
+        if has_content {
+            discovered.push(DiscoveredFile {
+                path: ".codex/skills".into(),
+                file_type: AgentFileType::CodexSkills,
+                display_name: "Codex skills (.codex/skills/)".to_string(),
+            });
+        }
+    }
+
+    // Codex CLI: .codex/config.toml
+    let codex_config_path = project_root.join(".codex").join("config.toml");
+    if codex_config_path.exists() {
+        discovered.push(DiscoveredFile {
+            path: ".codex/config.toml".into(),
+            file_type: AgentFileType::CodexConfig,
+            display_name: ".codex/config.toml (Codex configuration)".to_string(),
+        });
+    }
+
     // -------------------------------------------------------------------------
     // Configurable agents — rules / instruction files
     // -------------------------------------------------------------------------
+
+    // Windsurf: .windsurfrules
+    let windsurfrules_path = project_root.join(".windsurfrules");
+    if windsurfrules_path.exists() {
+        discovered.push(DiscoveredFile {
+            path: ".windsurfrules".into(),
+            file_type: AgentFileType::WindsurfRules,
+            display_name: ".windsurfrules (Windsurf rules)".to_string(),
+        });
+    }
 
     // Windsurf: .windsurf/ directory (rules + MCP)
     let windsurf_dir = project_root.join(".windsurf");
@@ -320,6 +588,16 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
             path: ".windsurf".into(),
             file_type: AgentFileType::WindsurfDirectory,
             display_name: ".windsurf/ (Windsurf configuration directory)".to_string(),
+        });
+    }
+
+    // Windsurf: .windsurf/mcp_config.json
+    let windsurf_mcp_path = project_root.join(".windsurf").join("mcp_config.json");
+    if windsurf_mcp_path.exists() {
+        discovered.push(DiscoveredFile {
+            path: ".windsurf/mcp_config.json".into(),
+            file_type: AgentFileType::WindsurfMcpConfig,
+            display_name: ".windsurf/mcp_config.json (Windsurf MCP configuration)".to_string(),
         });
     }
 
@@ -343,6 +621,16 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
         });
     }
 
+    // Amp: AMPCODE.md
+    let amp_path = project_root.join("AMPCODE.md");
+    if amp_path.exists() {
+        discovered.push(DiscoveredFile {
+            path: "AMPCODE.md".into(),
+            file_type: AgentFileType::AmpInstructions,
+            display_name: "AMPCODE.md (Amp instructions)".to_string(),
+        });
+    }
+
     // Amazon Q CLI: .amazonq/rules/
     let amazonq_rules = project_root.join(".amazonq").join("rules");
     if amazonq_rules.exists() && amazonq_rules.is_dir() {
@@ -350,6 +638,16 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
             path: ".amazonq/rules".into(),
             file_type: AgentFileType::AmazonQRules,
             display_name: ".amazonq/rules/ (Amazon Q CLI rules)".to_string(),
+        });
+    }
+
+    // Amazon Q: .amazonq/mcp.json
+    let amazonq_mcp_path = project_root.join(".amazonq").join("mcp.json");
+    if amazonq_mcp_path.exists() {
+        discovered.push(DiscoveredFile {
+            path: ".amazonq/mcp.json".into(),
+            file_type: AgentFileType::AmazonQMcpConfig,
+            display_name: ".amazonq/mcp.json (Amazon Q MCP configuration)".to_string(),
         });
     }
 
@@ -413,6 +711,16 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
         });
     }
 
+    // Kilo Code: .kilocode/mcp.json
+    let kilocode_mcp_path = project_root.join(".kilocode").join("mcp.json");
+    if kilocode_mcp_path.exists() {
+        discovered.push(DiscoveredFile {
+            path: ".kilocode/mcp.json".into(),
+            file_type: AgentFileType::KilocodeMcpConfig,
+            display_name: ".kilocode/mcp.json (Kilo Code MCP configuration)".to_string(),
+        });
+    }
+
     // Goose (Block): .goosehints
     let goose_path = project_root.join(".goosehints");
     if goose_path.exists() {
@@ -440,6 +748,29 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
             path: ".roo/rules".into(),
             file_type: AgentFileType::RooRules,
             display_name: ".roo/rules/ (Roo Code rules)".to_string(),
+        });
+    }
+
+    // Roo Code: .roo/skills/ directory
+    let roo_skills_path = project_root.join(".roo").join("skills");
+    if roo_skills_path.exists() && roo_skills_path.is_dir() {
+        let has_content = dir_has_entries(&roo_skills_path)?;
+        if has_content {
+            discovered.push(DiscoveredFile {
+                path: ".roo/skills".into(),
+                file_type: AgentFileType::RooSkills,
+                display_name: "Roo Code skills (.roo/skills/)".to_string(),
+            });
+        }
+    }
+
+    // Roo Code: .roo/mcp.json
+    let roo_mcp_path = project_root.join(".roo").join("mcp.json");
+    if roo_mcp_path.exists() {
+        discovered.push(DiscoveredFile {
+            path: ".roo/mcp.json".into(),
+            file_type: AgentFileType::RooMcpConfig,
+            display_name: ".roo/mcp.json (Roo Code MCP configuration)".to_string(),
         });
     }
 
@@ -473,6 +804,16 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
         });
     }
 
+    // Kiro: .kiro/settings/mcp.json
+    let kiro_mcp_path = project_root.join(".kiro").join("settings").join("mcp.json");
+    if kiro_mcp_path.exists() {
+        discovered.push(DiscoveredFile {
+            path: ".kiro/settings/mcp.json".into(),
+            file_type: AgentFileType::KiroMcpConfig,
+            display_name: ".kiro/settings/mcp.json (Kiro MCP configuration)".to_string(),
+        });
+    }
+
     // Firebender: firebender.json
     let firebender_path = project_root.join("firebender.json");
     if firebender_path.exists() {
@@ -493,6 +834,29 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
         });
     }
 
+    // Factory: .factory/skills/ directory
+    let factory_skills_path = project_root.join(".factory").join("skills");
+    if factory_skills_path.exists() && factory_skills_path.is_dir() {
+        let has_content = dir_has_entries(&factory_skills_path)?;
+        if has_content {
+            discovered.push(DiscoveredFile {
+                path: ".factory/skills".into(),
+                file_type: AgentFileType::FactorySkills,
+                display_name: "Factory skills (.factory/skills/)".to_string(),
+            });
+        }
+    }
+
+    // Factory: .factory/mcp.json
+    let factory_mcp_path = project_root.join(".factory").join("mcp.json");
+    if factory_mcp_path.exists() {
+        discovered.push(DiscoveredFile {
+            path: ".factory/mcp.json".into(),
+            file_type: AgentFileType::FactoryMcpConfig,
+            display_name: ".factory/mcp.json (Factory MCP configuration)".to_string(),
+        });
+    }
+
     // Vibe (Mistral): .vibe/
     let vibe_path = project_root.join(".vibe");
     if vibe_path.exists() && vibe_path.is_dir() {
@@ -501,6 +865,19 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
             file_type: AgentFileType::VibeDirectory,
             display_name: ".vibe/ (Vibe / Mistral configuration)".to_string(),
         });
+    }
+
+    // Vibe: .vibe/skills/ directory
+    let vibe_skills_path = project_root.join(".vibe").join("skills");
+    if vibe_skills_path.exists() && vibe_skills_path.is_dir() {
+        let has_content = dir_has_entries(&vibe_skills_path)?;
+        if has_content {
+            discovered.push(DiscoveredFile {
+                path: ".vibe/skills".into(),
+                file_type: AgentFileType::VibeSkills,
+                display_name: "Vibe skills (.vibe/skills/)".to_string(),
+            });
+        }
     }
 
     // JetBrains AI Assistant: .aiassistant/rules/
@@ -523,6 +900,19 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
         });
     }
 
+    // Antigravity: .agent/skills/ directory
+    let antigravity_skills_path = project_root.join(".agent").join("skills");
+    if antigravity_skills_path.exists() && antigravity_skills_path.is_dir() {
+        let has_content = dir_has_entries(&antigravity_skills_path)?;
+        if has_content {
+            discovered.push(DiscoveredFile {
+                path: ".agent/skills".into(),
+                file_type: AgentFileType::AntigravitySkills,
+                display_name: "Antigravity skills (.agent/skills/)".to_string(),
+            });
+        }
+    }
+
     // Zed editor: .zed/settings.json
     let zed_settings = project_root.join(".zed").join("settings.json");
     if zed_settings.exists() {
@@ -536,10 +926,161 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
     Ok(discovered)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SkillsWizardChoice {
+    agent_name: String,
+    destination: String,
+    recommended_mode: SyncType,
+    reason: Option<String>,
+    already_canonical: bool,
+}
+
+fn skills_choice_for_file_type(file_type: &AgentFileType) -> Option<(&'static str, &'static str)> {
+    match file_type {
+        AgentFileType::ClaudeSkills => Some(("claude", ".claude/skills")),
+        AgentFileType::CodexSkills => Some(("codex", ".codex/skills")),
+        AgentFileType::GeminiSkills => Some(("gemini", ".gemini/skills")),
+        AgentFileType::OpenCodeSkills => Some(("opencode", ".opencode/skills")),
+        _ => None,
+    }
+}
+
+fn build_skills_wizard_choices(
+    project_root: &Path,
+    expected_source: &Path,
+    files_to_migrate: &[DiscoveredFile],
+) -> Vec<SkillsWizardChoice> {
+    let mut choices = BTreeMap::new();
+
+    for file in files_to_migrate {
+        let Some((agent_name, destination)) = skills_choice_for_file_type(&file.file_type) else {
+            continue;
+        };
+
+        let target = TargetConfig {
+            source: "skills".to_string(),
+            destination: destination.to_string(),
+            sync_type: SyncType::Symlink,
+            pattern: None,
+            exclude: Vec::new(),
+            mappings: Vec::new(),
+        };
+
+        let already_canonical =
+            detect_skills_layout_match(project_root, expected_source, "skills", &target).is_some();
+
+        let reason = if already_canonical {
+            Some("existing destination already uses the canonical directory symlink".to_string())
+        } else {
+            Some("recommended default for skills targets".to_string())
+        };
+
+        choices
+            .entry(agent_name.to_string())
+            .or_insert(SkillsWizardChoice {
+                agent_name: agent_name.to_string(),
+                destination: destination.to_string(),
+                recommended_mode: SyncType::Symlink,
+                reason,
+                already_canonical,
+            });
+    }
+
+    choices.into_values().collect()
+}
+
+fn sync_type_label(sync_type: SyncType) -> &'static str {
+    match sync_type {
+        SyncType::Symlink => "symlink",
+        SyncType::SymlinkContents => "symlink-contents",
+        SyncType::NestedGlob => "nested-glob",
+        SyncType::ModuleMap => "module-map",
+    }
+}
+
+fn resolve_skills_mode_selection(choice: &SkillsWizardChoice, selected_index: usize) -> SyncType {
+    match selected_index {
+        0 => SyncType::Symlink,
+        1 => SyncType::SymlinkContents,
+        _ => choice.recommended_mode,
+    }
+}
+
+fn build_default_config_with_skills_modes(modes: &BTreeMap<String, SyncType>) -> String {
+    let mut rendered = Vec::new();
+    let mut current_skills_agent: Option<String> = None;
+
+    for line in DEFAULT_CONFIG.lines() {
+        if let Some(agent_name) = parse_skills_section_agent(line) {
+            current_skills_agent = Some(agent_name.to_string());
+            rendered.push(line.to_string());
+            continue;
+        }
+
+        if line.starts_with("[agents.") {
+            current_skills_agent = None;
+        }
+
+        if let Some(agent_name) = current_skills_agent.as_deref()
+            && line.trim_start().starts_with("type = ")
+        {
+            let mode = modes.get(agent_name).copied().unwrap_or(SyncType::Symlink);
+            rendered.push(format!("type = \"{}\"", sync_type_label(mode)));
+            current_skills_agent = None;
+            continue;
+        }
+
+        rendered.push(line.to_string());
+    }
+
+    let mut output = rendered.join("\n");
+    if DEFAULT_CONFIG.ends_with('\n') {
+        output.push('\n');
+    }
+    output
+}
+
+fn parse_skills_section_agent(line: &str) -> Option<&str> {
+    line.strip_prefix("[agents.")?
+        .strip_suffix(".targets.skills]")
+}
+
+fn collect_post_init_skills_warnings(
+    project_root: &Path,
+    config_path: &Path,
+    selected_agents: &[String],
+) -> Result<Vec<String>> {
+    let config = Config::load(config_path)?;
+    let source_dir = config.source_dir(config_path);
+    let mut warnings = Vec::new();
+
+    for agent_name in selected_agents {
+        let Some(agent) = config.agents.get(agent_name) else {
+            continue;
+        };
+        let Some(target) = agent.targets.get("skills") else {
+            continue;
+        };
+
+        let expected_source = source_dir.join(&target.source);
+        if let Some(mismatch) = detect_skills_mode_mismatch(
+            project_root,
+            &expected_source,
+            agent_name,
+            "skills",
+            target,
+        ) {
+            warnings.push(mismatch.wizard_warning());
+        }
+    }
+
+    Ok(warnings)
+}
+
 /// Interactive wizard for initializing agentsync with file migration
 pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
     use colored::Colorize;
-    use dialoguer::{Confirm, MultiSelect, theme::ColorfulTheme};
+    use dialoguer::{Confirm, MultiSelect, Select, theme::ColorfulTheme};
 
     // Scan for existing agent files
     println!("{}", "🔍 Scanning for existing agent files...".cyan());
@@ -627,6 +1168,62 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
         );
     }
 
+    // Create commands directory
+    let commands_dir = agents_dir.join("commands");
+    if !commands_dir.exists() {
+        fs::create_dir_all(&commands_dir)?;
+        println!(
+            "  {} Created directory: {}",
+            "✔".green(),
+            commands_dir.display()
+        );
+    }
+
+    let config_path = agents_dir.join("agentsync.toml");
+    let can_write_config = force || !config_path.exists();
+    let skills_choices = build_skills_wizard_choices(project_root, &skills_dir, &files_to_migrate);
+    let mut skills_modes = BTreeMap::new();
+    if can_write_config {
+        for choice in &skills_choices {
+            println!(
+                "\n{}",
+                format!(
+                    "🧠 Skills target for {} ({})",
+                    choice.agent_name, choice.destination
+                )
+                .cyan()
+            );
+            println!(
+                "  {} Recommended: {}{}",
+                "ℹ".blue(),
+                sync_type_label(choice.recommended_mode).bold(),
+                choice
+                    .reason
+                    .as_ref()
+                    .map(|reason| format!(" — {reason}"))
+                    .unwrap_or_default()
+            );
+
+            let selection = Select::with_theme(&ColorfulTheme::default())
+                .with_prompt("How should this skills target sync?")
+                .items(&[
+                    "symlink — link the whole directory to .agents/skills",
+                    "symlink-contents — keep a directory and link each item inside it",
+                ])
+                .default(if choice.recommended_mode == SyncType::Symlink {
+                    0
+                } else {
+                    1
+                })
+                .interact()?;
+
+            skills_modes.insert(
+                choice.agent_name.clone(),
+                resolve_skills_mode_selection(choice, selection),
+            );
+        }
+    }
+
     // Migrate selected files
     println!("\n{}", "🔄 Migrating files...".cyan());
 
@@ -646,6 +1243,7 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
                     | AgentFileType::GooseHints
                     | AgentFileType::WarpInstructions
                     | AgentFileType::GeminiInstructions
+                    | AgentFileType::OpenCodeInstructions
             )
         })
         .collect();
@@ -701,9 +1299,94 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
             | AgentFileType::AmpInstructions
             | AgentFileType::GooseHints
             | AgentFileType::WarpInstructions
-            | AgentFileType::GeminiInstructions => {
+            | AgentFileType::GeminiInstructions
+            | AgentFileType::OpenCodeInstructions => {
                 // Already handled above — content merged into AGENTS.md
                 continue;
+            }
+            // Skill directories — copy contents into .agents/skills/
+            AgentFileType::ClaudeSkills
+            | AgentFileType::CursorSkills
+            | AgentFileType::CodexSkills
+            | AgentFileType::GeminiSkills
+            | AgentFileType::OpenCodeSkills
+            | AgentFileType::RooSkills
+            | AgentFileType::FactorySkills
+            | AgentFileType::VibeSkills
+            | AgentFileType::AntigravitySkills => {
+                if src_path.exists() && src_path.is_dir() {
+                    for entry in fs::read_dir(&src_path)? {
+                        let entry = entry?;
+                        let entry_path = entry.path();
+                        let skill_name = entry.file_name();
+                        let dest_skill = skills_dir.join(&skill_name);
+                        if dest_skill.exists() {
+                            println!(
+                                "  {} Skipped: skill '{}' already exists in .agents/skills/",
+                                "⚠".yellow(),
+                                skill_name.to_string_lossy()
+                            );
+                            files_skipped += 1;
+                        } else if entry_path.is_dir() {
+                            copy_dir_all(&entry_path, &dest_skill)?;
+                            println!(
+                                "  {} Copied skill: {} → .agents/skills/{}",
+                                "✔".green(),
+                                entry_path.display(),
+                                skill_name.to_string_lossy()
+                            );
+                            files_actually_migrated += 1;
+                        } else {
+                            fs::copy(&entry_path, &dest_skill)?;
+                            println!(
+                                "  {} Copied skill: {} → .agents/skills/{}",
+                                "✔".green(),
+                                entry_path.display(),
+                                skill_name.to_string_lossy()
+                            );
+                            files_actually_migrated += 1;
+                        }
+                    }
+                }
+            }
+            // Command directories — copy contents into .agents/commands/
+            AgentFileType::ClaudeCommands
+            | AgentFileType::GeminiCommands
+            | AgentFileType::OpenCodeCommands => {
+                if src_path.exists() && src_path.is_dir() {
+                    for entry in fs::read_dir(&src_path)? {
+                        let entry = entry?;
+                        let entry_path = entry.path();
+                        let cmd_name = entry.file_name();
+                        let dest_cmd = commands_dir.join(&cmd_name);
+                        if dest_cmd.exists() {
+                            println!(
+                                "  {} Skipped: command '{}' already exists in .agents/commands/",
+                                "⚠".yellow(),
+                                cmd_name.to_string_lossy()
+                            );
+                            files_skipped += 1;
+                        } else if entry_path.is_dir() {
+                            copy_dir_all(&entry_path, &dest_cmd)?;
+                            println!(
+                                "  {} Copied command: {} → .agents/commands/{}",
+                                "✔".green(),
+                                entry_path.display(),
+                                cmd_name.to_string_lossy()
+                            );
+                            files_actually_migrated += 1;
+                        } else {
+                            fs::copy(&entry_path, &dest_cmd)?;
+                            println!(
+                                "  {} Copied command: {} → .agents/commands/{}",
+                                "✔".green(),
+                                entry_path.display(),
+                                cmd_name.to_string_lossy()
+                            );
+                            files_actually_migrated += 1;
+                        }
+                    }
+                }
             }
             // Directories — copy to .agents/
             AgentFileType::CursorDirectory
@@ -765,7 +1448,18 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
                 }
             }
             // MCP / tooling configs — just note them
-            AgentFileType::McpConfig | AgentFileType::ZedSettings => {
+            AgentFileType::McpConfig
+            | AgentFileType::ZedSettings
+            | AgentFileType::CursorMcpConfig
+            | AgentFileType::CopilotMcpConfig
+            | AgentFileType::WindsurfMcpConfig
+            | AgentFileType::CodexConfig
+            | AgentFileType::RooMcpConfig
+            | AgentFileType::KiroMcpConfig
+            | AgentFileType::AmazonQMcpConfig
+            | AgentFileType::KilocodeMcpConfig
+            | AgentFileType::FactoryMcpConfig
+            | AgentFileType::OpenCodeConfig => {
                 println!(
                     "  {} Note: {} detected. You can configure MCP servers in agentsync.toml",
                     "ℹ".blue(),
@@ -817,7 +1511,6 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
 
     // Generate config file
     println!("\n{}", "⚙️  Generating configuration...".cyan());
-    let config_path = agents_dir.join("agentsync.toml");
 
     if config_path.exists() && !force {
         println!(
@@ -826,8 +1519,30 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
             config_path.display()
         );
     } else {
-        fs::write(&config_path, DEFAULT_CONFIG)?;
+        fs::write(
+            &config_path,
+            build_default_config_with_skills_modes(&skills_modes),
+        )?;
         println!("  {} Created: {}", "✔".green(), config_path.display());
+
+        let selected_skill_agents = skills_choices
+            .iter()
+            .map(|choice| choice.agent_name.clone())
+            .collect::<Vec<_>>();
+        let warnings =
+            collect_post_init_skills_warnings(project_root, &config_path, &selected_skill_agents)?;
+
+        println!("\n{}", "🔎 Post-init skills validation:".bold());
+        if warnings.is_empty() {
+            println!(
+                "  {} No skills mode mismatches detected for selected targets",
+                "✔".green()
+            );
+        } else {
+            for warning in warnings {
+                println!("  {} {}", "⚠".yellow(), warning);
+            }
+        }
     }
 
     // Provide migration summary
@@ -876,7 +1591,19 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
         for file in &files_to_migrate {
             if matches!(
                 file.file_type,
-                AgentFileType::McpConfig | AgentFileType::ZedSettings | AgentFileType::Other
+                AgentFileType::McpConfig
+                    | AgentFileType::ZedSettings
+                    | AgentFileType::CursorMcpConfig
+                    | AgentFileType::CopilotMcpConfig
+                    | AgentFileType::WindsurfMcpConfig
+                    | AgentFileType::CodexConfig
+                    | AgentFileType::RooMcpConfig
+                    | AgentFileType::KiroMcpConfig
+                    | AgentFileType::AmazonQMcpConfig
+                    | AgentFileType::KilocodeMcpConfig
+                    | AgentFileType::FactoryMcpConfig
+                    | AgentFileType::OpenCodeConfig
+                    | AgentFileType::Other
             ) {
                 // Skip files that weren't actually migrated
                 continue;
@@ -885,6 +1612,22 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
             let src_path = project_root.join(&file.path);
             if !src_path.exists() {
                 continue;
+            }
+
+            if let Some((agent_name, _)) = skills_choice_for_file_type(&file.file_type) {
+                let selected_mode = skills_modes
+                    .get(agent_name)
+                    .copied()
+                    .unwrap_or(SyncType::Symlink);
+                let preserve_existing_layout = skills_choices.iter().any(|choice| {
+                    choice.agent_name == agent_name
+                        && choice.already_canonical
+                        && selected_mode == SyncType::Symlink
+                });
+
+                if preserve_existing_layout {
+                    continue;
+                }
             }
 
             let backup_path = backup_dir.join(&file.path);
@@ -967,6 +1710,7 @@ fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
     use tempfile::TempDir;
 
     // ==========================================================================
@@ -1126,6 +1870,40 @@ mod tests {
         assert!(config.agents.contains_key("cursor"));
         assert!(config.agents.contains_key("codex"));
         assert!(config.agents.contains_key("root"));
+    }
+
+    #[test]
+    fn test_default_config_all_agents_have_skills_symlink_target() {
+        let config: crate::config::Config = toml::from_str(DEFAULT_CONFIG).unwrap();
+
+        let cases = [
+            ("claude", ".claude/skills"),
+            ("codex", ".codex/skills"),
+            ("gemini", ".gemini/skills"),
+            ("opencode", ".opencode/skills"),
+        ];
+
+        for (agent, expected_destination) in cases {
+            assert!(
+                config.agents[agent].targets.contains_key("skills"),
+                "{agent} should have a skills target"
+            );
+
+            let skills_target = &config.agents[agent].targets["skills"];
+            assert_eq!(
+                skills_target.source, "skills",
+                "{agent} skills source mismatch"
+            );
+            assert_eq!(
+                skills_target.destination, expected_destination,
+                "{agent} skills destination mismatch"
+            );
+            assert_eq!(
+                skills_target.sync_type,
+                crate::config::SyncType::Symlink,
+                "{agent} skills sync_type mismatch"
+            );
+        }
     }
 
     #[test]
@@ -1483,6 +2261,82 @@ mod tests {
         assert_eq!(discovered[0].file_type, AgentFileType::JetBrainsRules);
     }
     #[test]
+    fn test_scan_agent_files_finds_claude_skills_with_content() {
+        let temp_dir = TempDir::new().unwrap();
+        let skills_dir = temp_dir
+            .path()
+            .join(".claude")
+            .join("skills")
+            .join("my-skill");
+        fs::create_dir_all(&skills_dir).unwrap();
+        fs::write(skills_dir.join("SKILL.md"), "# My Skill").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        let skills_entry: Vec<_> = discovered
+            .iter()
+            .filter(|f| f.file_type == AgentFileType::ClaudeSkills)
+            .collect();
+        assert_eq!(skills_entry.len(), 1);
+        assert_eq!(skills_entry[0].path.to_str().unwrap(), ".claude/skills");
+        assert!(skills_entry[0].display_name.contains("Claude"));
+        assert!(skills_entry[0].display_name.contains("skills"));
+    }
+
+    #[test]
+    fn test_scan_agent_files_ignores_empty_claude_skills() {
+        let temp_dir = TempDir::new().unwrap();
+        let skills_dir = temp_dir.path().join(".claude").join("skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        let skills_entry: Vec<_> = discovered
+            .iter()
+            .filter(|f| f.file_type == AgentFileType::ClaudeSkills)
+            .collect();
+        assert!(skills_entry.is_empty());
+    }
+
+    #[test]
+    fn test_scan_agent_files_ignores_absent_claude_skills() {
+        let temp_dir = TempDir::new().unwrap();
+        // No .claude/ directory at all
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        let skills_entry: Vec<_> = discovered
+            .iter()
+            .filter(|f| f.file_type == AgentFileType::ClaudeSkills)
+            .collect();
+        assert!(skills_entry.is_empty());
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_claude_skills_alongside_claude_md() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(temp_dir.path().join("CLAUDE.md"), "# Claude").unwrap();
+        let skills_dir = temp_dir
+            .path()
+            .join(".claude")
+            .join("skills")
+            .join("my-skill");
+        fs::create_dir_all(&skills_dir).unwrap();
+        fs::write(skills_dir.join("SKILL.md"), "# Skill").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        let has_instructions = discovered
+            .iter()
+            .any(|f| f.file_type == AgentFileType::ClaudeInstructions);
+        let has_skills = discovered
+            .iter()
+            .any(|f| f.file_type == AgentFileType::ClaudeSkills);
+        assert!(has_instructions);
+        assert!(has_skills);
+    }
+
+    #[test]
     fn test_scan_agent_files_empty_project() {
         let temp_dir = TempDir::new().unwrap();
         let discovered = scan_agent_files(temp_dir.path()).unwrap();
@@ -1663,5 +2517,849 @@ mod tests {
             assert!(backup_path.exists());
             assert!(backup_path.join("config.txt").exists());
         }
+    }
+
+    // ==========================================================================
+    // WIZARD SKILL MIGRATION TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_wizard_skill_migration_copies_skills() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path();
+
+        // Set up .claude/skills/ with two skills
+        let skill_a = project_root.join(".claude/skills/skill-a");
+        let skill_b = project_root.join(".claude/skills/skill-b");
+        fs::create_dir_all(&skill_a).unwrap();
+        fs::create_dir_all(&skill_b).unwrap();
+        fs::write(skill_a.join("SKILL.md"), "# Skill A").unwrap();
+        fs::write(skill_b.join("SKILL.md"), "# Skill B").unwrap();
+
+        // Set up .agents/skills/ destination
+        let agents_skills = project_root.join(".agents/skills");
+        fs::create_dir_all(&agents_skills).unwrap();
+
+        // Simulate the migration logic for ClaudeSkills
+        let src_path = project_root.join(".claude/skills");
+        for entry in fs::read_dir(&src_path).unwrap() {
+            let entry = entry.unwrap();
+            let entry_path = entry.path();
+            let skill_name = entry.file_name();
+            let dest_skill = agents_skills.join(&skill_name);
+            if entry_path.is_dir() {
+                copy_dir_all(&entry_path, &dest_skill).unwrap();
+            }
+        }
+
+        // Verify both skills were copied
+        assert!(agents_skills.join("skill-a/SKILL.md").exists());
+        assert!(agents_skills.join("skill-b/SKILL.md").exists());
+        assert_eq!(
+            fs::read_to_string(agents_skills.join("skill-a/SKILL.md")).unwrap(),
+            "# Skill A"
+        );
+        assert_eq!(
+            fs::read_to_string(agents_skills.join("skill-b/SKILL.md")).unwrap(),
+            "# Skill B"
+        );
+    }
+
+    #[test]
+    fn test_wizard_skill_migration_skips_collisions() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path();
+
+        // Set up .claude/skills/ with a skill
+        let claude_skill = project_root.join(".claude/skills/shared-skill");
+        fs::create_dir_all(&claude_skill).unwrap();
+        fs::write(claude_skill.join("SKILL.md"), "# From Claude").unwrap();
+
+        // Set up .agents/skills/ with a pre-existing skill of the same name
+        let agents_skill = project_root.join(".agents/skills/shared-skill");
+        fs::create_dir_all(&agents_skill).unwrap();
+        fs::write(agents_skill.join("SKILL.md"), "# Original").unwrap();
+
+        // Simulate the migration logic — skip on collision
+        let src_path = project_root.join(".claude/skills");
+        let agents_skills = project_root.join(".agents/skills");
+        let mut skipped = 0;
+
+        for entry in fs::read_dir(&src_path).unwrap() {
+            let entry = entry.unwrap();
+            let skill_name = entry.file_name();
+            let dest_skill = agents_skills.join(&skill_name);
+            if dest_skill.exists() {
+                skipped += 1;
+            }
+        }
+
+        // Original should be preserved, not overwritten
+        assert_eq!(skipped, 1);
+        assert_eq!(
+            fs::read_to_string(agents_skills.join("shared-skill/SKILL.md")).unwrap(),
+            "# Original"
+        );
+    }
+
+    #[test]
+    fn test_wizard_skill_migration_handles_mixed_content() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path();
+
+        // Set up .claude/skills/ with a subdirectory and a loose file
+        let skill_dir = project_root.join(".claude/skills/valid-skill");
+        fs::create_dir_all(&skill_dir).unwrap();
+        fs::write(skill_dir.join("SKILL.md"), "# Valid").unwrap();
+        fs::write(project_root.join(".claude/skills/notes.txt"), "some notes").unwrap();
+
+        // Set up destination
+        let agents_skills = project_root.join(".agents/skills");
+        fs::create_dir_all(&agents_skills).unwrap();
+
+        // Simulate the migration logic (handles both dirs and files)
+        let src_path = project_root.join(".claude/skills");
+        for entry in fs::read_dir(&src_path).unwrap() {
+            let entry = entry.unwrap();
+            let entry_path = entry.path();
+            let skill_name = entry.file_name();
+            let dest_skill = agents_skills.join(&skill_name);
+            if entry_path.is_dir() {
+                copy_dir_all(&entry_path, &dest_skill).unwrap();
+            } else {
+                fs::copy(&entry_path, &dest_skill).unwrap();
+            }
+        }
+
+        // Verify both were copied
+        assert!(agents_skills.join("valid-skill/SKILL.md").exists());
+        assert!(agents_skills.join("notes.txt").exists());
+        assert_eq!(
+            fs::read_to_string(agents_skills.join("notes.txt")).unwrap(),
+            "some notes"
+        );
+    }
+
+    // ==========================================================================
+    // UNIVERSAL AGENT ADOPTION — INSTRUCTION FILE SCAN TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_scan_agent_files_finds_windsurf_rules() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(temp_dir.path().join(".windsurfrules"), "Use TypeScript").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        let entry: Vec<_> = discovered
+            .iter()
+            .filter(|f| f.file_type == AgentFileType::WindsurfRules)
+            .collect();
+        assert_eq!(entry.len(), 1);
+        assert_eq!(entry[0].path.to_str().unwrap(), ".windsurfrules");
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_opencode_instructions() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(temp_dir.path().join("OPENCODE.md"), "# OpenCode").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        let entry: Vec<_> = discovered
+            .iter()
+            .filter(|f| f.file_type == AgentFileType::OpenCodeInstructions)
+            .collect();
+        assert_eq!(entry.len(), 1);
+        assert_eq!(entry[0].path.to_str().unwrap(), "OPENCODE.md");
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_amp_instructions() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(temp_dir.path().join("AMPCODE.md"), "# Amp").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        let entry: Vec<_> = discovered
+            .iter()
+            .filter(|f| f.file_type == AgentFileType::AmpInstructions)
+            .collect();
+        assert_eq!(entry.len(), 1);
+        assert_eq!(entry[0].path.to_str().unwrap(), "AMPCODE.md");
+    }
+
+    // ==========================================================================
+    // UNIVERSAL AGENT ADOPTION — SKILL DIRECTORY SCAN TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_scan_agent_files_finds_cursor_skills() {
+        let temp_dir = TempDir::new().unwrap();
+        let skills_dir = temp_dir
+            .path()
+            .join(".cursor")
+            .join("skills")
+            .join("my-skill");
+        fs::create_dir_all(&skills_dir).unwrap();
+        fs::write(skills_dir.join("SKILL.md"), "# Skill").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        let entry: Vec<_> = discovered
+            .iter()
+            .filter(|f| f.file_type == AgentFileType::CursorSkills)
+            .collect();
+        assert_eq!(entry.len(), 1);
+        assert_eq!(entry[0].path.to_str().unwrap(), ".cursor/skills");
+        assert!(entry[0].display_name.contains("Cursor"));
+        assert!(entry[0].display_name.contains("skills"));
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_codex_skills() {
+        let temp_dir = TempDir::new().unwrap();
+        let skills_dir = temp_dir
+            .path()
+            .join(".codex")
+            .join("skills")
+            .join("my-skill");
+        fs::create_dir_all(&skills_dir).unwrap();
+        fs::write(skills_dir.join("SKILL.md"), "# Skill").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        let entry: Vec<_> = discovered
+            .iter()
+            .filter(|f| f.file_type == AgentFileType::CodexSkills)
+            .collect();
+        assert_eq!(entry.len(), 1);
+        assert_eq!(entry[0].path.to_str().unwrap(), ".codex/skills");
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_gemini_skills() {
+        let temp_dir = TempDir::new().unwrap();
+        let skills_dir = temp_dir
+            .path()
+            .join(".gemini")
+            .join("skills")
+            .join("data-analysis");
+        fs::create_dir_all(&skills_dir).unwrap();
+        fs::write(skills_dir.join("SKILL.md"), "# Skill").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        let entry: Vec<_> = discovered
+            .iter()
+            .filter(|f| f.file_type == AgentFileType::GeminiSkills)
+            .collect();
+        assert_eq!(entry.len(), 1);
+        assert_eq!(entry[0].path.to_str().unwrap(), ".gemini/skills");
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_opencode_skills() {
+        let temp_dir = TempDir::new().unwrap();
+        let skills_dir = temp_dir
+            .path()
+            .join(".opencode")
+            .join("skills")
+            .join("my-skill");
+        fs::create_dir_all(&skills_dir).unwrap();
+        fs::write(skills_dir.join("SKILL.md"), "# Skill").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        let entry: Vec<_> = discovered
+            .iter()
+            .filter(|f| f.file_type == AgentFileType::OpenCodeSkills)
+            .collect();
+        assert_eq!(entry.len(), 1);
+        assert_eq!(entry[0].path.to_str().unwrap(), ".opencode/skills");
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_roo_skills() {
+        let temp_dir = TempDir::new().unwrap();
+        let skills_dir = temp_dir.path().join(".roo").join("skills").join("my-skill");
+        fs::create_dir_all(&skills_dir).unwrap();
+        fs::write(skills_dir.join("SKILL.md"), "# Skill").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        let entry: Vec<_> = discovered
+            .iter()
+            .filter(|f| f.file_type == AgentFileType::RooSkills)
+            .collect();
+        assert_eq!(entry.len(), 1);
+        assert_eq!(entry[0].path.to_str().unwrap(), ".roo/skills");
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_factory_skills() {
+        let temp_dir = TempDir::new().unwrap();
+        let skills_dir = temp_dir
+            .path()
+            .join(".factory")
+            .join("skills")
+            .join("my-skill");
+        fs::create_dir_all(&skills_dir).unwrap();
+        fs::write(skills_dir.join("SKILL.md"), "# Skill").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        let entry: Vec<_> = discovered
+            .iter()
+            .filter(|f| f.file_type == AgentFileType::FactorySkills)
+            .collect();
+        assert_eq!(entry.len(), 1);
+        assert_eq!(entry[0].path.to_str().unwrap(), ".factory/skills");
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_vibe_skills() {
+        let temp_dir = TempDir::new().unwrap();
+        let skills_dir = temp_dir
+            .path()
+            .join(".vibe")
+            .join("skills")
+            .join("my-skill");
+        fs::create_dir_all(&skills_dir).unwrap();
+        fs::write(skills_dir.join("SKILL.md"), "# Skill").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        let entry: Vec<_> = discovered
+            .iter()
+            .filter(|f| f.file_type == AgentFileType::VibeSkills)
+            .collect();
+        assert_eq!(entry.len(), 1);
+        assert_eq!(entry[0].path.to_str().unwrap(), ".vibe/skills");
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_antigravity_skills() {
+        let temp_dir = TempDir::new().unwrap();
+        let skills_dir = temp_dir
+            .path()
+            .join(".agent")
+            .join("skills")
+            .join("my-skill");
+        fs::create_dir_all(&skills_dir).unwrap();
+        fs::write(skills_dir.join("SKILL.md"), "# Skill").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        let entry: Vec<_> = discovered
+            .iter()
+            .filter(|f| f.file_type == AgentFileType::AntigravitySkills)
+            .collect();
+        assert_eq!(entry.len(), 1);
+        assert_eq!(entry[0].path.to_str().unwrap(), ".agent/skills");
+    }
+
+    #[test]
+    fn test_scan_agent_files_ignores_empty_skill_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        // Create empty skill directories for multiple agents
+        fs::create_dir_all(temp_dir.path().join(".gemini/skills")).unwrap();
+        fs::create_dir_all(temp_dir.path().join(".cursor/skills")).unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        let skill_entries: Vec<_> = discovered
+            .iter()
+            .filter(|f| {
+                matches!(
+                    f.file_type,
+                    AgentFileType::GeminiSkills | AgentFileType::CursorSkills
+                )
+            })
+            .collect();
+        assert!(skill_entries.is_empty());
+    }
+
+    // ==========================================================================
+    // UNIVERSAL AGENT ADOPTION — COMMAND DIRECTORY SCAN TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_scan_agent_files_finds_claude_commands() {
+        let temp_dir = TempDir::new().unwrap();
+        let commands_dir = temp_dir.path().join(".claude").join("commands");
+        fs::create_dir_all(&commands_dir).unwrap();
+        fs::write(commands_dir.join("review.md"), "# Review").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        let entry: Vec<_> = discovered
+            .iter()
+            .filter(|f| f.file_type == AgentFileType::ClaudeCommands)
+            .collect();
+        assert_eq!(entry.len(), 1);
+        assert_eq!(entry[0].path.to_str().unwrap(), ".claude/commands");
+        assert!(entry[0].display_name.contains("Claude"));
+        assert!(entry[0].display_name.contains("commands"));
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_gemini_commands() {
+        let temp_dir = TempDir::new().unwrap();
+        let commands_dir = temp_dir.path().join(".gemini").join("commands");
+        fs::create_dir_all(&commands_dir).unwrap();
+        fs::write(commands_dir.join("analyze.md"), "# Analyze").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        let entry: Vec<_> = discovered
+            .iter()
+            .filter(|f| f.file_type == AgentFileType::GeminiCommands)
+            .collect();
+        assert_eq!(entry.len(), 1);
+        assert_eq!(entry[0].path.to_str().unwrap(), ".gemini/commands");
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_opencode_commands() {
+        let temp_dir = TempDir::new().unwrap();
+        let commands_dir = temp_dir.path().join(".opencode").join("command");
+        fs::create_dir_all(&commands_dir).unwrap();
+        fs::write(commands_dir.join("deploy.md"), "# Deploy").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        let entry: Vec<_> = discovered
+            .iter()
+            .filter(|f| f.file_type == AgentFileType::OpenCodeCommands)
+            .collect();
+        assert_eq!(entry.len(), 1);
+        assert_eq!(entry[0].path.to_str().unwrap(), ".opencode/command");
+    }
+
+    #[test]
+    fn test_scan_agent_files_ignores_empty_command_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::create_dir_all(temp_dir.path().join(".claude/commands")).unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        let cmd_entries: Vec<_> = discovered
+            .iter()
+            .filter(|f| f.file_type == AgentFileType::ClaudeCommands)
+            .collect();
+        assert!(cmd_entries.is_empty());
+    }
+
+    // ==========================================================================
+    // UNIVERSAL AGENT ADOPTION — MCP CONFIG SCAN TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_scan_agent_files_finds_cursor_mcp_config() {
+        let temp_dir = TempDir::new().unwrap();
+        let cursor_dir = temp_dir.path().join(".cursor");
+        fs::create_dir_all(&cursor_dir).unwrap();
+        fs::write(cursor_dir.join("mcp.json"), "{}").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        let entry: Vec<_> = discovered
+            .iter()
+            .filter(|f| f.file_type == AgentFileType::CursorMcpConfig)
+            .collect();
+        assert_eq!(entry.len(), 1);
+        assert_eq!(entry[0].path.to_str().unwrap(), ".cursor/mcp.json");
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_copilot_mcp_config() {
+        let temp_dir = TempDir::new().unwrap();
+        let vscode_dir = temp_dir.path().join(".vscode");
+        fs::create_dir_all(&vscode_dir).unwrap();
+        fs::write(vscode_dir.join("mcp.json"), "{}").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        let entry: Vec<_> = discovered
+            .iter()
+            .filter(|f| f.file_type == AgentFileType::CopilotMcpConfig)
+            .collect();
+        assert_eq!(entry.len(), 1);
+        assert_eq!(entry[0].path.to_str().unwrap(), ".vscode/mcp.json");
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_windsurf_mcp_config() {
+        let temp_dir = TempDir::new().unwrap();
+        let windsurf_dir = temp_dir.path().join(".windsurf");
+        fs::create_dir_all(&windsurf_dir).unwrap();
+        fs::write(windsurf_dir.join("mcp_config.json"), "{}").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        let entry: Vec<_> = discovered
+            .iter()
+            .filter(|f| f.file_type == AgentFileType::WindsurfMcpConfig)
+            .collect();
+        assert_eq!(entry.len(), 1);
+        assert_eq!(entry[0].path.to_str().unwrap(), ".windsurf/mcp_config.json");
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_codex_config() {
+        let temp_dir = TempDir::new().unwrap();
+        let codex_dir = temp_dir.path().join(".codex");
+        fs::create_dir_all(&codex_dir).unwrap();
+        fs::write(codex_dir.join("config.toml"), "[settings]").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        let entry: Vec<_> = discovered
+            .iter()
+            .filter(|f| f.file_type == AgentFileType::CodexConfig)
+            .collect();
+        assert_eq!(entry.len(), 1);
+        assert_eq!(entry[0].path.to_str().unwrap(), ".codex/config.toml");
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_roo_mcp_config() {
+        let temp_dir = TempDir::new().unwrap();
+        let roo_dir = temp_dir.path().join(".roo");
+        fs::create_dir_all(&roo_dir).unwrap();
+        fs::write(roo_dir.join("mcp.json"), "{}").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        let entry: Vec<_> = discovered
+            .iter()
+            .filter(|f| f.file_type == AgentFileType::RooMcpConfig)
+            .collect();
+        assert_eq!(entry.len(), 1);
+        assert_eq!(entry[0].path.to_str().unwrap(), ".roo/mcp.json");
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_kiro_mcp_config() {
+        let temp_dir = TempDir::new().unwrap();
+        let kiro_settings = temp_dir.path().join(".kiro").join("settings");
+        fs::create_dir_all(&kiro_settings).unwrap();
+        fs::write(kiro_settings.join("mcp.json"), "{}").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        let entry: Vec<_> = discovered
+            .iter()
+            .filter(|f| f.file_type == AgentFileType::KiroMcpConfig)
+            .collect();
+        assert_eq!(entry.len(), 1);
+        assert_eq!(entry[0].path.to_str().unwrap(), ".kiro/settings/mcp.json");
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_amazonq_mcp_config() {
+        let temp_dir = TempDir::new().unwrap();
+        let amazonq_dir = temp_dir.path().join(".amazonq");
+        fs::create_dir_all(&amazonq_dir).unwrap();
+        fs::write(amazonq_dir.join("mcp.json"), "{}").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        let entry: Vec<_> = discovered
+            .iter()
+            .filter(|f| f.file_type == AgentFileType::AmazonQMcpConfig)
+            .collect();
+        assert_eq!(entry.len(), 1);
+        assert_eq!(entry[0].path.to_str().unwrap(), ".amazonq/mcp.json");
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_kilocode_mcp_config() {
+        let temp_dir = TempDir::new().unwrap();
+        let kilocode_dir = temp_dir.path().join(".kilocode");
+        fs::create_dir_all(&kilocode_dir).unwrap();
+        fs::write(kilocode_dir.join("mcp.json"), "{}").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        let entry: Vec<_> = discovered
+            .iter()
+            .filter(|f| f.file_type == AgentFileType::KilocodeMcpConfig)
+            .collect();
+        assert_eq!(entry.len(), 1);
+        assert_eq!(entry[0].path.to_str().unwrap(), ".kilocode/mcp.json");
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_factory_mcp_config() {
+        let temp_dir = TempDir::new().unwrap();
+        let factory_dir = temp_dir.path().join(".factory");
+        fs::create_dir_all(&factory_dir).unwrap();
+        fs::write(factory_dir.join("mcp.json"), "{}").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        let entry: Vec<_> = discovered
+            .iter()
+            .filter(|f| f.file_type == AgentFileType::FactoryMcpConfig)
+            .collect();
+        assert_eq!(entry.len(), 1);
+        assert_eq!(entry[0].path.to_str().unwrap(), ".factory/mcp.json");
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_opencode_config() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(temp_dir.path().join("opencode.json"), "{}").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        let entry: Vec<_> = discovered
+            .iter()
+            .filter(|f| f.file_type == AgentFileType::OpenCodeConfig)
+            .collect();
+        assert_eq!(entry.len(), 1);
+        assert_eq!(entry[0].path.to_str().unwrap(), "opencode.json");
+    }
+
+    // ==========================================================================
+    // UNIVERSAL AGENT ADOPTION — DEFAULT_CONFIG TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_default_config_contains_gemini_agent() {
+        let config: crate::config::Config = toml::from_str(DEFAULT_CONFIG).unwrap();
+
+        assert!(config.agents.contains_key("gemini"));
+        let gemini = &config.agents["gemini"];
+        assert!(gemini.enabled);
+        assert!(gemini.targets.contains_key("instructions"));
+        assert!(gemini.targets.contains_key("skills"));
+        assert!(gemini.targets.contains_key("commands"));
+        assert!(
+            gemini.targets["instructions"]
+                .destination
+                .contains("GEMINI.md")
+        );
+        assert!(
+            gemini.targets["skills"]
+                .destination
+                .contains(".gemini/skills")
+        );
+    }
+
+    #[test]
+    fn test_default_config_contains_opencode_agent() {
+        let config: crate::config::Config = toml::from_str(DEFAULT_CONFIG).unwrap();
+
+        assert!(config.agents.contains_key("opencode"));
+        let opencode = &config.agents["opencode"];
+        assert!(opencode.enabled);
+        assert!(opencode.targets.contains_key("instructions"));
+        assert!(opencode.targets.contains_key("skills"));
+        assert!(opencode.targets.contains_key("commands"));
+        assert!(
+            opencode.targets["instructions"]
+                .destination
+                .contains("OPENCODE.md")
+        );
+        assert!(
+            opencode.targets["skills"]
+                .destination
+                .contains(".opencode/skills")
+        );
+    }
+
+    #[test]
+    fn test_default_config_claude_has_commands_target() {
+        let config: crate::config::Config = toml::from_str(DEFAULT_CONFIG).unwrap();
+
+        let claude = &config.agents["claude"];
+        assert!(claude.targets.contains_key("commands"));
+
+        let commands_target = &claude.targets["commands"];
+        assert_eq!(commands_target.source, "commands");
+        assert_eq!(commands_target.destination, ".claude/commands");
+        assert_eq!(
+            commands_target.sync_type,
+            crate::config::SyncType::SymlinkContents
+        );
+    }
+
+    #[test]
+    fn test_build_skills_wizard_choices_is_empty_without_selected_skills_targets() {
+        let temp_dir = TempDir::new().unwrap();
+        let choices = build_skills_wizard_choices(
+            temp_dir.path(),
+            &temp_dir.path().join(".agents/skills"),
+            &[DiscoveredFile {
+                path: "CLAUDE.md".into(),
+                file_type: AgentFileType::ClaudeInstructions,
+                display_name: "CLAUDE.md".to_string(),
+            }],
+        );
+
+        assert!(choices.is_empty());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_build_skills_wizard_choices_preserves_existing_directory_symlink() {
+        use std::os::unix::fs as unix_fs;
+
+        let temp_dir = TempDir::new().unwrap();
+        let expected_source = temp_dir.path().join(".agents/skills");
+        fs::create_dir_all(&expected_source).unwrap();
+        fs::create_dir_all(temp_dir.path().join(".claude")).unwrap();
+        unix_fs::symlink("../.agents/skills", temp_dir.path().join(".claude/skills")).unwrap();
+
+        let choices = build_skills_wizard_choices(
+            temp_dir.path(),
+            &expected_source,
+            &[DiscoveredFile {
+                path: ".claude/skills".into(),
+                file_type: AgentFileType::ClaudeSkills,
+                display_name: "Claude skills".to_string(),
+            }],
+        );
+
+        assert_eq!(choices.len(), 1);
+        assert_eq!(choices[0].agent_name, "claude");
+        assert_eq!(choices[0].recommended_mode, SyncType::Symlink);
+        assert!(
+            choices[0]
+                .reason
+                .as_deref()
+                .unwrap()
+                .contains("canonical directory symlink")
+        );
+    }
+
+    #[test]
+    fn test_resolve_skills_mode_selection_allows_override() {
+        let choice = SkillsWizardChoice {
+            agent_name: "claude".to_string(),
+            destination: ".claude/skills".to_string(),
+            recommended_mode: SyncType::Symlink,
+            reason: None,
+            already_canonical: false,
+        };
+
+        assert_eq!(resolve_skills_mode_selection(&choice, 0), SyncType::Symlink);
+        assert_eq!(
+            resolve_skills_mode_selection(&choice, 1),
+            SyncType::SymlinkContents
+        );
+    }
+
+    #[test]
+    fn test_build_default_config_with_skills_modes_only_changes_requested_skills_targets() {
+        let mut modes = BTreeMap::new();
+        modes.insert("claude".to_string(), SyncType::SymlinkContents);
+
+        let rendered = build_default_config_with_skills_modes(&modes);
+        let config: crate::config::Config = toml::from_str(&rendered).unwrap();
+
+        assert_eq!(
+            config.agents["claude"].targets["skills"].sync_type,
+            SyncType::SymlinkContents
+        );
+        assert_eq!(
+            config.agents["codex"].targets["skills"].sync_type,
+            SyncType::Symlink
+        );
+        assert_eq!(
+            config.agents["claude"].targets["commands"].sync_type,
+            SyncType::SymlinkContents
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_collect_post_init_skills_warnings_reports_override_mismatch() {
+        use std::os::unix::fs as unix_fs;
+
+        let temp_dir = TempDir::new().unwrap();
+        init(temp_dir.path(), false).unwrap();
+        fs::create_dir_all(temp_dir.path().join(".claude")).unwrap();
+        unix_fs::symlink("../.agents/skills", temp_dir.path().join(".claude/skills")).unwrap();
+
+        let mut modes = BTreeMap::new();
+        modes.insert("claude".to_string(), SyncType::SymlinkContents);
+        let config_path = temp_dir.path().join(".agents/agentsync.toml");
+        fs::write(&config_path, build_default_config_with_skills_modes(&modes)).unwrap();
+
+        let warnings = collect_post_init_skills_warnings(
+            temp_dir.path(),
+            &config_path,
+            &["claude".to_string()],
+        )
+        .unwrap();
+
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("symlink-contents"));
+        assert!(warnings[0].contains("directory symlink"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_collect_post_init_skills_warnings_stays_quiet_for_matching_symlink_mode() {
+        use std::os::unix::fs as unix_fs;
+
+        let temp_dir = TempDir::new().unwrap();
+        init(temp_dir.path(), false).unwrap();
+        fs::create_dir_all(temp_dir.path().join(".claude")).unwrap();
+        unix_fs::symlink("../.agents/skills", temp_dir.path().join(".claude/skills")).unwrap();
+
+        let config_path = temp_dir.path().join(".agents/agentsync.toml");
+        fs::write(
+            &config_path,
+            build_default_config_with_skills_modes(&BTreeMap::new()),
+        )
+        .unwrap();
+
+        let warnings = collect_post_init_skills_warnings(
+            temp_dir.path(),
+            &config_path,
+            &["claude".to_string()],
+        )
+        .unwrap();
+
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn test_init_creates_commands_directory() {
+        let temp_dir = TempDir::new().unwrap();
+
+        init(temp_dir.path(), false).unwrap();
+
+        let commands_dir = temp_dir.path().join(".agents").join("commands");
+        assert!(commands_dir.exists());
+        assert!(commands_dir.is_dir());
+    }
+
+    #[test]
+    fn test_scan_agent_files_finds_skills_alongside_parent_dir() {
+        let temp_dir = TempDir::new().unwrap();
+        // Create .cursor/ with rules AND skills
+        let cursor_dir = temp_dir.path().join(".cursor");
+        fs::create_dir_all(cursor_dir.join("rules")).unwrap();
+        fs::write(cursor_dir.join("rules/some-rule.mdc"), "rule").unwrap();
+        let skills_dir = cursor_dir.join("skills").join("my-skill");
+        fs::create_dir_all(&skills_dir).unwrap();
+        fs::write(skills_dir.join("SKILL.md"), "# Skill").unwrap();
+
+        let discovered = scan_agent_files(temp_dir.path()).unwrap();
+
+        let has_dir = discovered
+            .iter()
+            .any(|f| f.file_type == AgentFileType::CursorDirectory);
+        let has_skills = discovered
+            .iter()
+            .any(|f| f.file_type == AgentFileType::CursorSkills);
+        assert!(has_dir);
+        assert!(has_skills);
     }
 }

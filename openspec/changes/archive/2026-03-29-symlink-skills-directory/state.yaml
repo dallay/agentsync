@@ -1,0 +1,14 @@
+change: symlink-skills-directory
+current_phase: archive
+completed:
+  - explore
+  - propose
+  - spec
+  - design
+  - tasks
+  - apply
+  - verify
+  - archive
+next: none
+updated: 2026-03-29
+verdict: PASS WITH WARNINGS

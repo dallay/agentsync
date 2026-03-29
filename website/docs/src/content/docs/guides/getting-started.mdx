@@ -113,12 +113,15 @@ agentsync init --wizard
 ```
 
 The wizard will:
-1. Scan your project for existing agent-related files
-2. Let you select which files to migrate to `.agents/`
-3. Optionally create backups of your original files (with confirmation)
-4. Generate a configuration that manages everything with symlinks
+1. **Scan** your project for existing agent-related files — instruction files (CLAUDE.md, .windsurfrules, OPENCODE.md, etc.), skill directories (.claude/skills/, .cursor/skills/, .codex/skills/, and more), command directories (.claude/commands/, .gemini/commands/, .opencode/command/), and MCP configurations
+2. **Let you select** which files to migrate to `.agents/`
+3. **Migrate skills** from any detected agent into `.agents/skills/` (with collision detection — duplicates are skipped with a warning)
+4. **Migrate commands** into `.agents/commands/` as the canonical location
+5. **Note MCP configs** found in agent directories and suggest manual migration to `[mcp_servers]` in your config
+6. Optionally **create backups** of your original files (with confirmation)
+7. **Generate a configuration** that manages everything with symlinks
 
-This makes it easy to transition from manual file management to AgentSync!
+This makes it easy to transition from manual file management to AgentSync — even if you already have skills, commands, or configs spread across multiple agent directories!
 
 ### 2. Configure your Agents
 
