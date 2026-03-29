@@ -8,6 +8,43 @@
 
 * update README.md for accuracy and formatting ([#159](https://github.com/dallay/agentsync/issues/159)) ([8cb9f19](https://github.com/dallay/agentsync/commit/8cb9f19b2302456f0e4536f7a37ad9af5645e605))
 
+## [1.35.1](https://github.com/dallay/agentsync/compare/v1.35.0...v1.35.1) (2026-03-29)
+
+
+### Chores
+
+* **deps:** update major upgrades ([#264](https://github.com/dallay/agentsync/issues/264)) ([af72b18](https://github.com/dallay/agentsync/commit/af72b186bb81ffad06468536b04814454e5a427e))
+
+## [1.35.0](https://github.com/dallay/agentsync/compare/v1.34.0...v1.35.0) (2026-03-29)
+
+
+### Features
+
+* symlink entire skills directory instead of individual skill entries ([#261](https://github.com/dallay/agentsync/issues/261)) ([c645fa0](https://github.com/dallay/agentsync/commit/c645fa06064f7eb4b1efd87841751e302ca61ccd))
+
+
+### Bug Fixes
+
+* keep a single backup file per destination ([16a057a](https://github.com/dallay/agentsync/commit/16a057ac0c0f451f4ceeb5f7155058d96be94de0))
+* preserve existing skills symlink layouts in init wizard ([#262](https://github.com/dallay/agentsync/issues/262)) ([e81b4c5](https://github.com/dallay/agentsync/commit/e81b4c5e6293d9af929697b8b29d3a6982625ba8))
+* surface nested-glob walk errors ([0e21606](https://github.com/dallay/agentsync/commit/0e21606f46bc61b600342024875b20b66da0ec09))
+
+
+### Documentation
+
+* comprehensive documentation audit and update ([#255](https://github.com/dallay/agentsync/issues/255)) ([7faee1d](https://github.com/dallay/agentsync/commit/7faee1d5b9a1e810c9e667425bc12ca9e846fbc0))
+
+
+### Code Refactoring
+
+* centralize nested-glob traversal ([a394af0](https://github.com/dallay/agentsync/commit/a394af08a275170d513163c2483fb7d7732de256))
+
+
+### Chores
+
+* **deps:** update dependency @dallay/agentsync to v1.34.0 ([#250](https://github.com/dallay/agentsync/issues/250)) ([7aa37c6](https://github.com/dallay/agentsync/commit/7aa37c6e2b329197595289f26fcf6f651377045c))
+* update agentsync optional dependencies to v1.34.0 in pnpm lockfile ([5c2b06a](https://github.com/dallay/agentsync/commit/5c2b06a8cfc4a781da2689409828c4d77399db1f))
+
 ## [1.34.0](https://github.com/dallay/agentsync/compare/v1.33.1...v1.34.0) (2026-03-28)
 
 

@@ -27,10 +27,21 @@ After migration, configure a skills target in `agentsync.toml` so `apply` syncs 
 [agents.claude.targets.skills]
 source = "skills"
 destination = ".claude/skills"
-type = "symlink-contents"
+type = "symlink"
 ```
 
 > **Note:** Skills migrated via the wizard are NOT registered in `registry.json` — they're managed through the symlink pipeline, not the `skill install` system. Both systems coexist: installed skills live in `.agents/skills/` alongside migrated ones.
+
+### Choosing `symlink` vs `symlink-contents`
+
+For skills, AgentSync recommends `type = "symlink"` and uses that as the default in generated config.
+
+- `symlink` keeps one directory link from the agent-specific path back to `.agents/skills/`.
+- `symlink-contents` keeps the destination as a real directory and links each child entry individually.
+
+`agentsync init --wizard` now makes that choice explicit for each migrated skills target. If the destination already is a correct directory symlink to `.agents/skills`, the wizard recommends `symlink` and keeps that as the default so an existing healthy layout is preserved.
+
+If you intentionally override to `symlink-contents`, the wizard prints a post-init validation warning before exit. You can also detect the same mismatch later with `agentsync doctor`, and `agentsync status` will show a focused hint while still treating the destination as healthy.
 
 ## Directory structure
 

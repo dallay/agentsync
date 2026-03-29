@@ -3,8 +3,12 @@
 //! Provides default configuration templates for new projects and interactive wizard.
 
 use anyhow::{Context, Result};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
+
+use crate::config::{Config, SyncType, TargetConfig};
+use crate::skills_layout::{detect_skills_layout_match, detect_skills_mode_mismatch};
 
 /// Default configuration template
 pub const DEFAULT_CONFIG: &str = r#"# AgentSync Configuration
@@ -922,10 +926,161 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
     Ok(discovered)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SkillsWizardChoice {
+    agent_name: String,
+    destination: String,
+    recommended_mode: SyncType,
+    reason: Option<String>,
+    already_canonical: bool,
+}
+
+fn skills_choice_for_file_type(file_type: &AgentFileType) -> Option<(&'static str, &'static str)> {
+    match file_type {
+        AgentFileType::ClaudeSkills => Some(("claude", ".claude/skills")),
+        AgentFileType::CodexSkills => Some(("codex", ".codex/skills")),
+        AgentFileType::GeminiSkills => Some(("gemini", ".gemini/skills")),
+        AgentFileType::OpenCodeSkills => Some(("opencode", ".opencode/skills")),
+        _ => None,
+    }
+}
+
+fn build_skills_wizard_choices(
+    project_root: &Path,
+    expected_source: &Path,
+    files_to_migrate: &[DiscoveredFile],
+) -> Vec<SkillsWizardChoice> {
+    let mut choices = BTreeMap::new();
+
+    for file in files_to_migrate {
+        let Some((agent_name, destination)) = skills_choice_for_file_type(&file.file_type) else {
+            continue;
+        };
+
+        let target = TargetConfig {
+            source: "skills".to_string(),
+            destination: destination.to_string(),
+            sync_type: SyncType::Symlink,
+            pattern: None,
+            exclude: Vec::new(),
+            mappings: Vec::new(),
+        };
+
+        let already_canonical =
+            detect_skills_layout_match(project_root, expected_source, "skills", &target).is_some();
+
+        let reason = if already_canonical {
+            Some("existing destination already uses the canonical directory symlink".to_string())
+        } else {
+            Some("recommended default for skills targets".to_string())
+        };
+
+        choices
+            .entry(agent_name.to_string())
+            .or_insert(SkillsWizardChoice {
+                agent_name: agent_name.to_string(),
+                destination: destination.to_string(),
+                recommended_mode: SyncType::Symlink,
+                reason,
+                already_canonical,
+            });
+    }
+
+    choices.into_values().collect()
+}
+
+fn sync_type_label(sync_type: SyncType) -> &'static str {
+    match sync_type {
+        SyncType::Symlink => "symlink",
+        SyncType::SymlinkContents => "symlink-contents",
+        SyncType::NestedGlob => "nested-glob",
+        SyncType::ModuleMap => "module-map",
+    }
+}
+
+fn resolve_skills_mode_selection(choice: &SkillsWizardChoice, selected_index: usize) -> SyncType {
+    match selected_index {
+        0 => SyncType::Symlink,
+        1 => SyncType::SymlinkContents,
+        _ => choice.recommended_mode,
+    }
+}
+
+fn build_default_config_with_skills_modes(modes: &BTreeMap<String, SyncType>) -> String {
+    let mut rendered = Vec::new();
+    let mut current_skills_agent: Option<String> = None;
+
+    for line in DEFAULT_CONFIG.lines() {
+        if let Some(agent_name) = parse_skills_section_agent(line) {
+            current_skills_agent = Some(agent_name.to_string());
+            rendered.push(line.to_string());
+            continue;
+        }
+
+        if line.starts_with("[agents.") {
+            current_skills_agent = None;
+        }
+
+        if let Some(agent_name) = current_skills_agent.as_deref()
+            && line.trim_start().starts_with("type = ")
+        {
+            let mode = modes.get(agent_name).copied().unwrap_or(SyncType::Symlink);
+            rendered.push(format!("type = \"{}\"", sync_type_label(mode)));
+            current_skills_agent = None;
+            continue;
+        }
+
+        rendered.push(line.to_string());
+    }
+
+    let mut output = rendered.join("\n");
+    if DEFAULT_CONFIG.ends_with('\n') {
+        output.push('\n');
+    }
+    output
+}
+
+fn parse_skills_section_agent(line: &str) -> Option<&str> {
+    line.strip_prefix("[agents.")?
+        .strip_suffix(".targets.skills]")
+}
+
+fn collect_post_init_skills_warnings(
+    project_root: &Path,
+    config_path: &Path,
+    selected_agents: &[String],
+) -> Result<Vec<String>> {
+    let config = Config::load(config_path)?;
+    let source_dir = config.source_dir(config_path);
+    let mut warnings = Vec::new();
+
+    for agent_name in selected_agents {
+        let Some(agent) = config.agents.get(agent_name) else {
+            continue;
+        };
+        let Some(target) = agent.targets.get("skills") else {
+            continue;
+        };
+
+        let expected_source = source_dir.join(&target.source);
+        if let Some(mismatch) = detect_skills_mode_mismatch(
+            project_root,
+            &expected_source,
+            agent_name,
+            "skills",
+            target,
+        ) {
+            warnings.push(mismatch.wizard_warning());
+        }
+    }
+
+    Ok(warnings)
+}
+
 /// Interactive wizard for initializing agentsync with file migration
 pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
     use colored::Colorize;
-    use dialoguer::{Confirm, MultiSelect, theme::ColorfulTheme};
+    use dialoguer::{Confirm, MultiSelect, Select, theme::ColorfulTheme};
 
     // Scan for existing agent files
     println!("{}", "🔍 Scanning for existing agent files...".cyan());
@@ -1022,6 +1177,51 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
             "✔".green(),
             commands_dir.display()
         );
+    }
+
+    let config_path = agents_dir.join("agentsync.toml");
+    let can_write_config = force || !config_path.exists();
+    let skills_choices = build_skills_wizard_choices(project_root, &skills_dir, &files_to_migrate);
+    let mut skills_modes = BTreeMap::new();
+    if can_write_config {
+        for choice in &skills_choices {
+            println!(
+                "\n{}",
+                format!(
+                    "🧠 Skills target for {} ({})",
+                    choice.agent_name, choice.destination
+                )
+                .cyan()
+            );
+            println!(
+                "  {} Recommended: {}{}",
+                "ℹ".blue(),
+                sync_type_label(choice.recommended_mode).bold(),
+                choice
+                    .reason
+                    .as_ref()
+                    .map(|reason| format!(" — {reason}"))
+                    .unwrap_or_default()
+            );
+
+            let selection = Select::with_theme(&ColorfulTheme::default())
+                .with_prompt("How should this skills target sync?")
+                .items(&[
+                    "symlink — link the whole directory to .agents/skills",
+                    "symlink-contents — keep a directory and link each item inside it",
+                ])
+                .default(if choice.recommended_mode == SyncType::Symlink {
+                    0
+                } else {
+                    1
+                })
+                .interact()?;
+
+            skills_modes.insert(
+                choice.agent_name.clone(),
+                resolve_skills_mode_selection(choice, selection),
+            );
+        }
     }
 
     // Migrate selected files
@@ -1311,7 +1511,6 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
 
     // Generate config file
     println!("\n{}", "⚙️  Generating configuration...".cyan());
-    let config_path = agents_dir.join("agentsync.toml");
 
     if config_path.exists() && !force {
         println!(
@@ -1320,8 +1519,30 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
             config_path.display()
         );
     } else {
-        fs::write(&config_path, DEFAULT_CONFIG)?;
+        fs::write(
+            &config_path,
+            build_default_config_with_skills_modes(&skills_modes),
+        )?;
         println!("  {} Created: {}", "✔".green(), config_path.display());
+
+        let selected_skill_agents = skills_choices
+            .iter()
+            .map(|choice| choice.agent_name.clone())
+            .collect::<Vec<_>>();
+        let warnings =
+            collect_post_init_skills_warnings(project_root, &config_path, &selected_skill_agents)?;
+
+        println!("\n{}", "🔎 Post-init skills validation:".bold());
+        if warnings.is_empty() {
+            println!(
+                "  {} No skills mode mismatches detected for selected targets",
+                "✔".green()
+            );
+        } else {
+            for warning in warnings {
+                println!("  {} {}", "⚠".yellow(), warning);
+            }
+        }
     }
 
     // Provide migration summary
@@ -1391,6 +1612,22 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
             let src_path = project_root.join(&file.path);
             if !src_path.exists() {
                 continue;
+            }
+
+            if let Some((agent_name, _)) = skills_choice_for_file_type(&file.file_type) {
+                let selected_mode = skills_modes
+                    .get(agent_name)
+                    .copied()
+                    .unwrap_or(SyncType::Symlink);
+                let preserve_existing_layout = skills_choices.iter().any(|choice| {
+                    choice.agent_name == agent_name
+                        && choice.already_canonical
+                        && selected_mode == SyncType::Symlink
+                });
+
+                if preserve_existing_layout {
+                    continue;
+                }
             }
 
             let backup_path = backup_dir.join(&file.path);
@@ -1473,6 +1710,7 @@ fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
     use tempfile::TempDir;
 
     // ==========================================================================
@@ -2947,6 +3185,148 @@ mod tests {
             commands_target.sync_type,
             crate::config::SyncType::SymlinkContents
         );
+    }
+
+    #[test]
+    fn test_build_skills_wizard_choices_is_empty_without_selected_skills_targets() {
+        let temp_dir = TempDir::new().unwrap();
+        let choices = build_skills_wizard_choices(
+            temp_dir.path(),
+            &temp_dir.path().join(".agents/skills"),
+            &[DiscoveredFile {
+                path: "CLAUDE.md".into(),
+                file_type: AgentFileType::ClaudeInstructions,
+                display_name: "CLAUDE.md".to_string(),
+            }],
+        );
+
+        assert!(choices.is_empty());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_build_skills_wizard_choices_preserves_existing_directory_symlink() {
+        use std::os::unix::fs as unix_fs;
+
+        let temp_dir = TempDir::new().unwrap();
+        let expected_source = temp_dir.path().join(".agents/skills");
+        fs::create_dir_all(&expected_source).unwrap();
+        fs::create_dir_all(temp_dir.path().join(".claude")).unwrap();
+        unix_fs::symlink("../.agents/skills", temp_dir.path().join(".claude/skills")).unwrap();
+
+        let choices = build_skills_wizard_choices(
+            temp_dir.path(),
+            &expected_source,
+            &[DiscoveredFile {
+                path: ".claude/skills".into(),
+                file_type: AgentFileType::ClaudeSkills,
+                display_name: "Claude skills".to_string(),
+            }],
+        );
+
+        assert_eq!(choices.len(), 1);
+        assert_eq!(choices[0].agent_name, "claude");
+        assert_eq!(choices[0].recommended_mode, SyncType::Symlink);
+        assert!(
+            choices[0]
+                .reason
+                .as_deref()
+                .unwrap()
+                .contains("canonical directory symlink")
+        );
+    }
+
+    #[test]
+    fn test_resolve_skills_mode_selection_allows_override() {
+        let choice = SkillsWizardChoice {
+            agent_name: "claude".to_string(),
+            destination: ".claude/skills".to_string(),
+            recommended_mode: SyncType::Symlink,
+            reason: None,
+            already_canonical: false,
+        };
+
+        assert_eq!(resolve_skills_mode_selection(&choice, 0), SyncType::Symlink);
+        assert_eq!(
+            resolve_skills_mode_selection(&choice, 1),
+            SyncType::SymlinkContents
+        );
+    }
+
+    #[test]
+    fn test_build_default_config_with_skills_modes_only_changes_requested_skills_targets() {
+        let mut modes = BTreeMap::new();
+        modes.insert("claude".to_string(), SyncType::SymlinkContents);
+
+        let rendered = build_default_config_with_skills_modes(&modes);
+        let config: crate::config::Config = toml::from_str(&rendered).unwrap();
+
+        assert_eq!(
+            config.agents["claude"].targets["skills"].sync_type,
+            SyncType::SymlinkContents
+        );
+        assert_eq!(
+            config.agents["codex"].targets["skills"].sync_type,
+            SyncType::Symlink
+        );
+        assert_eq!(
+            config.agents["claude"].targets["commands"].sync_type,
+            SyncType::SymlinkContents
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_collect_post_init_skills_warnings_reports_override_mismatch() {
+        use std::os::unix::fs as unix_fs;
+
+        let temp_dir = TempDir::new().unwrap();
+        init(temp_dir.path(), false).unwrap();
+        fs::create_dir_all(temp_dir.path().join(".claude")).unwrap();
+        unix_fs::symlink("../.agents/skills", temp_dir.path().join(".claude/skills")).unwrap();
+
+        let mut modes = BTreeMap::new();
+        modes.insert("claude".to_string(), SyncType::SymlinkContents);
+        let config_path = temp_dir.path().join(".agents/agentsync.toml");
+        fs::write(&config_path, build_default_config_with_skills_modes(&modes)).unwrap();
+
+        let warnings = collect_post_init_skills_warnings(
+            temp_dir.path(),
+            &config_path,
+            &["claude".to_string()],
+        )
+        .unwrap();
+
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("symlink-contents"));
+        assert!(warnings[0].contains("directory symlink"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_collect_post_init_skills_warnings_stays_quiet_for_matching_symlink_mode() {
+        use std::os::unix::fs as unix_fs;
+
+        let temp_dir = TempDir::new().unwrap();
+        init(temp_dir.path(), false).unwrap();
+        fs::create_dir_all(temp_dir.path().join(".claude")).unwrap();
+        unix_fs::symlink("../.agents/skills", temp_dir.path().join(".claude/skills")).unwrap();
+
+        let config_path = temp_dir.path().join(".agents/agentsync.toml");
+        fs::write(
+            &config_path,
+            build_default_config_with_skills_modes(&BTreeMap::new()),
+        )
+        .unwrap();
+
+        let warnings = collect_post_init_skills_warnings(
+            temp_dir.path(),
+            &config_path,
+            &["claude".to_string()],
+        )
+        .unwrap();
+
+        assert!(warnings.is_empty());
     }
 
     #[test]

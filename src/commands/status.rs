@@ -3,7 +3,10 @@ use anyhow::Result;
 use clap::Args;
 use colored::Colorize;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+
+use agentsync::skills_layout::detect_skills_mode_mismatch;
 
 /// Arguments for the status command
 #[derive(Args, Debug)]
@@ -89,6 +92,7 @@ pub fn run_status(json: bool, project_root: PathBuf) -> Result<()> {
     let linker = Linker::new(config, config_path.clone());
 
     let entries = collect_status_entries(&linker, &config_path);
+    let hints = collect_status_hints(&linker, &config_path);
 
     // helper to canonicalize with a sensible fallback
     // local helper inside run_status (used to canonicalize paths for comparison);
@@ -152,6 +156,9 @@ pub fn run_status(json: bool, project_root: PathBuf) -> Result<()> {
                             problems += 1;
                         } else {
                             println!("{} OK: {} -> {}", "✔".green(), e.destination, points);
+                            if let Some(hint) = hints.get(&e.destination) {
+                                println!("  {} {}", "↳".blue(), hint);
+                            }
                         }
                     } else {
                         println!("{} Unknown link target: {}", "?".yellow(), e.destination);
@@ -185,6 +192,39 @@ pub fn run_status(json: bool, project_root: PathBuf) -> Result<()> {
     }
 
     Ok(())
+}
+
+pub fn collect_status_hints(linker: &Linker, config_path: &Path) -> HashMap<String, String> {
+    let mut hints = HashMap::new();
+    let source_dir = linker.config().source_dir(config_path);
+
+    for (agent_name, agent) in &linker.config().agents {
+        if !agent.enabled {
+            continue;
+        }
+
+        for (target_name, target) in &agent.targets {
+            let expected_source = source_dir.join(&target.source);
+            if let Some(mismatch) = detect_skills_mode_mismatch(
+                linker.project_root(),
+                &expected_source,
+                agent_name,
+                target_name,
+                target,
+            ) {
+                hints.insert(
+                    linker
+                        .project_root()
+                        .join(&target.destination)
+                        .display()
+                        .to_string(),
+                    mismatch.status_hint(),
+                );
+            }
+        }
+    }
+
+    hints
 }
 
 // Extracted logic for testability: determines whether an entry is problematic
