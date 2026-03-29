@@ -366,12 +366,12 @@ impl Config {
                             let filename = resolve_module_map_filename(mapping, agent_name);
                             let entry = format!("{}/{}", mapping.destination, filename);
                             entries.insert(entry.clone());
-                            entries.insert(format!("{}.bak.*", entry));
+                            entries.insert(format!("{}.bak", entry));
                         }
                         continue;
                     }
                     entries.insert(target.destination.clone());
-                    entries.insert(format!("{}.bak.*", target.destination));
+                    entries.insert(format!("{}.bak", target.destination));
                 }
 
                 // Add known ignore patterns for this agent
@@ -805,9 +805,9 @@ mod tests {
         let entries = config.all_gitignore_entries();
 
         assert!(entries.contains(&"enabled.md".to_string()));
-        assert!(entries.contains(&"enabled.md.bak.*".to_string()));
+        assert!(entries.contains(&"enabled.md.bak".to_string()));
         assert!(!entries.contains(&"disabled.md".to_string()));
-        assert!(!entries.contains(&"disabled.md.bak.*".to_string()));
+        assert!(!entries.contains(&"disabled.md.bak".to_string()));
     }
 
     #[test]
@@ -1412,7 +1412,7 @@ mod tests {
         let entries = config.all_gitignore_entries();
 
         assert!(entries.contains(&"OUTPUT.md".to_string()));
-        assert!(entries.contains(&"OUTPUT.md.bak.*".to_string()));
+        assert!(entries.contains(&"OUTPUT.md.bak".to_string()));
         assert!(entries.contains(&".agents/skills/*.bak".to_string()));
     }
 
@@ -1597,8 +1597,8 @@ mod tests {
             entries
         );
         // Backup patterns too
-        assert!(entries.contains(&"src/api/CLAUDE.md.bak.*".to_string()));
-        assert!(entries.contains(&"src/ui/CLAUDE.md.bak.*".to_string()));
+        assert!(entries.contains(&"src/api/CLAUDE.md.bak".to_string()));
+        assert!(entries.contains(&"src/ui/CLAUDE.md.bak".to_string()));
     }
 
     #[test]

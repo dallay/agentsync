@@ -161,7 +161,7 @@ When a user changes their skills target type from `symlink-contents` to `symlink
 - GIVEN a project where `.claude/skills/` is a real directory containing non-symlink files (user-created content)
 - AND the config specifies `type = "symlink"` for the skills target
 - WHEN the user runs `agentsync apply`
-- THEN the existing `.claude/skills/` directory MUST be renamed to `.claude/skills.bak.<timestamp>`
+- THEN the existing `.claude/skills/` directory MUST be renamed to `.claude/skills.bak`
 - AND a new symlink MUST be created at `.claude/skills` pointing to `.agents/skills`
 - AND no user-created content SHALL be lost
 

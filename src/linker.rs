@@ -411,11 +411,8 @@ impl Linker {
                     dest.display()
                 );
             } else {
-                let backup = PathBuf::from(format!(
-                    "{}.bak.{}",
-                    dest.display(),
-                    chrono_lite_timestamp()
-                ));
+                let backup = backup_path_for_destination(dest);
+                remove_existing_path(&backup)?;
                 fs::rename(dest, &backup)?;
                 println!(
                     "  {} Backed up: {} -> {}",
@@ -1244,13 +1241,25 @@ fn path_glob_match(path: &[&str], pattern: &[&str]) -> bool {
     }
 }
 
-/// Generate a simple timestamp without external dependencies
-fn chrono_lite_timestamp() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let duration = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
-    format!("{}", duration.as_secs())
+fn backup_path_for_destination(dest: &Path) -> PathBuf {
+    PathBuf::from(format!("{}.bak", dest.display()))
+}
+
+fn remove_existing_path(path: &Path) -> std::io::Result<()> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(err) => return Err(err),
+    };
+
+    let file_type = metadata.file_type();
+    if file_type.is_symlink() {
+        remove_symlink(path)
+    } else if metadata.is_dir() {
+        fs::remove_dir_all(path)
+    } else {
+        fs::remove_file(path)
+    }
 }
 
 /// Remove a symlink, handling both file and directory symlinks cross-platform.
@@ -2263,23 +2272,14 @@ mod tests {
         // The existing dir was backed up and replaced
         assert!(result.updated >= 1);
 
-        // A backup directory should exist matching output_skills.bak.*
-        let backup_entries: Vec<_> = fs::read_dir(temp_dir.path())
-            .unwrap()
-            .filter_map(|e| e.ok())
-            .filter(|e| {
-                e.file_name()
-                    .to_string_lossy()
-                    .starts_with("output_skills.bak.")
-            })
-            .collect();
+        let backup_path = temp_dir.path().join("output_skills.bak");
         assert!(
-            !backup_entries.is_empty(),
-            "Expected a backup directory matching output_skills.bak.*"
+            backup_path.exists(),
+            "Expected backup directory at {}",
+            backup_path.display()
         );
 
         // The backup contains the old files
-        let backup_path = backup_entries[0].path();
         assert!(
             backup_path.join("old-file.txt").exists(),
             "Backup should contain old-file.txt"
@@ -2294,6 +2294,57 @@ mod tests {
         // Skill subdirectories are accessible through the symlink
         assert!(dest.join("debugging").exists());
         assert!(dest.join("debugging/SKILL.md").exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_sync_symlink_directory_replaces_existing_backup() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        let skills_dir = agents_dir.join("skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        let debugging_dir = skills_dir.join("debugging");
+        fs::create_dir_all(&debugging_dir).unwrap();
+        fs::write(debugging_dir.join("SKILL.md"), "# Debugging skill").unwrap();
+
+        let output_skills = temp_dir.path().join("output_skills");
+        fs::create_dir_all(&output_skills).unwrap();
+        fs::write(output_skills.join("current-file.txt"), "current content").unwrap();
+
+        let existing_backup = temp_dir.path().join("output_skills.bak");
+        fs::create_dir_all(&existing_backup).unwrap();
+        fs::write(existing_backup.join("stale-file.txt"), "stale content").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            [agents.test]
+            enabled = true
+            [agents.test.targets.skills]
+            source = "skills"
+            destination = "output_skills"
+            type = "symlink"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        linker.sync(&SyncOptions::default()).unwrap();
+
+        assert!(
+            existing_backup.exists(),
+            "Expected backup directory to exist"
+        );
+        assert!(
+            existing_backup.join("current-file.txt").exists(),
+            "Expected existing backup to be replaced with the latest content"
+        );
+        assert!(
+            !existing_backup.join("stale-file.txt").exists(),
+            "Expected stale backup content to be removed"
+        );
     }
 
     // ==========================================================================
@@ -2531,22 +2582,6 @@ mod tests {
         assert_eq!(result.skipped, 0);
         assert_eq!(result.removed, 0);
         assert_eq!(result.errors, 0);
-    }
-
-    // ==========================================================================
-    // TIMESTAMP FUNCTION TESTS
-    // ==========================================================================
-
-    #[test]
-    fn test_chrono_lite_timestamp() {
-        let ts = chrono_lite_timestamp();
-
-        // Should be a numeric string
-        assert!(ts.chars().all(|c| c.is_ascii_digit()));
-
-        // Should be a reasonable Unix timestamp (after year 2020)
-        let ts_num: u64 = ts.parse().unwrap();
-        assert!(ts_num > 1577836800); // 2020-01-01
     }
 
     // ==========================================================================
