@@ -8,6 +8,13 @@
 
 * update README.md for accuracy and formatting ([#159](https://github.com/dallay/agentsync/issues/159)) ([8cb9f19](https://github.com/dallay/agentsync/commit/8cb9f19b2302456f0e4536f7a37ad9af5645e605))
 
+## [1.35.2](https://github.com/dallay/agentsync/compare/v1.35.1...v1.35.2) (2026-03-29)
+
+
+### Performance
+
+* implement content-check for gitignore updates ([#263](https://github.com/dallay/agentsync/issues/263)) ([5ec9fbe](https://github.com/dallay/agentsync/commit/5ec9fbe4a326b51f0e26e40cfc5de8e0834cebb3))
+
 ## [1.35.1](https://github.com/dallay/agentsync/compare/v1.35.0...v1.35.1) (2026-03-29)
 
 
