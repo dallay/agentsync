@@ -92,3 +92,15 @@ check before disk writes, we eliminated redundant CPU-intensive formatting and u
 **Action:** When a process involves multiple entities sharing the same output destination, track
 handled paths to avoid redundant processing. Always perform a content-check before writing to disk
 to preserve modification times and reduce I/O.
+
+## 2026-03-29 - Content-Check for Gitignore Updates
+
+**Learning:** The `update_gitignore` function was performing a disk write on every execution,
+regardless of whether the managed entries had actually changed. In a development workflow where
+`agentsync apply` is run frequently, this results in unnecessary I/O and can trigger external
+filesystem watchers. Implementing a content equality check before calling `fs::write` eliminated
+this redundant activity.
+
+**Action:** Apply a "check-before-write" pattern to all configuration-generating functions in the
+CLI. This preserves file modification times and reduces I/O pressure in large projects or when
+integrated into automated hooks.

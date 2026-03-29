@@ -55,8 +55,18 @@ pub fn update_gitignore(
         return Ok(());
     }
 
+    // Optimization: skip write if content is unchanged to avoid unnecessary I/O
+    if existing_content == new_content {
+        println!(
+            "  {} .gitignore is already up to date ({} entries)",
+            "✔".green(),
+            entries.len()
+        );
+        return Ok(());
+    }
+
     // Write the file
-    fs::write(&gitignore_path, new_content)
+    fs::write(&gitignore_path, &new_content)
         .with_context(|| format!("Failed to write .gitignore: {}", gitignore_path.display()))?;
 
     println!(
@@ -404,5 +414,28 @@ trailing_content
 
         assert_eq!(start_count, 1, "Should have exactly one START marker");
         assert_eq!(end_count, 1, "Should have exactly one END marker");
+    }
+
+    #[test]
+    fn test_update_gitignore_preserves_mtime_if_unchanged() {
+        let temp_dir = TempDir::new().unwrap();
+        let gitignore_path = temp_dir.path().join(".gitignore");
+        let entries = vec!["test.md".to_string()];
+
+        // Initial update
+        update_gitignore(temp_dir.path(), "Marker", &entries, false).unwrap();
+        let mtime1 = fs::metadata(&gitignore_path).unwrap().modified().unwrap();
+
+        // Small sleep to ensure mtime would change if written
+        std::thread::sleep(std::time::Duration::from_millis(20));
+
+        // Second update with same content
+        update_gitignore(temp_dir.path(), "Marker", &entries, false).unwrap();
+        let mtime2 = fs::metadata(&gitignore_path).unwrap().modified().unwrap();
+
+        assert_eq!(
+            mtime1, mtime2,
+            "Modification time should not change if content is identical"
+        );
     }
 }
