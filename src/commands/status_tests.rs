@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use crate::commands::status::{StatusEntry, collect_status_entries, entry_is_problematic};
+    use crate::commands::status::{
+        StatusEntry, collect_status_entries, collect_status_hints, entry_is_problematic,
+    };
     use agentsync::{Linker, config::Config, linker::SyncOptions};
     use std::fs;
     use std::path::PathBuf;
@@ -194,5 +196,66 @@ mod tests {
                 .ends_with("expected.md")
         );
         assert!(entry_is_problematic(entry, fake_canonicalize));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_collect_status_hints_reports_recognized_mode_mismatch_without_problem() {
+        use std::os::unix::fs as unix_fs;
+
+        let temp_dir = TempDir::new().unwrap();
+        let skills_dir = temp_dir.path().join(".agents/skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+        fs::write(skills_dir.join("SKILL.md"), "# skill").unwrap();
+        fs::create_dir_all(temp_dir.path().join(".claude")).unwrap();
+        unix_fs::symlink("../.agents/skills", temp_dir.path().join(".claude/skills")).unwrap();
+
+        let config = r#"
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.skills]
+            source = "skills"
+            destination = ".claude/skills"
+            type = "symlink-contents"
+        "#;
+
+        let (linker, config_path) = load_linker(&temp_dir, config);
+        let entries = collect_status_entries(&linker, &config_path);
+        assert_eq!(entries.len(), 1);
+        assert!(!entry_is_problematic(&entries[0], fake_canonicalize));
+
+        let hints = collect_status_hints(&linker, &config_path);
+        let hint = hints
+            .get(&temp_dir.path().join(".claude/skills").display().to_string())
+            .unwrap();
+        assert!(hint.contains("symlink-contents"));
+        assert!(hint.contains("symlink"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_collect_status_hints_stays_quiet_for_matching_symlink_mode() {
+        use std::os::unix::fs as unix_fs;
+
+        let temp_dir = TempDir::new().unwrap();
+        let skills_dir = temp_dir.path().join(".agents/skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+        fs::create_dir_all(temp_dir.path().join(".claude")).unwrap();
+        unix_fs::symlink("../.agents/skills", temp_dir.path().join(".claude/skills")).unwrap();
+
+        let config = r#"
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.skills]
+            source = "skills"
+            destination = ".claude/skills"
+            type = "symlink"
+        "#;
+
+        let (linker, config_path) = load_linker(&temp_dir, config);
+        let hints = collect_status_hints(&linker, &config_path);
+        assert!(hints.is_empty());
     }
 }

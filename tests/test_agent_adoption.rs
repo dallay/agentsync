@@ -493,3 +493,59 @@ fn test_adoption_dry_run_no_side_effects() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+#[cfg(unix)]
+fn test_adoption_preserves_existing_claude_skills_symlink_default() -> Result<()> {
+    use std::os::unix::fs as unix_fs;
+
+    let tmp = TempDir::new()?;
+    let root = tmp.path();
+
+    agentsync::init::init(root, false)?;
+    create_file(
+        root,
+        ".agents/skills/debugging/SKILL.md",
+        "---\nname: debugging\nversion: 1.0.0\n---\n# Debugging",
+    );
+    create_file(root, ".agents/commands/review.md", "# Review command");
+    create_file(root, ".agents/AGENTS.md", "# Canonical Instructions");
+
+    fs::create_dir_all(root.join(".claude"))?;
+    unix_fs::symlink("../.agents/skills", root.join(".claude/skills"))?;
+
+    write_adoption_config(
+        &root.join(".agents"),
+        &[(
+            "claude",
+            vec![
+                ("instructions", "AGENTS.md", "CLAUDE.md", "symlink"),
+                ("skills", "skills", ".claude/skills", "symlink"),
+                (
+                    "commands",
+                    "commands",
+                    ".claude/commands",
+                    "symlink-contents",
+                ),
+            ],
+        )],
+    );
+
+    let config_path = root.join(".agents/agentsync.toml");
+    let config = Config::load(&config_path)?;
+    let linker = Linker::new(config, config_path);
+    let result = linker.sync(&SyncOptions::default())?;
+
+    assert_eq!(result.errors, 0);
+    assert!(
+        root.join(".claude/skills")
+            .symlink_metadata()?
+            .file_type()
+            .is_symlink()
+    );
+    assert_symlink_points_to(root, ".claude/skills", "skills");
+    assert!(root.join(".claude/skills/debugging/SKILL.md").exists());
+    assert_symlink_points_to(root, ".claude/commands/review.md", "review.md");
+
+    Ok(())
+}

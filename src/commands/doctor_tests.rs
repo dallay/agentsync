@@ -2,8 +2,8 @@
 mod tests {
     use crate::commands::doctor::{
         Conflict, check_unmanaged_claude_skills, collect_missing_sources,
-        expand_target_destinations, extract_managed_entries, normalize_path,
-        target_configuration_warnings, validate_destinations,
+        collect_skills_mode_mismatch, expand_target_destinations, extract_managed_entries,
+        normalize_path, target_configuration_warnings, validate_destinations,
     };
     use agentsync::config::{Config, SyncType};
     use std::fs;
@@ -461,5 +461,81 @@ entry1
 
         let result = check_unmanaged_claude_skills(project_root, &config);
         assert!(result.is_none());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_collect_skills_mode_mismatch_reports_directory_symlink_vs_symlink_contents() {
+        use std::os::unix::fs as unix_fs;
+
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path();
+        let source_dir = project_root.join(".agents");
+        fs::create_dir_all(source_dir.join("skills")).unwrap();
+        fs::create_dir_all(project_root.join(".claude")).unwrap();
+        unix_fs::symlink("../.agents/skills", project_root.join(".claude/skills")).unwrap();
+
+        let config: Config = toml::from_str(
+            r#"
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.skills]
+            source = "skills"
+            destination = ".claude/skills"
+            type = "symlink-contents"
+            "#,
+        )
+        .unwrap();
+
+        let mismatch = collect_skills_mode_mismatch(
+            project_root,
+            &source_dir,
+            "claude",
+            "skills",
+            &config.agents["claude"].targets["skills"],
+        )
+        .unwrap();
+
+        let warning = mismatch.doctor_warning();
+        assert!(warning.contains("symlink-contents"));
+        assert!(warning.contains("directory symlink"));
+        assert!(warning.contains("churn"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_collect_skills_mode_mismatch_stays_quiet_for_matching_symlink_mode() {
+        use std::os::unix::fs as unix_fs;
+
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path();
+        let source_dir = project_root.join(".agents");
+        fs::create_dir_all(source_dir.join("skills")).unwrap();
+        fs::create_dir_all(project_root.join(".claude")).unwrap();
+        unix_fs::symlink("../.agents/skills", project_root.join(".claude/skills")).unwrap();
+
+        let config: Config = toml::from_str(
+            r#"
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.skills]
+            source = "skills"
+            destination = ".claude/skills"
+            type = "symlink"
+            "#,
+        )
+        .unwrap();
+
+        let mismatch = collect_skills_mode_mismatch(
+            project_root,
+            &source_dir,
+            "claude",
+            "skills",
+            &config.agents["claude"].targets["skills"],
+        );
+
+        assert!(mismatch.is_none());
     }
 }
