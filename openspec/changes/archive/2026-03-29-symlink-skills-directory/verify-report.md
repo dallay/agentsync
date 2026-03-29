@@ -74,7 +74,7 @@ Note on PARTIAL: The test `test_default_config_claude_has_skills_target` only as
 | New skill visible without re-running sync | Inherent property of directory symlinks — no dedicated test | ⚠️ PARTIAL |
 | Renamed skill dir visible without re-running sync | Inherent property of directory symlinks — no dedicated test | ⚠️ PARTIAL |
 | Deleted skill dir disappears without re-running sync | Inherent property of directory symlinks — no dedicated test | ⚠️ PARTIAL |
-| Apply with empty skills directory | `src/linker.rs > test_sync_creates_symlink` covers empty source dirs (pre-existing test) | ✅ COMPLIANT |
+| Apply with empty skills directory | No existing test covers empty directory with `type = "symlink"` — `test_sync_creates_symlink` uses a file source, not a directory | ⚠️ PARTIAL |
 
 Note on PARTIAL for new/rename/delete: These are inherent filesystem properties of directory symlinks (not application logic). They are correct by construction, but there are no runtime tests that create a skill after apply and verify visibility through the symlink.
 
@@ -107,7 +107,7 @@ Note on PARTIAL for new/rename/delete: These are inherent filesystem properties 
 | No New Sync Types | Static: no changes to SyncType enum or TargetConfig struct | ✅ COMPLIANT |
 | Existing symlink-contents Behavior Unchanged | Static: zero production changes in linker.rs (only test added) | ✅ COMPLIANT |
 
-**Compliance summary**: 13/20 scenarios fully compliant, 7/20 partial
+**Compliance summary**: 12/20 scenarios fully compliant, 8/20 partial
 
 ---
 

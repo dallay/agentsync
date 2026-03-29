@@ -186,6 +186,28 @@ The `--dry-run` output MUST clearly indicate the sync strategy being used for ea
 
 ---
 
+### Requirement: Deterministic Failure When Directory Symlink Cannot Be Created
+
+When `agentsync apply` attempts to create a directory symlink for a target with `type = "symlink"` and the symlink creation fails (e.g., due to insufficient permissions, filesystem limitations, or Windows requiring elevated privileges for `symlink_dir`), the command MUST emit a clear error message that includes the target path and the underlying OS error, and MUST exit with a non-zero status code. There is no silent fallback to `symlink-contents` behavior.
+
+#### Scenario: Symlink creation fails due to permissions
+
+- GIVEN a project with skills target `type = "symlink"`
+- AND the filesystem or OS prevents symlink creation at the destination path
+- WHEN the user runs `agentsync apply`
+- THEN the command MUST exit with a non-zero status code
+- AND the error output MUST include "Failed to create symlink" and the destination path
+- AND no partial or fallback symlink layout SHALL be created
+
+#### Scenario: Dry-run reports strategy even when creation would fail
+
+- GIVEN a project with skills target `type = "symlink"`
+- WHEN the user runs `agentsync apply --dry-run`
+- THEN the output MUST report the intended symlink strategy
+- AND the command MUST exit with zero status (dry-run does not attempt creation)
+
+---
+
 ### Requirement: Scan Detects Claude Skills Directory
 
 The `AgentFileType` enum MUST include a `ClaudeSkills` variant representing the `.claude/skills/` directory.
@@ -715,7 +737,7 @@ The implementation of `SyncType::SymlinkContents` in the linker MUST NOT be modi
 15. `scan_agent_files()` detects skill directories for all 8 agents (Cursor, Codex, Gemini, OpenCode, Roo, Factory, Vibe, Antigravity) when they exist with content, and ignores them when empty or absent.
 16. `scan_agent_files()` detects command directories for Claude, Gemini, and OpenCode when they exist with content.
 17. `scan_agent_files()` detects `.windsurfrules`, `OPENCODE.md`, and `AMPCODE.md` as instruction files.
-18. `scan_agent_files()` detects 9 agent-specific MCP config files when present.
+18. `scan_agent_files()` detects the presence of 9 agent-specific MCP configuration files (e.g., `.cursor/mcp.json`, `.copilot/mcp.json`) when present.
 19. The wizard migrates command directories into `.agents/commands/` with collision detection.
 20. The wizard notes all detected MCP configs with migration suggestion messages without parsing or copying them.
 21. `init()` creates `.agents/commands/` alongside `.agents/skills/`.

@@ -383,6 +383,14 @@ fn test_adoption_multi_agent_claude_gemini_codex() -> Result<()> {
                 "codex",
                 vec![("skills", "skills", ".codex/skills", "symlink")],
             ),
+            (
+                "opencode",
+                vec![("skills", "skills", ".opencode/skills", "symlink")],
+            ),
+            (
+                "copilot",
+                vec![("skills", "skills", ".github/skills", "symlink")],
+            ),
         ],
     );
 
@@ -426,6 +434,14 @@ fn test_adoption_multi_agent_claude_gemini_codex() -> Result<()> {
     assert!(root.join(".codex/skills/debugging").exists());
     assert!(root.join(".codex/skills/review").exists());
     assert!(root.join(".codex/skills/format").exists());
+
+    // OpenCode
+    assert_symlink_points_to(root, ".opencode/skills", "skills");
+    assert!(root.join(".opencode/skills/debugging").exists());
+
+    // Copilot
+    assert_symlink_points_to(root, ".github/skills", "skills");
+    assert!(root.join(".github/skills/debugging").exists());
 
     Ok(())
 }

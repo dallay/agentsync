@@ -25,3 +25,5 @@
 ## Phase 4: Verification
 
 - [x] 4.1 Run `cargo test --test test_agent_adoption` to verify all integration tests pass. Then run `cargo test --lib test_sync_symlink` to verify all symlink unit tests pass. Finally run `cargo clippy --all-targets --all-features -- -D warnings` for lint.
+
+- [x] 4.2 Verify fallback behavior: confirm that when directory symlink creation is not permitted (e.g., restricted Windows without developer mode), `agentsync apply` exits non-zero with error message containing "Failed to create symlink" and the target path. Reference: `src/linker.rs` create_symlink() error path at line ~443. To reproduce on Windows: run without elevated privileges on a filesystem that restricts symlinks. On Unix: make destination parent read-only (`chmod 555`). Manual verification step — no automated test added for OS-level restrictions.
