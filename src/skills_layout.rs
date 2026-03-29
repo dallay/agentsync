@@ -116,12 +116,12 @@ fn resolve_link_target(destination: &Path, link_target: &Path) -> PathBuf {
     } else {
         destination
             .parent()
-            .unwrap_or(project_root_fallback(destination))
+            .unwrap_or(parent_fallback(destination))
             .join(link_target)
     }
 }
 
-fn project_root_fallback(path: &Path) -> &Path {
+fn parent_fallback(path: &Path) -> &Path {
     path.parent().unwrap_or_else(|| Path::new("."))
 }
 
@@ -206,6 +206,99 @@ mod tests {
                 "claude",
                 "skills",
                 &target,
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn regular_directory_destination_is_not_a_layout_match() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path();
+        let expected_source = project_root.join(".agents/skills");
+        let destination = project_root.join(".claude/skills");
+        fs::create_dir_all(&expected_source).unwrap();
+        fs::create_dir_all(&destination).unwrap();
+
+        let target = TargetConfig {
+            source: "skills".to_string(),
+            destination: ".claude/skills".to_string(),
+            sync_type: SyncType::SymlinkContents,
+            pattern: None,
+            exclude: Vec::new(),
+            mappings: Vec::new(),
+        };
+
+        assert!(
+            detect_skills_layout_match(project_root, &expected_source, "skills", &target).is_none()
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn symlink_destination_with_symlink_mode_has_layout_match_but_no_mismatch() {
+        use std::os::unix::fs as unix_fs;
+
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path();
+        let expected_source = project_root.join(".agents/skills");
+        fs::create_dir_all(&expected_source).unwrap();
+
+        let destination = project_root.join(".claude");
+        fs::create_dir_all(&destination).unwrap();
+        unix_fs::symlink("../.agents/skills", destination.join("skills")).unwrap();
+
+        let target = TargetConfig {
+            source: "skills".to_string(),
+            destination: ".claude/skills".to_string(),
+            sync_type: SyncType::Symlink,
+            pattern: None,
+            exclude: Vec::new(),
+            mappings: Vec::new(),
+        };
+
+        assert_eq!(
+            detect_skills_layout_match(project_root, &expected_source, "skills", &target),
+            Some(SkillsLayoutMatch::DirectorySymlinkToExpectedSource)
+        );
+        assert!(
+            detect_skills_mode_mismatch(
+                project_root,
+                &expected_source,
+                "claude",
+                "skills",
+                &target
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn non_skills_targets_are_ignored_by_both_helpers() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path();
+        let expected_source = project_root.join(".agents/commands");
+        fs::create_dir_all(&expected_source).unwrap();
+
+        let target = TargetConfig {
+            source: "commands".to_string(),
+            destination: ".claude/commands".to_string(),
+            sync_type: SyncType::SymlinkContents,
+            pattern: None,
+            exclude: Vec::new(),
+            mappings: Vec::new(),
+        };
+
+        assert!(
+            detect_skills_layout_match(project_root, &expected_source, "skills", &target).is_none()
+        );
+        assert!(
+            detect_skills_mode_mismatch(
+                project_root,
+                &expected_source,
+                "claude",
+                "skills",
+                &target
             )
             .is_none()
         );

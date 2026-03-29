@@ -116,7 +116,7 @@ pub struct SkillsModeMismatch {
 
 pub fn detect_skills_mode_mismatch(
     project_root: &Path,
-    config_path: &Path,
+    expected_source: &Path,
     agent_name: &str,
     target_name: &str,
     target: &TargetConfig,

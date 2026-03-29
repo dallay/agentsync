@@ -932,6 +932,7 @@ struct SkillsWizardChoice {
     destination: String,
     recommended_mode: SyncType,
     reason: Option<String>,
+    already_canonical: bool,
 }
 
 fn skills_choice_for_file_type(file_type: &AgentFileType) -> Option<(&'static str, &'static str)> {
@@ -965,9 +966,10 @@ fn build_skills_wizard_choices(
             mappings: Vec::new(),
         };
 
-        let reason = if detect_skills_layout_match(project_root, expected_source, "skills", &target)
-            .is_some()
-        {
+        let already_canonical =
+            detect_skills_layout_match(project_root, expected_source, "skills", &target).is_some();
+
+        let reason = if already_canonical {
             Some("existing destination already uses the canonical directory symlink".to_string())
         } else {
             Some("recommended default for skills targets".to_string())
@@ -980,6 +982,7 @@ fn build_skills_wizard_choices(
                 destination: destination.to_string(),
                 recommended_mode: SyncType::Symlink,
                 reason,
+                already_canonical,
             });
     }
 
@@ -1176,45 +1179,49 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
         );
     }
 
+    let config_path = agents_dir.join("agentsync.toml");
+    let can_write_config = force || !config_path.exists();
     let skills_choices = build_skills_wizard_choices(project_root, &skills_dir, &files_to_migrate);
     let mut skills_modes = BTreeMap::new();
-    for choice in &skills_choices {
-        println!(
-            "\n{}",
-            format!(
-                "🧠 Skills target for {} ({})",
-                choice.agent_name, choice.destination
-            )
-            .cyan()
-        );
-        println!(
-            "  {} Recommended: {}{}",
-            "ℹ".blue(),
-            sync_type_label(choice.recommended_mode).bold(),
-            choice
-                .reason
-                .as_ref()
-                .map(|reason| format!(" — {reason}"))
-                .unwrap_or_default()
-        );
+    if can_write_config {
+        for choice in &skills_choices {
+            println!(
+                "\n{}",
+                format!(
+                    "🧠 Skills target for {} ({})",
+                    choice.agent_name, choice.destination
+                )
+                .cyan()
+            );
+            println!(
+                "  {} Recommended: {}{}",
+                "ℹ".blue(),
+                sync_type_label(choice.recommended_mode).bold(),
+                choice
+                    .reason
+                    .as_ref()
+                    .map(|reason| format!(" — {reason}"))
+                    .unwrap_or_default()
+            );
 
-        let selection = Select::with_theme(&ColorfulTheme::default())
-            .with_prompt("How should this skills target sync?")
-            .items(&[
-                "symlink — link the whole directory to .agents/skills",
-                "symlink-contents — keep a directory and link each item inside it",
-            ])
-            .default(if choice.recommended_mode == SyncType::Symlink {
-                0
-            } else {
-                1
-            })
-            .interact()?;
+            let selection = Select::with_theme(&ColorfulTheme::default())
+                .with_prompt("How should this skills target sync?")
+                .items(&[
+                    "symlink — link the whole directory to .agents/skills",
+                    "symlink-contents — keep a directory and link each item inside it",
+                ])
+                .default(if choice.recommended_mode == SyncType::Symlink {
+                    0
+                } else {
+                    1
+                })
+                .interact()?;
 
-        skills_modes.insert(
-            choice.agent_name.clone(),
-            resolve_skills_mode_selection(choice, selection),
-        );
+            skills_modes.insert(
+                choice.agent_name.clone(),
+                resolve_skills_mode_selection(choice, selection),
+            );
+        }
     }
 
     // Migrate selected files
@@ -1504,7 +1511,6 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
 
     // Generate config file
     println!("\n{}", "⚙️  Generating configuration...".cyan());
-    let config_path = agents_dir.join("agentsync.toml");
 
     if config_path.exists() && !force {
         println!(
@@ -1606,6 +1612,22 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
             let src_path = project_root.join(&file.path);
             if !src_path.exists() {
                 continue;
+            }
+
+            if let Some((agent_name, _)) = skills_choice_for_file_type(&file.file_type) {
+                let selected_mode = skills_modes
+                    .get(agent_name)
+                    .copied()
+                    .unwrap_or(SyncType::Symlink);
+                let preserve_existing_layout = skills_choices.iter().any(|choice| {
+                    choice.agent_name == agent_name
+                        && choice.already_canonical
+                        && selected_mode == SyncType::Symlink
+                });
+
+                if preserve_existing_layout {
+                    continue;
+                }
             }
 
             let backup_path = backup_dir.join(&file.path);
@@ -3221,6 +3243,7 @@ mod tests {
             destination: ".claude/skills".to_string(),
             recommended_mode: SyncType::Symlink,
             reason: None,
+            already_canonical: false,
         };
 
         assert_eq!(resolve_skills_mode_selection(&choice, 0), SyncType::Symlink);

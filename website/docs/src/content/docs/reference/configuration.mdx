@@ -138,7 +138,7 @@ type = "symlink-contents"
 
 Skills targets default to `type = "symlink"`. That keeps the agent-facing skills directory as one directory symlink back to the canonical `.agents/skills/` source.
 
-- Use `symlink` for the common case and for repos already using a correct directory symlink such as `.claude/skills -> .agents/skills`.
+- Use `symlink` for the common case and for repos already using a correct directory symlink such as `.claude/skills -> ../.agents/skills`.
 - Use `symlink-contents` only when the destination must remain a real directory and you want AgentSync to link each child entry individually.
 - `agentsync init --wizard` now asks explicitly which mode to use for each migrated skills target, recommends `symlink`, and preserves an already-correct directory symlink by default.
 

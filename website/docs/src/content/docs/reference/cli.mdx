@@ -34,10 +34,10 @@ When using the `--wizard` flag, AgentSync will:
 5. For **command directories**: Copy contents into `.agents/commands/`
 6. For **MCP configs**: Note their existence and suggest manual migration to `[mcp_servers]` in `agentsync.toml`
 7. For **other agent files** (e.g., .cursor/): Copy to the `.agents/` directory
-8. Optionally create backups of original files (after user confirmation, only for files that were copied)
-9. For each migrated **skills** target, explicitly ask whether it should use `symlink` or `symlink-contents`, recommend `symlink`, and preserve an already-correct directory symlink by default
-10. Generate a configuration (`.agents/agentsync.toml`) that manages these files with symlinks
-11. Run a post-init validation summary that warns if a selected skills target is configured with `symlink-contents` while the destination is already a directory symlink to `.agents/skills`
+8. For each migrated **skills** target, explicitly ask whether it should use `symlink` or `symlink-contents`, recommend `symlink`, and preserve an already-correct directory symlink by default
+9. Generate a configuration (`.agents/agentsync.toml`) that manages these files with symlinks
+10. Run a post-init validation summary that warns if a selected skills target is configured with `symlink-contents` while the destination is already a directory symlink to `.agents/skills`
+11. Optionally create backups of original files (after user confirmation, only for files that were copied)
 
 ---
 
