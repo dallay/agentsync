@@ -1,7 +1,10 @@
 use agentsync::skills::provider::{Provider, SkillsShProvider};
 use agentsync::skills::registry;
+use agentsync::skills::suggest::{SuggestInstallMode, SuggestionService};
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
+use dialoguer::{MultiSelect, theme::ColorfulTheme};
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::path::{Component, Path};
 use tracing::error;
@@ -14,6 +17,8 @@ pub enum SkillCommand {
     Update(SkillUpdateArgs),
     /// Uninstall a skill
     Uninstall(SkillUninstallArgs),
+    /// Suggest repo-aware skills without installing them
+    Suggest(SkillSuggestArgs),
     /// List installed skills
     List,
 }
@@ -52,6 +57,20 @@ pub struct SkillUninstallArgs {
     /// Output JSON instead of human-friendly
     #[arg(long)]
     pub json: bool,
+}
+
+/// Arguments for suggesting skills
+#[derive(Args, Debug)]
+pub struct SkillSuggestArgs {
+    /// Output JSON instead of human-friendly
+    #[arg(long)]
+    pub json: bool,
+    /// Install recommended skills using a guided flow
+    #[arg(long)]
+    pub install: bool,
+    /// Select all recommended skills instead of using the guided prompt
+    #[arg(long, requires = "install")]
+    pub all: bool,
 }
 
 pub fn run_update(args: SkillUpdateArgs, project_root: PathBuf) -> Result<()> {
@@ -149,11 +168,136 @@ pub fn run_skill(cmd: SkillCommand, project_root: PathBuf) -> Result<()> {
         SkillCommand::Install(args) => run_install(args, project_root),
         SkillCommand::Update(args) => run_update(args, project_root),
         SkillCommand::Uninstall(args) => run_uninstall(args, project_root),
+        SkillCommand::Suggest(args) => run_suggest(args, project_root),
         SkillCommand::List => {
             // Signal failure until List is implemented so CLI exits non-zero
             bail!("list command not implemented")
         }
     }
+}
+
+pub fn run_suggest(args: SkillSuggestArgs, project_root: PathBuf) -> Result<()> {
+    let service = SuggestionService;
+    let result = (|| -> Result<()> {
+        let response = service.suggest(&project_root)?;
+
+        if !args.install {
+            if args.json {
+                println!("{}", serde_json::to_string(&response.to_json_response())?);
+            } else {
+                println!("{}", response.render_human());
+            }
+            return Ok(());
+        }
+
+        let install_response = if args.all {
+            let provider = SuggestInstallProvider::default();
+            service.install_all_with(&project_root, &response, &provider)
+        } else {
+            ensure_interactive_install_supported()?;
+            let selected_skill_ids = prompt_for_recommended_skills(&response)?;
+            let provider = SuggestInstallProvider::default();
+            service.install_selected_with(
+                &project_root,
+                &response,
+                &provider,
+                SuggestInstallMode::Interactive,
+                &selected_skill_ids,
+                |skill_id, source, target_root| {
+                    agentsync::skills::install::blocking_fetch_and_install_skill(
+                        skill_id,
+                        source,
+                        target_root,
+                    )
+                    .map_err(|error| anyhow::anyhow!(error))
+                },
+            )
+        }?;
+
+        if args.json {
+            println!("{}", serde_json::to_string(&install_response)?);
+        } else {
+            println!("{}", install_response.render_human());
+        }
+
+        Ok(())
+    })();
+
+    match result {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            let error_message = error.to_string();
+            let (code, remediation) = if error_message
+                .contains("not part of the current recommendation set")
+            {
+                (
+                    "invalid_suggestion_selection",
+                    "Run 'agentsync skill suggest --json' to inspect available recommended skill ids.",
+                )
+            } else if error_message.contains("interactive terminal") {
+                (
+                    "interactive_tty_required",
+                    "Run 'agentsync skill suggest --install --all' for a non-interactive install path.",
+                )
+            } else if args.install {
+                ("install_error", remediation_for_error(&error_message))
+            } else {
+                (
+                    "suggest_error",
+                    "Verify the project root is readable and try again. Use --project-root to point to the repository you want to inspect.",
+                )
+            };
+
+            if args.json {
+                let output = serde_json::json!({
+                    "error": error_message,
+                    "code": code,
+                    "remediation": remediation,
+                });
+                println!("{}", serde_json::to_string(&output)?);
+            } else {
+                error!(%code, error = %error_message, "Suggest failed");
+                println!("Hint: {}", remediation);
+            }
+
+            Err(error)
+        }
+    }
+}
+
+fn ensure_interactive_install_supported() -> Result<()> {
+    if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
+        return Ok(());
+    }
+
+    Err(anyhow::anyhow!(
+        "guided recommendation install requires an interactive terminal"
+    ))
+}
+
+fn prompt_for_recommended_skills(
+    response: &agentsync::skills::suggest::SuggestResponse,
+) -> Result<Vec<String>> {
+    let installable = response.installable_recommendations();
+    if installable.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let items = installable
+        .iter()
+        .map(|recommendation| format!("{} — {}", recommendation.skill_id, recommendation.summary))
+        .collect::<Vec<_>>();
+    let defaults = vec![true; items.len()];
+    let selections = MultiSelect::with_theme(&ColorfulTheme::default())
+        .with_prompt("Select recommended skills to install")
+        .items(&items)
+        .defaults(&defaults)
+        .interact()?;
+
+    Ok(selections
+        .into_iter()
+        .map(|index| installable[index].skill_id.clone())
+        .collect())
 }
 
 pub fn run_install(args: SkillInstallArgs, project_root: PathBuf) -> Result<()> {
@@ -246,6 +390,44 @@ pub fn run_install(args: SkillInstallArgs, project_root: PathBuf) -> Result<()> 
                 Err(e)
             }
         }
+    }
+}
+
+struct SuggestInstallProvider {
+    fallback: SkillsShProvider,
+}
+
+impl Default for SuggestInstallProvider {
+    fn default() -> Self {
+        Self {
+            fallback: SkillsShProvider,
+        }
+    }
+}
+
+impl Provider for SuggestInstallProvider {
+    fn manifest(&self) -> Result<String> {
+        self.fallback.manifest()
+    }
+
+    fn resolve(&self, id: &str) -> Result<agentsync::skills::provider::SkillInstallInfo> {
+        if let Ok(source_root) = std::env::var("AGENTSYNC_TEST_SKILL_SOURCE_DIR") {
+            let source_path = PathBuf::from(source_root).join(id);
+            if source_path.exists() {
+                return Ok(agentsync::skills::provider::SkillInstallInfo {
+                    download_url: source_path.display().to_string(),
+                    format: "dir".to_string(),
+                });
+            }
+        }
+
+        self.fallback.resolve(id)
+    }
+
+    fn recommendation_catalog(
+        &self,
+    ) -> Result<Option<agentsync::skills::provider::ProviderCatalogMetadata>> {
+        self.fallback.recommendation_catalog()
     }
 }
 

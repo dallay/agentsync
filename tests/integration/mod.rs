@@ -3,3 +3,6 @@
 
 #[cfg(test)]
 mod skill_install;
+
+#[cfg(test)]
+mod skill_suggest;

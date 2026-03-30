@@ -115,6 +115,20 @@ agentsync skill install [OPTIONS] <SKILL_ID>
 - `--source <SOURCE>`: Optional source (dir, archive, or URL).
 - `--json`: Output machine-readable JSON.
 
+#### `suggest`
+
+Suggest repository-aware skills without installing them.
+
+```bash
+agentsync skill suggest [--json] [--install [--all]]
+```
+
+- `--json`: Output detections, recommendations, and summary counts as JSON.
+- `--install`: Start the recommendation-driven install flow.
+- `--all`: Use with `--install` to install every not-yet-installed recommendation without prompting.
+
+`skill suggest` is read-only by default. `--install` opens an interactive selector in a TTY, while `--install --all` is the TTY-safe non-interactive path. Recommendation-driven installs reuse the same install pipeline and registry updates as `skill install`, and they skip recommendations that are already installed.
+
 #### `update`
 
 Update a skill to the latest version.

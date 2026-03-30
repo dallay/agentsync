@@ -27,6 +27,12 @@ pub struct SkillEntry {
     pub manifest_hash: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstalledSkillState {
+    pub installed: bool,
+    pub version: Option<String>,
+}
+
 pub fn write_registry(path: &Path) -> Result<()> {
     let reg = Registry {
         schema_version: 1,
@@ -87,4 +93,28 @@ pub fn update_registry_entry(path: &Path, skill_id: &str, entry: SkillEntry) -> 
     fs::write(path, body)
         .with_context(|| format!("failed to write registry: {}", path.display()))?;
     Ok(())
+}
+
+pub fn read_installed_skill_states(path: &Path) -> Result<BTreeMap<String, InstalledSkillState>> {
+    if !path.exists() {
+        return Ok(BTreeMap::new());
+    }
+
+    let registry = read_registry(path)?;
+    let states = registry
+        .skills
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(skill_id, entry)| {
+            (
+                skill_id,
+                InstalledSkillState {
+                    installed: true,
+                    version: entry.version,
+                },
+            )
+        })
+        .collect();
+
+    Ok(states)
 }

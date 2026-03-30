@@ -5,12 +5,39 @@ use serde::Deserialize;
 pub trait Provider {
     fn manifest(&self) -> Result<String>;
     fn resolve(&self, id: &str) -> Result<SkillInstallInfo>;
+
+    fn recommendation_catalog(&self) -> Result<Option<ProviderCatalogMetadata>> {
+        Ok(None)
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct SkillInstallInfo {
     pub download_url: String,
     pub format: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ProviderCatalogMetadata {
+    pub provider: String,
+    pub version: String,
+    pub skills: Vec<ProviderCatalogSkill>,
+    pub rules: Vec<ProviderCatalogRule>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ProviderCatalogSkill {
+    pub skill_id: String,
+    pub title: String,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ProviderCatalogRule {
+    pub skill_id: String,
+    pub technologies: Vec<String>,
+    pub min_confidence: String,
+    pub reason_template: String,
 }
 
 #[derive(Deserialize, Debug)]

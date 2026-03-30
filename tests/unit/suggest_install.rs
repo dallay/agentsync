@@ -1,0 +1,156 @@
+use agentsync::skills::provider::{Provider, SkillInstallInfo};
+use agentsync::skills::suggest::{SuggestInstallMode, SuggestInstallStatus, SuggestionService};
+use anyhow::Result;
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::{Path, PathBuf};
+use tempfile::TempDir;
+
+#[test]
+fn guided_install_only_installs_selected_recommendations() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+    fs::write(root.join("Cargo.toml"), "[package]\nname='demo'\n").unwrap();
+    fs::write(root.join("Dockerfile"), "FROM scratch\n").unwrap();
+
+    let provider = LocalSkillProvider::new(root, &["rust-async-patterns", "docker-expert"]);
+    let service = SuggestionService;
+    let response = service.suggest(root).unwrap();
+
+    let install_response = service
+        .install_selected_with(
+            root,
+            &response,
+            &provider,
+            SuggestInstallMode::Interactive,
+            &["rust-async-patterns".to_string()],
+            |skill_id, source, target_root| {
+                agentsync::skills::install::blocking_fetch_and_install_skill(
+                    skill_id,
+                    source,
+                    target_root,
+                )
+                .map_err(|error| anyhow::anyhow!(error))
+            },
+        )
+        .unwrap();
+
+    assert_eq!(
+        install_response.selected_skill_ids,
+        vec!["rust-async-patterns"]
+    );
+    assert_eq!(install_response.results.len(), 1);
+    assert_eq!(install_response.results[0].skill_id, "rust-async-patterns");
+    assert_eq!(
+        install_response.results[0].status,
+        SuggestInstallStatus::Installed
+    );
+    assert!(root.join(".agents/skills/rust-async-patterns").exists());
+    assert!(!root.join(".agents/skills/docker-expert").exists());
+}
+
+#[test]
+fn install_all_skips_already_installed_recommendations() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+    fs::write(root.join("Cargo.toml"), "[package]\nname='demo'\n").unwrap();
+    fs::write(root.join("Dockerfile"), "FROM scratch\n").unwrap();
+
+    let skills_dir = root.join(".agents/skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+    fs::write(
+        skills_dir.join("registry.json"),
+        serde_json::to_string_pretty(&serde_json::json!({
+            "schemaVersion": 1,
+            "last_updated": "2026-03-30T00:00:00Z",
+            "skills": {
+                "docker-expert": {
+                    "name": "docker-expert",
+                    "version": "1.2.3"
+                }
+            }
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let provider = LocalSkillProvider::new(root, &["rust-async-patterns", "docker-expert"]);
+    let service = SuggestionService;
+    let response = service.suggest(root).unwrap();
+
+    let installable_ids = response
+        .installable_recommendations()
+        .into_iter()
+        .map(|recommendation| recommendation.skill_id.clone())
+        .collect::<Vec<_>>();
+    assert_eq!(installable_ids, vec!["rust-async-patterns"]);
+
+    let install_response = service
+        .install_all_with(root, &response, &provider)
+        .unwrap();
+
+    let statuses = install_response
+        .results
+        .iter()
+        .map(|result| (result.skill_id.as_str(), result.status))
+        .collect::<BTreeMap<_, _>>();
+    assert_eq!(
+        statuses.get("rust-async-patterns"),
+        Some(&SuggestInstallStatus::Installed)
+    );
+    assert_eq!(
+        statuses.get("docker-expert"),
+        Some(&SuggestInstallStatus::AlreadyInstalled)
+    );
+    assert!(root.join(".agents/skills/rust-async-patterns").exists());
+
+    let updated_response = service.suggest(root).unwrap();
+    let rust = updated_response
+        .recommendations
+        .iter()
+        .find(|recommendation| recommendation.skill_id == "rust-async-patterns")
+        .unwrap();
+    assert!(rust.installed);
+}
+
+struct LocalSkillProvider {
+    sources: BTreeMap<String, PathBuf>,
+}
+
+impl LocalSkillProvider {
+    fn new(root: &Path, skill_ids: &[&str]) -> Self {
+        let sources_root = root.join("skill-sources");
+        fs::create_dir_all(&sources_root).unwrap();
+
+        let mut sources = BTreeMap::new();
+        for skill_id in skill_ids {
+            let source_dir = sources_root.join(skill_id);
+            fs::create_dir_all(&source_dir).unwrap();
+            fs::write(
+                source_dir.join("SKILL.md"),
+                format!("---\nname: {skill_id}\nversion: 1.0.0\n---\n# {skill_id}\n"),
+            )
+            .unwrap();
+            sources.insert((*skill_id).to_string(), source_dir);
+        }
+
+        Self { sources }
+    }
+}
+
+impl Provider for LocalSkillProvider {
+    fn manifest(&self) -> Result<String> {
+        Ok("local-test-provider".to_string())
+    }
+
+    fn resolve(&self, id: &str) -> Result<SkillInstallInfo> {
+        let source = self
+            .sources
+            .get(id)
+            .ok_or_else(|| anyhow::anyhow!("missing local source for {id}"))?;
+        Ok(SkillInstallInfo {
+            download_url: source.display().to_string(),
+            format: "dir".to_string(),
+        })
+    }
+}

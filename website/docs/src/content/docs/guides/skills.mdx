@@ -95,9 +95,27 @@ Prompts and examples...
 
 If parsing fails, the CLI will return a validation error indicating the problem.
 
-## CLI: install, update, list
+## CLI: suggest, install, update, list
 
 AgentSync exposes skill management via `agentsync skill` subcommands.
+
+- Suggest repository-aware skills without modifying `.agents/skills/`:
+
+```bash
+agentsync skill suggest
+agentsync skill suggest --json
+agentsync skill suggest --install
+agentsync skill suggest --install --all
+```
+
+The default `suggest` flow remains read-only. It scans the current repository for supported technology markers (Rust, Node/TypeScript, Astro, GitHub Actions, Docker, Make, and Python), reports matching detections, recommends relevant skills, and marks whether each recommendation is already installed.
+
+Phase 2 adds recommendation-driven installs:
+
+- `agentsync skill suggest --install` opens an interactive multi-select prompt in a TTY and only offers recommended skills that are not already installed.
+- `agentsync skill suggest --install --all` is the non-interactive path and installs every recommended skill that is still pending.
+- Already installed recommendations are still shown in read-only output, but install flows skip them instead of reinstalling them.
+- If you run `--install` without a TTY, AgentSync fails safely and tells you to use `--install --all`.
 
 - Install a skill (from a provider id, local archive, or directory):
 
@@ -120,6 +138,72 @@ agentsync skill list
 Flags:
 - `--source` — optional. Use a local path, archive URL, or provider-specific identifier.
 - `--json` — output machine-readable JSON with skill metadata from `.agents/skills/registry.json`.
+
+Example `skill suggest --json` response:
+
+```json
+{
+  "detections": [
+    {
+      "technology": "rust",
+      "confidence": "high",
+      "evidence": ["Cargo.toml"]
+    }
+  ],
+  "recommendations": [
+    {
+      "skill_id": "rust-async-patterns",
+      "matched_technologies": ["rust"],
+      "reasons": [
+        "Recommended because Rust was detected from Cargo.toml."
+      ],
+      "installed": false
+    }
+  ],
+  "summary": {
+    "detected_count": 1,
+    "recommended_count": 1,
+    "installable_count": 1
+  }
+}
+```
+
+Example `skill suggest --install --all --json` response:
+
+```json
+{
+  "detections": [
+    {
+      "technology": "rust",
+      "confidence": "high",
+      "evidence": ["Cargo.toml"]
+    }
+  ],
+  "recommendations": [
+    {
+      "skill_id": "rust-async-patterns",
+      "matched_technologies": ["rust"],
+      "reasons": [
+        "Recommended because Rust was detected from Cargo.toml."
+      ],
+      "installed": false
+    }
+  ],
+  "summary": {
+    "detected_count": 1,
+    "recommended_count": 1,
+    "installable_count": 1
+  },
+  "mode": "install_all",
+  "selected_skill_ids": ["rust-async-patterns"],
+  "results": [
+    {
+      "skill_id": "rust-async-patterns",
+      "status": "installed"
+    }
+  ]
+}
+```
 
 ## Providers and sources
 
