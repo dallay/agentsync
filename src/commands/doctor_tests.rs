@@ -75,6 +75,82 @@ entry1
     }
 
     #[test]
+    fn test_gitignore_audit_accepts_normalized_root_scoped_entries() {
+        let config: Config = toml::from_str(
+            r#"
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.instructions]
+            source = "AGENTS.md"
+            destination = "AGENTS.md"
+            type = "symlink"
+            "#,
+        )
+        .unwrap();
+
+        let marker = &config.gitignore.marker;
+        let start_marker = format!("# START {}", marker);
+        let end_marker = format!("# END {}", marker);
+        let content = format!(
+            "{}\n/AGENTS.md\n/AGENTS.md.bak\n/.mcp.json\n.agents/skills/*.bak\n.claude/commands/\n.claude/skills/\n{}\n",
+            start_marker, end_marker
+        );
+
+        let actual_entries: std::collections::HashSet<String> =
+            extract_managed_entries(&content, &start_marker, &end_marker)
+                .into_iter()
+                .collect();
+        let required_entries: std::collections::HashSet<String> =
+            config.all_gitignore_entries().into_iter().collect();
+
+        assert_eq!(actual_entries, required_entries);
+    }
+
+    #[test]
+    fn test_gitignore_audit_flags_legacy_unscoped_root_entry_as_drift() {
+        let config: Config = toml::from_str(
+            r#"
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.instructions]
+            source = "AGENTS.md"
+            destination = "AGENTS.md"
+            type = "symlink"
+            "#,
+        )
+        .unwrap();
+
+        let marker = &config.gitignore.marker;
+        let start_marker = format!("# START {}", marker);
+        let end_marker = format!("# END {}", marker);
+        let content = format!(
+            "{}\nAGENTS.md\n/AGENTS.md.bak\n/.mcp.json\n.claude/commands/\n.claude/skills/\n{}\n",
+            start_marker, end_marker
+        );
+
+        let actual_entries: std::collections::HashSet<String> =
+            extract_managed_entries(&content, &start_marker, &end_marker)
+                .into_iter()
+                .collect();
+        let required_entries: std::collections::HashSet<String> =
+            config.all_gitignore_entries().into_iter().collect();
+
+        let missing: Vec<_> = required_entries
+            .difference(&actual_entries)
+            .cloned()
+            .collect();
+        let extra: Vec<_> = actual_entries
+            .difference(&required_entries)
+            .cloned()
+            .collect();
+
+        assert!(missing.contains(&"/AGENTS.md".to_string()));
+        assert!(extra.contains(&"AGENTS.md".to_string()));
+    }
+
+    #[test]
     fn test_validate_destinations_no_conflicts() {
         let dests = vec![
             (

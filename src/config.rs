@@ -367,18 +367,24 @@ impl Config {
                         for mapping in &target.mappings {
                             let filename = resolve_module_map_filename(mapping, agent_name);
                             let entry = format!("{}/{}", mapping.destination, filename);
-                            entries.insert(entry.clone());
-                            entries.insert(format!("{}.bak", entry));
+                            entries.insert(normalize_managed_gitignore_entry(&entry));
+                            entries.insert(normalize_managed_gitignore_entry(&format!(
+                                "{}.bak",
+                                entry
+                            )));
                         }
                         continue;
                     }
-                    entries.insert(target.destination.clone());
-                    entries.insert(format!("{}.bak", target.destination));
+                    entries.insert(normalize_managed_gitignore_entry(&target.destination));
+                    entries.insert(normalize_managed_gitignore_entry(&format!(
+                        "{}.bak",
+                        target.destination
+                    )));
                 }
 
                 // Add known ignore patterns for this agent
                 for pattern in Self::known_ignore_patterns(agent_name) {
-                    entries.insert(pattern.to_string());
+                    entries.insert(normalize_managed_gitignore_entry(pattern));
                 }
             }
         }
@@ -391,6 +397,20 @@ impl Config {
     pub fn known_ignore_patterns(agent_name: &str) -> &'static [&'static str] {
         agent_ids::known_ignore_patterns(agent_name)
     }
+}
+
+fn normalize_managed_gitignore_entry(entry: &str) -> String {
+    if entry.contains('/')
+        || entry.ends_with('/')
+        || entry.contains('*')
+        || entry.contains('?')
+        || entry.contains('[')
+        || entry.starts_with('!')
+    {
+        return entry.to_string();
+    }
+
+    format!("/{entry}")
 }
 
 #[cfg(test)]
@@ -779,7 +799,7 @@ mod tests {
         let entries = config.all_gitignore_entries();
 
         assert!(entries.contains(&"manual-entry.md".to_string()));
-        assert!(entries.contains(&"CLAUDE.md".to_string()));
+        assert!(entries.contains(&"/CLAUDE.md".to_string()));
         assert!(entries.contains(&".github/copilot-instructions.md".to_string()));
     }
 
@@ -806,8 +826,8 @@ mod tests {
         let config: Config = toml::from_str(toml).unwrap();
         let entries = config.all_gitignore_entries();
 
-        assert!(entries.contains(&"enabled.md".to_string()));
-        assert!(entries.contains(&"enabled.md.bak".to_string()));
+        assert!(entries.contains(&"/enabled.md".to_string()));
+        assert!(entries.contains(&"/enabled.md.bak".to_string()));
         assert!(!entries.contains(&"disabled.md".to_string()));
         assert!(!entries.contains(&"disabled.md.bak".to_string()));
     }
@@ -829,8 +849,8 @@ mod tests {
         let config: Config = toml::from_str(toml).unwrap();
         let entries = config.all_gitignore_entries();
 
-        // Should only appear once
-        assert_eq!(entries.iter().filter(|e| *e == "AGENTS.md").count(), 1);
+        assert!(entries.contains(&"AGENTS.md".to_string()));
+        assert!(entries.contains(&"/AGENTS.md".to_string()));
     }
 
     #[test]
@@ -966,15 +986,15 @@ mod tests {
         let entries = config.all_gitignore_entries();
 
         // Should include target destinations
-        assert!(entries.contains(&"CLAUDE.md".to_string()));
+        assert!(entries.contains(&"/CLAUDE.md".to_string()));
 
         // Should include known patterns for Claude
-        assert!(entries.contains(&".mcp.json".to_string()));
+        assert!(entries.contains(&"/.mcp.json".to_string()));
         assert!(entries.contains(&".claude/commands/".to_string()));
         assert!(entries.contains(&".claude/skills/".to_string()));
 
         // Should include known patterns for OpenCode
-        assert!(entries.contains(&"opencode.json".to_string()));
+        assert!(entries.contains(&"/opencode.json".to_string()));
     }
 
     #[test]
@@ -995,7 +1015,7 @@ mod tests {
         assert!(!entries.contains(&".claude/commands/".to_string()));
 
         // Should include OpenCode patterns (enabled)
-        assert!(entries.contains(&"opencode.json".to_string()));
+        assert!(entries.contains(&"/opencode.json".to_string()));
     }
 
     #[test]
@@ -1014,9 +1034,11 @@ mod tests {
         let config: Config = toml::from_str(toml).unwrap();
         let entries = config.all_gitignore_entries();
 
-        // Should only appear once even though in both manual entries and known patterns
+        // Manual bare entries remain verbatim while managed known patterns are root-scoped
         assert_eq!(entries.iter().filter(|e| *e == ".mcp.json").count(), 1);
         assert_eq!(entries.iter().filter(|e| *e == "opencode.json").count(), 1);
+        assert_eq!(entries.iter().filter(|e| *e == "/.mcp.json").count(), 1);
+        assert_eq!(entries.iter().filter(|e| *e == "/opencode.json").count(), 1);
     }
 
     #[test]
@@ -1037,7 +1059,7 @@ mod tests {
         assert!(entries.contains(&"another-file.md".to_string()));
 
         // Should include known patterns
-        assert!(entries.contains(&".mcp.json".to_string()));
+        assert!(entries.contains(&"/.mcp.json".to_string()));
     }
 
     #[test]
@@ -1055,6 +1077,7 @@ mod tests {
         let entries = config.all_gitignore_entries();
 
         assert!(entries.contains(&".codex/config.toml".to_string()));
+        assert!(entries.contains(&"/AGENTS.md".to_string()));
     }
 
     // ==========================================================================
@@ -1413,9 +1436,79 @@ mod tests {
         let config: Config = toml::from_str(toml).unwrap();
         let entries = config.all_gitignore_entries();
 
-        assert!(entries.contains(&"OUTPUT.md".to_string()));
-        assert!(entries.contains(&"OUTPUT.md.bak".to_string()));
+        assert!(entries.contains(&"/OUTPUT.md".to_string()));
+        assert!(entries.contains(&"/OUTPUT.md.bak".to_string()));
         assert!(entries.contains(&".agents/skills/*.bak".to_string()));
+    }
+
+    #[test]
+    fn test_all_gitignore_entries_manual_bare_entry_remains_unchanged() {
+        let toml = r#"
+            [gitignore]
+            entries = ["AGENTS.md", "docs/AGENTS.md"]
+
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.instructions]
+            source = "AGENTS.md"
+            destination = "AGENTS.md"
+            type = "symlink"
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        let entries = config.all_gitignore_entries();
+
+        assert!(entries.contains(&"AGENTS.md".to_string()));
+        assert!(entries.contains(&"docs/AGENTS.md".to_string()));
+        assert!(entries.contains(&"/AGENTS.md".to_string()));
+    }
+
+    #[test]
+    fn test_all_gitignore_entries_root_level_known_patterns_are_root_scoped() {
+        let toml = r#"
+            [agents.claude]
+            enabled = true
+
+            [agents.gemini]
+            enabled = true
+
+            [agents.opencode]
+            enabled = true
+
+            [agents.warp]
+            enabled = true
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        let entries = config.all_gitignore_entries();
+
+        assert!(entries.contains(&"/.mcp.json".to_string()));
+        assert!(entries.contains(&"/GEMINI.md".to_string()));
+        assert!(entries.contains(&"/opencode.json".to_string()));
+        assert!(entries.contains(&"/WARP.md".to_string()));
+        assert!(entries.contains(&".claude/commands/".to_string()));
+        assert!(entries.contains(&".opencode/command/".to_string()));
+    }
+
+    #[test]
+    fn test_all_gitignore_entries_root_destinations_and_backups_are_root_scoped() {
+        let toml = r#"
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.instructions]
+            source = "AGENTS.md"
+            destination = "AGENTS.md"
+            type = "symlink"
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        let entries = config.all_gitignore_entries();
+
+        assert!(entries.contains(&"/AGENTS.md".to_string()));
+        assert!(entries.contains(&"/AGENTS.md.bak".to_string()));
+        assert!(!entries.contains(&"AGENTS.md.bak".to_string()));
     }
 
     // ==========================================================================
