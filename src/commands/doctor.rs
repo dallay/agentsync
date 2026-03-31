@@ -207,17 +207,22 @@ pub fn run_doctor(project_root: PathBuf) -> Result<()> {
                 let marker = &linker.config().gitignore.marker;
                 let start_marker = format!("# START {}", marker);
                 let end_marker = format!("# END {}", marker);
+                let has_managed_section =
+                    content.contains(&start_marker) && content.contains(&end_marker);
 
-                if !content.contains(&start_marker) || !content.contains(&end_marker) {
-                    if linker.config().gitignore.enabled {
-                        println!(
-                            "  {} .gitignore managed section missing (Marker: {})",
-                            "⚠".yellow(),
-                            marker
-                        );
-                        issues += 1;
-                    }
-                } else {
+                if gitignore_missing_section_is_issue(
+                    linker.config().gitignore.enabled,
+                    &content,
+                    &start_marker,
+                    &end_marker,
+                ) {
+                    println!(
+                        "  {} .gitignore managed section missing (Marker: {})",
+                        "⚠".yellow(),
+                        marker
+                    );
+                    issues += 1;
+                } else if has_managed_section {
                     // Audit entries
                     let managed_entries =
                         extract_managed_entries(&content, &start_marker, &end_marker);
@@ -304,6 +309,15 @@ pub fn collect_skills_mode_mismatch(
         target_name,
         target,
     )
+}
+
+pub(crate) fn gitignore_missing_section_is_issue(
+    gitignore_enabled: bool,
+    content: &str,
+    start_marker: &str,
+    end_marker: &str,
+) -> bool {
+    gitignore_enabled && (!content.contains(start_marker) || !content.contains(end_marker))
 }
 
 fn command_exists(cmd: &str) -> bool {

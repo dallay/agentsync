@@ -196,15 +196,24 @@ fn main() -> Result<()> {
                 agents,
             };
             let mut result = linker.sync(&options)?;
-            if !no_gitignore && linker.config().gitignore.enabled {
-                println!("\n{}", "➤ Updating .gitignore".cyan().bold());
-                let entries = linker.config().all_gitignore_entries();
-                gitignore::update_gitignore(
-                    linker.project_root(),
-                    &linker.config().gitignore.marker,
-                    &entries,
-                    dry_run,
-                )?;
+            if !no_gitignore {
+                if linker.config().gitignore.enabled {
+                    println!("\n{}", "➤ Updating .gitignore".cyan().bold());
+                    let entries = linker.config().all_gitignore_entries();
+                    gitignore::update_gitignore(
+                        linker.project_root(),
+                        &linker.config().gitignore.marker,
+                        &entries,
+                        dry_run,
+                    )?;
+                } else {
+                    println!("\n{}", "➤ Cleaning .gitignore".cyan().bold());
+                    gitignore::cleanup_gitignore(
+                        linker.project_root(),
+                        &linker.config().gitignore.marker,
+                        dry_run,
+                    )?;
+                }
             }
             if linker.config().mcp.enabled && !linker.config().mcp_servers.is_empty() {
                 println!("\n{}", "➤ Syncing MCP configurations".cyan().bold());

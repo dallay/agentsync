@@ -3,7 +3,8 @@ mod tests {
     use crate::commands::doctor::{
         Conflict, check_unmanaged_claude_skills, collect_missing_sources,
         collect_skills_mode_mismatch, expand_target_destinations, extract_managed_entries,
-        normalize_path, target_configuration_warnings, validate_destinations,
+        gitignore_missing_section_is_issue, normalize_path, target_configuration_warnings,
+        validate_destinations,
     };
     use agentsync::config::{Config, SyncType};
     use std::fs;
@@ -148,6 +149,36 @@ entry1
 
         assert!(missing.contains(&"/AGENTS.md".to_string()));
         assert!(extra.contains(&"AGENTS.md".to_string()));
+    }
+
+    #[test]
+    fn test_gitignore_audit_accepts_missing_managed_section_when_disabled() {
+        let config: Config = toml::from_str(
+            r#"
+            [gitignore]
+            enabled = false
+
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.instructions]
+            source = "AGENTS.md"
+            destination = "AGENTS.md"
+            type = "symlink"
+            "#,
+        )
+        .unwrap();
+
+        let marker = &config.gitignore.marker;
+        let start_marker = format!("# START {}", marker);
+        let end_marker = format!("# END {}", marker);
+
+        assert!(!gitignore_missing_section_is_issue(
+            config.gitignore.enabled,
+            "node_modules/\ndist/\n",
+            &start_marker,
+            &end_marker,
+        ));
     }
 
     #[test]
