@@ -4,6 +4,18 @@
 [![Release](https://github.com/dallay/agentsync/actions/workflows/release.yml/badge.svg)](https://github.com/dallay/agentsync/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub release](https://img.shields.io/github/v/release/dallay/agentsync)](https://github.com/dallay/agentsync/releases)
+[![Codecov](https://codecov.io/gh/dallay/agentsync/graph/badge.svg)](https://codecov.io/gh/dallay/agentsync)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=dallay_agentsync&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=dallay_agentsync)
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=dallay_agentsync&metric=bugs)](https://sonarcloud.io/summary/new_code?id=dallay_agentsync)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=dallay_agentsync&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=dallay_agentsync)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=dallay_agentsync&metric=coverage)](https://sonarcloud.io/summary/new_code?id=dallay_agentsync)
+[![Duplicated Lines (%)](https://sonarcloud.io/api/project_badges/measure?project=dallay_agentsync&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=dallay_agentsync)
+[![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=dallay_agentsync&metric=ncloc)](https://sonarcloud.io/summary/new_code?id=dallay_agentsync)
+[![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=dallay_agentsync&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=dallay_agentsync)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=dallay_agentsync&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=dallay_agentsync)
+[![Technical Debt](https://sonarcloud.io/api/project_badges/measure?project=dallay_agentsync&metric=sqale_index)](https://sonarcloud.io/summary/new_code?id=dallay_agentsync)
+[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=dallay_agentsync&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=dallay_agentsync)
+[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=dallay_agentsync&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=dallay_agentsync)
 
 A fast, portable CLI tool for synchronizing AI agent configurations and MCP servers across multiple
 AI coding assistants using symbolic links.
