@@ -50,6 +50,7 @@ fn guided_install_only_installs_selected_recommendations() {
         install_response.results[0].status,
         SuggestInstallStatus::Installed
     );
+    assert_eq!(install_response.results[0].error_message, None);
     assert!(root.join(".agents/skills/rust-async-patterns").exists());
     assert!(!root.join(".agents/skills/docker-expert").exists());
 }
@@ -171,6 +172,85 @@ fn install_flow_rechecks_registry_before_installing() {
         install_response.results[0].status,
         SuggestInstallStatus::AlreadyInstalled
     );
+    assert_eq!(install_response.results[0].error_message, None);
+}
+
+#[test]
+fn install_flow_records_failures_and_continues() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+    fs::write(root.join("Cargo.toml"), "[package]\nname='demo'\n").unwrap();
+    fs::write(root.join("Dockerfile"), "FROM scratch\n").unwrap();
+    fs::write(root.join("Makefile"), "all:\n\t@true\n").unwrap();
+
+    let provider = PartiallyFailingProvider::new(root);
+    let service = SuggestionService;
+    let response = service
+        .suggest_with(
+            root,
+            &StaticDetector::rust_docker_and_make(),
+            Some(&provider),
+        )
+        .unwrap();
+
+    let install_response = service
+        .install_selected_with(
+            root,
+            &response,
+            &provider,
+            SuggestInstallMode::InstallAll,
+            &[
+                "rust-async-patterns".to_string(),
+                "docker-expert".to_string(),
+                "makefile".to_string(),
+            ],
+            |skill_id, source, target_root| {
+                if skill_id == "docker-expert" {
+                    anyhow::bail!("simulated install failure for {skill_id}");
+                }
+
+                agentsync::skills::install::blocking_fetch_and_install_skill(
+                    skill_id,
+                    source,
+                    target_root,
+                )
+                .map_err(|error| anyhow::anyhow!(error))
+            },
+        )
+        .unwrap();
+
+    let statuses = install_response
+        .results
+        .iter()
+        .map(|result| {
+            (
+                result.skill_id.as_str(),
+                (result.status, result.error_message.as_deref()),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    assert_eq!(
+        statuses.get("rust-async-patterns"),
+        Some(&(
+            SuggestInstallStatus::Failed,
+            Some("simulated resolve failure for rust-async-patterns")
+        ))
+    );
+    assert_eq!(
+        statuses.get("docker-expert"),
+        Some(&(
+            SuggestInstallStatus::Failed,
+            Some("simulated install failure for docker-expert")
+        ))
+    );
+    assert_eq!(
+        statuses.get("makefile"),
+        Some(&(SuggestInstallStatus::Installed, None))
+    );
+    assert!(!root.join(".agents/skills/rust-async-patterns").exists());
+    assert!(!root.join(".agents/skills/docker-expert").exists());
+    assert!(root.join(".agents/skills/makefile").exists());
 }
 
 struct StaticDetector {
@@ -198,6 +278,20 @@ impl StaticDetector {
                 DetectionConfidence::High,
                 "Cargo.toml",
             )],
+        }
+    }
+
+    fn rust_docker_and_make() -> Self {
+        Self {
+            detections: vec![
+                detection(TechnologyId::Rust, DetectionConfidence::High, "Cargo.toml"),
+                detection(
+                    TechnologyId::Docker,
+                    DetectionConfidence::High,
+                    "Dockerfile",
+                ),
+                detection(TechnologyId::Make, DetectionConfidence::High, "Makefile"),
+            ],
         }
     }
 }
@@ -264,5 +358,31 @@ impl Provider for LocalSkillProvider {
             download_url: source.display().to_string(),
             format: "dir".to_string(),
         })
+    }
+}
+
+struct PartiallyFailingProvider {
+    inner: LocalSkillProvider,
+}
+
+impl PartiallyFailingProvider {
+    fn new(root: &Path) -> Self {
+        Self {
+            inner: LocalSkillProvider::new(root, &["docker-expert", "makefile"]),
+        }
+    }
+}
+
+impl Provider for PartiallyFailingProvider {
+    fn manifest(&self) -> Result<String> {
+        self.inner.manifest()
+    }
+
+    fn resolve(&self, id: &str) -> Result<SkillInstallInfo> {
+        if id == "rust-async-patterns" {
+            anyhow::bail!("simulated resolve failure for {id}");
+        }
+
+        self.inner.resolve(id)
     }
 }

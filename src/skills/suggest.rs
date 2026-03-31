@@ -203,12 +203,15 @@ pub enum SuggestInstallMode {
 pub enum SuggestInstallStatus {
     Installed,
     AlreadyInstalled,
+    Failed,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SuggestInstallResult {
     pub skill_id: String,
     pub status: SuggestInstallStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -344,20 +347,34 @@ impl SuggestionService {
                 results.push(SuggestInstallResult {
                     skill_id: recommendation.skill_id.clone(),
                     status: SuggestInstallStatus::AlreadyInstalled,
+                    error_message: None,
                 });
                 continue;
             }
 
-            let resolved = provider.resolve(&recommendation.skill_id)?;
-            install_fn(
-                &recommendation.skill_id,
-                &resolved.download_url,
-                &target_root,
-            )?;
-            results.push(SuggestInstallResult {
-                skill_id: recommendation.skill_id.clone(),
-                status: SuggestInstallStatus::Installed,
-            });
+            match provider.resolve(&recommendation.skill_id) {
+                Ok(resolved) => match install_fn(
+                    &recommendation.skill_id,
+                    &resolved.download_url,
+                    &target_root,
+                ) {
+                    Ok(()) => results.push(SuggestInstallResult {
+                        skill_id: recommendation.skill_id.clone(),
+                        status: SuggestInstallStatus::Installed,
+                        error_message: None,
+                    }),
+                    Err(error) => results.push(SuggestInstallResult {
+                        skill_id: recommendation.skill_id.clone(),
+                        status: SuggestInstallStatus::Failed,
+                        error_message: Some(error.to_string()),
+                    }),
+                },
+                Err(error) => results.push(SuggestInstallResult {
+                    skill_id: recommendation.skill_id.clone(),
+                    status: SuggestInstallStatus::Failed,
+                    error_message: Some(error.to_string()),
+                }),
+            }
         }
 
         let mut suggest = response.to_json_response();
@@ -538,11 +555,11 @@ impl SuggestInstallJsonResponse {
         } else {
             lines.push("Install results:".to_string());
             for result in &self.results {
-                lines.push(format!(
-                    "- {}: {}",
-                    result.skill_id,
-                    result.status.as_human_label()
-                ));
+                let mut line = format!("- {}: {}", result.skill_id, result.status.as_human_label());
+                if let Some(error_message) = &result.error_message {
+                    line.push_str(&format!(" ({error_message})"));
+                }
+                lines.push(line);
             }
         }
 
@@ -574,6 +591,7 @@ impl SuggestInstallStatus {
         match self {
             Self::Installed => "installed",
             Self::AlreadyInstalled => "already installed",
+            Self::Failed => "failed",
         }
     }
 }

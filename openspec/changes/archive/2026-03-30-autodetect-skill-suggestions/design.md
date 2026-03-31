@@ -284,52 +284,69 @@ Phase 1 read-only output:
 
 ```json
 {
-  "project_root": "/repo",
-  "catalog": {
-    "source": "embedded",
-    "version": "v1"
-  },
   "detections": [
     {
       "technology": "rust",
       "confidence": "high",
-      "root_relative_paths": ["Cargo.toml"],
-      "evidence": [
-        {
-          "marker": "Cargo.toml",
-          "path": "Cargo.toml",
-          "notes": null
-        }
-      ]
+      "evidence": ["Cargo.toml"]
     }
   ],
-  "suggestions": [
+  "recommendations": [
     {
       "skill_id": "rust-async-patterns",
-      "title": "Rust Async Patterns",
-      "summary": "Tokio and async Rust implementation guidance.",
-      "reason": "Recommended because Rust was detected from Cargo.toml.",
       "matched_technologies": ["rust"],
-      "installed_state": "not_installed",
-      "installed_version": null,
-      "catalog_source": "embedded:v1"
+      "reasons": ["Recommended because Rust was detected from Cargo.toml."],
+      "installed": false
     }
-  ]
+  ],
+  "summary": {
+    "detected_count": 1,
+    "recommended_count": 1,
+    "installable_count": 1
+  }
 }
 ```
 
-Phase 2 install output extends, not replaces, this structure:
+Phase 2 install output extends the same response with install metadata:
 
 ```json
 {
-  "project_root": "/repo",
+  "detections": [
+    {
+      "technology": "github_actions",
+      "confidence": "high",
+      "evidence": [".github/workflows/release.yml"]
+    }
+  ],
+  "recommendations": [
+    {
+      "skill_id": "github-actions",
+      "matched_technologies": ["github_actions"],
+      "reasons": [
+        "Recommended because GitHub Actions workflows were detected from .github/workflows/release.yml."
+      ],
+      "installed": true
+    },
+    {
+      "skill_id": "pinned-tag",
+      "matched_technologies": ["github_actions"],
+      "reasons": [
+        "Recommended because GitHub Actions workflows were detected from .github/workflows/release.yml."
+      ],
+      "installed": true
+    }
+  ],
+  "summary": {
+    "detected_count": 1,
+    "recommended_count": 2,
+    "installable_count": 0
+  },
   "mode": "install_all",
   "selected_skill_ids": ["github-actions", "pinned-tag"],
   "results": [
     { "skill_id": "github-actions", "status": "installed" },
     { "skill_id": "pinned-tag", "status": "already_installed" }
-  ],
-  "failures": []
+  ]
 }
 ```
 
@@ -369,6 +386,5 @@ Rollout plan:
 
 ## Open Questions
 
-- [ ] Delta specs for this change have not yet been written in `openspec/changes/2026-03-30-autodetect-skill-suggestions/specs/`; confirm the final command/JSON contract there before implementation.
 - [ ] Confirm whether a single nested `astro.config.*` in a docs/app subtree should always emit recommendations or only when paired with root/node workspace evidence.
 - [x] Confirmed phase-2 flag names are `--install` and `--install --all`.

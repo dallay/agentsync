@@ -17,10 +17,10 @@ services:
     depends_on:
       - mock-provider
     volumes:
-      - ./test_suite.sh:/test_suite.sh:ro
+      - ./:/e2e:ro
     environment:
       - PROVIDER_URL=http://mock-provider
-    command: /test_suite.sh
+    command: /e2e/run.sh
 
   # 3. Test Runner (Alpine)
   test-runner-alpine:
@@ -34,10 +34,10 @@ services:
     depends_on:
       - mock-provider
     volumes:
-      - ./test_suite.sh:/test_suite.sh:ro
+      - ./:/e2e:ro
     environment:
       - PROVIDER_URL=http://mock-provider
-    command: /test_suite.sh
+    command: /e2e/run.sh
 
   # 4. Test Runner (Arch)
   test-runner-arch:
@@ -50,7 +50,7 @@ services:
     depends_on:
       - mock-provider
     volumes:
-      - ./test_suite.sh:/test_suite.sh:ro
+      - ./:/e2e:ro
     environment:
       - PROVIDER_URL=http://mock-provider
-    command: /test_suite.sh
+    command: /e2e/run.sh

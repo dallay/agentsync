@@ -1,0 +1,4 @@
+model = "gpt-5"
+
+[sandbox]
+network = false

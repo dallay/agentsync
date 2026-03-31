@@ -99,16 +99,10 @@ fn uses_provider_catalog_when_metadata_is_available() {
 fn skips_provider_rules_without_valid_technologies() {
     let provider = InvalidTechnologyCatalogProvider;
     let catalog = load_catalog(Some(&provider));
-    let detections = vec![detection(
-        TechnologyId::Rust,
-        DetectionConfidence::High,
-        "Cargo.toml",
-    )];
 
-    let recommendations = recommend_skills(catalog.as_ref(), &detections);
-
-    assert!(catalog.get_skill("custom-skill").is_some());
-    assert!(recommendations.is_empty());
+    assert_eq!(catalog.source_name(), "embedded");
+    assert_eq!(catalog.metadata_version(), "v1");
+    assert!(catalog.get_skill("docker-expert").is_some());
 }
 
 #[test]
@@ -227,8 +221,18 @@ impl Provider for NoMatchCatalogProvider {
         Ok(Some(ProviderCatalogMetadata {
             provider: "no-match-provider".to_string(),
             version: "1".to_string(),
-            skills: vec![],
-            rules: vec![],
+            skills: vec![ProviderCatalogSkill {
+                skill_id: "custom-skill".to_string(),
+                title: "Custom Skill".to_string(),
+                summary: "Valid provider-backed metadata".to_string(),
+            }],
+            rules: vec![ProviderCatalogRule {
+                skill_id: "custom-skill".to_string(),
+                technologies: vec!["python".to_string()],
+                min_confidence: "medium".to_string(),
+                reason_template: "Recommended because {technology} was detected from {evidence}."
+                    .to_string(),
+            }],
         }))
     }
 }

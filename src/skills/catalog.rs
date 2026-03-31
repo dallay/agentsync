@@ -257,6 +257,15 @@ impl ProviderBackedCatalog {
             })
             .collect::<Vec<_>>();
 
+        if rules.is_empty() {
+            warn!(
+                provider = %metadata.provider,
+                version = %metadata.version,
+                "Skipping provider recommendation catalog without usable rules"
+            );
+            return None;
+        }
+
         Some(Self {
             source_name: metadata.provider,
             metadata_version: metadata.version,
