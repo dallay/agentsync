@@ -5,7 +5,8 @@
 
 ---
 
-### Completeness
+## Completeness
+
 | Metric | Value |
 |--------|-------|
 | Tasks total | 11 |
@@ -16,15 +17,17 @@ All tasks in `tasks.md` are marked complete.
 
 ---
 
-### Build & Tests Execution
+## Build & Tests Execution
 
 **Build**: ✅ Passed
+
 ```text
 Command: cargo build
 Result: Passed
 ```
 
 **Tests**: ✅ 445 passed / ❌ 0 failed / ⚠️ 4 skipped
+
 ```text
 Targeted:
 - cargo test --lib gitignore → 44 passed, 0 failed, 0 ignored
@@ -39,7 +42,7 @@ Full suite:
 
 ---
 
-### Spec Compliance Matrix
+## Spec Compliance Matrix
 
 | Requirement | Scenario | Test | Result |
 |-------------|----------|------|--------|
@@ -56,7 +59,8 @@ Full suite:
 
 ---
 
-### Correctness (Static — Structural Evidence)
+## Correctness (Static — Structural Evidence)
+
 | Requirement | Status | Notes |
 |------------|--------|-------|
 | Apply Removes Managed Gitignore Block When Management Is Disabled | ✅ Implemented | `src/main.rs` now branches skip/update/cleanup; `src/gitignore.rs::cleanup_gitignore` removes only configured managed blocks and avoids writes when unchanged. |
@@ -66,7 +70,8 @@ Full suite:
 
 ---
 
-### Coherence (Design)
+## Coherence (Design)
+
 | Decision | Followed? | Notes |
 |----------|-----------|-------|
 | Put cleanup behavior in `src/gitignore.rs` | ✅ Yes | `cleanup_gitignore(...)` is implemented in `src/gitignore.rs` and called from `src/main.rs`. |
@@ -76,7 +81,7 @@ Full suite:
 
 ---
 
-### Issues Found
+## Issues Found
 
 **CRITICAL** (must fix before archive):
 None
@@ -89,7 +94,7 @@ None
 
 ---
 
-### Verdict
+## Verdict
 PASS
 
 Implementation matches the proposal, spec, design, and completed tasks, and all spec scenarios now have passing automated evidence; archive can proceed cleanly.

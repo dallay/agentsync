@@ -5,7 +5,8 @@
 
 ---
 
-### Completeness
+## Completeness
+
 | Metric | Value |
 |--------|-------|
 | Tasks total | 10 |
@@ -16,9 +17,10 @@ All tasks in `tasks.md` are marked complete.
 
 ---
 
-### Build & Tests Execution
+## Build & Tests Execution
 
 **Build**: ✅ Passed
+
 ```text
 $ pnpm run docs:build
 agentsync-root@1.35.2 docs:build
@@ -37,6 +39,7 @@ Build complete.
 ```
 
 **Tests**: ⚠️ 0 passed / 0 failed / 0 skipped
+
 ```text
 No dedicated automated test command is configured in openspec/config.yaml.
 No root package.json test script exists.
@@ -48,7 +51,7 @@ Executable validation used: docs build (`pnpm run docs:build`).
 
 ---
 
-### Spec Compliance Matrix
+## Spec Compliance Matrix
 
 | Requirement | Scenario | Test | Result |
 |-------------|----------|------|--------|
@@ -71,7 +74,8 @@ Executable validation used: docs build (`pnpm run docs:build`).
 
 ---
 
-### Correctness (Static — Structural Evidence)
+## Correctness (Static — Structural Evidence)
+
 | Requirement | Status | Notes |
 |------------|--------|-------|
 | Dedicated Windows guide exists and is discoverable | ✅ Implemented | New `guides/windows-symlink-setup.mdx` exists; sidebar includes `guides/windows-symlink-setup`; docs build generated `/guides/windows-symlink-setup/index.html`. |
@@ -84,7 +88,8 @@ Executable validation used: docs build (`pnpm run docs:build`).
 
 ---
 
-### Coherence (Design)
+## Coherence (Design)
+
 | Decision | Followed? | Notes |
 |----------|-----------|-------|
 | Make one guide the canonical Windows destination | ✅ Yes | All reviewed surfaces point to the new guide. |
@@ -95,7 +100,7 @@ Executable validation used: docs build (`pnpm run docs:build`).
 
 ---
 
-### Issues Found
+## Issues Found
 
 **CRITICAL** (must fix before archive):
 None.
@@ -109,7 +114,7 @@ None.
 
 ---
 
-### Verdict
+## Verdict
 PASS WITH WARNINGS
 
 The documentation change matches the proposal/spec/design/tasks, the new Windows guide is discoverable and appropriately scoped, and the docs build passes; archive can proceed, but only with warnings because scenario-level automated verification is absent.

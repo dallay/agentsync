@@ -5,7 +5,8 @@
 
 ---
 
-### Completeness
+## Completeness
+
 | Metric | Value |
 |--------|-------|
 | Tasks total | 11 |
@@ -16,15 +17,17 @@ All tasks in `tasks.md` are marked complete.
 
 ---
 
-### Build & Tests Execution
+## Build & Tests Execution
 
 **Docs build**: ✅ Passed
+
 ```text
 Command: pnpm run docs:build
 Result: Astro docs build completed successfully and generated /guides/gitignore-team-workflows/
 ```
 
 **Targeted behavior tests**: ✅ 5 passed / ❌ 0 failed / ⚠️ 0 skipped
+
 ```text
 Command: cargo test --test test_bug test_apply_ -- --nocapture
 Result: 4 passed, 0 failed
@@ -36,6 +39,7 @@ Result: 1 passed, 0 failed
 **Coverage**: ➖ Not configured
 
 **Targeted Biome check**: ⚠️ Not executed against files
+
 ```text
 Command: pnpm exec biome check README.md npm/agentsync/README.md website/docs/src/content/docs/index.mdx website/docs/src/content/docs/guides/getting-started.mdx website/docs/src/content/docs/guides/gitignore-team-workflows.mdx website/docs/src/content/docs/reference/configuration.mdx website/docs/src/content/docs/reference/cli.mdx
 Result: Biome reported all specified files are ignored by current configuration; 0 files processed.
@@ -43,7 +47,7 @@ Result: Biome reported all specified files are ignored by current configuration;
 
 ---
 
-### Spec Compliance Matrix
+## Spec Compliance Matrix
 
 | Requirement | Scenario | Evidence | Result |
 |-------------|----------|----------|--------|
@@ -66,7 +70,8 @@ Result: Biome reported all specified files are ignored by current configuration;
 
 ---
 
-### Correctness (Static — Structural Evidence)
+## Correctness (Static — Structural Evidence)
+
 | Requirement | Status | Notes |
 |------------|--------|-------|
 | Canonical guide exists and is primary source | ✅ Implemented | New guide created and linked from docs/sidebar/supporting surfaces. |
@@ -78,7 +83,8 @@ Result: Biome reported all specified files are ignored by current configuration;
 
 ---
 
-### Coherence (Design)
+## Coherence (Design)
+
 | Decision | Followed? | Notes |
 |----------|-----------|-------|
 | Use a single canonical workflow guide under `guides/` | ✅ Yes | New guide added and sidebar updated. |
@@ -88,7 +94,7 @@ Result: Biome reported all specified files are ignored by current configuration;
 
 ---
 
-### Issues Found
+## Issues Found
 
 **CRITICAL** (must fix before archive):
 None
@@ -102,7 +108,7 @@ None
 
 ---
 
-### Verdict
+## Verdict
 PASS
 
 Documentation scope, cross-linking, and behavior accuracy now meet the proposal/spec/design/tasks cleanly, and archive can proceed. The remaining Biome-ignore gap is a non-blocking process warning rather than a change-specific defect.

@@ -182,6 +182,43 @@ entry1
     }
 
     #[test]
+    fn test_gitignore_audit_flags_partial_marker_when_disabled() {
+        let config: Config = toml::from_str(
+            r#"
+            [gitignore]
+            enabled = false
+
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.instructions]
+            source = "AGENTS.md"
+            destination = "AGENTS.md"
+            type = "symlink"
+            "#,
+        )
+        .unwrap();
+
+        let marker = &config.gitignore.marker;
+        let start_marker = format!("# START {}", marker);
+        let end_marker = format!("# END {}", marker);
+
+        assert!(gitignore_missing_section_is_issue(
+            config.gitignore.enabled,
+            &format!("node_modules/\n{start_marker}\nmanaged\n"),
+            &start_marker,
+            &end_marker,
+        ));
+
+        assert!(gitignore_missing_section_is_issue(
+            config.gitignore.enabled,
+            &format!("node_modules/\nmanaged\n{end_marker}\n"),
+            &start_marker,
+            &end_marker,
+        ));
+    }
+
+    #[test]
     fn test_validate_destinations_no_conflicts() {
         let dests = vec![
             (

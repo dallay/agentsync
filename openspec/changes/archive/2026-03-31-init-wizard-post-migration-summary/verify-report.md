@@ -5,7 +5,8 @@
 
 ---
 
-### Completeness
+## Completeness
+
 | Metric | Value |
 |--------|-------|
 | Tasks total | 10 |
@@ -16,15 +17,17 @@ All tasks in `tasks.md` are marked complete.
 
 ---
 
-### Build & Tests Execution
+## Build & Tests Execution
 
 **Build**: ✅ Passed
+
 ```text
 Command: cargo check --all-targets --all-features
 Result: Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.89s
 ```
 
 **Tests**: ✅ Passed
+
 ```text
 Targeted:
 - cargo test test_render_wizard_summary_includes_canonical_apply_and_git_guidance -- --nocapture
@@ -41,7 +44,7 @@ Result: 448 passed, 0 failed, 4 ignored
 
 ---
 
-### Spec Compliance Matrix
+## Spec Compliance Matrix
 
 | Requirement | Scenario | Test | Result |
 |-------------|----------|------|--------|
@@ -62,7 +65,8 @@ Result: 448 passed, 0 failed, 4 ignored
 
 ---
 
-### Correctness (Static — Structural Evidence)
+## Correctness (Static — Structural Evidence)
+
 | Requirement | Status | Notes |
 |------------|--------|-------|
 | Canonical `.agents/` ownership | ✅ Implemented | `render_wizard_post_migration_summary()` states `.agents/` is the canonical source of truth and describes migrated/generated files under `.agents/`. |
@@ -74,7 +78,8 @@ Result: 448 passed, 0 failed, 4 ignored
 
 ---
 
-### Coherence (Design)
+## Coherence (Design)
+
 | Decision | Followed? | Notes |
 |----------|-----------|-------|
 | Keep wizard summary composition inside `init_wizard()` | ✅ Yes | Summary is rendered in `src/init.rs` after backup handling resolves. |
@@ -85,7 +90,7 @@ Result: 448 passed, 0 failed, 4 ignored
 
 ---
 
-### Issues Found
+## Issues Found
 
 **CRITICAL** (must fix before archive):
 None
@@ -99,7 +104,7 @@ None
 
 ---
 
-### Verdict
+## Verdict
 PASS WITH WARNINGS
 
 Implementation matches the proposal/design/tasks and passes build plus targeted/full test execution, but archive should proceed with awareness that behavioral coverage is still mostly helper-level rather than end-to-end.
