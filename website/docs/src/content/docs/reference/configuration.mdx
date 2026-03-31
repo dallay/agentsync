@@ -87,6 +87,8 @@ enabled = false
 
 Keep the workflow explanation in the <BaseLink href="/guides/gitignore-team-workflows/">canonical guide</BaseLink>; use this reference section for field semantics.
 
+If you are configuring AgentSync from native Windows and symlink creation fails locally, keep the config unchanged and fix the environment readiness instead. See <BaseLink href="/guides/windows-symlink-setup/">Windows Symlink Setup</BaseLink>.
+
 ### Known Ignore Patterns
 
 AgentSync automatically adds the following patterns to `.gitignore` based on which agents are **enabled**:
@@ -226,6 +228,8 @@ The matrix below documents common agent locations and whether AgentSync can hand
 | `symlink` | Creates a direct symbolic link from `destination` to `source`. |
 | `symlink-contents` | Creates individual symbolic links for every file inside the `source` directory into the `destination` directory. |
 | `module-map` | Maps centrally-managed source files to specific module directories, creating a symlink per mapping with convention-based filenames. |
+
+These target types do not change on Windows. If the local Windows environment is not ready to create symlinks, use the <BaseLink href="/guides/windows-symlink-setup/">Windows Symlink Setup guide</BaseLink> rather than changing target semantics.
 
 #### `symlink-contents` with patterns
 When using `symlink-contents`, you can filter files using a glob pattern:

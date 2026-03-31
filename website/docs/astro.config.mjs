@@ -35,6 +35,10 @@ export default defineConfig({
 					items: [
 						{ label: "Getting Started", slug: "guides/getting-started" },
 						{
+							label: "Windows Symlink Setup",
+							slug: "guides/windows-symlink-setup",
+						},
+						{
 							label: "Gitignore Team Workflows",
 							slug: "guides/gitignore-team-workflows",
 						},

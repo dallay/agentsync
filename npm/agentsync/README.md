@@ -70,6 +70,8 @@ agentsync apply
 
 AgentSync defaults to managed `.gitignore` mode (`[gitignore].enabled = true`), which is the recommended starting point for most teams. If your team intentionally wants to commit AgentSync-managed destinations, treat `[gitignore].enabled = false` as an opt-out workflow instead of a new default. Full guide: https://dallay.github.io/agentsync/guides/gitignore-team-workflows/
 
+Running from Windows? Use the setup guide for native symlink prerequisites, WSL as an optional lower-friction path, and verification steps: https://dallay.github.io/agentsync/guides/windows-symlink-setup/
+
 #### Clean Configurations:
 
 Remove previously created symbolic links:

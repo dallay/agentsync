@@ -5,6 +5,8 @@ description: Detailed documentation for all agentsync commands.
 
 `agentsync` provides a straightforward set of commands to manage your AI agent configurations.
 
+If you run AgentSync from Windows and need symlink prerequisites, WSL setup positioning, or recovery help, use the <a href="/guides/windows-symlink-setup/">Windows Symlink Setup guide</a>. The command reference below stays focused on CLI behavior.
+
 ## Commands
 
 ### `init`
@@ -52,6 +54,8 @@ In workflow terms, `agentsync apply` reconciles your local managed destinations 
 - temporary CLI opt-out: skips all `.gitignore` reconciliation when `--no-gitignore` is present
 
 For the full team decision guide, see <a href="/guides/gitignore-team-workflows/">Gitignore Team Workflows</a>.
+
+If `apply` fails because the local Windows environment cannot create symlinks yet, fix the shell/setup prerequisites first with the <a href="/guides/windows-symlink-setup/">Windows Symlink Setup guide</a>.
 
 ```bash
 agentsync apply [OPTIONS]
@@ -288,3 +292,5 @@ Examples
   - `agentsync status --json`
 - With custom project root:
   - `agentsync status --project-root /path/to/repo --json`
+
+On Windows, `status` is also a practical post-setup verification step after you fix symlink permissions or switch to WSL. See the <a href="/guides/windows-symlink-setup/">Windows Symlink Setup guide</a> for the broader verification flow.

@@ -216,6 +216,8 @@ agentsync apply
 
 AgentSync defaults to managed `.gitignore` mode (`[gitignore].enabled = true`), which is the recommended starting point for most teams. If your team intentionally wants to commit AgentSync-managed destinations instead, treat `[gitignore].enabled = false` as an explicit opt-out workflow. See the canonical guide: https://dallay.github.io/agentsync/guides/gitignore-team-workflows/
 
+If you run AgentSync from Windows and need native symlink prerequisites, WSL guidance, or recovery steps, use the dedicated setup guide: https://dallay.github.io/agentsync/guides/windows-symlink-setup/
+
 ## Usage
 
 ```bash
@@ -614,7 +616,7 @@ Ensure you have the latest stable Rust toolchain installed. You can update with 
 
 ### Symlink creation fails on Windows
 
-Ensure you have Developer Mode enabled or run your terminal as Administrator, as Windows requires special permissions for creating symbolic links.
+Use the dedicated Windows setup guide for native prerequisites, WSL positioning, verification, and recovery steps: https://dallay.github.io/agentsync/guides/windows-symlink-setup/
 
 ## Inspiration
 
