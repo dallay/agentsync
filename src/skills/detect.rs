@@ -4,6 +4,7 @@ use crate::skills::suggest::{
 use anyhow::Result;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use tracing::warn;
 use walkdir::{DirEntry, WalkDir};
 
 const IGNORED_DIRS: &[&str] = &[
@@ -51,7 +52,23 @@ impl RepoDetector for FileSystemRepoDetector {
             .into_iter()
             .filter_entry(|entry| !should_ignore_entry(project_root, entry))
         {
-            let entry = entry?;
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(error) => {
+                    let at_root = error.path().is_some_and(|path| path == project_root);
+                    if at_root || error.depth() == 0 {
+                        return Err(error.into());
+                    }
+
+                    warn!(
+                        path = ?error.path().map(|path| path.display().to_string()),
+                        depth = error.depth(),
+                        error = %error,
+                        "Skipping unreadable path while scanning repository technologies"
+                    );
+                    continue;
+                }
+            };
             if !entry.file_type().is_file() {
                 continue;
             }

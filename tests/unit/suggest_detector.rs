@@ -3,6 +3,9 @@ use agentsync::skills::suggest::{DetectionConfidence, TechnologyId};
 use std::fs;
 use tempfile::TempDir;
 
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+
 #[test]
 fn detects_supported_phase_one_technologies() {
     let temp_dir = TempDir::new().unwrap();
@@ -86,5 +89,37 @@ fn prunes_ignored_directories_and_marks_incidental_markers_low_confidence() {
             .evidence
             .iter()
             .any(|evidence| evidence.path == std::path::Path::new("tests/e2e/Dockerfile.e2e"))
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn skips_unreadable_nested_directories_without_failing_detection() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+
+    fs::write(root.join("Cargo.toml"), "[package]\nname='demo'\n").unwrap();
+    fs::create_dir_all(root.join("private/subdir")).unwrap();
+    fs::write(root.join("private/subdir/package.json"), "{}\n").unwrap();
+
+    let unreadable_dir = root.join("private");
+    let original_permissions = fs::metadata(&unreadable_dir).unwrap().permissions();
+    let mut unreadable_permissions = original_permissions.clone();
+    unreadable_permissions.set_mode(0o000);
+    fs::set_permissions(&unreadable_dir, unreadable_permissions).unwrap();
+
+    let detections = FileSystemRepoDetector.detect(root).unwrap();
+
+    fs::set_permissions(&unreadable_dir, original_permissions).unwrap();
+
+    assert!(
+        detections
+            .iter()
+            .any(|detection| detection.technology == TechnologyId::Rust)
+    );
+    assert!(
+        detections
+            .iter()
+            .all(|detection| detection.technology != TechnologyId::NodeTypeScript)
     );
 }
