@@ -36,6 +36,7 @@ node_modules/
 pnpm-debug.log
 perf_test_data/
 # START AI Agent Symlinks
+!.agents
 .agents/skills/*.bak
 .claude/commands/
 .claude/skills/
@@ -55,9 +56,9 @@ perf_test_data/
 .opencode/skills.bak
 .opencode/skills/
 .vscode/mcp.json
-AGENTS.md
-AGENTS.md.bak
-CLAUDE.md
-CLAUDE.md.bak
+/AGENTS.md
+/AGENTS.md.bak
+/CLAUDE.md
+/CLAUDE.md.bak
 opencode.json
 # END AI Agent Symlinks
