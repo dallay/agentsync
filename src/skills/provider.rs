@@ -5,12 +5,67 @@ use serde::Deserialize;
 pub trait Provider {
     fn manifest(&self) -> Result<String>;
     fn resolve(&self, id: &str) -> Result<SkillInstallInfo>;
+
+    fn recommendation_catalog(&self) -> Result<Option<ProviderCatalogMetadata>> {
+        Ok(None)
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct SkillInstallInfo {
     pub download_url: String,
     pub format: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ProviderCatalogMetadata {
+    pub provider: String,
+    pub version: String,
+    #[serde(default = "default_catalog_schema_version")]
+    pub schema_version: String,
+    #[serde(default)]
+    pub skills: Vec<ProviderCatalogSkill>,
+    #[serde(default)]
+    pub technologies: Vec<ProviderCatalogTechnology>,
+    #[serde(default)]
+    pub combos: Vec<ProviderCatalogCombo>,
+}
+
+fn default_catalog_schema_version() -> String {
+    "v1".to_string()
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ProviderCatalogSkill {
+    pub provider_skill_id: String,
+    pub local_skill_id: String,
+    pub title: String,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ProviderCatalogTechnology {
+    pub id: String,
+    pub name: String,
+    pub skills: Vec<String>,
+    #[serde(default)]
+    pub detect: Option<toml::Value>,
+    #[serde(default)]
+    pub min_confidence: Option<String>,
+    #[serde(default)]
+    pub reason_template: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ProviderCatalogCombo {
+    pub id: String,
+    pub name: String,
+    pub requires: Vec<String>,
+    pub skills: Vec<String>,
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    #[serde(default)]
+    pub reason_template: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]

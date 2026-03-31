@@ -103,7 +103,8 @@ rust-run:
 e2e-test:
 	@echo "Running E2E tests with Docker Compose..."
 	@status=0; \
-	docker compose -f tests/e2e/docker-compose.yml up --build --exit-code-from test-runner-ubuntu || status=$$?; \
+	docker compose -f tests/e2e/docker-compose.yml build test-runner-ubuntu || status=$$?; \
+	if [ $$status -eq 0 ]; then docker compose -f tests/e2e/docker-compose.yml up --no-build --abort-on-container-exit --exit-code-from test-runner-ubuntu test-runner-ubuntu || status=$$?; fi; \
 	docker compose -f tests/e2e/docker-compose.yml down --volumes --remove-orphans; \
 	exit $$status
 

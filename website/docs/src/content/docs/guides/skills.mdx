@@ -95,9 +95,117 @@ Prompts and examples...
 
 If parsing fails, the CLI will return a validation error indicating the problem.
 
-## CLI: install, update, list
+## CLI: suggest, install, update, list
 
 AgentSync exposes skill management via `agentsync skill` subcommands.
+
+- Suggest repository-aware skills without modifying `.agents/skills/`:
+
+```bash
+agentsync skill suggest
+agentsync skill suggest --json
+agentsync skill suggest --install
+agentsync skill suggest --install --all
+```
+
+`agentsync skill suggest` is repository-aware, but still conservative:
+
+- it detects a small, explicit set of repository technologies from local files only
+- it maps those detections to AgentSync's curated recommendations
+- it reports already-installed skills instead of hiding them
+- it stays read-only unless you explicitly opt into install mode
+
+### What `skill suggest` does
+
+The default `suggest` flow is read-only. It:
+
+1. scans the current repository for supported technology markers
+2. reports the detected technologies and their confidence
+3. looks up recommended skills from AgentSync's catalog
+4. marks whether each recommendation is already installed in `.agents/skills/registry.json`
+
+This is intentionally **opinionated and curated by AgentSync**. It is not a general package detector and it does not try to recommend every possible skill for every tool it sees.
+
+### Supported repository technology detection (current scope)
+
+Current detection is implemented in Rust and limited to these technologies and markers:
+
+| Technology id | Human label | Current local markers |
+|---|---|---|
+| `rust` | Rust | `Cargo.toml` |
+| `node_typescript` | Node/TypeScript | `package.json`, `tsconfig.json` |
+| `astro` | Astro | `astro.config.*` |
+| `github_actions` | GitHub Actions | `.github/workflows/*.yml`, `.github/workflows/*.yaml` |
+| `docker` | Docker | `Dockerfile*`, `compose.yml`, `compose.yaml`, `docker-compose*.yml`, `docker-compose*.yaml` |
+| `make` | Make | `Makefile`, `GNUmakefile` |
+| `python` | Python | `pyproject.toml`, `uv.lock`, `poetry.lock`, `requirements*.txt` |
+
+Notes:
+
+- Detection uses repository contents only; recommendation metadata does **not** decide what technologies are detected.
+- Root-level canonical markers yield `high` confidence.
+- Nested markers generally yield `medium` confidence.
+- Markers under test/example-style paths yield `low` confidence.
+- AgentSync ignores common generated/vendor directories like `.git`, `.agents`, `node_modules`, `target`, `dist`, and `build` while scanning.
+
+Recommendation metadata now comes from a hybrid catalog model:
+
+- AgentSync ships an **embedded declarative catalog** in the binary, so `skill suggest` still works offline and always has a baseline recommendation source.
+- Providers may expose an **optional catalog overlay**. Valid provider entries extend or override matching embedded entries by stable ids.
+- Invalid provider entries are ignored individually; if provider metadata is missing, unreadable, or invalid at the top level, AgentSync falls back to the embedded catalog.
+- A single technology can recommend **multiple skills**. For example, the embedded catalog currently maps `astro` to `frontend-design`, `accessibility`, `performance`, `core-web-vitals`, and `seo`, and maps `github_actions` to both `github-actions` and `pinned-tag`.
+- The schema also supports explicit **combo** entries (multi-technology recommendations). Those entries are loaded and preserved now, but active combo evaluation is currently deferred.
+
+### Compatibility bridge: canonical ids vs current runtime ids
+
+The catalog model separates two identities:
+
+- `provider_skill_id`: the canonical id used in catalog metadata
+- `local_skill_id`: the current local/runtime id used by today's CLI and install system
+
+That compatibility bridge matters because current runtime behavior still uses local slug ids:
+
+- `agentsync skill suggest` emits `skill_id` values using the local/runtime id
+- `agentsync skill install <SKILL_ID>` still expects a single path-safe slug, not a slash-delimited canonical provider id
+- installed skills still live at `.agents/skills/<skill_id>/`
+- installed-state lookup still keys off the local/runtime id in `registry.json`
+
+In other words: catalog metadata can be more future-facing than the runtime contract, but the current user-facing CLI behavior remains stable.
+
+### Read-only output and JSON
+
+Human output shows detections, recommended skills, reasons, and install state. `--json` returns the stable machine-readable contract with `detections`, `recommendations`, and `summary`.
+
+Example read-only flow:
+
+```bash
+agentsync skill suggest
+```
+
+Example JSON flow:
+
+```bash
+agentsync skill suggest --json
+```
+
+Phase 2 adds recommendation-driven installs:
+
+- `agentsync skill suggest --install` opens an interactive multi-select prompt in a TTY and only offers recommended skills that are not already installed.
+- `agentsync skill suggest --install --all` is the non-interactive path and installs every recommended skill that is still pending.
+- Already installed recommendations are still shown in read-only output, but install flows skip them instead of reinstalling them.
+- If you run `--install` without a TTY, AgentSync fails safely and tells you to use `--install --all`.
+
+Example interactive install:
+
+```bash
+agentsync skill suggest --install
+```
+
+Example non-interactive install-all:
+
+```bash
+agentsync skill suggest --install --all
+```
 
 - Install a skill (from a provider id, local archive, or directory):
 
@@ -118,8 +226,99 @@ agentsync skill list
 ```
 
 Flags:
-- `--source` — optional. Use a local path, archive URL, or provider-specific identifier.
-- `--json` — output machine-readable JSON with skill metadata from `.agents/skills/registry.json`.
+- `--source` — optional for `skill install` and `skill update`. Use a local path, archive URL, or provider-specific identifier.
+- `--json` — output machine-readable JSON. For `skill suggest`, this is the detections/recommendations/summary contract shown below.
+
+Example `skill suggest --json` response:
+
+```json
+{
+  "detections": [
+    {
+      "technology": "rust",
+      "confidence": "high",
+      "evidence": ["Cargo.toml"]
+    }
+  ],
+  "recommendations": [
+    {
+      "skill_id": "rust-async-patterns",
+      "matched_technologies": ["rust"],
+      "reasons": [
+        "Recommended because Rust was detected from Cargo.toml."
+      ],
+      "installed": false
+    }
+  ],
+  "summary": {
+    "detected_count": 1,
+    "recommended_count": 1,
+    "installable_count": 1
+  }
+}
+```
+
+Example `skill suggest --install --all --json` response:
+
+```json
+{
+  "detections": [
+    {
+      "technology": "rust",
+      "confidence": "high",
+      "evidence": ["Cargo.toml"]
+    }
+  ],
+  "recommendations": [
+    {
+      "skill_id": "rust-async-patterns",
+      "matched_technologies": ["rust"],
+      "reasons": [
+        "Recommended because Rust was detected from Cargo.toml."
+      ],
+      "installed": false
+    }
+  ],
+  "summary": {
+    "detected_count": 1,
+    "recommended_count": 1,
+    "installable_count": 1
+  },
+  "mode": "install_all",
+  "selected_skill_ids": ["rust-async-patterns"],
+  "results": [
+    {
+      "skill_id": "rust-async-patterns",
+      "status": "installed"
+    }
+  ]
+}
+```
+
+### Example: how future catalog additions such as Vue fit the model
+
+Detection support for a new technology is still a Rust change first. For example, adding Vue in the future would typically require:
+
+1. adding a new Rust `TechnologyId` and detector markers
+2. adding a catalog skill definition and technology entry
+3. optionally adding combo entries later
+
+A catalog entry could look like this:
+
+```toml
+[[skills]]
+provider_skill_id = "antfu/skills/vue"
+local_skill_id = "vue"
+title = "Vue"
+summary = "Opinionated Vue workflow guidance."
+
+[[technologies]]
+id = "vue"
+name = "Vue"
+skills = ["antfu/skills/vue", "frontend-design"]
+```
+
+That TOML shape is already supported by the catalog model. But the repository would not start detecting Vue until the Rust detector also learned how to report `vue`.
 
 ## Providers and sources
 

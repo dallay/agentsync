@@ -115,6 +115,46 @@ agentsync skill install [OPTIONS] <SKILL_ID>
 - `--source <SOURCE>`: Optional source (dir, archive, or URL).
 - `--json`: Output machine-readable JSON.
 
+#### `suggest`
+
+Suggest repository-aware skills without installing them.
+
+```bash
+agentsync skill suggest [--json] [--install [--all]]
+```
+
+- `--json`: Output detections, recommendations, and summary counts as JSON.
+- `--install`: Start the recommendation-driven install flow.
+- `--all`: Use with `--install` to install every not-yet-installed recommendation without prompting.
+
+Behavior:
+
+- `skill suggest` is read-only by default.
+- Detection scope is currently limited to Rust, Node/TypeScript, Astro, GitHub Actions, Docker, Make, and Python.
+- Detection comes from Rust repository scanning, while recommendation mapping comes from AgentSync's curated catalog.
+- Recommendations are opinionated, not exhaustive.
+- The runtime loads an embedded declarative catalog first, then optionally overlays valid provider metadata.
+- One detected technology may map to multiple recommended skills.
+- Combo catalog entries are supported in schema and loading, but active combo evaluation is currently deferred.
+- `--install` opens an interactive selector in a TTY.
+- `--install --all` is the explicit non-interactive path and installs every not-yet-installed recommendation.
+- Recommendation-driven installs reuse the same install pipeline and registry updates as `skill install`, and they skip recommendations that are already installed.
+
+Compatibility note:
+
+- Catalog metadata can carry canonical provider skill ids internally.
+- Current CLI output, installation, and installed-state tracking still use local slug-like `skill_id` values.
+- Direct `skill install <SKILL_ID>` therefore continues to expect the current local/runtime id shape.
+
+Examples:
+
+```bash
+agentsync skill suggest
+agentsync skill suggest --json
+agentsync skill suggest --install
+agentsync skill suggest --install --all
+```
+
 #### `update`
 
 Update a skill to the latest version.

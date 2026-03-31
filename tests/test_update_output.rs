@@ -3,23 +3,16 @@ use std::io::Write;
 use std::process::Command;
 use tempfile::TempDir;
 
+fn agentsync_bin() -> &'static str {
+    env!("CARGO_BIN_EXE_agentsync")
+}
+
 /// Test updating a skill from a missing/non-existent source path.
 #[test]
 fn test_update_missing_source_contract() {
     let td = TempDir::new().unwrap();
     let cwd = td.path();
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let exe = if cfg!(windows) {
-        "agentsync.exe"
-    } else {
-        "agentsync"
-    };
-    let target = std::path::Path::new(manifest_dir)
-        .join("target")
-        .join("debug")
-        .join(exe);
-    let target = target.to_str().expect("failed to convert path to str");
-    let output = Command::new(target)
+    let output = Command::new(agentsync_bin())
         .current_dir(cwd)
         .arg("skill")
         .arg("update")
@@ -54,18 +47,7 @@ fn test_update_broken_manifest_contract() {
     f.write_all(b"not frontmatter\n====\nthis is broken")
         .unwrap();
     let cwd = td.path();
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let exe = if cfg!(windows) {
-        "agentsync.exe"
-    } else {
-        "agentsync"
-    };
-    let target = std::path::Path::new(manifest_dir)
-        .join("target")
-        .join("debug")
-        .join(exe);
-    let target = target.to_str().expect("failed to convert path to str");
-    let output = Command::new(target)
+    let output = Command::new(agentsync_bin())
         .current_dir(cwd)
         .arg("skill")
         .arg("update")
@@ -104,18 +86,7 @@ fn test_update_no_version_bump_contract() {
     let manifest = "---\nname: noroll-skill\ndescription: Test\nversion: 1.0.0\n---\n";
     fs::write(install_src.join("SKILL.md"), manifest).unwrap();
     // Install from src
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let exe = if cfg!(windows) {
-        "agentsync.exe"
-    } else {
-        "agentsync"
-    };
-    let target = std::path::Path::new(manifest_dir)
-        .join("target")
-        .join("debug")
-        .join(exe);
-    let target = target.to_str().expect("failed to convert path to str");
-    let install_out = Command::new(target)
+    let install_out = Command::new(agentsync_bin())
         .current_dir(&project_root)
         .arg("skill")
         .arg("install")
@@ -173,10 +144,10 @@ fn test_update_no_version_bump_contract() {
     println!("[TEST DEBUG] install_src: {:?}", install_src);
     println!(
         "[TEST DEBUG] command: {} skill install noroll-skill --source {} --json",
-        target,
+        agentsync_bin(),
         install_src.to_str().unwrap()
     );
-    let output = Command::new(target)
+    let output = Command::new(agentsync_bin())
         .current_dir(&project_root)
         .arg("skill")
         .arg("install")
@@ -203,7 +174,7 @@ fn test_update_no_version_bump_contract() {
     fs::create_dir_all(v1_src).unwrap();
     fs::write(v1_src.join("SKILL.md"), v1_manifest).unwrap();
     // Attempt to update (downgrade)
-    let output = Command::new(target)
+    let output = Command::new(agentsync_bin())
         .current_dir(&project_root)
         .arg("skill")
         .arg("update")

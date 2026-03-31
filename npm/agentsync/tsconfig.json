@@ -6,6 +6,7 @@
 		"outDir": "./lib",
 		"rootDir": "./src",
 		"strict": true,
+		"types": ["node"],
 		"esModuleInterop": true,
 		"skipLibCheck": true,
 		"forceConsistentCasingInFileNames": true,
@@ -13,7 +14,8 @@
 		"declaration": true,
 		"declarationMap": true,
 		"sourceMap": true,
-		"moduleResolution": "node"
+		"moduleResolution": "node",
+		"ignoreDeprecations": "6.0"
 	},
 	"include": ["src/**/*"],
 	"exclude": ["node_modules", "lib"]

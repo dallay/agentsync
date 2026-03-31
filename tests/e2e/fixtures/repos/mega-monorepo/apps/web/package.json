@@ -1,0 +1,10 @@
+{
+	"name": "web",
+	"private": true,
+	"dependencies": {
+		"react": "^19.0.0"
+	},
+	"devDependencies": {
+		"typescript": "^5.0.0"
+	}
+}
