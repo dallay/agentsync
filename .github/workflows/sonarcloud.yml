@@ -51,6 +51,7 @@ jobs:
       - name: Generate Rust coverage reports
         run: |
           cargo llvm-cov clean --workspace
+          mkdir -p target/coverage
           cargo llvm-cov --workspace --all-features --lcov --output-path target/coverage/rust.lcov.info
           cargo llvm-cov report --cobertura --output-path target/coverage/rust-cobertura.xml
 
