@@ -1040,6 +1040,68 @@ fn build_default_config_with_skills_modes(modes: &BTreeMap<String, SyncType>) ->
     output
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ManagedFileOutcome {
+    Written,
+    Preserved,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum BackupOutcome {
+    NotOffered,
+    Declined,
+    Completed { moved_count: usize },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct WizardSummaryFacts {
+    instruction_files_merged: usize,
+    migrated_count: usize,
+    skipped_count: usize,
+    agents_md: ManagedFileOutcome,
+    config: ManagedFileOutcome,
+    backup: BackupOutcome,
+}
+
+fn render_wizard_post_migration_summary(facts: &WizardSummaryFacts) -> Vec<String> {
+    let mut lines = vec![
+        "  • .agents/ is now the canonical source of truth for the migrated instructions and generated config.".to_string(),
+        format!(
+            "  • The wizard merged {} instruction file(s), migrated {} additional item(s), and skipped {} item(s) that needed to stay as-is.",
+            facts.instruction_files_merged, facts.migrated_count, facts.skipped_count
+        ),
+        format!("  • {}.", managed_file_sentence(facts.agents_md, ".agents/AGENTS.md")),
+        format!("  • {}.", managed_file_sentence(facts.config, ".agents/agentsync.toml")),
+        "  • This wizard migrated content into `.agents/`, but it did not run `agentsync apply`.".to_string(),
+        "  • Run `agentsync apply` next to reconcile the downstream managed files that should point back to `.agents/`.".to_string(),
+        "  • If your config keeps gitignore management enabled (the default for new configs), collaborators should also run `agentsync apply` so `.gitignore` behavior stays aligned with `.agents/`.".to_string(),
+        "  • After the wizard and apply, review the resulting changes with your normal git workflow; git may show different changes depending on what already existed before migration and what apply updates here.".to_string(),
+    ];
+
+    let backup_line = match &facts.backup {
+        BackupOutcome::Completed { moved_count } => {
+            format!("  • Created a backup of {moved_count} original item(s) in `.agents/backup/`.")
+        }
+        BackupOutcome::Declined => {
+            "  • No backup was created; the original files remain where they are.".to_string()
+        }
+        BackupOutcome::NotOffered => {
+            "  • Backup was not offered because the wizard kept the existing `.agents/AGENTS.md`."
+                .to_string()
+        }
+    };
+    lines.insert(4, backup_line);
+
+    lines
+}
+
+fn managed_file_sentence(outcome: ManagedFileOutcome, path: &str) -> String {
+    match outcome {
+        ManagedFileOutcome::Written => format!("Wrote `{path}`"),
+        ManagedFileOutcome::Preserved => format!("Kept the existing `{path}`"),
+    }
+}
+
 fn parse_skills_section_agent(line: &str) -> Option<&str> {
     line.strip_prefix("[agents.")?
         .strip_suffix(".targets.skills]")
@@ -1475,16 +1537,15 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
 
     // Create AGENTS.md with migrated content
     let agents_md_path = agents_dir.join("AGENTS.md");
-    let mut wrote_agents_md = false;
-    if let Some(content) = migrated_content {
+    let agents_md_outcome = if let Some(content) = migrated_content {
         if agents_md_path.exists() && !force {
             println!(
                 "  {} AGENTS.md already exists (use --force to overwrite)",
                 "!".yellow()
             );
+            ManagedFileOutcome::Preserved
         } else {
             fs::write(&agents_md_path, &content)?;
-            wrote_agents_md = true;
             if instruction_files_merged > 1 {
                 println!(
                     "  {} Created: {} (merged {} instruction files)",
@@ -1499,25 +1560,26 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
                     agents_md_path.display()
                 );
             }
+            ManagedFileOutcome::Written
         }
+    } else if !agents_md_path.exists() || force {
+        fs::write(&agents_md_path, DEFAULT_AGENTS_MD)?;
+        println!("  {} Created: {}", "✔".green(), agents_md_path.display());
+        ManagedFileOutcome::Written
     } else {
-        // Use default template if no content migrated
-        if !agents_md_path.exists() || force {
-            fs::write(&agents_md_path, DEFAULT_AGENTS_MD)?;
-            wrote_agents_md = true;
-            println!("  {} Created: {}", "✔".green(), agents_md_path.display());
-        }
-    }
+        ManagedFileOutcome::Preserved
+    };
 
     // Generate config file
     println!("\n{}", "⚙️  Generating configuration...".cyan());
 
-    if config_path.exists() && !force {
+    let config_outcome = if config_path.exists() && !force {
         println!(
             "  {} Config already exists: {} (use --force to overwrite)",
             "!".yellow(),
             config_path.display()
         );
+        ManagedFileOutcome::Preserved
     } else {
         fs::write(
             &config_path,
@@ -1543,116 +1605,112 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
                 println!("  {} {}", "⚠".yellow(), warning);
             }
         }
-    }
-
-    // Provide migration summary
-    println!("\n{}", "📋 Migration Summary:".bold());
-    if instruction_files_merged > 0 {
-        println!(
-            "  • Merged {} instruction file(s) into AGENTS.md",
-            instruction_files_merged
-        );
-    }
-    if files_actually_migrated > 0 {
-        println!(
-            "  • Migrated {} file(s) to .agents/",
-            files_actually_migrated
-        );
-    }
-    if files_skipped > 0 {
-        println!(
-            "  • Skipped {} file(s) (content noted in configuration)",
-            files_skipped
-        );
-    }
-    println!(
-        "  • Configuration saved to {}",
-        ".agents/agentsync.toml".cyan()
-    );
+        ManagedFileOutcome::Written
+    };
 
     // Ask if user wants to back up original files.
     // Only offer backup when AGENTS.md was actually written — otherwise the
     // instruction files would be moved without a migrated destination existing.
-    if !wrote_agents_md {
-        return Ok(());
-    }
+    let backup_outcome = if matches!(agents_md_outcome, ManagedFileOutcome::Preserved) {
+        BackupOutcome::NotOffered
+    } else {
+        let should_backup = Confirm::with_theme(&ColorfulTheme::default())
+            .with_prompt(
+                "Would you like to back up the original files? (They will be moved to .agents/backup/)",
+            )
+            .default(true)
+            .interact()?;
 
-    let should_backup = Confirm::with_theme(&ColorfulTheme::default())
-        .with_prompt(
-            "Would you like to back up the original files? (They will be moved to .agents/backup/)",
-        )
-        .default(true)
-        .interact()?;
+        if should_backup {
+            let backup_dir = agents_dir.join("backup");
+            fs::create_dir_all(&backup_dir)?;
+            let mut moved_count = 0;
 
-    if should_backup {
-        let backup_dir = agents_dir.join("backup");
-        fs::create_dir_all(&backup_dir)?;
-
-        for file in &files_to_migrate {
-            if matches!(
-                file.file_type,
-                AgentFileType::McpConfig
-                    | AgentFileType::ZedSettings
-                    | AgentFileType::CursorMcpConfig
-                    | AgentFileType::CopilotMcpConfig
-                    | AgentFileType::WindsurfMcpConfig
-                    | AgentFileType::CodexConfig
-                    | AgentFileType::RooMcpConfig
-                    | AgentFileType::KiroMcpConfig
-                    | AgentFileType::AmazonQMcpConfig
-                    | AgentFileType::KilocodeMcpConfig
-                    | AgentFileType::FactoryMcpConfig
-                    | AgentFileType::OpenCodeConfig
-                    | AgentFileType::Other
-            ) {
-                // Skip files that weren't actually migrated
-                continue;
-            }
-
-            let src_path = project_root.join(&file.path);
-            if !src_path.exists() {
-                continue;
-            }
-
-            if let Some((agent_name, _)) = skills_choice_for_file_type(&file.file_type) {
-                let selected_mode = skills_modes
-                    .get(agent_name)
-                    .copied()
-                    .unwrap_or(SyncType::Symlink);
-                let preserve_existing_layout = skills_choices.iter().any(|choice| {
-                    choice.agent_name == agent_name
-                        && choice.already_canonical
-                        && selected_mode == SyncType::Symlink
-                });
-
-                if preserve_existing_layout {
+            for file in &files_to_migrate {
+                if matches!(
+                    file.file_type,
+                    AgentFileType::McpConfig
+                        | AgentFileType::ZedSettings
+                        | AgentFileType::CursorMcpConfig
+                        | AgentFileType::CopilotMcpConfig
+                        | AgentFileType::WindsurfMcpConfig
+                        | AgentFileType::CodexConfig
+                        | AgentFileType::RooMcpConfig
+                        | AgentFileType::KiroMcpConfig
+                        | AgentFileType::AmazonQMcpConfig
+                        | AgentFileType::KilocodeMcpConfig
+                        | AgentFileType::FactoryMcpConfig
+                        | AgentFileType::OpenCodeConfig
+                        | AgentFileType::Other
+                ) {
+                    // Skip files that weren't actually migrated
                     continue;
                 }
-            }
 
-            let backup_path = backup_dir.join(&file.path);
-            if let Some(parent) = backup_path.parent() {
-                fs::create_dir_all(parent)?;
-            }
-
-            // Try to move the file/directory first (rename)
-            match fs::rename(&src_path, &backup_path) {
-                Ok(_) => {
-                    println!("  {} Moved: {}", "✔".green(), file.path.display());
+                let src_path = project_root.join(&file.path);
+                if !src_path.exists() {
+                    continue;
                 }
-                Err(_) => {
-                    // Cross-filesystem or other error - fall back to copy then delete
-                    if src_path.is_dir() {
-                        copy_dir_all(&src_path, &backup_path)?;
-                        fs::remove_dir_all(&src_path)?;
-                    } else {
-                        fs::copy(&src_path, &backup_path)?;
-                        fs::remove_file(&src_path)?;
+
+                if let Some((agent_name, _)) = skills_choice_for_file_type(&file.file_type) {
+                    let selected_mode = skills_modes
+                        .get(agent_name)
+                        .copied()
+                        .unwrap_or(SyncType::Symlink);
+                    let preserve_existing_layout = skills_choices.iter().any(|choice| {
+                        choice.agent_name == agent_name
+                            && choice.already_canonical
+                            && selected_mode == SyncType::Symlink
+                    });
+
+                    if preserve_existing_layout {
+                        continue;
                     }
-                    println!("  {} Moved: {}", "✔".green(), file.path.display());
+                }
+
+                let backup_path = backup_dir.join(&file.path);
+                if let Some(parent) = backup_path.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+
+                // Try to move the file/directory first (rename)
+                match fs::rename(&src_path, &backup_path) {
+                    Ok(_) => {
+                        println!("  {} Moved: {}", "✔".green(), file.path.display());
+                        moved_count += 1;
+                    }
+                    Err(_) => {
+                        // Cross-filesystem or other error - fall back to copy then delete
+                        if src_path.is_dir() {
+                            copy_dir_all(&src_path, &backup_path)?;
+                            fs::remove_dir_all(&src_path)?;
+                        } else {
+                            fs::copy(&src_path, &backup_path)?;
+                            fs::remove_file(&src_path)?;
+                        }
+                        println!("  {} Moved: {}", "✔".green(), file.path.display());
+                        moved_count += 1;
+                    }
                 }
             }
+
+            BackupOutcome::Completed { moved_count }
+        } else {
+            BackupOutcome::Declined
         }
+    };
+
+    println!("\n{}", "📋 Post-migration Summary:".bold());
+    let summary = render_wizard_post_migration_summary(&WizardSummaryFacts {
+        instruction_files_merged,
+        migrated_count: files_actually_migrated,
+        skipped_count: files_skipped,
+        agents_md: agents_md_outcome,
+        config: config_outcome,
+        backup: backup_outcome,
+    });
+    for line in summary {
+        println!("{line}");
     }
 
     Ok(())
@@ -2516,6 +2574,75 @@ mod tests {
             assert!(!test_dir.exists());
             assert!(backup_path.exists());
             assert!(backup_path.join("config.txt").exists());
+        }
+    }
+
+    #[test]
+    fn test_render_wizard_summary_includes_canonical_apply_and_git_guidance() {
+        let lines = render_wizard_post_migration_summary(&WizardSummaryFacts {
+            instruction_files_merged: 2,
+            migrated_count: 3,
+            skipped_count: 1,
+            agents_md: ManagedFileOutcome::Written,
+            config: ManagedFileOutcome::Written,
+            backup: BackupOutcome::Declined,
+        });
+        let summary = lines.join("\n");
+
+        assert!(summary.contains(".agents/ is now the canonical source of truth"));
+        assert!(summary.contains("Run `agentsync apply` next"));
+        assert!(summary.contains("did not run `agentsync apply`"));
+        assert!(summary.contains("collaborators should also run `agentsync apply`"));
+        assert!(summary.contains(".gitignore` behavior stays aligned with `.agents/`"));
+        assert!(summary.contains("review the resulting changes with your normal git workflow"));
+        assert!(summary.contains("depending on what already existed before migration"));
+    }
+
+    #[test]
+    fn test_render_wizard_summary_reports_backup_outcomes_and_avoids_unsafe_claims() {
+        let completed = render_wizard_post_migration_summary(&WizardSummaryFacts {
+            instruction_files_merged: 1,
+            migrated_count: 1,
+            skipped_count: 0,
+            agents_md: ManagedFileOutcome::Written,
+            config: ManagedFileOutcome::Written,
+            backup: BackupOutcome::Completed { moved_count: 2 },
+        })
+        .join("\n");
+        assert!(completed.contains("Created a backup of 2 original item(s) in `.agents/backup/`"));
+
+        let declined = render_wizard_post_migration_summary(&WizardSummaryFacts {
+            instruction_files_merged: 0,
+            migrated_count: 1,
+            skipped_count: 0,
+            agents_md: ManagedFileOutcome::Written,
+            config: ManagedFileOutcome::Preserved,
+            backup: BackupOutcome::Declined,
+        })
+        .join("\n");
+        assert!(
+            declined.contains("No backup was created; the original files remain where they are")
+        );
+
+        let not_offered = render_wizard_post_migration_summary(&WizardSummaryFacts {
+            instruction_files_merged: 0,
+            migrated_count: 1,
+            skipped_count: 0,
+            agents_md: ManagedFileOutcome::Preserved,
+            config: ManagedFileOutcome::Preserved,
+            backup: BackupOutcome::NotOffered,
+        })
+        .join("\n");
+        assert!(not_offered.contains(
+            "Backup was not offered because the wizard kept the existing `.agents/AGENTS.md`"
+        ));
+
+        for summary in [&completed, &declined, &not_offered] {
+            assert!(!summary.contains("already ran `agentsync apply`"));
+            assert!(!summary.contains("updated `.gitignore`"));
+            assert!(!summary.contains("working tree is clean"));
+            assert!(!summary.contains("staged"));
+            assert!(!summary.contains("unstaged"));
         }
     }
 
