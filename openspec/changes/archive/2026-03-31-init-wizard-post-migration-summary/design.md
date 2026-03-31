@@ -68,7 +68,7 @@ main.rs prints no generic wizard footer
 
 | File | Action | Description |
 |------|--------|-------------|
-| `src/init.rs` | Modify | Add private summary facts/back-up outcome types, collect facts during wizard flow, and print the final wizard-only summary/next steps after backup handling. |
+| `src/init.rs` | Modify | Add private summary facts/backup outcome types, collect facts during wizard flow, and print the final wizard-only summary/next steps after backup handling. |
 | `src/main.rs` | Modify | Prevent the generic init footer from printing for wizard mode while preserving the shared success banner. |
 | `src/init.rs` tests | Modify | Add focused tests for summary text generation and backup outcome wording using stable substring assertions. |
 

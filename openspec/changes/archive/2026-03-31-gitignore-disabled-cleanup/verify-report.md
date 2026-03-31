@@ -1,4 +1,4 @@
-## Verification Report
+# Verification Report
 
 **Change**: gitignore-disabled-cleanup
 **Version**: N/A

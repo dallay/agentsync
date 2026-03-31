@@ -401,7 +401,6 @@ impl Config {
 
 fn normalize_managed_gitignore_entry(entry: &str) -> String {
     if entry.contains('/')
-        || entry.ends_with('/')
         || entry.contains('*')
         || entry.contains('?')
         || entry.contains('[')

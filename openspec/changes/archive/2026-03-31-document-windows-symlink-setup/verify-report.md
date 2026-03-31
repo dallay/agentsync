@@ -1,4 +1,4 @@
-## Verification Report
+# Verification Report
 
 **Change**: document-windows-symlink-setup
 **Version**: N/A

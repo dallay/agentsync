@@ -6,13 +6,11 @@ Issue DALLAY-221 addresses a correctness bug in generated `.gitignore` content. 
 
 ## Scope
 
-### In Scope
-- Normalize auto-generated `.gitignore` entries that represent concrete repository-root files so they are written as root-scoped patterns.
+### In Scope\n\n- Normalize auto-generated `.gitignore` entries that represent concrete repository-root files so they are written as root-scoped patterns.
 - Preserve existing behavior for user-supplied `[gitignore].entries`, including patterns intentionally meant to match anywhere in the tree.
 - Update validation coverage for generated `.gitignore` output so nested canonical files are no longer ignored by the managed defaults.
 
-### Out of Scope
-- Changing the product default for `[gitignore].enabled`; it remains `true`.
+### Out of Scope\n\n- Changing the product default for `[gitignore].enabled`; it remains `true`.
 - Reinterpreting, rewriting, or auto-normalizing user-authored `[gitignore].entries`.
 - Broad redesign of `.gitignore` generation beyond the root-scoping fix for managed entries.
 

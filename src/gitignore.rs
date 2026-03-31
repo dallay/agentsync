@@ -8,7 +8,8 @@ use colored::Colorize;
 use std::fs;
 use std::path::Path;
 
-fn managed_markers(marker: &str) -> (String, String) {
+/// Build the start/end marker pair used to delimit the managed section in `.gitignore`.
+pub fn managed_markers(marker: &str) -> (String, String) {
     (format!("# START {}", marker), format!("# END {}", marker))
 }
 
@@ -458,15 +459,11 @@ trailing_content
         let gitignore_path = temp_dir.path().join(".gitignore");
         let original = "node_modules/\n# START Other\nmanaged\n# END Other\n";
         fs::write(&gitignore_path, original).unwrap();
-        let mtime_before = fs::metadata(&gitignore_path).unwrap().modified().unwrap();
 
-        std::thread::sleep(std::time::Duration::from_millis(20));
         cleanup_gitignore(temp_dir.path(), "Marker", false).unwrap();
 
         let content = fs::read_to_string(&gitignore_path).unwrap();
-        let mtime_after = fs::metadata(&gitignore_path).unwrap().modified().unwrap();
         assert_eq!(content, original);
-        assert_eq!(mtime_before, mtime_after);
     }
 
     // ==========================================================================

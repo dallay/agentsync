@@ -52,8 +52,8 @@ The documentation MUST describe the default workflow as the recommended starting
 
 - GIVEN a repository has managed destinations at the repository root
 - WHEN the reader reviews the default workflow documentation
-- THEN the docs MUST explain that AgentSync-managed `.gitignore` entries include root-scoped patterns for those destinations
-- AND the explanation MUST align with current gitignore-management behavior
+- THEN the docs MUST describe that AgentSync-managed `.gitignore` entries include root-scoped patterns for those destinations
+- AND this guidance MUST align with current gitignore-management behavior
 
 ---
 

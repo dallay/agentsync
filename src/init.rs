@@ -1072,12 +1072,9 @@ fn render_wizard_post_migration_summary(facts: &WizardSummaryFacts) -> Vec<Strin
         ),
         format!("  • {}.", managed_file_sentence(facts.agents_md, ".agents/AGENTS.md")),
         format!("  • {}.", managed_file_sentence(facts.config, ".agents/agentsync.toml")),
-        "  • This wizard migrated content into `.agents/`, but it did not run `agentsync apply`.".to_string(),
-        "  • Run `agentsync apply` next to reconcile the downstream managed files that should point back to `.agents/`.".to_string(),
-        "  • If your config keeps gitignore management enabled (the default for new configs), collaborators should also run `agentsync apply` so `.gitignore` behavior stays aligned with `.agents/`.".to_string(),
-        "  • After the wizard and apply, review the resulting changes with your normal git workflow; git may show different changes depending on what already existed before migration and what apply updates here.".to_string(),
     ];
 
+    // Backup outcome goes right after the managed-file lines, before follow-up guidance.
     let backup_line = match &facts.backup {
         BackupOutcome::Completed { moved_count } => {
             format!("  • Created a backup of {moved_count} original item(s) in `.agents/backup/`.")
@@ -1090,7 +1087,16 @@ fn render_wizard_post_migration_summary(facts: &WizardSummaryFacts) -> Vec<Strin
                 .to_string()
         }
     };
-    lines.insert(4, backup_line);
+    lines.push(backup_line);
+
+    // Follow-up guidance after all factual lines.
+    lines.push(
+        "  • This wizard migrated content into `.agents/`, but it did not run `agentsync apply`."
+            .to_string(),
+    );
+    lines.push("  • Run `agentsync apply` next to reconcile the downstream managed files that should point back to `.agents/`.".to_string());
+    lines.push("  • If your config keeps gitignore management enabled (the default for new configs), collaborators should also run `agentsync apply` so `.gitignore` behavior stays aligned with `.agents/`.".to_string());
+    lines.push("  • After the wizard and apply, review the resulting changes with your normal git workflow; git may show different changes depending on what already existed before migration and what apply updates here.".to_string());
 
     lines
 }

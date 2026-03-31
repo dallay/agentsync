@@ -205,8 +205,7 @@ pub fn run_doctor(project_root: PathBuf) -> Result<()> {
         match fs::read_to_string(&gitignore_path) {
             Ok(content) => {
                 let marker = &linker.config().gitignore.marker;
-                let start_marker = format!("# START {}", marker);
-                let end_marker = format!("# END {}", marker);
+                let (start_marker, end_marker) = agentsync::gitignore::managed_markers(marker);
                 let has_managed_section =
                     content.contains(&start_marker) && content.contains(&end_marker);
 

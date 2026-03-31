@@ -6,14 +6,12 @@ DALLAY-220 needs a dedicated, linkable Windows setup guide so teams adopting Age
 
 ## Scope
 
-### In Scope
-- Add a dedicated Windows-focused documentation page that explains how to prepare a Windows environment for AgentSync symlink usage.
+### In Scope\n\n- Add a dedicated Windows-focused documentation page that explains how to prepare a Windows environment for AgentSync symlink usage.
 - Define the target information architecture so shared workflow and setup docs can link to the Windows page instead of embedding deep platform-specific instructions.
 - Update the main documentation entry points that mention Windows, symlinks, onboarding, or workflow setup so they consistently cross-link to the dedicated guide.
 - Preserve the current product defaults and keep general team workflow guidance platform-neutral.
 
-### Out of Scope
-- Changing AgentSync runtime behavior, symlink strategy, or default gitignore/workflow policy.
+### Out of Scope\n\n- Changing AgentSync runtime behavior, symlink strategy, or default gitignore/workflow policy.
 - Rewriting the general team workflow guide into separate OS-specific variants.
 - Providing a broad Windows troubleshooting catalog beyond the setup guidance needed for successful AgentSync adoption.
 - Reorganizing the full docs site beyond the pages needed for the new guide and supporting cross-links.

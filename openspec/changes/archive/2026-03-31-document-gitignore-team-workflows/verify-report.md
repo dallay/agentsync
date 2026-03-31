@@ -1,4 +1,4 @@
-## Verification Report
+# Verification Report
 
 **Change**: document-gitignore-team-workflows
 **Version**: N/A

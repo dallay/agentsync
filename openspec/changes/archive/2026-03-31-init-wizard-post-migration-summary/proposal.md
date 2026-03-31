@@ -8,13 +8,11 @@ Today the wizard migrates files into `.agents/`, writes configuration, and may b
 
 ## Scope
 
-### In Scope
-- Update wizard completion output to summarize migrated content, config creation, optional backup results, and required manual follow-up actions.
+### In Scope\n\n- Update wizard completion output to summarize migrated content, config creation, optional backup results, and required manual follow-up actions.
 - Explicitly explain that the wizard does **not** run `agentsync apply`, does **not** update `.gitignore`, and does **not** inspect or summarize git status.
 - Add guardrails so wizard messaging makes only safe claims about follow-up work and avoids duplicate or conflicting generic footer output.
 
-### Out of Scope
-- Changing the default gitignore policy; `[gitignore].enabled = true` remains the product default.
+### Out of Scope\n\n- Changing the default gitignore policy; `[gitignore].enabled = true` remains the product default.
 - Making the wizard run `agentsync apply`, edit `.gitignore`, stage files, or inspect git state.
 - Broader init flow redesign outside the post-migration summary and closely related completion messaging.
 

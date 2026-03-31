@@ -1,4 +1,4 @@
-## Verification Report
+# Verification Report
 
 **Change**: init-wizard-post-migration-summary
 **Version**: N/A
