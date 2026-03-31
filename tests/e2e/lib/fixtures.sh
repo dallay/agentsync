@@ -60,6 +60,24 @@ prepare_skill_sources() {
     done
 }
 
+prepare_default_skill_sources() {
+    local root="$1"
+
+    prepare_skill_sources \
+        "$root" \
+        accessibility \
+        best-practices \
+        core-web-vitals \
+        docker-expert \
+        frontend-design \
+        github-actions \
+        makefile \
+        performance \
+        pinned-tag \
+        rust-async-patterns \
+        seo
+}
+
 wait_for_mock_provider() {
     local provider_url="${PROVIDER_URL:-}"
     [ -n "$provider_url" ] || return 0
@@ -79,13 +97,21 @@ run_with_tty() {
     local input_text="$1"
     local command="$2"
     local input_file
+    local old_trap
 
     if ! command -v script >/dev/null 2>&1; then
         fail "The 'script' command is required for interactive E2E flows"
     fi
 
     input_file=$(mktemp)
+    old_trap=$(trap -p EXIT || true)
+    trap 'rm -f "$input_file"' EXIT
     printf '%b' "$input_text" > "$input_file"
     script -qec "$command" /dev/null < "$input_file"
-    rm -f "$input_file"
+
+    if [ -n "$old_trap" ]; then
+        eval "$old_trap"
+    else
+        trap - EXIT
+    fi
 }

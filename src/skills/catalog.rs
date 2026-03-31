@@ -246,7 +246,19 @@ impl ProviderBackedCatalog {
                     return None;
                 }
 
-                let min_confidence = DetectionConfidence::from_catalog_key(&rule.min_confidence)?;
+                let min_confidence = match DetectionConfidence::from_catalog_key(
+                    &rule.min_confidence,
+                ) {
+                    Some(confidence) => confidence,
+                    None => {
+                        warn!(
+                            skill_id = %rule.skill_id,
+                            min_confidence = %rule.min_confidence,
+                            "Skipping provider recommendation rule with invalid minimum confidence"
+                        );
+                        return None;
+                    }
+                };
 
                 Some(CatalogRule {
                     skill_id: rule.skill_id,

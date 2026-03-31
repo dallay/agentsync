@@ -8,19 +8,7 @@ source "$SCRIPT_DIR/../lib/fixtures.sh"
 log_step "Preparing mixed-stack repository for guided install"
 REPO_ROOT=$(prepare_repo_from_fixture "mixed-stack-a" "mixed-stack-a-guided")
 SKILL_SOURCE_ROOT="${E2E_BASE_DIR}/skill-sources-guided"
-prepare_skill_sources \
-    "$SKILL_SOURCE_ROOT" \
-    accessibility \
-    best-practices \
-    core-web-vitals \
-    docker-expert \
-    frontend-design \
-    github-actions \
-    makefile \
-    performance \
-    pinned-tag \
-    rust-async-patterns \
-    seo
+prepare_default_skill_sources "$SKILL_SOURCE_ROOT"
 
 export AGENTSYNC_TEST_SKILL_SOURCE_DIR="$SKILL_SOURCE_ROOT"
 

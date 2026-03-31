@@ -24,6 +24,7 @@ agentsync apply --verbose
 
 assert_symlink_exists "CLAUDE.md"
 assert_symlink_exists "GEMINI.md"
+assert_symlink_exists "OPENCODE.md"
 assert_symlink_exists ".github/copilot-instructions.md"
 
 echo "✅ init blank repository scenario passed"

@@ -41,6 +41,7 @@ agentsync apply --verbose
 assert_symlink_exists "CLAUDE.md"
 assert_symlink_exists "GEMINI.md"
 assert_symlink_exists "OPENCODE.md"
+assert_symlink_exists "AGENTS.md"
 assert_symlink_exists ".claude/skills"
 assert_symlink_exists ".gemini/skills"
 assert_symlink_exists ".codex/skills"

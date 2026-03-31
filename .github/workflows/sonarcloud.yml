@@ -18,6 +18,9 @@ jobs:
   coverage-and-analysis:
     name: Coverage, Codecov, and SonarCloud
     runs-on: ubuntu-latest
+    env:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
     steps:
       - name: Checkout repository
@@ -52,17 +55,17 @@ jobs:
           cargo llvm-cov report --cobertura --output-path target/coverage/rust-cobertura.xml
 
       - name: Upload coverage to Codecov
-        if: ${{ secrets.CODECOV_TOKEN != '' }}
+        if: ${{ env.CODECOV_TOKEN != '' }}
         uses: codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe # v5
         with:
           files: target/coverage/rust.lcov.info
           fail_ci_if_error: true
           verbose: true
         env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+          CODECOV_TOKEN: ${{ env.CODECOV_TOKEN }}
 
       - name: Upload coverage to Codecov (tokenless)
-        if: ${{ secrets.CODECOV_TOKEN == '' }}
+        if: ${{ env.CODECOV_TOKEN == '' }}
         uses: codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe # v5
         with:
           files: target/coverage/rust.lcov.info
@@ -70,7 +73,5 @@ jobs:
           verbose: true
 
       - name: Analyze with SonarCloud
-        if: ${{ secrets.SONAR_TOKEN != '' && (github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork) }}
+        if: ${{ env.SONAR_TOKEN != '' && (github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork) }}
         uses: SonarSource/sonarqube-scan-action@a31c9398be7ace6bbfaf30c0bd5d415f843d45e9 # v7
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

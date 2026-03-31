@@ -27,6 +27,7 @@ assert_path_not_exists() {
 assert_symlink_exists() {
     local path="$1"
     [ -L "$path" ] || fail "Expected symlink to exist: $path"
+    [ -e "$path" ] || fail "Expected symlink target to exist: $path"
 }
 
 assert_file_contains() {

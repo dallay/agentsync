@@ -29,7 +29,8 @@ if [ "$#" -gt 0 ]; then
         SCENARIOS+=("$(resolve_scenario "$scenario")")
     done
 elif [ -n "${E2E_SCENARIOS:-}" ]; then
-    for scenario in ${E2E_SCENARIOS}; do
+    read -r -a requested_scenarios <<< "${E2E_SCENARIOS}"
+    for scenario in "${requested_scenarios[@]}"; do
         SCENARIOS+=("$(resolve_scenario "$scenario")")
     done
 else

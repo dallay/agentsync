@@ -331,6 +331,8 @@ impl SuggestionService {
 
         let target_root = project_root.join(".agents").join("skills");
         std::fs::create_dir_all(&target_root)?;
+        let registry_path = target_root.join("registry.json");
+        let mut installed_state = read_installed_skill_states(&registry_path)?;
 
         let mut results = Vec::new();
         for recommendation in &response.recommendations {
@@ -338,7 +340,6 @@ impl SuggestionService {
                 continue;
             }
 
-            let installed_state = read_installed_skill_states(&target_root.join("registry.json"))?;
             if recommendation.installed
                 || installed_state
                     .get(&recommendation.skill_id)
@@ -358,11 +359,20 @@ impl SuggestionService {
                     &resolved.download_url,
                     &target_root,
                 ) {
-                    Ok(()) => results.push(SuggestInstallResult {
-                        skill_id: recommendation.skill_id.clone(),
-                        status: SuggestInstallStatus::Installed,
-                        error_message: None,
-                    }),
+                    Ok(()) => {
+                        installed_state.insert(
+                            recommendation.skill_id.clone(),
+                            InstalledSkillState {
+                                installed: true,
+                                version: None,
+                            },
+                        );
+                        results.push(SuggestInstallResult {
+                            skill_id: recommendation.skill_id.clone(),
+                            status: SuggestInstallStatus::Installed,
+                            error_message: None,
+                        });
+                    }
                     Err(error) => results.push(SuggestInstallResult {
                         skill_id: recommendation.skill_id.clone(),
                         status: SuggestInstallStatus::Failed,
