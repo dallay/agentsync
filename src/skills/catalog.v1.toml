@@ -1,0 +1,123 @@
+version = "v1"
+
+[[skills]]
+provider_skill_id = "accessibility"
+local_skill_id = "accessibility"
+title = "Accessibility"
+summary = "Audit and improve web accessibility following WCAG guidance."
+
+[[skills]]
+provider_skill_id = "best-practices"
+local_skill_id = "best-practices"
+title = "Best Practices"
+summary = "Apply modern development best practices for security, compatibility, and code quality."
+
+[[skills]]
+provider_skill_id = "core-web-vitals"
+local_skill_id = "core-web-vitals"
+title = "Core Web Vitals"
+summary = "Optimize LCP, INP, and CLS for better page experience."
+
+[[skills]]
+provider_skill_id = "docker-expert"
+local_skill_id = "docker-expert"
+title = "Docker Expert"
+summary = "Improve containerization, image optimization, and Compose workflows."
+
+[[skills]]
+provider_skill_id = "frontend-design"
+local_skill_id = "frontend-design"
+title = "Frontend Design"
+summary = "Create polished, production-grade frontend interfaces."
+
+[[skills]]
+provider_skill_id = "github-actions"
+local_skill_id = "github-actions"
+title = "GitHub Actions"
+summary = "Build and review robust GitHub Actions workflows."
+
+[[skills]]
+provider_skill_id = "makefile"
+local_skill_id = "makefile"
+title = "Makefile"
+summary = "Author clean, maintainable, portable GNU Make automation."
+
+[[skills]]
+provider_skill_id = "performance"
+local_skill_id = "performance"
+title = "Performance"
+summary = "Optimize application performance and loading behavior."
+
+[[skills]]
+provider_skill_id = "pinned-tag"
+local_skill_id = "pinned-tag"
+title = "Pinned Tag"
+summary = "Pin mutable GitHub Actions tags to immutable commit SHAs."
+
+[[skills]]
+provider_skill_id = "rust-async-patterns"
+local_skill_id = "rust-async-patterns"
+title = "Rust Async Patterns"
+summary = "Use Tokio and idiomatic async Rust implementation patterns."
+
+[[skills]]
+provider_skill_id = "seo"
+local_skill_id = "seo"
+title = "SEO"
+summary = "Improve search engine visibility and metadata quality."
+
+[[technologies]]
+id = "rust"
+name = "Rust"
+skills = ["rust-async-patterns"]
+min_confidence = "medium"
+
+[[technologies]]
+id = "node_typescript"
+name = "Node/TypeScript"
+skills = ["best-practices"]
+min_confidence = "medium"
+
+[[technologies]]
+id = "python"
+name = "Python"
+skills = ["best-practices"]
+min_confidence = "medium"
+
+[[technologies]]
+id = "astro"
+name = "Astro"
+skills = [
+  "frontend-design",
+  "accessibility",
+  "performance",
+  "core-web-vitals",
+  "seo",
+]
+min_confidence = "medium"
+
+[[technologies]]
+id = "github_actions"
+name = "GitHub Actions"
+skills = ["github-actions", "pinned-tag"]
+min_confidence = "medium"
+reason_template = "Recommended because {technology} workflows were detected from {evidence}."
+
+[[technologies]]
+id = "docker"
+name = "Docker"
+skills = ["docker-expert"]
+min_confidence = "medium"
+
+[[technologies]]
+id = "make"
+name = "Make"
+skills = ["makefile"]
+min_confidence = "medium"
+
+[[combos]]
+id = "astro-github-actions"
+name = "Astro + GitHub Actions"
+requires = ["astro", "github_actions"]
+skills = ["github-actions"]
+enabled = false

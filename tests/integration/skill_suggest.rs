@@ -1,3 +1,11 @@
+use agentsync::skills::provider::{
+    Provider, ProviderCatalogMetadata, ProviderCatalogSkill, ProviderCatalogTechnology,
+    SkillInstallInfo,
+};
+use agentsync::skills::suggest::{
+    DetectionConfidence, DetectionEvidence, SuggestionService, TechnologyDetection, TechnologyId,
+};
+use anyhow::Result;
 use std::fs;
 use std::process::Command;
 use tempfile::TempDir;
@@ -268,6 +276,47 @@ fn skill_suggest_install_all_surfaces_direct_install_failure_semantics() {
     assert_eq!(failed_result["error_message"], direct_response["error"]);
 }
 
+#[test]
+fn suggestion_service_preserves_local_install_lookup_with_provider_overlay() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+    fs::create_dir_all(root.join(".agents/skills")).unwrap();
+    fs::write(
+        root.join(".agents/skills/registry.json"),
+        serde_json::to_string_pretty(&serde_json::json!({
+            "schemaVersion": 1,
+            "last_updated": "2026-03-30T00:00:00Z",
+            "skills": {
+                "custom-rust": {
+                    "name": "custom-rust",
+                    "version": "1.0.0"
+                }
+            }
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let detector = StaticDetector;
+    let provider = CanonicalOverlayProvider;
+    let response = SuggestionService
+        .suggest_with(root, &detector, Some(&provider))
+        .unwrap();
+
+    let recommendation = response
+        .recommendations
+        .iter()
+        .find(|recommendation| recommendation.skill_id == "custom-rust")
+        .unwrap();
+
+    assert!(recommendation.installed);
+    assert_eq!(recommendation.installed_version.as_deref(), Some("1.0.0"));
+    assert_eq!(
+        recommendation.matched_technologies,
+        vec![TechnologyId::Rust]
+    );
+}
+
 fn create_skill_source(source_root: &std::path::Path, skill_id: &str) {
     let source_dir = source_root.join(skill_id);
     fs::create_dir_all(&source_dir).unwrap();
@@ -276,4 +325,56 @@ fn create_skill_source(source_root: &std::path::Path, skill_id: &str) {
         format!("---\nname: {skill_id}\nversion: 1.0.0\n---\n# {skill_id}\n"),
     )
     .unwrap();
+}
+
+struct StaticDetector;
+
+impl agentsync::skills::detect::RepoDetector for StaticDetector {
+    fn detect(&self, _project_root: &std::path::Path) -> Result<Vec<TechnologyDetection>> {
+        Ok(vec![TechnologyDetection {
+            technology: TechnologyId::Rust,
+            confidence: DetectionConfidence::High,
+            root_relative_paths: vec!["Cargo.toml".into()],
+            evidence: vec![DetectionEvidence {
+                marker: "Cargo.toml".to_string(),
+                path: "Cargo.toml".into(),
+                notes: None,
+            }],
+        }])
+    }
+}
+
+struct CanonicalOverlayProvider;
+
+impl Provider for CanonicalOverlayProvider {
+    fn manifest(&self) -> Result<String> {
+        Ok("canonical-overlay".to_string())
+    }
+
+    fn resolve(&self, _id: &str) -> Result<SkillInstallInfo> {
+        unreachable!()
+    }
+
+    fn recommendation_catalog(&self) -> Result<Option<ProviderCatalogMetadata>> {
+        Ok(Some(ProviderCatalogMetadata {
+            provider: "canonical-overlay".to_string(),
+            version: "2026.03".to_string(),
+            schema_version: "v1".to_string(),
+            skills: vec![ProviderCatalogSkill {
+                provider_skill_id: "acme/skills/custom-rust".to_string(),
+                local_skill_id: "custom-rust".to_string(),
+                title: "Custom Rust".to_string(),
+                summary: "Custom Rust guidance".to_string(),
+            }],
+            technologies: vec![ProviderCatalogTechnology {
+                id: "rust".to_string(),
+                name: "Rust".to_string(),
+                skills: vec!["acme/skills/custom-rust".to_string()],
+                detect: None,
+                min_confidence: Some("medium".to_string()),
+                reason_template: None,
+            }],
+            combos: vec![],
+        }))
+    }
 }

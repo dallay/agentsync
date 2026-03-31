@@ -1,4 +1,6 @@
-use crate::skills::catalog::{CatalogSkillMetadata, SkillCatalog, load_catalog, recommend_skills};
+use crate::skills::catalog::{
+    CatalogSkillMetadata, ResolvedSkillCatalog, load_catalog, recommend_skills,
+};
 use crate::skills::detect::{FileSystemRepoDetector, RepoDetector};
 use crate::skills::install::blocking_fetch_and_install_skill;
 use crate::skills::provider::{Provider, SkillsShProvider};
@@ -111,7 +113,7 @@ pub struct SkillSuggestion {
 }
 
 impl SkillSuggestion {
-    pub fn new(metadata: &CatalogSkillMetadata, catalog: &dyn SkillCatalog) -> Self {
+    pub fn new(metadata: &CatalogSkillMetadata, catalog: &ResolvedSkillCatalog) -> Self {
         Self {
             skill_id: metadata.skill_id.clone(),
             title: metadata.title.clone(),
@@ -239,7 +241,7 @@ impl SuggestionService {
         detector: &D,
         provider: Option<&dyn Provider>,
     ) -> Result<SuggestResponse> {
-        let catalog = load_catalog(provider);
+        let catalog = load_catalog(provider)?;
         let detections = detector.detect(project_root)?;
         let installed_skill_states = read_installed_skill_states(
             &project_root
@@ -248,7 +250,7 @@ impl SuggestionService {
                 .join("registry.json"),
         )?;
 
-        let mut recommendations = recommend_skills(catalog.as_ref(), &detections);
+        let mut recommendations = recommend_skills(&catalog, &detections);
         for recommendation in &mut recommendations {
             recommendation
                 .annotate_installed_state(installed_skill_states.get(&recommendation.skill_id));

@@ -131,6 +131,48 @@ fn skill_suggest_json_contract_uses_spec_compliant_non_rust_technology_ids() {
 }
 
 #[test]
+fn skill_suggest_json_contract_supports_multiple_recommendations_for_one_technology() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+
+    fs::write(root.join("package.json"), "{\"name\":\"demo\"}\n").unwrap();
+    fs::write(root.join("astro.config.mjs"), "export default {}\n").unwrap();
+
+    let output = Command::new(agentsync_bin())
+        .current_dir(root)
+        .args(["skill", "suggest", "--json"])
+        .output()
+        .expect("failed to run agentsync skill suggest --json");
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let recommendations = value["recommendations"].as_array().unwrap();
+    let astro_recommendations = recommendations
+        .iter()
+        .filter(|recommendation| {
+            recommendation["matched_technologies"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|technology| technology == "astro")
+        })
+        .collect::<Vec<_>>();
+
+    assert!(astro_recommendations.len() >= 5);
+    assert!(astro_recommendations.iter().all(|recommendation| {
+        recommendation.get("skill_id").is_some()
+            && recommendation.get("matched_technologies").is_some()
+            && recommendation.get("reasons").is_some()
+            && recommendation.get("installed").is_some()
+    }));
+}
+
+#[test]
 fn skill_suggest_install_all_json_contract_extends_suggest_shape() {
     let temp_dir = TempDir::new().unwrap();
     let root = temp_dir.path();
