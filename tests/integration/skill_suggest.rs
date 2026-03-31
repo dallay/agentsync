@@ -236,7 +236,7 @@ fn skill_suggest_install_all_surfaces_direct_install_failure_semantics() {
         .output()
         .expect("failed to run agentsync skill suggest --install --all --json");
 
-    assert!(!suggest_output.status.success());
+    assert!(suggest_output.status.success());
 
     let direct_output = Command::new(agentsync_bin())
         .current_dir(root)
@@ -257,13 +257,15 @@ fn skill_suggest_install_all_surfaces_direct_install_failure_semantics() {
         serde_json::from_slice(&suggest_output.stdout).unwrap();
     let direct_response: serde_json::Value = serde_json::from_slice(&direct_output.stdout).unwrap();
 
-    assert_eq!(suggest_response["code"], "install_error");
-    assert_eq!(suggest_response["code"], direct_response["code"]);
-    assert_eq!(
-        suggest_response["remediation"],
-        direct_response["remediation"]
-    );
-    assert_eq!(suggest_response["error"], direct_response["error"]);
+    let failed_result = suggest_response["results"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|result| result["skill_id"] == "rust-async-patterns")
+        .unwrap();
+
+    assert_eq!(failed_result["status"], "failed");
+    assert_eq!(failed_result["error_message"], direct_response["error"]);
 }
 
 fn create_skill_source(source_root: &std::path::Path, skill_id: &str) {
