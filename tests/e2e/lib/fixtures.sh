@@ -83,7 +83,7 @@ wait_for_mock_provider() {
     [ -n "$provider_url" ] || return 0
 
     for _ in $(seq 1 20); do
-        if curl -sSf "$provider_url" >/dev/null 2>&1; then
+        if curl --connect-timeout 2 --max-time 5 -sSf "$provider_url" >/dev/null 2>&1; then
             return 0
         fi
         sleep 1
@@ -107,6 +107,7 @@ run_with_tty() {
     trap 'rm -f "$input_file"' EXIT
     printf '%b' "$input_text" > "$input_file"
     script -qec "$command" /dev/null < "$input_file"
+    rm -f "$input_file"
 
     if [ -n "$old_trap" ]; then
         eval "$old_trap"

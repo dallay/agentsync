@@ -76,3 +76,8 @@ jobs:
       - name: Analyze with SonarCloud
         if: ${{ env.SONAR_TOKEN != '' && (github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork) }}
         uses: SonarSource/sonarqube-scan-action@a31c9398be7ace6bbfaf30c0bd5d415f843d45e9 # v7
+        with:
+          args: >-
+            -Dsonar.projectBaseDir=.
+        env:
+          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}

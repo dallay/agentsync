@@ -110,6 +110,7 @@ fn canonical_provider_skill_ids_use_local_aliases_in_recommendations() {
     assert_eq!(catalog.source_name(), "canonical-provider");
     assert_eq!(catalog.metadata_version(), "2026.03");
     assert_eq!(custom.skill_id, "custom-rust");
+    assert!(provider.resolve(&custom.skill_id).is_ok());
     assert!(
         catalog
             .get_skill_definition("acme/skills/rust-custom")
@@ -436,8 +437,12 @@ impl Provider for EmptyCatalogProvider {
         Ok("empty".to_string())
     }
 
-    fn resolve(&self, _id: &str) -> Result<SkillInstallInfo> {
-        unreachable!()
+    fn resolve(&self, id: &str) -> Result<SkillInstallInfo> {
+        assert_eq!(id, "custom-rust");
+        Ok(SkillInstallInfo {
+            download_url: "https://example.com/acme/skills/rust-custom.zip".to_string(),
+            format: "zip".to_string(),
+        })
     }
 }
 
@@ -448,8 +453,12 @@ impl Provider for CanonicalCatalogProvider {
         Ok("canonical".to_string())
     }
 
-    fn resolve(&self, _id: &str) -> Result<SkillInstallInfo> {
-        unreachable!()
+    fn resolve(&self, id: &str) -> Result<SkillInstallInfo> {
+        assert_eq!(id, "custom-rust");
+        Ok(SkillInstallInfo {
+            download_url: "https://example.com/acme/skills/rust-custom.zip".to_string(),
+            format: "zip".to_string(),
+        })
     }
 
     fn recommendation_catalog(&self) -> Result<Option<ProviderCatalogMetadata>> {

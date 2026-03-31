@@ -6,6 +6,7 @@
 ---
 
 ### Completeness
+
 | Metric | Value |
 |--------|-------|
 | Tasks total | 13 |
@@ -19,18 +20,21 @@ All listed tasks are marked complete in `tasks.md`.
 ### Build & Tests Execution
 
 **Build**: ✅ Passed
+
 ```text
 cargo check --all-targets --all-features
 Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.16s
 ```
 
 **Docs build**: ✅ Passed
+
 ```text
 pnpm run docs:build
 Astro build complete; 10 page(s) built
 ```
 
 **Tests**: ✅ 27 passed / ❌ 0 failed / ⚠️ 0 skipped
+
 ```text
 cargo test --test all_tests suggest_catalog -- --nocapture
 13 passed; 0 failed
@@ -79,6 +83,7 @@ cargo test --test all_tests unit::suggest_install::install_flow_records_failures
 ---
 
 ### Correctness (Static — Structural Evidence)
+
 | Requirement | Status | Notes |
 |------------|--------|-------|
 | Embedded declarative catalog | ✅ Implemented | `src/skills/catalog.rs` loads `src/skills/catalog.v1.toml` via `include_str!` and fails explicitly on invalid embedded metadata. |
@@ -91,6 +96,7 @@ cargo test --test all_tests unit::suggest_install::install_flow_records_failures
 ---
 
 ### Coherence (Design)
+
 | Decision | Followed? | Notes |
 |----------|-----------|-------|
 | Use technology/combo catalog shape | ✅ Yes | Implemented in TOML schema and provider structs. |

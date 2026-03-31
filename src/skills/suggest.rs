@@ -153,6 +153,9 @@ impl SkillSuggestion {
         if let Some(installed_skill) = installed_skill {
             self.installed = installed_skill.installed;
             self.installed_version = installed_skill.version.clone();
+        } else {
+            self.installed = false;
+            self.installed_version = None;
         }
     }
 }

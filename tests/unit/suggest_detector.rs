@@ -1,10 +1,24 @@
 use agentsync::skills::detect::{FileSystemRepoDetector, RepoDetector};
 use agentsync::skills::suggest::{DetectionConfidence, TechnologyId};
 use std::fs;
+use std::path::PathBuf;
 use tempfile::TempDir;
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+
+#[cfg(unix)]
+struct PermissionRestoreGuard {
+    path: PathBuf,
+    permissions: fs::Permissions,
+}
+
+#[cfg(unix)]
+impl Drop for PermissionRestoreGuard {
+    fn drop(&mut self) {
+        let _ = fs::set_permissions(&self.path, self.permissions.clone());
+    }
+}
 
 #[test]
 fn detects_supported_phase_one_technologies() {
@@ -104,13 +118,15 @@ fn skips_unreadable_nested_directories_without_failing_detection() {
 
     let unreadable_dir = root.join("private");
     let original_permissions = fs::metadata(&unreadable_dir).unwrap().permissions();
+    let _restore_permissions = PermissionRestoreGuard {
+        path: unreadable_dir.clone(),
+        permissions: original_permissions.clone(),
+    };
     let mut unreadable_permissions = original_permissions.clone();
     unreadable_permissions.set_mode(0o000);
     fs::set_permissions(&unreadable_dir, unreadable_permissions).unwrap();
 
     let detections = FileSystemRepoDetector.detect(root).unwrap();
-
-    fs::set_permissions(&unreadable_dir, original_permissions).unwrap();
 
     assert!(
         detections
