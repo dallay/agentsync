@@ -26,11 +26,11 @@ for command_name in review.md analyze.md fix.md; do
     assert_file_exists ".agents/commands/${command_name}"
 done
 
-assert_file_contains ".agents/AGENTS.md" "Claude adoption instructions"
-assert_file_contains ".agents/AGENTS.md" "Gemini adoption instructions"
-assert_file_contains ".agents/AGENTS.md" "Root agent instructions for Codex"
-assert_file_contains ".agents/AGENTS.md" "OpenCode adoption instructions"
-assert_file_contains ".agents/AGENTS.md" "Copilot adoption instructions"
+assert_file_contains ".agents/AGENTS.md" "# Instructions from CLAUDE.md"
+assert_file_contains ".agents/AGENTS.md" "# Instructions from GEMINI.md"
+assert_file_contains ".agents/AGENTS.md" "# Instructions from AGENTS.md"
+assert_file_contains ".agents/AGENTS.md" "# Instructions from OPENCODE.md"
+assert_file_contains ".agents/AGENTS.md" "# Instructions from .github/copilot-instructions.md"
 
 log_step "Removing original agent files to verify apply recreates them"
 rm -rf .claude .gemini .codex .cursor .opencode .github .vscode
