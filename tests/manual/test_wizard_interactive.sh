@@ -25,7 +25,7 @@ set -euo pipefail
 
 # --- Configuration -----------------------------------------------------------
 BINARY="${AGENTSYNC_BIN:-./target/debug/agentsync}"
-TMPBASE="${TMPDIR:-/tmp}/agentsync-manual-tests"
+TMPBASE=$(mktemp -d)
 PASS_COUNT=0
 FAIL_COUNT=0
 SKIP_COUNT=0
@@ -349,9 +349,9 @@ if should_run 11; then
 
     # Add a fake entry inside the managed section (before end marker)
     if [ -f "$DIR/.gitignore" ]; then
-        sed -i.bak '/# END AI Agent Symlinks/i\
-FAKE_STALE_ENTRY.md' "$DIR/.gitignore"
-        rm -f "$DIR/.gitignore.bak"
+        TMPFILE=$(mktemp)
+        awk '/# END AI Agent Symlinks/ { print "FAKE_STALE_ENTRY.md" } { print }' "$DIR/.gitignore" > "$TMPFILE"
+        mv "$TMPFILE" "$DIR/.gitignore"
         echo -e "${DIM}  Added fake entry to managed section${RESET}"
     fi
 
