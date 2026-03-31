@@ -324,7 +324,7 @@ if should_run 10; then
 
     # Corrupt gitignore: remove end marker only
     if [ -f "$DIR/.gitignore" ]; then
-        sed -i.bak '/<<< agentsync/d' "$DIR/.gitignore"
+        sed -i.bak '/# END AI Agent Symlinks/d' "$DIR/.gitignore"
         rm -f "$DIR/.gitignore.bak"
         echo -e "${DIM}  Removed end marker from .gitignore${RESET}"
     fi
@@ -347,9 +347,9 @@ if should_run 11; then
     (cd "$DIR" && "$BINARY" init)
     (cd "$DIR" && "$BINARY" apply)
 
-    # Add a fake entry inside the managed section
+    # Add a fake entry inside the managed section (before end marker)
     if [ -f "$DIR/.gitignore" ]; then
-        sed -i.bak '/<<< agentsync/i\
+        sed -i.bak '/# END AI Agent Symlinks/i\
 FAKE_STALE_ENTRY.md' "$DIR/.gitignore"
         rm -f "$DIR/.gitignore.bak"
         echo -e "${DIM}  Added fake entry to managed section${RESET}"

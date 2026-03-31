@@ -312,12 +312,8 @@ pub fn collect_skills_mode_mismatch(
 }
 
 pub(crate) fn parse_markers(content: &str, start_marker: &str, end_marker: &str) -> (bool, bool) {
-    let has_start = content
-        .lines()
-        .any(|line| line.trim_end_matches('\r') == start_marker);
-    let has_end = content
-        .lines()
-        .any(|line| line.trim_end_matches('\r') == end_marker);
+    let has_start = content.lines().any(|line| line.trim() == start_marker);
+    let has_end = content.lines().any(|line| line.trim() == end_marker);
     (has_start, has_end)
 }
 
