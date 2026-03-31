@@ -21,6 +21,6 @@ assert_json_expr "install-all.json" '.results | any(.skill_id == "docker-expert"
 
 log_step "Re-running install-all to confirm already-installed behavior"
 agentsync skill suggest --install --all --json > install-all-repeat.json
-assert_json_expr "install-all-repeat.json" '.results | all(.status == "already_installed")'
+assert_json_expr "install-all-repeat.json" '.results | length > 0 and all(.status == "already_installed")'
 
 echo "✅ suggest install-all scenario passed"

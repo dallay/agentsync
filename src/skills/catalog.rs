@@ -419,6 +419,19 @@ fn normalize_skill_definitions(
                 );
             }
 
+            if let Some((existing_local_alias, _)) =
+                aliases.iter().find(|(local_alias, provider_skill_id)| {
+                    *provider_skill_id == &definition.provider_skill_id
+                        && *local_alias != &definition.local_skill_id
+                })
+            {
+                bail!(
+                    "provider skill '{}' is already owned by local alias '{}'",
+                    definition.provider_skill_id,
+                    existing_local_alias
+                );
+            }
+
             if normalized.contains_key(&definition.provider_skill_id) {
                 bail!(
                     "duplicate provider skill definition '{}' in the same catalog document",

@@ -2,6 +2,8 @@ use std::fs;
 use std::process::Command;
 use tempfile::TempDir;
 
+const MIN_ASTRO_RECOMMENDATIONS: usize = 5;
+
 fn agentsync_bin() -> &'static str {
     env!("CARGO_BIN_EXE_agentsync")
 }
@@ -163,7 +165,7 @@ fn skill_suggest_json_contract_supports_multiple_recommendations_for_one_technol
         })
         .collect::<Vec<_>>();
 
-    assert!(astro_recommendations.len() >= 5);
+    assert!(astro_recommendations.len() >= MIN_ASTRO_RECOMMENDATIONS);
     assert!(astro_recommendations.iter().all(|recommendation| {
         recommendation.get("skill_id").is_some()
             && recommendation.get("matched_technologies").is_some()

@@ -342,10 +342,9 @@ impl SuggestionService {
                 continue;
             }
 
-            if recommendation.installed
-                || installed_state
-                    .get(&recommendation.skill_id)
-                    .is_some_and(|state| state.installed)
+            if installed_state
+                .get(&recommendation.skill_id)
+                .is_some_and(|state| state.installed)
             {
                 results.push(SuggestInstallResult {
                     skill_id: recommendation.skill_id.clone(),

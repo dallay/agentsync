@@ -33,7 +33,7 @@ assert_symlink_exists() {
 assert_file_contains() {
     local path="$1"
     local expected="$2"
-    grep -F "$expected" "$path" >/dev/null || fail "Expected '$expected' in $path"
+    grep -F -- "$expected" "$path" >/dev/null || fail "Expected '$expected' in $path"
 }
 
 assert_json_expr() {
