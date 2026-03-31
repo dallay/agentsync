@@ -17,7 +17,7 @@ pub struct SkillInstallInfo {
     pub format: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct ProviderCatalogMetadata {
     pub provider: String,
     pub version: String,
@@ -25,14 +25,14 @@ pub struct ProviderCatalogMetadata {
     pub rules: Vec<ProviderCatalogRule>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct ProviderCatalogSkill {
     pub skill_id: String,
     pub title: String,
     pub summary: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct ProviderCatalogRule {
     pub skill_id: String,
     pub technologies: Vec<String>,

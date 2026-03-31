@@ -65,6 +65,14 @@ pub enum DetectionConfidence {
 }
 
 impl DetectionConfidence {
+    pub fn as_human_label(self) -> &'static str {
+        match self {
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+        }
+    }
+
     pub fn from_catalog_key(value: &str) -> Option<Self> {
         match value {
             "low" => Some(Self::Low),
@@ -117,9 +125,12 @@ impl SkillSuggestion {
     }
 
     pub fn add_match(&mut self, detection: &TechnologyDetection, reason_template: &str) {
-        if !self.matched_technologies.contains(&detection.technology) {
-            self.matched_technologies.push(detection.technology);
-            self.matched_technologies.sort();
+        if let Err(index) = self
+            .matched_technologies
+            .binary_search(&detection.technology)
+        {
+            self.matched_technologies
+                .insert(index, detection.technology);
         }
 
         let evidence = detection
@@ -131,8 +142,8 @@ impl SkillSuggestion {
             .replace("{technology}", detection.technology.as_human_label())
             .replace("{evidence}", &evidence);
 
-        if !self.reasons.contains(&reason) {
-            self.reasons.push(reason);
+        if let Err(index) = self.reasons.binary_search(&reason) {
+            self.reasons.insert(index, reason);
         }
     }
 
@@ -324,7 +335,12 @@ impl SuggestionService {
                 continue;
             }
 
-            if recommendation.installed {
+            let installed_state = read_installed_skill_states(&target_root.join("registry.json"))?;
+            if recommendation.installed
+                || installed_state
+                    .get(&recommendation.skill_id)
+                    .is_some_and(|state| state.installed)
+            {
                 results.push(SuggestInstallResult {
                     skill_id: recommendation.skill_id.clone(),
                     status: SuggestInstallStatus::AlreadyInstalled,
@@ -416,7 +432,7 @@ impl SuggestResponse {
                     .collect::<Vec<_>>()
                     .join(", ");
                 lines.push(format!(
-                    "- {} ({:?}): {}",
+                    "- {} ({}): {}",
                     detection.technology, detection.confidence, evidence
                 ));
             }
@@ -475,7 +491,7 @@ impl SuggestInstallJsonResponse {
             lines.push("Detected technologies:".to_string());
             for detection in &self.suggest.detections {
                 lines.push(format!(
-                    "- {} ({:?}): {}",
+                    "- {} ({}): {}",
                     detection.technology.as_human_label(),
                     detection.confidence,
                     detection.evidence.join(", ")
@@ -567,10 +583,16 @@ fn dedupe_preserve_order(skill_ids: &[String]) -> Vec<String> {
     let mut unique = Vec::new();
 
     for skill_id in skill_ids {
-        if seen.insert(skill_id.clone()) {
+        if seen.insert(skill_id.as_str()) {
             unique.push(skill_id.clone());
         }
     }
 
     unique
+}
+
+impl fmt::Display for DetectionConfidence {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_human_label())
+    }
 }

@@ -1,5 +1,8 @@
 use agentsync::skills::provider::{Provider, SkillInstallInfo};
-use agentsync::skills::suggest::{SuggestInstallMode, SuggestInstallStatus, SuggestionService};
+use agentsync::skills::suggest::{
+    DetectionConfidence, DetectionEvidence, SuggestInstallMode, SuggestInstallStatus,
+    SuggestionService, TechnologyDetection, TechnologyId,
+};
 use anyhow::Result;
 use std::collections::BTreeMap;
 use std::fs;
@@ -15,7 +18,9 @@ fn guided_install_only_installs_selected_recommendations() {
 
     let provider = LocalSkillProvider::new(root, &["rust-async-patterns", "docker-expert"]);
     let service = SuggestionService;
-    let response = service.suggest(root).unwrap();
+    let response = service
+        .suggest_with(root, &StaticDetector::rust_and_docker(), Some(&provider))
+        .unwrap();
 
     let install_response = service
         .install_selected_with(
@@ -76,7 +81,9 @@ fn install_all_skips_already_installed_recommendations() {
 
     let provider = LocalSkillProvider::new(root, &["rust-async-patterns", "docker-expert"]);
     let service = SuggestionService;
-    let response = service.suggest(root).unwrap();
+    let response = service
+        .suggest_with(root, &StaticDetector::rust_and_docker(), Some(&provider))
+        .unwrap();
 
     let installable_ids = response
         .installable_recommendations()
@@ -104,13 +111,118 @@ fn install_all_skips_already_installed_recommendations() {
     );
     assert!(root.join(".agents/skills/rust-async-patterns").exists());
 
-    let updated_response = service.suggest(root).unwrap();
+    let updated_response = service
+        .suggest_with(root, &StaticDetector::rust_and_docker(), Some(&provider))
+        .unwrap();
     let rust = updated_response
         .recommendations
         .iter()
         .find(|recommendation| recommendation.skill_id == "rust-async-patterns")
         .unwrap();
     assert!(rust.installed);
+}
+
+#[test]
+fn install_flow_rechecks_registry_before_installing() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+    fs::write(root.join("Cargo.toml"), "[package]\nname='demo'\n").unwrap();
+
+    let provider = LocalSkillProvider::new(root, &["rust-async-patterns"]);
+    let service = SuggestionService;
+    let response = service
+        .suggest_with(root, &StaticDetector::rust_only(), Some(&provider))
+        .unwrap();
+
+    let skills_dir = root.join(".agents/skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+    fs::write(
+        skills_dir.join("registry.json"),
+        serde_json::to_string_pretty(&serde_json::json!({
+            "schemaVersion": 1,
+            "last_updated": "2026-03-31T00:00:00Z",
+            "skills": {
+                "rust-async-patterns": {
+                    "name": "rust-async-patterns",
+                    "version": "9.9.9"
+                }
+            }
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let install_response = service
+        .install_selected_with(
+            root,
+            &response,
+            &provider,
+            SuggestInstallMode::InstallAll,
+            &["rust-async-patterns".to_string()],
+            |_skill_id, _source, _target_root| {
+                panic!("install should be skipped after registry recheck")
+            },
+        )
+        .unwrap();
+
+    assert_eq!(install_response.results.len(), 1);
+    assert_eq!(install_response.results[0].skill_id, "rust-async-patterns");
+    assert_eq!(
+        install_response.results[0].status,
+        SuggestInstallStatus::AlreadyInstalled
+    );
+}
+
+struct StaticDetector {
+    detections: Vec<TechnologyDetection>,
+}
+
+impl StaticDetector {
+    fn rust_and_docker() -> Self {
+        Self {
+            detections: vec![
+                detection(TechnologyId::Rust, DetectionConfidence::High, "Cargo.toml"),
+                detection(
+                    TechnologyId::Docker,
+                    DetectionConfidence::High,
+                    "Dockerfile",
+                ),
+            ],
+        }
+    }
+
+    fn rust_only() -> Self {
+        Self {
+            detections: vec![detection(
+                TechnologyId::Rust,
+                DetectionConfidence::High,
+                "Cargo.toml",
+            )],
+        }
+    }
+}
+
+impl agentsync::skills::detect::RepoDetector for StaticDetector {
+    fn detect(&self, _project_root: &Path) -> Result<Vec<TechnologyDetection>> {
+        Ok(self.detections.clone())
+    }
+}
+
+fn detection(
+    technology: TechnologyId,
+    confidence: DetectionConfidence,
+    path: &str,
+) -> TechnologyDetection {
+    TechnologyDetection {
+        technology,
+        confidence,
+        root_relative_paths: vec![PathBuf::from(path)],
+        evidence: vec![DetectionEvidence {
+            marker: path.to_string(),
+            path: PathBuf::from(path),
+            notes: None,
+        }],
+    }
 }
 
 struct LocalSkillProvider {

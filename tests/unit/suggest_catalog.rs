@@ -96,6 +96,22 @@ fn uses_provider_catalog_when_metadata_is_available() {
 }
 
 #[test]
+fn skips_provider_rules_without_valid_technologies() {
+    let provider = InvalidTechnologyCatalogProvider;
+    let catalog = load_catalog(Some(&provider));
+    let detections = vec![detection(
+        TechnologyId::Rust,
+        DetectionConfidence::High,
+        "Cargo.toml",
+    )];
+
+    let recommendations = recommend_skills(catalog.as_ref(), &detections);
+
+    assert!(catalog.get_skill("custom-skill").is_some());
+    assert!(recommendations.is_empty());
+}
+
+#[test]
 fn suggest_reports_detections_when_catalog_has_no_matching_rules() {
     let temp_dir = TempDir::new().unwrap();
     let service = SuggestionService;
@@ -196,6 +212,8 @@ impl agentsync::skills::detect::RepoDetector for StaticDetector {
 
 struct NoMatchCatalogProvider;
 
+struct InvalidTechnologyCatalogProvider;
+
 impl Provider for NoMatchCatalogProvider {
     fn manifest(&self) -> Result<String> {
         Ok("no-match".to_string())
@@ -211,6 +229,34 @@ impl Provider for NoMatchCatalogProvider {
             version: "1".to_string(),
             skills: vec![],
             rules: vec![],
+        }))
+    }
+}
+
+impl Provider for InvalidTechnologyCatalogProvider {
+    fn manifest(&self) -> Result<String> {
+        Ok("invalid-tech".to_string())
+    }
+
+    fn resolve(&self, _id: &str) -> Result<SkillInstallInfo> {
+        unreachable!()
+    }
+
+    fn recommendation_catalog(&self) -> Result<Option<ProviderCatalogMetadata>> {
+        Ok(Some(ProviderCatalogMetadata {
+            provider: "invalid-tech-provider".to_string(),
+            version: "1".to_string(),
+            skills: vec![ProviderCatalogSkill {
+                skill_id: "custom-skill".to_string(),
+                title: "Custom Skill".to_string(),
+                summary: "Should stay addressable even if a rule is skipped".to_string(),
+            }],
+            rules: vec![ProviderCatalogRule {
+                skill_id: "custom-skill".to_string(),
+                technologies: vec!["".to_string(), "unknown-tech".to_string()],
+                min_confidence: "medium".to_string(),
+                reason_template: "unused".to_string(),
+            }],
         }))
     }
 }

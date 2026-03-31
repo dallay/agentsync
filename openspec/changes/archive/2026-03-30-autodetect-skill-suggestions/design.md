@@ -4,7 +4,7 @@
 
 This change adds a repo-aware recommendation pipeline under the existing `skill` command surface without changing how skills are actually installed. The implementation is split into three layers inside `src/skills/`: (1) repository technology detection, (2) catalog-backed recommendation policy, and (3) install orchestration that reuses the existing `install`, `update`, and registry modules.
 
-Phase 1 adds a read-only `agentsync skill suggest` flow that scans the project root, produces normalized detections, resolves opinionated recommendations from an embedded catalog, annotates them with installed-state from `.agents/skills/registry.json`, and prints either human-readable or JSON output. Phase 2 extends the same pipeline with guided installation and `--install-all`/selected-install paths, but delegates each selected install back to the existing install primitives rather than creating a second installer.
+Phase 1 adds a read-only `agentsync skill suggest` flow that scans the project root, produces normalized detections, resolves opinionated recommendations from an embedded catalog, annotates them with installed-state from `.agents/skills/registry.json`, and prints either human-readable or JSON output. Phase 2 extends the same pipeline with guided installation and `--install` / `--install --all` paths, but delegates each selected install back to the existing install primitives rather than creating a second installer.
 
 This maps directly to the proposal: detection is local and deterministic, recommendation metadata is abstracted behind a catalog boundary, registry remains the source of truth for installed state only, and future provider-backed metadata can be introduced by swapping catalog sources instead of redesigning CLI contracts.
 
@@ -36,7 +36,7 @@ This maps directly to the proposal: detection is local and deterministic, recomm
 
 ### Decision: Use `skill suggest` as the repo-aware entry point and layer phase-2 installs onto that flow
 
-**Choice**: Add `agentsync skill suggest` in phase 1, then extend it in phase 2 with install-oriented flags (`--interactive`, `--install-all`, and explicit selection input) while internally invoking the same install logic used by `skill install`.
+**Choice**: Add `agentsync skill suggest` in phase 1, then extend it in phase 2 with install-oriented flags (`--install` for guided selection and `--install --all` for the explicit non-interactive install-all path) while internally invoking the same install logic used by `skill install`.
 
 **Alternatives considered**: Add repo-aware flags to `skill install`; create a standalone top-level command.
 
@@ -71,7 +71,7 @@ SuggestionService
 ### Phase 2: Guided install
 
 ```text
-TTY user ──► `skill suggest --interactive`
+TTY user ──► `skill suggest --install`
                 │
                 ▼
          SuggestionService.plan()
@@ -136,12 +136,12 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
-#[serde(rename_all = "kebab-case")]
 pub enum TechnologyId {
     Rust,
-    Node,
-    TypeScript,
+    #[serde(rename = "node_typescript")]
+    NodeTypeScript,
     Astro,
+    #[serde(rename = "github_actions")]
     GitHubActions,
     Docker,
     Make,
@@ -228,7 +228,7 @@ Detector rules in v1:
 Examples:
 
 - `Cargo.toml` at repo root → `rust/high`
-- `.github/workflows/*.yml|yaml` at repo root → `github-actions/high`
+- `.github/workflows/*.yml|yaml` at repo root → `github_actions/high`
 - `Dockerfile` or `docker-compose*.yml` at repo root → `docker/high`
 - only `tests/e2e/Dockerfile.e2e` → `docker/low`
 - `website/docs/astro.config.mjs` outside ignored dirs → `astro/medium`
@@ -248,9 +248,9 @@ pub trait SkillCatalog {
 V1 embedded catalog contents are compiled into the binary and map technologies to opinionated skills such as:
 
 - `rust` → `rust-async-patterns`
-- `node` / `typescript` / `python` → `best-practices`
+- `node_typescript` / `python` → `best-practices`
 - `astro` → `frontend-design`, `accessibility`, `performance`, `core-web-vitals`, `seo`
-- `github-actions` → `github-actions`, `pinned-tag`
+- `github_actions` → `github-actions`, `pinned-tag`
 - `docker` → `docker-expert`
 - `make` → `makefile`
 
@@ -267,16 +267,15 @@ agentsync skill suggest [--json]
 Phase 2 extensions:
 
 ```text
-agentsync skill suggest --interactive
-agentsync skill suggest --install-all
-agentsync skill suggest --install <skill-id>[,<skill-id>...]
+agentsync skill suggest --install
+agentsync skill suggest --install --all
 ```
 
 Rules:
 
 - plain `skill suggest` stays read-only
-- `--interactive` requires a TTY and only presents not-yet-installed suggestions
-- `--install-all` and explicit `--install` are non-interactive and valid in CI/scripts
+- `--install` requires a TTY when used without `--all` and only presents not-yet-installed suggestions
+- `--install --all` is the explicit non-interactive install-all path for CI/scripts
 - all install paths reuse the existing install pipeline for each selected skill id
 
 ### JSON output contract
@@ -353,8 +352,8 @@ If a selection is invalid (for example a requested skill is not part of the curr
 | Unit | Provider-backed seam fallback | Tests that embedded catalog is used when no provider metadata source is configured/available. |
 | Integration | `skill suggest` human output | Spawn CLI in fixture repos and assert suggested sections, installed annotations, and no filesystem mutation in read-only mode. |
 | Contract | `skill suggest --json` success/error shape | Parse stdout as JSON and assert required keys, stable enums, and error codes/remediation fields. |
-| Integration | Installed-skill awareness | Pre-populate `.agents/skills/registry.json` and assert already-installed suggestions are annotated and skipped by `--interactive`/`--install-all`. |
-| Integration | Phase-2 non-interactive installs | Run `skill suggest --install-all` or `--install ...` against local fixture skills and assert delegation through existing install behavior. |
+| Integration | Installed-skill awareness | Pre-populate `.agents/skills/registry.json` and assert already-installed suggestions are annotated and skipped by `--install` / `--install --all`. |
+| Integration | Phase-2 non-interactive installs | Run `skill suggest --install --all` against local fixture skills and assert delegation through existing install behavior. |
 | Integration | TTY interactive flow | Add targeted tests around suggestion selection orchestration where feasible; keep prompt internals thin and most logic covered via service-level tests. |
 | Regression | Monorepo mitigation | Fixture repos with nested docs app, test-only Dockerfile, and generated directories to verify which technologies become recommendations vs low-confidence-only detections. |
 
@@ -372,4 +371,4 @@ Rollout plan:
 
 - [ ] Delta specs for this change have not yet been written in `openspec/changes/2026-03-30-autodetect-skill-suggestions/specs/`; confirm the final command/JSON contract there before implementation.
 - [ ] Confirm whether a single nested `astro.config.*` in a docs/app subtree should always emit recommendations or only when paired with root/node workspace evidence.
-- [ ] Confirm the exact phase-2 flag names (`--interactive`, `--install-all`, `--install`) before tasks are generated.
+- [x] Confirmed phase-2 flag names are `--install` and `--install --all`.

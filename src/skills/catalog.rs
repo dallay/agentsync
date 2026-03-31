@@ -3,6 +3,7 @@ use crate::skills::suggest::{
     DetectionConfidence, SkillSuggestion, TechnologyDetection, TechnologyId,
 };
 use std::collections::BTreeMap;
+use tracing::warn;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CatalogRule {
@@ -229,12 +230,22 @@ impl ProviderBackedCatalog {
         let rules = metadata
             .rules
             .into_iter()
-            .map(|rule| {
-                let technologies = rule
-                    .technologies
-                    .into_iter()
-                    .filter_map(|technology| TechnologyId::from_catalog_key(&technology))
+            .filter_map(|rule| {
+                let original_technologies = rule.technologies;
+                let technologies = original_technologies
+                    .iter()
+                    .filter_map(|technology| TechnologyId::from_catalog_key(technology))
                     .collect::<Vec<_>>();
+
+                if technologies.is_empty() {
+                    warn!(
+                        skill_id = %rule.skill_id,
+                        ?original_technologies,
+                        "Skipping provider recommendation rule without valid technologies"
+                    );
+                    return None;
+                }
+
                 let min_confidence = DetectionConfidence::from_catalog_key(&rule.min_confidence)?;
 
                 Some(CatalogRule {
@@ -244,7 +255,7 @@ impl ProviderBackedCatalog {
                     reason_template: rule.reason_template,
                 })
             })
-            .collect::<Option<Vec<_>>>()?;
+            .collect::<Vec<_>>();
 
         Some(Self {
             source_name: metadata.provider,
