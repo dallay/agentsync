@@ -45,6 +45,14 @@ When using the `--wizard` flag, AgentSync will:
 
 Applies the configuration from `agentsync.toml` by creating symbolic links and updating `.gitignore`.
 
+In workflow terms, `agentsync apply` reconciles your local managed destinations and then follows the repository's gitignore policy:
+
+- default workflow: writes or updates the AgentSync-managed `.gitignore` block
+- committed-destination opt-out workflow: removes a stale AgentSync-managed block when `[gitignore].enabled = false`
+- temporary CLI opt-out: skips all `.gitignore` reconciliation when `--no-gitignore` is present
+
+For the full team decision guide, see <a href="/guides/gitignore-team-workflows/">Gitignore Team Workflows</a>.
+
 ```bash
 agentsync apply [OPTIONS]
 ```
@@ -53,10 +61,10 @@ agentsync apply [OPTIONS]
 - `-p, --path <PATH>`: Project root directory. Also supports `--project-root` alias.
 - `-c, --config <CONFIG>`: Use a custom configuration file path instead of the default `.agents/agentsync.toml`.
 - `--clean`: Deletes existing symbolic links before applying.
-- `--dry-run`: Shows what actions would be taken without actually making any changes.
+- `--dry-run`: Shows what actions would be taken without actually making any changes, including pending `.gitignore` writes or cleanup when gitignore reconciliation is active.
 - `-v, --verbose`: Enable verbose logging.
 - `-a, --agents <AGENTS>`: Filter by agent (comma-separated list, e.g., `claude,copilot`). **Overrides** `default_agents` in config.
-- `--no-gitignore`: Disable automatic `.gitignore` updates.
+- `--no-gitignore`: Strictly opt out of `.gitignore` reconciliation for that invocation. AgentSync will not write, update, or remove its managed `.gitignore` block, even if config would otherwise do so.
 
 **Agent Selection Priority**:
 When running `agentsync apply`, agents are selected in this order:
@@ -73,6 +81,15 @@ agentsync apply --agents copilot,claude,gemini  # Runs all three
 
 # Without default_agents in config:
 agentsync apply              # Runs all enabled agents
+
+# Preview symlink and gitignore reconciliation
+agentsync apply --dry-run
+
+# Skip gitignore reconciliation for this run only
+agentsync apply --no-gitignore
+
+# Preview without any gitignore writes or cleanup
+agentsync apply --dry-run --no-gitignore
 ```
 
 ---

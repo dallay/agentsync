@@ -68,6 +68,8 @@ Run the following to create symbolic links across your AI coding assistants:
 agentsync apply
 ```
 
+AgentSync defaults to managed `.gitignore` mode (`[gitignore].enabled = true`), which is the recommended starting point for most teams. If your team intentionally wants to commit AgentSync-managed destinations, treat `[gitignore].enabled = false` as an opt-out workflow instead of a new default. Full guide: https://dallay.github.io/agentsync/guides/gitignore-team-workflows/
+
 #### Clean Configurations:
 
 Remove previously created symbolic links:

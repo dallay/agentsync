@@ -48,9 +48,9 @@ import { Code } from '@astrojs/starlight/components';
   />
   <FeatureItem
     title="Gitignore Management"
-    description="Automatically manages your .gitignore to keep symlinks out of your repository."
+    description="Start with the default managed .gitignore workflow, or opt out intentionally when your team commits managed destinations."
     icon="📁"
-    href="/reference/configuration/#gitignore-management"
+    href="/guides/gitignore-team-workflows/"
   />
   <FeatureItem
     title="Cross-Platform"
@@ -84,3 +84,5 @@ agentsync apply`} lang="bash" />
 This documentation is the authoritative project reference.
 
 > **Canonical Source**: All agent instructions and skills are maintained in `.agents/AGENTS.md`. This is the single source of truth—they get synced everywhere!
+
+If you are deciding how your team should handle `.gitignore`, start with the <a href="/guides/gitignore-team-workflows/">Gitignore Team Workflows guide</a>. It explains the default managed mode, the committed-destination opt-out mode, and when `--no-gitignore` is appropriate.

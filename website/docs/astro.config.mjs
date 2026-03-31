@@ -34,6 +34,10 @@ export default defineConfig({
 					label: "Guides",
 					items: [
 						{ label: "Getting Started", slug: "guides/getting-started" },
+						{
+							label: "Gitignore Team Workflows",
+							slug: "guides/gitignore-team-workflows",
+						},
 						{ label: "MCP Integration", slug: "guides/mcp" },
 						{ label: "Skills", slug: "guides/skills" },
 						{ label: "Development", slug: "guides/development" },

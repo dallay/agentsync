@@ -212,6 +212,10 @@ agentsync apply
 }
 ```
 
+### Team workflow note
+
+AgentSync defaults to managed `.gitignore` mode (`[gitignore].enabled = true`), which is the recommended starting point for most teams. If your team intentionally wants to commit AgentSync-managed destinations instead, treat `[gitignore].enabled = false` as an explicit opt-out workflow. See the canonical guide: https://dallay.github.io/agentsync/guides/gitignore-team-workflows/
+
 ## Usage
 
 ```bash
@@ -236,11 +240,11 @@ agentsync apply --config /path/to/config.toml
 # Dry run (show what would be done without making changes)
 agentsync apply --dry-run
 
+# Skip gitignore reconciliation for this run only
+agentsync apply --no-gitignore
+
 # Filter by agent
 agentsync apply --agents claude,copilot
-
-# Disable gitignore updates
-agentsync apply --no-gitignore
 
 # Verbose output
 agentsync apply --verbose

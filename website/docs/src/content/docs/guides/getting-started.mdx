@@ -165,6 +165,8 @@ agentsync apply
 
 This will create files like `CLAUDE.md` and `.github/copilot-instructions.md` that point back to your single source of truth in `.agents/`.
 
+By default, `agentsync apply` also manages a marker-delimited `.gitignore` block for those destinations. Most teams should keep that default. If your team instead wants to commit AgentSync-managed destinations, treat that as an intentional opt-out and follow the <BaseLink href="/guides/gitignore-team-workflows/">Gitignore Team Workflows guide</BaseLink> rather than changing setup ad hoc.
+
 ### 4. Integration with pnpm/npm
 
 We recommend adding the apply command to your `prepare` script to ensure symlinks are always present for your team:
@@ -179,9 +181,12 @@ We recommend adding the apply command to your `prepare` script to ensure symlink
 
 > **Note:** `|| true` ensures the install process does not fail if `agentsync` is not yet installed, such as on a fresh clone or in CI environments.
 
+If you use a `prepare` hook, collaborators can usually rely on that automation after pulling changes. They should still run `agentsync apply` manually when the hook does not run or after changing AgentSync config.
+
 ## Next Steps
 
 - Learn more about <BaseLink href="/reference/configuration/">Configuration Options</BaseLink>
+- Choose a team policy in <BaseLink href="/guides/gitignore-team-workflows/">Gitignore Team Workflows</BaseLink>
 - Explore <BaseLink href="/guides/mcp/">MCP Integration</BaseLink>
 - See the <BaseLink href="/reference/cli/">CLI Reference</BaseLink>
 - Learn about <BaseLink href="/guides/skills/">Skills</BaseLink> — how to install, author, and manage AgentSync skills (SKILL.md manifest, registry, and CLI usage)
