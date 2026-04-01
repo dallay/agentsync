@@ -63,7 +63,6 @@ impl Linker {
     /// Create a new linker from a configuration
     pub fn new(config: Config, config_path: PathBuf) -> Self {
         let project_root = Config::project_root(&config_path);
-        let project_root = fs::canonicalize(&project_root).unwrap_or(project_root);
         let source_dir = config.source_dir(&config_path);
 
         Self {
@@ -129,6 +128,15 @@ impl Linker {
                 )
             })?;
 
+        let canonical_project_root =
+            self.canonicalize_cached(&self.project_root)
+                .with_context(|| {
+                    format!(
+                        "Failed to canonicalize project root: {}",
+                        self.project_root.display()
+                    )
+                })?;
+
         let canonical_ancestor =
             self.canonicalize_cached(existing_ancestor)
                 .with_context(|| {
@@ -138,25 +146,14 @@ impl Linker {
                     )
                 })?;
 
-        if !canonical_ancestor.starts_with(&self.project_root) {
+        if !canonical_ancestor.starts_with(&canonical_project_root) {
             anyhow::bail!(
                 "Destination path resolves outside project root: {}",
                 dest_path
             );
         }
 
-        if existing_ancestor == joined {
-            return Ok(canonical_ancestor);
-        }
-
-        let suffix = joined.strip_prefix(existing_ancestor).with_context(|| {
-            format!(
-                "Failed to resolve destination suffix for: {}",
-                joined.display()
-            )
-        })?;
-
-        Ok(canonical_ancestor.join(suffix))
+        Ok(joined)
     }
 
     /// Resolve the expected source path for status checks.
