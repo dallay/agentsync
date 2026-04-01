@@ -14,6 +14,18 @@ use commands::doctor::run_doctor;
 use commands::skill::{SkillCommand, run_skill};
 use commands::status::{StatusArgs, run_status};
 
+fn init_next_steps_lines(wizard: bool) -> Option<Vec<String>> {
+    if wizard {
+        return None;
+    }
+
+    Some(vec![
+        "Next steps:".to_string(),
+        "  1. Edit .agents/AGENTS.md with your project instructions".to_string(),
+        "  2. Run agentsync apply to create symlinks".to_string(),
+    ])
+}
+
 // tracing_subscriber is used to initialize logging in main
 
 #[derive(Parser)]
@@ -150,11 +162,11 @@ fn main() -> Result<()> {
                 init::init(&project_root, force)?;
             }
             println!("\n{}", "✨ Initialization complete!".green().bold());
-            println!(
-                "\nNext steps:\n  1. Edit {} with your project instructions\n  2. Run {} to create symlinks",
-                ".agents/AGENTS.md".cyan(),
-                "agentsync apply".cyan()
-            );
+            if let Some(lines) = init_next_steps_lines(wizard) {
+                for line in lines {
+                    println!("{line}");
+                }
+            }
         }
         Commands::Apply {
             path,
@@ -196,15 +208,24 @@ fn main() -> Result<()> {
                 agents,
             };
             let mut result = linker.sync(&options)?;
-            if !no_gitignore && linker.config().gitignore.enabled {
-                println!("\n{}", "➤ Updating .gitignore".cyan().bold());
-                let entries = linker.config().all_gitignore_entries();
-                gitignore::update_gitignore(
-                    linker.project_root(),
-                    &linker.config().gitignore.marker,
-                    &entries,
-                    dry_run,
-                )?;
+            if !no_gitignore {
+                if linker.config().gitignore.enabled {
+                    println!("\n{}", "➤ Updating .gitignore".cyan().bold());
+                    let entries = linker.config().all_gitignore_entries();
+                    gitignore::update_gitignore(
+                        linker.project_root(),
+                        &linker.config().gitignore.marker,
+                        &entries,
+                        dry_run,
+                    )?;
+                } else {
+                    println!("\n{}", "➤ Cleaning .gitignore".cyan().bold());
+                    gitignore::cleanup_gitignore(
+                        linker.project_root(),
+                        &linker.config().gitignore.marker,
+                        dry_run,
+                    )?;
+                }
             }
             if linker.config().mcp.enabled && !linker.config().mcp_servers.is_empty() {
                 println!("\n{}", "➤ Syncing MCP configurations".cyan().bold());
@@ -278,4 +299,19 @@ fn main() -> Result<()> {
 fn print_header() {
     let banner = include_str!("banner.txt");
     println!("{}", banner.cyan().bold());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::init_next_steps_lines;
+
+    #[test]
+    fn test_init_next_steps_lines_suppresses_generic_footer_for_wizard_runs() {
+        assert!(init_next_steps_lines(true).is_none());
+
+        let standard = init_next_steps_lines(false).expect("standard init should keep next steps");
+        let rendered = standard.join("\n");
+        assert!(rendered.contains("Edit .agents/AGENTS.md"));
+        assert!(rendered.contains("Run agentsync apply"));
+    }
 }

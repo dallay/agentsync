@@ -1,0 +1,13 @@
+change: document-windows-symlink-setup
+current_phase: archive
+completed:
+  - explore
+  - propose
+  - spec
+  - design
+  - tasks
+  - apply
+  - verify
+  - archive
+next: none
+updated: 2026-03-31T23:59:00Z

@@ -4,6 +4,18 @@
 [![Release](https://github.com/dallay/agentsync/actions/workflows/release.yml/badge.svg)](https://github.com/dallay/agentsync/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub release](https://img.shields.io/github/v/release/dallay/agentsync)](https://github.com/dallay/agentsync/releases)
+[![Codecov](https://codecov.io/gh/dallay/agentsync/graph/badge.svg)](https://codecov.io/gh/dallay/agentsync)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=dallay_agentsync&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=dallay_agentsync)
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=dallay_agentsync&metric=bugs)](https://sonarcloud.io/summary/new_code?id=dallay_agentsync)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=dallay_agentsync&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=dallay_agentsync)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=dallay_agentsync&metric=coverage)](https://sonarcloud.io/summary/new_code?id=dallay_agentsync)
+[![Duplicated Lines (%)](https://sonarcloud.io/api/project_badges/measure?project=dallay_agentsync&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=dallay_agentsync)
+[![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=dallay_agentsync&metric=ncloc)](https://sonarcloud.io/summary/new_code?id=dallay_agentsync)
+[![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=dallay_agentsync&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=dallay_agentsync)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=dallay_agentsync&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=dallay_agentsync)
+[![Technical Debt](https://sonarcloud.io/api/project_badges/measure?project=dallay_agentsync&metric=sqale_index)](https://sonarcloud.io/summary/new_code?id=dallay_agentsync)
+[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=dallay_agentsync&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=dallay_agentsync)
+[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=dallay_agentsync&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=dallay_agentsync)
 
 A fast, portable CLI tool for synchronizing AI agent configurations and MCP servers across multiple
 AI coding assistants using symbolic links.
@@ -200,6 +212,12 @@ agentsync apply
 }
 ```
 
+### Team workflow note
+
+AgentSync defaults to managed `.gitignore` mode (`[gitignore].enabled = true`), which is the recommended starting point for most teams. If your team intentionally wants to commit AgentSync-managed destinations instead, treat `[gitignore].enabled = false` as an explicit opt-out workflow. See the canonical guide: https://dallay.github.io/agentsync/guides/gitignore-team-workflows/
+
+If you run AgentSync from Windows and need native symlink prerequisites, WSL guidance, or recovery steps, use the dedicated setup guide: https://dallay.github.io/agentsync/guides/windows-symlink-setup/
+
 ## Usage
 
 ```bash
@@ -224,11 +242,11 @@ agentsync apply --config /path/to/config.toml
 # Dry run (show what would be done without making changes)
 agentsync apply --dry-run
 
+# Skip gitignore reconciliation for this run only
+agentsync apply --no-gitignore
+
 # Filter by agent
 agentsync apply --agents claude,copilot
-
-# Disable gitignore updates
-agentsync apply --no-gitignore
 
 # Verbose output
 agentsync apply --verbose
@@ -598,7 +616,7 @@ Ensure you have the latest stable Rust toolchain installed. You can update with 
 
 ### Symlink creation fails on Windows
 
-Ensure you have Developer Mode enabled or run your terminal as Administrator, as Windows requires special permissions for creating symbolic links.
+Use the dedicated Windows setup guide for native prerequisites, WSL positioning, verification, and recovery steps: https://dallay.github.io/agentsync/guides/windows-symlink-setup/
 
 ## Inspiration
 

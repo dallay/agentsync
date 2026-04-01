@@ -56,6 +56,8 @@ enabled = true  # Enabled, but won't run unless explicitly specified with --agen
 
 AgentSync can automatically manage your `.gitignore` file to ensure that generated symbolic links and agent-specific files are not accidentally committed to version control.
 
+`[gitignore].enabled = true` remains the default and is the recommended starting point for most teams. Set `enabled = false` only when your team intentionally wants to commit AgentSync-managed destinations instead of ignoring them. For the maintainer/collaborator workflow, see the <BaseLink href="/guides/gitignore-team-workflows/">Gitignore Team Workflows guide</BaseLink>.
+
 ```toml
 [gitignore]
 enabled = true
@@ -67,6 +69,25 @@ entries = []
 - **`enabled`**: If `true`, AgentSync will update `.gitignore`.
 - **`marker`**: The text used in comments to identify the AgentSync section in `.gitignore`.
 - **`entries`**: A list of additional file paths to add to the ignore list. This is only needed for files not covered by AgentSync's known patterns.
+
+Behavior notes:
+
+- When `enabled = true`, AgentSync reconciles one marker-delimited managed block in `.gitignore`.
+- Managed entries include root-scoped patterns such as `/CLAUDE.md` when managed destinations live at the repository root.
+- When `enabled = false`, `agentsync apply` removes any matching AgentSync-managed block and preserves unmanaged `.gitignore` lines before and after it.
+- That cleanup is marker-aware and idempotent.
+- `agentsync apply --no-gitignore` is a command-level opt-out that skips gitignore reconciliation for that invocation only.
+
+If your team wants committed destinations instead of managed ignore rules, use:
+
+```toml
+[gitignore]
+enabled = false
+```
+
+Keep the workflow explanation in the <BaseLink href="/guides/gitignore-team-workflows/">canonical guide</BaseLink>; use this reference section for field semantics.
+
+If you are configuring AgentSync from native Windows and symlink creation fails locally, keep the config unchanged and fix the environment readiness instead. See <BaseLink href="/guides/windows-symlink-setup/">Windows Symlink Setup</BaseLink>.
 
 ### Known Ignore Patterns
 
@@ -207,6 +228,8 @@ The matrix below documents common agent locations and whether AgentSync can hand
 | `symlink` | Creates a direct symbolic link from `destination` to `source`. |
 | `symlink-contents` | Creates individual symbolic links for every file inside the `source` directory into the `destination` directory. |
 | `module-map` | Maps centrally-managed source files to specific module directories, creating a symlink per mapping with convention-based filenames. |
+
+These target types do not change on Windows. If the local Windows environment is not ready to create symlinks, use the <BaseLink href="/guides/windows-symlink-setup/">Windows Symlink Setup guide</BaseLink> rather than changing target semantics.
 
 #### `symlink-contents` with patterns
 When using `symlink-contents`, you can filter files using a glob pattern:

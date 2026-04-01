@@ -55,6 +55,12 @@ source = "AGENTS.md"
 destination = "CLAUDE.md"
 type = "symlink"
 
+[agents.claude.targets.commands]
+source = "command"
+destination = ".claude/commands"
+type = "symlink-contents"
+pattern = "*.md"
+
 # -----------------------------------------------------------------------------
 # OpenCode
 # -----------------------------------------------------------------------------
@@ -106,6 +112,24 @@ source = "prompts"
 destination = ".github/prompts"
 type = "symlink-contents"
 pattern = "*.prompt.md"
+# -----------------------------------------------------------------------------
+# Gemini
+# -----------------------------------------------------------------------------
+[agents.gemini]
+enabled = true
+description = "Gemini CLI - Google's AI coding assistant"
+
+[agents.gemini.targets.instructions]
+source = "AGENTS.md"
+destination = "GEMINI.md"
+type = "symlink"
+
+[agents.gemini.targets.commands]
+source = "command"
+destination = ".gemini/commands"
+type = "symlink-contents"
+pattern = "*.md"
+
 # -----------------------------------------------------------------------------
 # Root AGENTS.md
 # -----------------------------------------------------------------------------

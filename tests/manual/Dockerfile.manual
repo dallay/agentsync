@@ -1,0 +1,53 @@
+# =============================================================================
+# Dockerfile for AgentSync Manual Interactive Tests
+# Builds the binary and drops you into a shell with the test script ready
+# =============================================================================
+
+FROM rust:1.93-alpine AS builder
+
+WORKDIR /build
+
+RUN apk add --no-cache musl-dev pkgconf
+
+# Cache dependencies
+COPY Cargo.toml Cargo.lock ./
+RUN mkdir src && \
+    echo 'fn main() { println!("dummy"); }' > src/main.rs && \
+    echo 'pub fn dummy() {}' > src/lib.rs && \
+    cargo build --release && \
+    rm -rf src
+
+# Build real binary
+COPY src ./src
+RUN touch src/main.rs src/lib.rs && \
+    cargo build --release --locked && \
+    strip /build/target/release/agentsync
+
+# --- Runtime -----------------------------------------------------------------
+FROM alpine:3.23
+
+RUN apk add --no-cache \
+    bash \
+    git \
+    coreutils \
+    findutils \
+    sed \
+    tree
+
+COPY --from=builder /build/target/release/agentsync /usr/local/bin/agentsync
+RUN chmod +x /usr/local/bin/agentsync
+
+# Copy test script
+COPY tests/manual/test_wizard_interactive.sh /tests/test_wizard_interactive.sh
+RUN chmod +x /tests/test_wizard_interactive.sh
+
+# Git needs a user for init
+RUN git config --system user.email "test@test.com" && \
+    git config --system user.name "Test User" && \
+    git config --system init.defaultBranch main
+
+ENV AGENTSYNC_BIN=/usr/local/bin/agentsync
+
+WORKDIR /workspace
+
+ENTRYPOINT ["/bin/bash"]

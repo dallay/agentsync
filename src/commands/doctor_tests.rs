@@ -3,7 +3,8 @@ mod tests {
     use crate::commands::doctor::{
         Conflict, check_unmanaged_claude_skills, collect_missing_sources,
         collect_skills_mode_mismatch, expand_target_destinations, extract_managed_entries,
-        normalize_path, target_configuration_warnings, validate_destinations,
+        gitignore_missing_section_is_issue, normalize_path, target_configuration_warnings,
+        validate_destinations,
     };
     use agentsync::config::{Config, SyncType};
     use std::fs;
@@ -72,6 +73,149 @@ entry1
         let entries = extract_managed_entries(content, "# START Marker", "# END Marker");
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0], "entry1");
+    }
+
+    #[test]
+    fn test_gitignore_audit_accepts_normalized_root_scoped_entries() {
+        let config: Config = toml::from_str(
+            r#"
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.instructions]
+            source = "AGENTS.md"
+            destination = "AGENTS.md"
+            type = "symlink"
+            "#,
+        )
+        .unwrap();
+
+        let marker = &config.gitignore.marker;
+        let start_marker = format!("# START {}", marker);
+        let end_marker = format!("# END {}", marker);
+        let content = format!(
+            "{}\n/AGENTS.md\n/AGENTS.md.bak\n/.mcp.json\n.agents/skills/*.bak\n.claude/commands/\n.claude/skills/\n{}\n",
+            start_marker, end_marker
+        );
+
+        let actual_entries: std::collections::HashSet<String> =
+            extract_managed_entries(&content, &start_marker, &end_marker)
+                .into_iter()
+                .collect();
+        let required_entries: std::collections::HashSet<String> =
+            config.all_gitignore_entries().into_iter().collect();
+
+        assert_eq!(actual_entries, required_entries);
+    }
+
+    #[test]
+    fn test_gitignore_audit_flags_legacy_unscoped_root_entry_as_drift() {
+        let config: Config = toml::from_str(
+            r#"
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.instructions]
+            source = "AGENTS.md"
+            destination = "AGENTS.md"
+            type = "symlink"
+            "#,
+        )
+        .unwrap();
+
+        let marker = &config.gitignore.marker;
+        let start_marker = format!("# START {}", marker);
+        let end_marker = format!("# END {}", marker);
+        let content = format!(
+            "{}\nAGENTS.md\n/AGENTS.md.bak\n/.mcp.json\n.claude/commands/\n.claude/skills/\n{}\n",
+            start_marker, end_marker
+        );
+
+        let actual_entries: std::collections::HashSet<String> =
+            extract_managed_entries(&content, &start_marker, &end_marker)
+                .into_iter()
+                .collect();
+        let required_entries: std::collections::HashSet<String> =
+            config.all_gitignore_entries().into_iter().collect();
+
+        let missing: Vec<_> = required_entries
+            .difference(&actual_entries)
+            .cloned()
+            .collect();
+        let extra: Vec<_> = actual_entries
+            .difference(&required_entries)
+            .cloned()
+            .collect();
+
+        assert!(missing.contains(&"/AGENTS.md".to_string()));
+        assert!(extra.contains(&"AGENTS.md".to_string()));
+    }
+
+    #[test]
+    fn test_gitignore_audit_accepts_missing_managed_section_when_disabled() {
+        let config: Config = toml::from_str(
+            r#"
+            [gitignore]
+            enabled = false
+
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.instructions]
+            source = "AGENTS.md"
+            destination = "AGENTS.md"
+            type = "symlink"
+            "#,
+        )
+        .unwrap();
+
+        let marker = &config.gitignore.marker;
+        let start_marker = format!("# START {}", marker);
+        let end_marker = format!("# END {}", marker);
+
+        assert!(!gitignore_missing_section_is_issue(
+            config.gitignore.enabled,
+            "node_modules/\ndist/\n",
+            &start_marker,
+            &end_marker,
+        ));
+    }
+
+    #[test]
+    fn test_gitignore_audit_flags_partial_marker_when_disabled() {
+        let config: Config = toml::from_str(
+            r#"
+            [gitignore]
+            enabled = false
+
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.instructions]
+            source = "AGENTS.md"
+            destination = "AGENTS.md"
+            type = "symlink"
+            "#,
+        )
+        .unwrap();
+
+        let marker = &config.gitignore.marker;
+        let start_marker = format!("# START {}", marker);
+        let end_marker = format!("# END {}", marker);
+
+        assert!(gitignore_missing_section_is_issue(
+            config.gitignore.enabled,
+            &format!("node_modules/\n{start_marker}\nmanaged\n"),
+            &start_marker,
+            &end_marker,
+        ));
+
+        assert!(gitignore_missing_section_is_issue(
+            config.gitignore.enabled,
+            &format!("node_modules/\nmanaged\n{end_marker}\n"),
+            &start_marker,
+            &end_marker,
+        ));
     }
 
     #[test]
