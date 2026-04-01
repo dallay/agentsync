@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 #[cfg(windows)]
 use std::os::windows::fs::FileTypeExt;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use walkdir::WalkDir;
 
 use crate::config::{Config, SyncType, TargetConfig};
@@ -63,6 +63,7 @@ impl Linker {
     /// Create a new linker from a configuration
     pub fn new(config: Config, config_path: PathBuf) -> Self {
         let project_root = Config::project_root(&config_path);
+        let project_root = fs::canonicalize(&project_root).unwrap_or(project_root);
         let source_dir = config.source_dir(&config_path);
 
         Self {
@@ -88,7 +89,7 @@ impl Linker {
     }
 
     /// Validate that a destination path is safe (relative and no traversal).
-    /// Returns the joined path with project_root if safe.
+    /// Returns the resolved path within project_root if safe.
     fn ensure_safe_destination(&self, dest_path: &str) -> Result<PathBuf> {
         let path = Path::new(dest_path);
 
@@ -97,18 +98,65 @@ impl Linker {
             anyhow::bail!("Destination path must be relative: {}", dest_path);
         }
 
-        // SECURITY: Reject parent-directory traversal (..) to prevent escaping the project root.
-        if path
-            .components()
-            .any(|c| matches!(c, std::path::Component::ParentDir))
-        {
+        let components: Vec<_> = path.components().collect();
+
+        // SECURITY: Reject empty destinations like "" or "." that do not identify a concrete file.
+        if !components.iter().any(|c| matches!(c, Component::Normal(_))) {
+            anyhow::bail!("Destination path must not be empty: {}", dest_path);
+        }
+
+        // SECURITY: Reject traversal, root, and drive-prefixed components.
+        if components.iter().any(|c| {
+            matches!(
+                c,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        }) {
             anyhow::bail!(
-                "Destination path contains parent-directory traversal: {}",
+                "Destination path contains invalid path components: {}",
                 dest_path
             );
         }
 
-        Ok(self.project_root.join(path))
+        let joined = self.project_root.join(path);
+        let existing_ancestor = joined
+            .ancestors()
+            .find(|ancestor| ancestor.exists())
+            .with_context(|| {
+                format!(
+                    "Failed to resolve destination path within project root: {}",
+                    joined.display()
+                )
+            })?;
+
+        let canonical_ancestor =
+            self.canonicalize_cached(existing_ancestor)
+                .with_context(|| {
+                    format!(
+                        "Failed to canonicalize destination ancestor: {}",
+                        existing_ancestor.display()
+                    )
+                })?;
+
+        if !canonical_ancestor.starts_with(&self.project_root) {
+            anyhow::bail!(
+                "Destination path resolves outside project root: {}",
+                dest_path
+            );
+        }
+
+        if existing_ancestor == joined {
+            return Ok(canonical_ancestor);
+        }
+
+        let suffix = joined.strip_prefix(existing_ancestor).with_context(|| {
+            format!(
+                "Failed to resolve destination suffix for: {}",
+                joined.display()
+            )
+        })?;
+
+        Ok(canonical_ancestor.join(suffix))
     }
 
     /// Resolve the expected source path for status checks.
@@ -656,7 +704,21 @@ impl Linker {
                     return Ok(());
                 }
 
-                let dest = self.project_root.join(&dest_str);
+                let dest = match self.ensure_safe_destination(&dest_str) {
+                    Ok(dest) => dest,
+                    Err(err) => {
+                        if options.verbose {
+                            println!(
+                                "  {} Skipping nested-glob destination {}: {}",
+                                "!".yellow(),
+                                dest_str,
+                                err
+                            );
+                        }
+                        result.skipped += 1;
+                        return Ok(());
+                    }
+                };
 
                 let resolved = ResolvedSource {
                     path: full_path.to_path_buf(),
@@ -907,7 +969,10 @@ impl Linker {
                                     return Ok(());
                                 }
 
-                                let dest = self.project_root.join(&dest_str);
+                                let dest = match self.ensure_safe_destination(&dest_str) {
+                                    Ok(dest) => dest,
+                                    Err(_) => return Ok(()),
+                                };
                                 if dest.is_symlink() {
                                     if options.dry_run {
                                         println!(
