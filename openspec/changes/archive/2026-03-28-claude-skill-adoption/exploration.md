@@ -70,7 +70,7 @@ step must already have a `symlink-contents` target configured to pick them up.
 The `--dry-run` flag on `apply` shows what symlinks would be created/updated. For `SymlinkContents`,
 if the source directory doesn't exist, it prints:
 
-```
+```text
 ! Source directory does not exist: <path>
 ```
 

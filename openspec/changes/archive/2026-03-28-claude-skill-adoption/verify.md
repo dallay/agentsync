@@ -22,14 +22,14 @@ All tasks marked `[x]` in `tasks.md`.
 
 **Build**: ✅ Passed
 
-```
+```bash
 cargo clippy --all-targets --all-features -- -D warnings → clean (no warnings)
 cargo fmt --all -- --check → clean (no formatting issues)
 ```
 
 **Tests**: ✅ 343 passed / ❌ 0 failed / ⚠️ 4 skipped
 
-```
+```text
 Library (agentsync): 298 passed
 Binary (main): 38 passed
 Integration (all_tests): 2 passed, 2 ignored (real_world_skills — unrelated)

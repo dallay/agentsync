@@ -29,7 +29,7 @@ Provide CLI users with frictionless awareness of available updates by:
 ### Out of Scope
 
 - Automatic updates (no self-update mechanism)
-  -GUI/TTY progress indicators or interactive prompts
+  - GUI/TTY progress indicators or interactive prompts
 - Cross-crate version comparison (only checks agentsync)
 
 ## Approach
@@ -85,8 +85,8 @@ The cache file at `~/.cache/agentsync/update-check.json` can remain; it will be 
 
 ## Open Questions
 
-- Should we include pre-release versions in comparison? (e.g., `0.4.0-beta.1` vs `0.3.1`) — *
-  *Decision: skip pre-releases**
+- Should we include pre-release versions in comparison? (e.g., `0.4.0-beta.1` vs `0.3.1`) —
+  **Decision: skip pre-releases**
 - What if the cache directory doesn't exist? — **Decision: create parent dirs
   via `std::fs::create_dir_all`**
 - Should we add a `--check-updates` flag for manual checks? — **Deferred to future iteration**

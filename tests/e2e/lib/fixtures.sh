@@ -66,6 +66,7 @@ prepare_default_skill_sources() {
     prepare_skill_sources \
         "$root" \
         accessibility \
+        astrolicious-astro \
         best-practices \
         core-web-vitals \
         docker-expert \
@@ -75,7 +76,8 @@ prepare_default_skill_sources() {
         performance \
         pinned-tag \
         rust-async-patterns \
-        seo
+        seo \
+        typescript-advanced-types
 }
 
 wait_for_mock_provider() {

@@ -82,7 +82,7 @@ false positives if the user already has a properly configured skills target.
 
 ### Init Flow (Deliverable 1)
 
-```
+```text
 init(project_root, force)
   │
   ├─ Create .agents/, .agents/skills/
@@ -94,7 +94,7 @@ No behavioral change — just the template content changes.
 
 ### Wizard Detection + Migration Flow (Deliverables 2 & 3)
 
-```
+```text
 init_wizard(project_root, force)
   │
   ├─ scan_agent_files(project_root)

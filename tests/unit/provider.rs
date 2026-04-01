@@ -93,3 +93,19 @@ fn resolve_deterministic_rejects_invalid_ids() {
     let result = provider.resolve("owner//empty-skill");
     assert!(result.is_err(), "should reject empty repo component");
 }
+
+/// Skill IDs with spaces in the name (e.g., "angular/angular/PR Review" from the catalog)
+/// pass through to the URL fragment unencoded. This test documents that the space is
+/// preserved as-is — the install layer is responsible for URL-encoding if needed.
+#[test]
+fn resolve_deterministic_skill_name_with_space_passes_through_unencoded() {
+    let provider = SkillsShProvider;
+    // "angular" is not in SKILLS_REPO_NAMES, so no "skills/" prefix is added.
+    let info = provider.resolve("angular/angular/PR Review").unwrap();
+
+    assert_eq!(
+        info.download_url,
+        "https://github.com/angular/angular/archive/HEAD.zip#PR Review"
+    );
+    assert_eq!(info.format, "zip");
+}

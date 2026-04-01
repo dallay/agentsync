@@ -13,14 +13,18 @@ mental model of what remains before the repo is fully reconciled.
 
 ## Scope
 
-### In Scope\n\n- Update wizard completion output to summarize migrated content, config creation, optional backup results, and required manual follow-up actions.
+### In Scope
+
+- Update wizard completion output to summarize migrated content, config creation, optional backup results, and required manual follow-up actions.
 
 - Explicitly explain that the wizard does **not** run `agentsync apply`, does **not** update
   `.gitignore`, and does **not** inspect or summarize git status.
 - Add guardrails so wizard messaging makes only safe claims about follow-up work and avoids
   duplicate or conflicting generic footer output.
 
-### Out of Scope\n\n- Changing the default gitignore policy;
+### Out of Scope
+
+- Changing the default gitignore policy;
 
 `[gitignore].enabled = true` remains the product default.
 

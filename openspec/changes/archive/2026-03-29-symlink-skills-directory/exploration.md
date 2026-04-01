@@ -6,7 +6,7 @@
 linker (`src/linker.rs:466-516`) iterates through every entry in the source directory and creates an
 individual symlink for each one inside the destination directory. For skills, this means:
 
-```
+```text
 .agents/skills/pinned-tag/  →  .claude/skills/pinned-tag  (symlink)
 .agents/skills/rust/        →  .claude/skills/rust         (symlink)
 .agents/skills/registry.json →  .claude/skills/registry.json (symlink)
@@ -20,7 +20,7 @@ to destination. It already handles directory sources — on Unix via `std::os::u
 line 442) and on Windows via `std::os::windows::fs::symlink_dir` (line 448). Changing the type from
 `symlink-contents` to `symlink` would produce:
 
-```
+```text
 .claude/skills  →  ../../.agents/skills  (single directory symlink)
 ```
 

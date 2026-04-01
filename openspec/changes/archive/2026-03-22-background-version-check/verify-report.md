@@ -9,7 +9,7 @@
 
 ### Smoke Test
 
-```
+```bash
 $ cargo build --release
    Finished `release` profile
 $ ./target/release/agentsync --version

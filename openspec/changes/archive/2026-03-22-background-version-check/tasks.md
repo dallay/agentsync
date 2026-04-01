@@ -18,9 +18,9 @@
   `anyhow::Context`
 - Define `CheckedVersion` struct with fields `last_checked: DateTime<Utc>`,
   `latest_version: String`, `notified_for_version: Option<String>`
-- Derive `Debug, Serialize, Deserialize]` on `CheckedVersion`
+- Derive `#[derive(Debug, Serialize, Deserialize)]` on `CheckedVersion`
 - Define `Cache` struct with `path: PathBuf` field
-- Derive `Debug, Clone, Copy)]` on `Cache`
+- Derive `#[derive(Debug, Clone, Copy)]` on `Cache`
 - Verify: `cargo check` shows no errors in the new file
 
 2.2. [x] **Implement `Cache::load()` method**
@@ -47,8 +47,9 @@
     - Return early if `AGENTSYNC_NO_UPDATE_CHECK` env var equals `"1"` (case-insensitive)
     - Return early if `CI` env var equals `"true"` (case-insensitive)
     - Return early if `stderr` is not a TTY
-- Spawn a detached thread named `"agentsync-update-check"` using `thread::Builder`
-    - Set `.daemon(true)` and call `.spawn().ok()` — drop the handle immediately
+- Spawn a detached thread named `"agentsync-update-check"` using
+  `thread::Builder::new().name("agentsync-update-check".into()).spawn(...)`
+    - Drop the returned `JoinHandle` immediately via `.spawn().ok()` to detach the thread
 - Inside the thread closure:
     - Build the cache path at `~/.cache/agentsync/update-check.json`
     - Load cache with `Cache { path }.load()`
@@ -131,4 +132,4 @@
 - **Integration (3.x)** must complete before **Testing (4.x)** tasks, because the full wiring must
   be in place for end-to-end verification.
 
-(End of file - total 106 lines)
+(End of file - total 135 lines)

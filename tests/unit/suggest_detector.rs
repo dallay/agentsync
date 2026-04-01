@@ -339,3 +339,112 @@ fn catalog_driven_empty_project_has_no_detections() {
         detected_technology_ids(&detections)
     );
 }
+
+// ---------------------------------------------------------------------------
+// file_extensions — incidental-dir confidence behaviour
+// ---------------------------------------------------------------------------
+
+/// Documents current behaviour: `file_extensions` scanning does not apply
+/// incidental-dir confidence weighting, so a .tsx file found only inside
+/// `tests/fixtures/` yields the same `Medium` confidence as one in `src/`.
+/// If the incidental-dir weighting is ever added back, update the assertion.
+#[test]
+fn file_extensions_detection_in_incidental_dirs_yields_medium_confidence() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+
+    fs::create_dir_all(root.join("tests/fixtures")).unwrap();
+    fs::write(
+        root.join("tests/fixtures/component.tsx"),
+        "export default () => null;\n",
+    )
+    .unwrap();
+
+    let detector = catalog_detector();
+    let detections = detector.detect(root).unwrap();
+
+    let web_frontend = detections
+        .iter()
+        .find(|d| d.technology == TechnologyId::new("web_frontend"));
+
+    assert!(
+        web_frontend.is_some(),
+        "web_frontend should be detected from .tsx in tests/fixtures/, got: {:?}",
+        detected_technology_ids(&detections)
+    );
+    assert_eq!(
+        web_frontend.unwrap().confidence,
+        DetectionConfidence::Medium,
+        "file_extensions detection currently yields Medium regardless of incidental path"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Workspace resolution — package.json workspaces field
+// ---------------------------------------------------------------------------
+
+#[test]
+fn detects_packages_from_package_json_workspace_array() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+
+    // npm / Yarn classic array form: "workspaces": ["apps/*", "packages/*"]
+    fs::write(
+        root.join("package.json"),
+        r#"{"workspaces": ["apps/*", "packages/*"]}"#,
+    )
+    .unwrap();
+    fs::create_dir_all(root.join("apps/web")).unwrap();
+    fs::write(
+        root.join("apps/web/package.json"),
+        r#"{"dependencies": {"vue": "^3.0.0"}}"#,
+    )
+    .unwrap();
+    fs::create_dir_all(root.join("packages/ui")).unwrap();
+    fs::write(
+        root.join("packages/ui/package.json"),
+        r#"{"dependencies": {"@angular/core": "^17.0.0"}}"#,
+    )
+    .unwrap();
+
+    let detector = catalog_detector();
+    let detections = detector.detect(root).unwrap();
+    let ids = detected_technology_ids(&detections);
+
+    assert!(
+        ids.contains(&"vue".to_string()),
+        "should detect vue from apps/web/package.json via package.json workspaces, got: {ids:?}"
+    );
+    assert!(
+        ids.contains(&"angular".to_string()),
+        "should detect angular from packages/ui/package.json via package.json workspaces, got: {ids:?}"
+    );
+}
+
+#[test]
+fn detects_packages_from_exact_workspace_path() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+
+    // Exact (non-glob) path — no wildcard
+    fs::write(
+        root.join("pnpm-workspace.yaml"),
+        "packages:\n  - \"backend\"\n",
+    )
+    .unwrap();
+    fs::create_dir_all(root.join("backend")).unwrap();
+    fs::write(
+        root.join("backend/package.json"),
+        r#"{"dependencies": {"vue": "^3.0.0"}}"#,
+    )
+    .unwrap();
+
+    let detector = catalog_detector();
+    let detections = detector.detect(root).unwrap();
+    let ids = detected_technology_ids(&detections);
+
+    assert!(
+        ids.contains(&"vue".to_string()),
+        "should detect vue from exact-path workspace backend/package.json, got: {ids:?}"
+    );
+}

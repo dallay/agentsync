@@ -10,11 +10,11 @@
 
 | Metric | Value |
 |--------|-------|
-| Tasks total | 14 |
-| Tasks complete | 14 |
+| Tasks total | 18 |
+| Tasks complete | 18 |
 | Tasks incomplete | 0 |
 
-All tasks in `openspec/changes/autoskills-discovery-support/tasks.md` are marked complete.
+All tasks in `openspec/changes/archive/2026-04-01-autoskills-discovery-support/tasks.md` are marked complete.
 
 ---
 
@@ -162,7 +162,7 @@ None.
 ### PASS WITH WARNINGS
 
 After aligning the spec/design artifacts with the accepted architecture, the implementation is now
-consistent with the updated spec. All 14 tasks are complete, all required real execution checks pass,
+consistent with the updated spec. All 18 tasks are complete, all required real execution checks pass,
 and there are no remaining spec contradictions or failing behaviors for this explicit change.
 
 The remaining issues are verification-depth warnings around scenario-specific test coverage, not
