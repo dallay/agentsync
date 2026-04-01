@@ -1383,6 +1383,8 @@ fn remove_symlink(path: &Path) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
+    use std::os::unix::fs::symlink;
     use tempfile::TempDir;
 
     // ==========================================================================
@@ -1585,6 +1587,43 @@ mod tests {
         let linker = Linker::new(config, config_path);
 
         assert!(linker.config().agents.contains_key("test"));
+    }
+
+    #[test]
+    fn test_ensure_safe_destination_rejects_empty_and_parent_traversal() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        fs::write(&config_path, "").unwrap();
+
+        let linker = Linker::new(create_test_config(), config_path);
+
+        assert!(linker.ensure_safe_destination("").is_err());
+        assert!(linker.ensure_safe_destination(".").is_err());
+        assert!(linker.ensure_safe_destination("../escape.md").is_err());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_ensure_safe_destination_rejects_symlink_ancestor_escape() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        let escaped_dir = TempDir::new_in(temp_dir.path().parent().unwrap()).unwrap();
+        fs::create_dir_all(&agents_dir).unwrap();
+        symlink(escaped_dir.path(), temp_dir.path().join("escape-link")).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        fs::write(&config_path, "").unwrap();
+
+        let linker = Linker::new(create_test_config(), config_path);
+
+        assert!(
+            linker
+                .ensure_safe_destination("escape-link/linked.md")
+                .is_err()
+        );
     }
 
     // ==========================================================================
@@ -3340,6 +3379,71 @@ mod tests {
         let result = linker.sync(&SyncOptions::default()).unwrap();
         assert_eq!(result.skipped, 1);
         assert_eq!(result.created, 0);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_nested_glob_sync_skips_invalid_expanded_destination() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+        fs::write(temp_dir.path().join("AGENTS.md"), "# Instructions").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.nested]
+            source = "."
+            pattern = "**/AGENTS.md"
+            exclude = [".agents/**"]
+            destination = "{relative_path}"
+            type = "nested-glob"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker.sync(&SyncOptions::default()).unwrap();
+
+        assert_eq!(result.created, 0);
+        assert_eq!(result.skipped, 1);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_nested_glob_clean_skips_invalid_expanded_destination() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+        fs::write(temp_dir.path().join("AGENTS.md"), "# Instructions").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.nested]
+            source = "."
+            pattern = "**/AGENTS.md"
+            exclude = [".agents/**"]
+            destination = "{relative_path}"
+            type = "nested-glob"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker.clean(&SyncOptions::default()).unwrap();
+
+        assert_eq!(result.removed, 0);
     }
 
     // =========================================================================
