@@ -62,8 +62,8 @@ in `src/linker.rs`. Changing the type from
       fewer filesystem entries, new skills in `.agents/skills/` appear instantly without re-running
       sync
     - Cons: Exposes `registry.json` and any non-skill files in `.agents/skills/` to the agent;
-      existing projects using `symlink-contents` need manual config migration; `pattern` filter (
-      e.g., `*.md`) no longer applies
+      existing projects using `symlink-contents` need manual config migration; `pattern` filter
+      (e.g., `*.md`) no longer applies
     - Effort: Low
 
 2. **New `symlink-directory` type** — Add a dedicated `SyncType` variant that always symlinks the
