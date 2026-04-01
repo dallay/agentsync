@@ -205,19 +205,24 @@ pub fn run_doctor(project_root: PathBuf) -> Result<()> {
         match fs::read_to_string(&gitignore_path) {
             Ok(content) => {
                 let marker = &linker.config().gitignore.marker;
-                let start_marker = format!("# START {}", marker);
-                let end_marker = format!("# END {}", marker);
+                let (start_marker, end_marker) = agentsync::gitignore::managed_markers(marker);
+                let (has_start_marker, has_end_marker) =
+                    parse_markers(&content, &start_marker, &end_marker);
+                let has_managed_section = has_start_marker && has_end_marker;
 
-                if !content.contains(&start_marker) || !content.contains(&end_marker) {
-                    if linker.config().gitignore.enabled {
-                        println!(
-                            "  {} .gitignore managed section missing (Marker: {})",
-                            "⚠".yellow(),
-                            marker
-                        );
-                        issues += 1;
-                    }
-                } else {
+                if gitignore_missing_section_is_issue(
+                    linker.config().gitignore.enabled,
+                    &content,
+                    &start_marker,
+                    &end_marker,
+                ) {
+                    println!(
+                        "  {} .gitignore managed section missing (Marker: {})",
+                        "⚠".yellow(),
+                        marker
+                    );
+                    issues += 1;
+                } else if has_managed_section {
                     // Audit entries
                     let managed_entries =
                         extract_managed_entries(&content, &start_marker, &end_marker);
@@ -304,6 +309,25 @@ pub fn collect_skills_mode_mismatch(
         target_name,
         target,
     )
+}
+
+pub(crate) fn parse_markers(content: &str, start_marker: &str, end_marker: &str) -> (bool, bool) {
+    let has_start = content.lines().any(|line| line.trim() == start_marker);
+    let has_end = content.lines().any(|line| line.trim() == end_marker);
+    (has_start, has_end)
+}
+
+pub(crate) fn gitignore_missing_section_is_issue(
+    gitignore_enabled: bool,
+    content: &str,
+    start_marker: &str,
+    end_marker: &str,
+) -> bool {
+    match parse_markers(content, start_marker, end_marker) {
+        (true, true) => false,
+        (false, false) => gitignore_enabled,
+        _ => true,
+    }
 }
 
 fn command_exists(cmd: &str) -> bool {

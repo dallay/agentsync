@@ -1,0 +1,136 @@
+---
+title: Windows symlink setup
+description: Prepare a native Windows or WSL environment for reliable AgentSync symlink usage.
+---
+
+import BaseLink from "../../../components/BaseLink.astro";
+
+Use this guide when you run AgentSync on Windows and need a reliable setup path for symlink creation.
+
+This page covers Windows-specific environment readiness only. Team workflow policy, `.gitignore` decisions, and maintainer-versus-collaborator process still live in the <BaseLink href="/guides/gitignore-team-workflows/">Gitignore Team Workflows guide</BaseLink>.
+
+## Choose your setup path
+
+You have two practical options:
+
+- **Native Windows**: good when your team already works in PowerShell or Command Prompt and you can satisfy Windows symlink prerequisites.
+- **WSL**: often lower friction when you already develop inside Linux tooling on Windows or do not want to depend on native Windows symlink permissions.
+
+WSL is optional. AgentSync does not require it, and it does not change AgentSync defaults. It is simply another execution context that may feel closer to Linux or macOS.
+
+## Native Windows prerequisites
+
+Before relying on native Windows symlink creation, confirm these basics:
+
+1. **Your shell can create symlinks**
+   - The simplest path is usually enabling **Developer Mode** in Windows.
+   - If Developer Mode is not available in your environment, run your terminal with **Administrator** privileges.
+2. **Run AgentSync from the shell that owns the repository path**
+   - If the repo lives on the normal Windows filesystem, run `agentsync` from PowerShell, Windows Terminal, or another native Windows shell.
+3. **Keep one execution context per working tree**
+   - Avoid switching back and forth between native Windows and WSL commands for the same checkout unless your team intentionally understands that setup.
+
+If your native shell cannot create a simple symlink, fix that first before treating the issue as an AgentSync problem.
+
+## Native Windows quick check
+
+From PowerShell in your repository root:
+
+```powershell
+New-Item -ItemType SymbolicLink -Path .\agentsync-link-test -Target .\.agents -Force
+Remove-Item .\agentsync-link-test
+```
+
+If that succeeds, your shell is usually ready for AgentSync-managed symlinks.
+
+Then run:
+
+```powershell
+agentsync apply
+agentsync status
+```
+
+What you want to see:
+
+- `agentsync apply` completes without a symlink-permission failure
+- `agentsync status` reports managed targets as `OK`
+
+## When WSL is the simpler option
+
+WSL is often the easier path when:
+
+- you already use Linux-oriented tooling on Windows
+- native Windows symlink permissions are locked down by policy
+- your team wants Windows contributors to follow a setup that behaves more like Linux or macOS
+
+Recommended pattern:
+
+1. Keep the repository inside the WSL filesystem.
+2. Install and run AgentSync from your WSL shell.
+3. Keep that checkout managed from WSL instead of mixing native Windows commands into the same working tree.
+
+Use WSL as a setup choice, not as a separate workflow. After the environment is ready, the same shared repository guidance still applies: see <BaseLink href="/guides/gitignore-team-workflows/">Gitignore Team Workflows</BaseLink>.
+
+## Verify setup after `agentsync apply`
+
+Use verification to separate environment problems from normal workflow questions.
+
+### Native Windows
+
+```powershell
+agentsync status
+Get-Item .\CLAUDE.md | Format-List FullName,LinkType,Target
+```
+
+### WSL
+
+```bash
+agentsync status
+ls -l CLAUDE.md
+```
+
+Healthy results usually mean:
+
+- the expected managed destination exists
+- the destination is a symlink, not a plain file
+- the link points back to the canonical `.agents/` source
+
+If you use a different enabled target than `CLAUDE.md`, inspect any destination that AgentSync manages for your configuration.
+
+## Recovery steps for common setup failures
+
+Keep recovery focused on Windows setup readiness:
+
+### Permission or policy failure during `agentsync apply`
+
+- Re-check Developer Mode or reopen the shell with Administrator privileges.
+- Confirm you are running from the intended context: native Windows shell for a Windows checkout, or WSL shell for a WSL checkout.
+- Retry `agentsync apply` after fixing the environment.
+
+### Destination exists but is not a symlink
+
+- Review the path reported by `agentsync status`.
+- Remove or back up the conflicting file or directory if it should be managed by AgentSync.
+- Re-run `agentsync apply`.
+
+### You changed setup approach and want a clean retry
+
+For example, if you switched from a broken native attempt to a working WSL flow:
+
+```bash
+agentsync clean
+agentsync apply
+agentsync status
+```
+
+Use `clean` only when you intentionally want AgentSync to remove its managed links before recreating them.
+
+## Guidance for mixed-platform teams
+
+Use this page as the Windows-specific onboarding link for contributors who need setup help. Keep shared repository policy in the cross-platform docs:
+
+- send maintainers and collaborators to <BaseLink href="/guides/gitignore-team-workflows/">Gitignore Team Workflows</BaseLink> for `.gitignore` policy and maintainer/collaborator expectations
+- send Windows users here only for native prerequisites, WSL positioning, verification, and recovery
+- avoid creating a separate Windows-only repository policy unless your team truly has one outside AgentSync
+
+That keeps Windows setup discoverable without forcing macOS or Linux readers through platform-specific instructions.

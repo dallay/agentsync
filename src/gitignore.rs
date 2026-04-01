@@ -8,6 +8,11 @@ use colored::Colorize;
 use std::fs;
 use std::path::Path;
 
+/// Build the start/end marker pair used to delimit the managed section in `.gitignore`.
+pub fn managed_markers(marker: &str) -> (String, String) {
+    (format!("# START {}", marker), format!("# END {}", marker))
+}
+
 /// Update .gitignore with managed entries
 pub fn update_gitignore(
     project_root: &Path,
@@ -16,8 +21,7 @@ pub fn update_gitignore(
     dry_run: bool,
 ) -> Result<()> {
     let gitignore_path = project_root.join(".gitignore");
-    let start_marker = format!("# START {}", marker);
-    let end_marker = format!("# END {}", marker);
+    let (start_marker, end_marker) = managed_markers(marker);
 
     // Read existing content or start fresh
     let existing_content = if gitignore_path.exists() {
@@ -74,6 +78,35 @@ pub fn update_gitignore(
         "✔".green(),
         entries.len()
     );
+
+    Ok(())
+}
+
+/// Remove the managed section from .gitignore when management is disabled.
+pub fn cleanup_gitignore(project_root: &Path, marker: &str, dry_run: bool) -> Result<()> {
+    let gitignore_path = project_root.join(".gitignore");
+    if !gitignore_path.exists() {
+        return Ok(());
+    }
+
+    let (start_marker, end_marker) = managed_markers(marker);
+    let existing_content = fs::read_to_string(&gitignore_path)
+        .with_context(|| format!("Failed to read .gitignore: {}", gitignore_path.display()))?;
+    let cleaned_content = remove_managed_section(&existing_content, &start_marker, &end_marker);
+
+    if existing_content == cleaned_content {
+        return Ok(());
+    }
+
+    if dry_run {
+        println!("  {} Would remove managed .gitignore section", "→".cyan(),);
+        return Ok(());
+    }
+
+    fs::write(&gitignore_path, &cleaned_content)
+        .with_context(|| format!("Failed to write .gitignore: {}", gitignore_path.display()))?;
+
+    println!("  {} Removed managed .gitignore section", "✔".green(),);
 
     Ok(())
 }
@@ -370,6 +403,67 @@ trailing_content
 
         assert!(content.contains("# START My Custom Marker"));
         assert!(content.contains("# END My Custom Marker"));
+    }
+
+    #[test]
+    fn test_cleanup_gitignore_removes_matching_managed_block() {
+        let temp_dir = TempDir::new().unwrap();
+        let gitignore_path = temp_dir.path().join(".gitignore");
+        fs::write(
+            &gitignore_path,
+            "node_modules/\n# START Marker\nmanaged\n# END Marker\ndist/\n",
+        )
+        .unwrap();
+
+        cleanup_gitignore(temp_dir.path(), "Marker", false).unwrap();
+
+        let content = fs::read_to_string(&gitignore_path).unwrap();
+        assert_eq!(content, "node_modules/\ndist/\n");
+    }
+
+    #[test]
+    fn test_cleanup_gitignore_respects_custom_marker() {
+        let temp_dir = TempDir::new().unwrap();
+        let gitignore_path = temp_dir.path().join(".gitignore");
+        fs::write(
+            &gitignore_path,
+            "# START Default Marker\nkeep\n# END Default Marker\n# START Custom Marker\nremove\n# END Custom Marker\n",
+        )
+        .unwrap();
+
+        cleanup_gitignore(temp_dir.path(), "Custom Marker", false).unwrap();
+
+        let content = fs::read_to_string(&gitignore_path).unwrap();
+        assert!(content.contains("# START Default Marker"));
+        assert!(content.contains("keep"));
+        assert!(!content.contains("Custom Marker"));
+        assert!(!content.contains("remove"));
+    }
+
+    #[test]
+    fn test_cleanup_gitignore_dry_run_does_not_modify_existing() {
+        let temp_dir = TempDir::new().unwrap();
+        let gitignore_path = temp_dir.path().join(".gitignore");
+        let original = "node_modules/\n# START Marker\nmanaged\n# END Marker\n";
+        fs::write(&gitignore_path, original).unwrap();
+
+        cleanup_gitignore(temp_dir.path(), "Marker", true).unwrap();
+
+        let content = fs::read_to_string(&gitignore_path).unwrap();
+        assert_eq!(content, original);
+    }
+
+    #[test]
+    fn test_cleanup_gitignore_is_noop_when_matching_block_missing() {
+        let temp_dir = TempDir::new().unwrap();
+        let gitignore_path = temp_dir.path().join(".gitignore");
+        let original = "node_modules/\n# START Other\nmanaged\n# END Other\n";
+        fs::write(&gitignore_path, original).unwrap();
+
+        cleanup_gitignore(temp_dir.path(), "Marker", false).unwrap();
+
+        let content = fs::read_to_string(&gitignore_path).unwrap();
+        assert_eq!(content, original);
     }
 
     // ==========================================================================

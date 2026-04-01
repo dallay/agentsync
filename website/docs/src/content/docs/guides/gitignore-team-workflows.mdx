@@ -1,0 +1,258 @@
+---
+title: Gitignore team workflows
+description: Choose the default managed gitignore workflow or the committed-destination opt-out workflow for your team.
+---
+
+import BaseLink from "../../../components/BaseLink.astro";
+
+Use this guide when your team needs to decide how `agentsync` should interact with `.gitignore`.
+
+The short version:
+
+- **Default:** keep `[gitignore].enabled = true` and let AgentSync manage a marker-delimited block in `.gitignore`.
+- **Intentional opt-out:** set `[gitignore].enabled = false` only if your team wants to commit AgentSync-managed destinations.
+- **Temporary CLI opt-out:** use `agentsync apply --no-gitignore` when you want one run to skip `.gitignore` reconciliation without changing team policy.
+
+For field-by-field details, see the <BaseLink href="/reference/configuration/#gitignore-management">configuration reference</BaseLink>. For command semantics, see the <BaseLink href="/reference/cli/#apply">CLI reference</BaseLink>.
+
+## When to choose each workflow
+
+### Choose the default managed-gitignore workflow when
+
+- your team wants generated symlink destinations kept out of version control
+- you want `agentsync apply` to maintain `.gitignore` for everyone
+- you want new collaborators to rely on a simple `prepare` hook or `agentsync apply`
+
+This is the recommended starting point, and `[gitignore].enabled = true` remains the default behavior.
+
+### Choose the committed-destination opt-out workflow when
+
+- your team intentionally commits AgentSync-managed destinations
+- you review those destination files as normal repository changes
+- you are prepared for `agentsync apply` to remove the old AgentSync-managed `.gitignore` block
+
+This mode is an opt-out for a specific team workflow. It is not the default.
+
+## Workflow 1: Default managed gitignore
+
+### What AgentSync does
+
+With `[gitignore].enabled = true`, AgentSync writes and updates one managed block in `.gitignore`. That block uses your configured marker and includes:
+
+- known ignore patterns for enabled agents
+- symlink destination paths managed by your config
+- **root-scoped entries** for managed destinations that live at the repository root
+- any extra paths listed in `[gitignore].entries`
+
+Example configuration:
+
+```toml
+[gitignore]
+enabled = true
+marker = "AI Agent Symlinks"
+entries = []
+```
+
+Example managed block:
+
+```text
+# START AI Agent Symlinks
+/CLAUDE.md
+/.mcp.json
+.claude/commands/
+.claude/skills/
+# END AI Agent Symlinks
+```
+
+The `# START <marker>` / `# END <marker>` lines use the configured marker exactly. The leading `/` on root files is intentional. It shows the root-scoped behavior for repository-root managed destinations.
+
+### Maintainer steps
+
+1. Initialize or update AgentSync config.
+
+   ```bash
+   agentsync init
+   # or
+   agentsync init --wizard
+   ```
+
+2. Keep `[gitignore].enabled = true` (or omit it and use the default).
+
+3. Preview the first reconciliation if you want to review changes before writing them.
+
+   ```bash
+   agentsync apply --dry-run
+   ```
+
+4. Apply the config.
+
+   ```bash
+   agentsync apply
+   ```
+
+5. Review and stage the expected changes:
+   - `.agents/agentsync.toml`
+   - `.agents/AGENTS.md` and any other canonical `.agents/` source files
+   - the managed `.gitignore` block
+   - any newly created symlink destinations that belong in local working trees but stay ignored in Git
+
+### Expected diffs after `init` and `apply`
+
+After `agentsync init`, expect new files under `.agents/` plus a starter config.
+
+After `agentsync apply`, expect:
+
+- symlink destinations such as `CLAUDE.md` or `.github/copilot-instructions.md`
+- `.gitignore` updates inside the AgentSync-managed block
+- no need to hand-edit the managed block afterward
+
+In practical review terms, a maintainer should treat the `.gitignore` block update as part of normal setup when adopting a new agent target or changing managed destinations.
+
+### Collaborator steps
+
+1. Pull the latest repository changes.
+2. Run the repo's setup flow.
+3. If your repo already uses a package-manager `prepare` hook, let that hook run `agentsync apply` for you.
+4. If no hook runs automatically, run:
+
+   ```bash
+   agentsync apply
+   ```
+
+Expected local outcome:
+
+- symlinks are refreshed
+- managed local destination files are present
+- `.gitignore` stays in the default managed mode
+- repeated runs are usually a no-op unless config changed
+
+### Prepare-hook guidance
+
+For Node-based repos, this is the usual setup:
+
+```json
+{
+  "scripts": {
+    "prepare": "agentsync apply || true"
+  }
+}
+```
+
+Use the hook when you want onboarding and dependency install flows to refresh symlinks automatically. Collaborators should still run `agentsync apply` manually when:
+
+- the hook does not run in their environment
+- they installed AgentSync after the initial clone
+- they want to re-run setup after changing `.agents/agentsync.toml`
+
+## Workflow 2: Committed-destination opt-out
+
+Choose this only when your team intentionally wants AgentSync-managed destinations committed to version control.
+
+### What AgentSync does
+
+With `[gitignore].enabled = false`, AgentSync stops managing the `.gitignore` block. On the next `agentsync apply`, it removes any existing AgentSync-managed block that matches the configured marker.
+
+That cleanup is **marker-aware**:
+
+- the matching AgentSync-managed block is removed
+- unmanaged `.gitignore` lines before and after the block are preserved
+- no replacement managed block is written while management stays disabled
+
+Example configuration:
+
+```toml
+[gitignore]
+enabled = false
+marker = "AI Agent Symlinks"
+```
+
+### Maintainer steps
+
+1. Update config to disable gitignore management.
+
+   ```toml
+   [gitignore]
+   enabled = false
+   ```
+
+2. Preview the change if you want to confirm cleanup first.
+
+   ```bash
+   agentsync apply --dry-run
+   ```
+
+3. Reconcile the repository.
+
+   ```bash
+   agentsync apply
+   ```
+
+4. Review and stage the expected changes:
+   - `.agents/agentsync.toml`
+   - removal of the stale AgentSync-managed `.gitignore` block, if one existed
+   - AgentSync-managed destination files that your team now intends to commit
+
+### Expected diffs after opting out
+
+Expect `agentsync apply` to remove the stale managed block from `.gitignore` without touching unrelated ignore lines.
+
+For example:
+
+```diff
+ node_modules/
+-# START AI Agent Symlinks
+-/CLAUDE.md
+-/.mcp.json
+-# END AI Agent Symlinks
+ dist/
+```
+
+After that cleanup, future `agentsync apply` runs leave `.gitignore` alone unless you re-enable management.
+
+### Collaborator steps
+
+1. Pull the latest repository changes.
+2. Run the same repo setup flow your team documents.
+3. If your project uses a `prepare` hook, it can still run `agentsync apply`.
+4. Otherwise run:
+
+   ```bash
+   agentsync apply
+   ```
+
+Expected local outcome:
+
+- symlinks and managed destinations are refreshed
+- `.gitignore` remains unmanaged by AgentSync
+- committed AgentSync-managed destinations may now appear in normal Git diffs and reviews
+
+## Temporary opt-out for one command
+
+Use `--no-gitignore` when you want to skip `.gitignore` reconciliation for a single invocation.
+
+```bash
+agentsync apply --no-gitignore
+agentsync apply --dry-run --no-gitignore
+```
+
+This is stricter and narrower than changing config:
+
+- it applies only to that command run
+- it skips `.gitignore` writes, updates, and cleanup
+- it does **not** change your team workflow or config default
+
+If `[gitignore].enabled = false` and a stale managed block still exists, `agentsync apply --no-gitignore` leaves that stale block untouched for that run.
+
+## Suggested review checklist
+
+When you review a gitignore-related AgentSync change, confirm:
+
+- the repo still uses the intended workflow
+- `.gitignore` changes match the chosen policy
+- root-scoped entries are expected for root-level managed destinations
+- collaborators have a clear `prepare` hook or explicit `agentsync apply` step
+- supporting docs in your repo point back to this guide instead of duplicating it
+
+## Platform note
+
+The workflows above are the same on macOS, Linux, and Windows. If you need Windows-specific symlink prerequisites, WSL positioning, or recovery steps, use the <BaseLink href="/guides/windows-symlink-setup/">Windows Symlink Setup guide</BaseLink> instead of creating a second workflow narrative here.
