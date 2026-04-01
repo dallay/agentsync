@@ -185,10 +185,13 @@ We recommend adding the apply command to your `prepare` script to ensure symlink
 
 If you use a `prepare` hook, collaborators can usually rely on that automation after pulling changes. They should still run `agentsync apply` manually when the hook does not run or after changing AgentSync config.
 
+If your team also wants symlinks refreshed after branch switches, merges, or rebases, follow the <BaseLink href="/guides/git-hook-automation/">Git Hook Automation guide</BaseLink> for Lefthook, Husky, `simple-git-hooks`, and native Git hook examples.
+
 ## Next Steps
 
 - Learn more about <BaseLink href="/reference/configuration/">Configuration Options</BaseLink>
 - Choose a team policy in <BaseLink href="/guides/gitignore-team-workflows/">Gitignore Team Workflows</BaseLink>
+- Automate branch/merge/rebase refreshes with <BaseLink href="/guides/git-hook-automation/">Git Hook Automation</BaseLink>
 - Onboard Windows contributors with <BaseLink href="/guides/windows-symlink-setup/">Windows Symlink Setup</BaseLink>
 - Explore <BaseLink href="/guides/mcp/">MCP Integration</BaseLink>
 - See the <BaseLink href="/reference/cli/">CLI Reference</BaseLink>

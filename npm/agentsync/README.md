@@ -102,9 +102,11 @@ agentsync clean
      "scripts": {
        "precommit": "pnpm exec agentsync apply --dry-run",
        "prepare": "pnpm exec agentsync apply"
-     }
+    }
    }
    ```
+
+   If your team also wants `agentsync apply` to run after branch switches, merges, or rebases, see the Git hook automation guide for Lefthook, Husky, `simple-git-hooks`, and native Git hook examples: https://dallay.github.io/agentsync/guides/git-hook-automation/
 
 - For complex workflows, see the [detailed API documentation](https://dallay.github.io/agentsync/).
 

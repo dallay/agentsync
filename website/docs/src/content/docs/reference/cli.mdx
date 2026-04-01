@@ -53,7 +53,7 @@ In workflow terms, `agentsync apply` reconciles your local managed destinations 
 - committed-destination opt-out workflow: removes a stale AgentSync-managed block when `[gitignore].enabled = false`
 - temporary CLI opt-out: skips all `.gitignore` reconciliation when `--no-gitignore` is present
 
-For the full team decision guide, see <a href="/guides/gitignore-team-workflows/">Gitignore Team Workflows</a>.
+For the full team decision guide, see <a href="/guides/gitignore-team-workflows/">Gitignore Team Workflows</a>. For install-time and Git hook automation patterns around `apply`, see <a href="/guides/git-hook-automation/">Git Hook Automation</a>.
 
 If `apply` fails because the local Windows environment cannot create symlinks yet, fix the shell/setup prerequisites first with the <a href="/guides/windows-symlink-setup/">Windows Symlink Setup guide</a>.
 
