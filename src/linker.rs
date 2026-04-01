@@ -87,6 +87,30 @@ impl Linker {
         &self.config
     }
 
+    /// Validate that a destination path is safe (relative and no traversal).
+    /// Returns the joined path with project_root if safe.
+    fn ensure_safe_destination(&self, dest_path: &str) -> Result<PathBuf> {
+        let path = Path::new(dest_path);
+
+        // SECURITY: Reject absolute paths to prevent writing to arbitrary locations.
+        if path.is_absolute() {
+            anyhow::bail!("Destination path must be relative: {}", dest_path);
+        }
+
+        // SECURITY: Reject parent-directory traversal (..) to prevent escaping the project root.
+        if path
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+        {
+            anyhow::bail!(
+                "Destination path contains parent-directory traversal: {}",
+                dest_path
+            );
+        }
+
+        Ok(self.project_root.join(path))
+    }
+
     /// Resolve the expected source path for status checks.
     pub fn expected_source_path(&self, source: &Path, target: &TargetConfig) -> Option<PathBuf> {
         // expected_source_path feeds status/entry_is_problematic; when should_compress_agents_md
@@ -201,21 +225,28 @@ impl Linker {
         options: &SyncOptions,
     ) -> Result<SyncResult> {
         let source = self.source_dir.join(&target.source);
-        let dest = self.project_root.join(&target.destination);
 
         match target.sync_type {
             SyncType::Symlink => {
+                let dest = self.ensure_safe_destination(&target.destination)?;
                 let resolved = self.resolve_source_path(&source, target, options)?;
                 self.create_symlink(&resolved, &dest, options)
             }
-            SyncType::SymlinkContents => self.create_symlinks_for_contents(
-                &source,
-                &dest,
-                target.pattern.as_deref(),
-                target,
-                options,
-            ),
+            SyncType::SymlinkContents => {
+                let dest = self.ensure_safe_destination(&target.destination)?;
+                self.create_symlinks_for_contents(
+                    &source,
+                    &dest,
+                    target.pattern.as_deref(),
+                    target,
+                    options,
+                )
+            }
             SyncType::NestedGlob => {
+                // SECURITY: Validate destination template for traversal/absolute paths.
+                // We validate the template itself before expansion.
+                let _ = self.ensure_safe_destination(&target.destination)?;
+
                 // For NestedGlob, `source` is relative to the project root (not source_dir).
                 let search_root = self.project_root.join(&target.source);
                 self.process_nested_glob(
@@ -756,23 +787,23 @@ impl Linker {
             // Resolve destination filename
             let filename = crate::config::resolve_module_map_filename(mapping, agent_name);
 
-            // Validate: dest components must be relative and safe
-            if let Some(err) =
-                Self::validate_module_map_path_components(&mapping.destination, &filename)
-            {
-                if options.verbose {
-                    println!(
-                        "  {} Skipping mapping {}: {}",
-                        "!".yellow(),
-                        mapping.source,
-                        err
-                    );
+            // SECURITY: Validate that the joined destination (dir + filename) is safe.
+            let dest_str = format!("{}/{}", mapping.destination, filename);
+            let dest = match self.ensure_safe_destination(&dest_str) {
+                Ok(d) => d,
+                Err(e) => {
+                    if options.verbose {
+                        println!(
+                            "  {} Skipping mapping {}: {}",
+                            "!".yellow(),
+                            mapping.source,
+                            e
+                        );
+                    }
+                    result.skipped += 1;
+                    continue;
                 }
-                result.skipped += 1;
-                continue;
-            }
-
-            let dest = self.project_root.join(&mapping.destination).join(&filename);
+            };
 
             let resolved = ResolvedSource {
                 path: source_path.clone(),
@@ -846,6 +877,14 @@ impl Linker {
             for target_config in agent_config.targets.values() {
                 match target_config.sync_type {
                     SyncType::NestedGlob => {
+                        // SECURITY: Validate destination template for traversal/absolute paths.
+                        if self
+                            .ensure_safe_destination(&target_config.destination)
+                            .is_err()
+                        {
+                            continue;
+                        }
+
                         // Re-discover the same files and remove the corresponding symlinks.
                         let search_root = self.project_root.join(&target_config.source);
                         if !search_root.exists() || !search_root.is_dir() {
@@ -888,7 +927,10 @@ impl Linker {
                         )?;
                     }
                     SyncType::SymlinkContents => {
-                        let dest = self.project_root.join(&target_config.destination);
+                        let dest = match self.ensure_safe_destination(&target_config.destination) {
+                            Ok(d) => d,
+                            Err(_) => continue,
+                        };
                         if dest.is_dir() {
                             // For symlink-contents, remove symlinks inside the directory
                             for entry in fs::read_dir(&dest).with_context(|| {
@@ -922,7 +964,10 @@ impl Linker {
                         }
                     }
                     SyncType::Symlink => {
-                        let dest = self.project_root.join(&target_config.destination);
+                        let dest = match self.ensure_safe_destination(&target_config.destination) {
+                            Ok(d) => d,
+                            Err(_) => continue,
+                        };
                         if dest.is_symlink() {
                             if options.dry_run {
                                 println!("  {} Would remove: {}", "→".cyan(), dest.display());
@@ -938,23 +983,22 @@ impl Linker {
                             let filename =
                                 crate::config::resolve_module_map_filename(mapping, agent_name);
 
-                            // Validate: dest components must be relative and safe
-                            if let Some(err) = Self::validate_module_map_path_components(
-                                &mapping.destination,
-                                &filename,
-                            ) {
-                                if options.verbose {
-                                    println!(
-                                        "  {} Skipping mapping {}: {}",
-                                        "!".yellow(),
-                                        mapping.source,
-                                        err
-                                    );
+                            // SECURITY: Validate that the joined destination (dir + filename) is safe.
+                            let dest_str = format!("{}/{}", mapping.destination, filename);
+                            let dest = match self.ensure_safe_destination(&dest_str) {
+                                Ok(d) => d,
+                                Err(e) => {
+                                    if options.verbose {
+                                        println!(
+                                            "  {} Skipping mapping {}: {}",
+                                            "!".yellow(),
+                                            mapping.source,
+                                            e
+                                        );
+                                    }
+                                    continue;
                                 }
-                                continue;
-                            }
-
-                            let dest = self.project_root.join(&mapping.destination).join(&filename);
+                            };
 
                             if dest.is_symlink() {
                                 if options.dry_run {
@@ -972,38 +1016,6 @@ impl Linker {
         }
 
         Ok(result)
-    }
-
-    /// Validate that destination directory and filename components are safe for joining
-    /// to project_root (i.e., they are relative and contain no parent-dir traversal).
-    ///
-    /// Returns `Some(error_message)` if validation fails, `None` if safe.
-    fn validate_module_map_path_components(dest_dir: &str, filename: &str) -> Option<String> {
-        // Check destination directory
-        if Path::new(dest_dir).is_absolute() {
-            return Some(format!("destination directory is absolute: {dest_dir}"));
-        }
-        if Path::new(dest_dir)
-            .components()
-            .any(|c| matches!(c, std::path::Component::ParentDir))
-        {
-            return Some(format!(
-                "destination directory contains parent-dir component: {dest_dir}"
-            ));
-        }
-        // Check filename
-        if Path::new(filename).is_absolute() {
-            return Some(format!("filename is absolute: {filename}"));
-        }
-        if Path::new(filename)
-            .components()
-            .any(|c| matches!(c, std::path::Component::ParentDir))
-        {
-            return Some(format!(
-                "filename contains parent-dir component: {filename}"
-            ));
-        }
-        None
     }
 
     /// Sync MCP configurations for enabled agents
