@@ -8,6 +8,24 @@
 
 * update README.md for accuracy and formatting ([#159](https://github.com/dallay/agentsync/issues/159)) ([8cb9f19](https://github.com/dallay/agentsync/commit/8cb9f19b2302456f0e4536f7a37ad9af5645e605))
 
+## [1.37.0](https://github.com/dallay/agentsync/compare/v1.36.0...v1.37.0) (2026-04-01)
+
+
+### Features
+
+* Implement autoskills discovery and update Windows setup documentation ([#288](https://github.com/dallay/agentsync/issues/288)) ([f6fb8c8](https://github.com/dallay/agentsync/commit/f6fb8c870a4ab4bd9a3b63d140225c002add11a1))
+
+
+### Documentation
+
+* **specs:** add retrospecs for core modules ([#283](https://github.com/dallay/agentsync/issues/283)) ([9f8878b](https://github.com/dallay/agentsync/commit/9f8878b5a72d1210b2dd1228cfc1e1e30deac579))
+
+
+### Chores
+
+* **deps:** update rust docker tag to v1.94 ([#286](https://github.com/dallay/agentsync/issues/286)) ([1fa1fbf](https://github.com/dallay/agentsync/commit/1fa1fbfda9df599d40795079661e6da294538185))
+* **deps:** update sonarsource/sonarqube-scan-action digest to 299e4b7 ([#284](https://github.com/dallay/agentsync/issues/284)) ([b506483](https://github.com/dallay/agentsync/commit/b506483a0e0e09886d266dfe7aac0400549a42c3))
+
 ## [1.36.0](https://github.com/dallay/agentsync/compare/v1.35.2...v1.36.0) (2026-04-01)
 
 
