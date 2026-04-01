@@ -1040,6 +1040,237 @@ fn build_default_config_with_skills_modes(modes: &BTreeMap<String, SyncType>) ->
     output
 }
 
+const AGENT_CONFIG_LAYOUT_START_MARKER: &str = "<!-- agentsync:agent-config-layout:start -->";
+const AGENT_CONFIG_LAYOUT_END_MARKER: &str = "<!-- agentsync:agent-config-layout:end -->";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct InstructionTargetLayout {
+    destination: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SkillsTargetLayout {
+    destination: String,
+    sync_type: SyncType,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CommandTargetLayout {
+    destination: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct AgentLayoutFacts {
+    instructions: Vec<InstructionTargetLayout>,
+    skills: Vec<SkillsTargetLayout>,
+    commands: Vec<CommandTargetLayout>,
+}
+
+fn build_wizard_layout_facts(rendered_config: &str) -> Result<AgentLayoutFacts> {
+    let config: Config = toml::from_str(rendered_config)
+        .context("Failed to parse rendered wizard config for AGENTS layout facts")?;
+    let mut facts = AgentLayoutFacts::default();
+
+    for agent in config.agents.into_values() {
+        if !agent.enabled {
+            continue;
+        }
+
+        for (target_name, target) in agent.targets {
+            match target_name.as_str() {
+                "instructions"
+                    if target.source == "AGENTS.md" && target.sync_type == SyncType::Symlink =>
+                {
+                    facts.instructions.push(InstructionTargetLayout {
+                        destination: target.destination,
+                    });
+                }
+                "agents"
+                    if target.source == "AGENTS.md" && target.sync_type == SyncType::Symlink =>
+                {
+                    facts.instructions.push(InstructionTargetLayout {
+                        destination: target.destination,
+                    });
+                }
+                "skills" if target.source == "skills" => {
+                    if matches!(
+                        target.sync_type,
+                        SyncType::Symlink | SyncType::SymlinkContents
+                    ) {
+                        facts.skills.push(SkillsTargetLayout {
+                            destination: target.destination,
+                            sync_type: target.sync_type,
+                        });
+                    }
+                }
+                "commands"
+                    if target.source == "commands"
+                        && target.sync_type == SyncType::SymlinkContents =>
+                {
+                    facts.commands.push(CommandTargetLayout {
+                        destination: target.destination,
+                    });
+                }
+                _ => {}
+            }
+        }
+    }
+
+    Ok(facts)
+}
+
+fn render_destination_list(destinations: &[String]) -> String {
+    destinations
+        .iter()
+        .map(|destination| format!("`{destination}`"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn render_agent_config_layout_section(facts: &AgentLayoutFacts) -> String {
+    let mut lines = vec![
+        AGENT_CONFIG_LAYOUT_START_MARKER.to_string(),
+        "## Agent config layout".to_string(),
+        String::new(),
+        "`.agents/` is the canonical source for shared instructions, skills, and commands in this project.".to_string(),
+    ];
+
+    if !facts.instructions.is_empty() {
+        let destinations = facts
+            .instructions
+            .iter()
+            .map(|target| target.destination.clone())
+            .collect::<Vec<_>>();
+        lines.push(String::new());
+        lines.push(format!(
+            "- Instructions: `.agents/AGENTS.md` is the canonical instructions file, and these `symlink` targets reflect it directly in {}.",
+            render_destination_list(&destinations)
+        ));
+    }
+
+    if !facts.skills.is_empty() {
+        lines.push(String::new());
+        lines.push("- Skills: `.agents/skills/` is the canonical skills directory.".to_string());
+
+        for target in &facts.skills {
+            let description = match target.sync_type {
+                SyncType::Symlink => format!(
+                    "  - `{}` reflects `.agents/skills/` directly because this target uses `symlink`.",
+                    target.destination
+                ),
+                SyncType::SymlinkContents => format!(
+                    "  - `{}` is populated from `.agents/skills/` when `agentsync apply` runs because this target uses `symlink-contents`; add, remove, or rename skill entries in `.agents/skills/`, then rerun `agentsync apply`.",
+                    target.destination
+                ),
+                _ => continue,
+            };
+            lines.push(description);
+        }
+    }
+
+    if !facts.commands.is_empty() {
+        let destinations = facts
+            .commands
+            .iter()
+            .map(|target| target.destination.clone())
+            .collect::<Vec<_>>();
+        lines.push(String::new());
+        lines.push(format!(
+            "- Commands: `.agents/commands/` is the canonical commands directory, and `agentsync apply` populates command entries into {}.",
+            render_destination_list(&destinations)
+        ));
+    }
+
+    lines.push(String::new());
+    lines.push(AGENT_CONFIG_LAYOUT_END_MARKER.to_string());
+    lines.join("\n")
+}
+
+fn strip_agent_config_layout_block(content: &str) -> String {
+    let Some(start) = content.find(AGENT_CONFIG_LAYOUT_START_MARKER) else {
+        return content.to_string();
+    };
+    let Some(relative_end) = content[start..].find(AGENT_CONFIG_LAYOUT_END_MARKER) else {
+        return content.to_string();
+    };
+    let end = start + relative_end + AGENT_CONFIG_LAYOUT_END_MARKER.len();
+
+    let mut prefix = content[..start].to_string();
+    while prefix.ends_with('\n') {
+        prefix.pop();
+    }
+
+    let mut suffix = content[end..].to_string();
+    while suffix.starts_with('\n') {
+        suffix.remove(0);
+    }
+
+    if prefix.is_empty() {
+        suffix
+    } else if suffix.is_empty() {
+        prefix
+    } else {
+        format!("{prefix}\n\n{suffix}")
+    }
+}
+
+fn find_agents_layout_insertion_offset(content: &str) -> usize {
+    if !content.starts_with("# ") {
+        return 0;
+    }
+
+    let Some(first_newline) = content.find('\n') else {
+        return content.len();
+    };
+
+    let mut offset = first_newline + 1;
+    let mut remainder = &content[offset..];
+
+    while remainder.starts_with('\n') {
+        offset += 1;
+        remainder = &content[offset..];
+    }
+
+    if remainder.is_empty() || remainder.starts_with('#') {
+        return offset;
+    }
+
+    let mut running_offset = offset;
+    let mut lines = remainder.split_inclusive('\n').peekable();
+    while let Some(line) = lines.next() {
+        running_offset += line.len();
+        let trimmed = line.trim();
+        if trimmed.is_empty()
+            && lines
+                .peek()
+                .is_some_and(|next| next.trim_start().starts_with('#'))
+        {
+            break;
+        }
+    }
+
+    running_offset
+}
+
+fn upsert_agent_config_layout_block(base_content: &str, layout_block: &str) -> String {
+    let stripped_content = strip_agent_config_layout_block(base_content);
+    let stripped = stripped_content.trim_matches('\n');
+    if stripped.is_empty() {
+        return format!("{layout_block}\n");
+    }
+
+    let insertion_offset = find_agents_layout_insertion_offset(stripped);
+    let prefix = stripped[..insertion_offset].trim_end_matches('\n');
+    let suffix = stripped[insertion_offset..].trim_start_matches('\n');
+
+    match (prefix.is_empty(), suffix.is_empty()) {
+        (true, true) => format!("{layout_block}\n"),
+        (true, false) => format!("{layout_block}\n\n{suffix}\n"),
+        (false, true) => format!("{prefix}\n\n{layout_block}\n"),
+        (false, false) => format!("{prefix}\n\n{layout_block}\n\n{suffix}\n"),
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ManagedFileOutcome {
     Written,
@@ -1291,6 +1522,10 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
             );
         }
     }
+
+    let rendered_config = build_default_config_with_skills_modes(&skills_modes);
+    let layout_facts = build_wizard_layout_facts(&rendered_config)?;
+    let layout_block = render_agent_config_layout_section(&layout_facts);
 
     // Migrate selected files
     println!("\n{}", "🔄 Migrating files...".cyan());
@@ -1551,7 +1786,8 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
             );
             ManagedFileOutcome::Preserved
         } else {
-            fs::write(&agents_md_path, &content)?;
+            let rendered_agents_md = upsert_agent_config_layout_block(&content, &layout_block);
+            fs::write(&agents_md_path, rendered_agents_md)?;
             if instruction_files_merged > 1 {
                 println!(
                     "  {} Created: {} (merged {} instruction files)",
@@ -1569,7 +1805,8 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
             ManagedFileOutcome::Written
         }
     } else if !agents_md_path.exists() || force {
-        fs::write(&agents_md_path, DEFAULT_AGENTS_MD)?;
+        let rendered_agents_md = upsert_agent_config_layout_block(DEFAULT_AGENTS_MD, &layout_block);
+        fs::write(&agents_md_path, rendered_agents_md)?;
         println!("  {} Created: {}", "✔".green(), agents_md_path.display());
         ManagedFileOutcome::Written
     } else {
@@ -1587,10 +1824,7 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
         );
         ManagedFileOutcome::Preserved
     } else {
-        fs::write(
-            &config_path,
-            build_default_config_with_skills_modes(&skills_modes),
-        )?;
+        fs::write(&config_path, &rendered_config)?;
         println!("  {} Created: {}", "✔".green(), config_path.display());
 
         let selected_skill_agents = skills_choices
@@ -3406,6 +3640,276 @@ mod tests {
             config.agents["claude"].targets["commands"].sync_type,
             SyncType::SymlinkContents
         );
+    }
+
+    #[test]
+    fn test_build_wizard_layout_facts_uses_rendered_config_targets_and_modes() {
+        let mut modes = BTreeMap::new();
+        modes.insert("gemini".to_string(), SyncType::SymlinkContents);
+
+        let rendered = build_default_config_with_skills_modes(&modes);
+        let facts = build_wizard_layout_facts(&rendered).unwrap();
+
+        assert_eq!(facts.instructions.len(), 5);
+        assert!(
+            facts
+                .instructions
+                .iter()
+                .any(|target| target.destination == "CLAUDE.md")
+        );
+        assert!(
+            facts
+                .instructions
+                .iter()
+                .any(|target| target.destination == ".github/copilot-instructions.md")
+        );
+        assert!(
+            facts
+                .instructions
+                .iter()
+                .any(|target| target.destination == "GEMINI.md")
+        );
+        assert!(
+            facts
+                .instructions
+                .iter()
+                .any(|target| target.destination == "OPENCODE.md")
+        );
+        assert!(
+            facts
+                .instructions
+                .iter()
+                .any(|target| target.destination == "AGENTS.md")
+        );
+
+        assert_eq!(facts.skills.len(), 4);
+        assert!(facts.skills.iter().any(|target| {
+            target.destination == ".gemini/skills" && target.sync_type == SyncType::SymlinkContents
+        }));
+        assert!(facts.skills.iter().any(|target| {
+            target.destination == ".claude/skills" && target.sync_type == SyncType::Symlink
+        }));
+
+        assert_eq!(facts.commands.len(), 3);
+        assert!(
+            facts
+                .commands
+                .iter()
+                .any(|target| target.destination == ".claude/commands")
+        );
+        assert!(
+            facts
+                .commands
+                .iter()
+                .any(|target| target.destination == ".gemini/commands")
+        );
+        assert!(
+            facts
+                .commands
+                .iter()
+                .any(|target| target.destination == ".opencode/command")
+        );
+    }
+
+    #[test]
+    fn test_render_agent_config_layout_section_includes_markers_and_mode_specific_wording() {
+        let facts = AgentLayoutFacts {
+            instructions: vec![
+                InstructionTargetLayout {
+                    destination: "CLAUDE.md".to_string(),
+                },
+                InstructionTargetLayout {
+                    destination: "AGENTS.md".to_string(),
+                },
+            ],
+            skills: vec![
+                SkillsTargetLayout {
+                    destination: ".claude/skills".to_string(),
+                    sync_type: SyncType::Symlink,
+                },
+                SkillsTargetLayout {
+                    destination: ".gemini/skills".to_string(),
+                    sync_type: SyncType::SymlinkContents,
+                },
+            ],
+            commands: vec![CommandTargetLayout {
+                destination: ".opencode/command".to_string(),
+            }],
+        };
+
+        let rendered = render_agent_config_layout_section(&facts);
+
+        assert_eq!(
+            rendered.matches(AGENT_CONFIG_LAYOUT_START_MARKER).count(),
+            1
+        );
+        assert_eq!(rendered.matches(AGENT_CONFIG_LAYOUT_END_MARKER).count(), 1);
+        assert!(rendered.contains("## Agent config layout"));
+        assert!(rendered.contains("`.agents/` is the canonical source"));
+        assert!(rendered.contains("`.agents/AGENTS.md` is the canonical instructions file"));
+        assert!(rendered.contains("`.claude/skills` reflects `.agents/skills/` directly"));
+        assert!(rendered.contains(
+            "`.gemini/skills` is populated from `.agents/skills/` when `agentsync apply` runs"
+        ));
+        assert!(rendered.contains("add, remove, or rename skill entries"));
+        assert!(rendered.contains("`.opencode/command`"));
+    }
+
+    #[test]
+    fn test_agent_config_layout_omits_targets_not_present_in_generated_config() {
+        let rendered = build_default_config_with_skills_modes(&BTreeMap::new())
+            .replace(
+                r#"
+[agents.copilot.targets.instructions]
+source = "AGENTS.md"
+destination = ".github/copilot-instructions.md"
+type = "symlink"
+"#,
+                "\n",
+            )
+            .replace(
+                r#"
+[agents.codex.targets.skills]
+source = "skills"
+destination = ".codex/skills"
+type = "symlink"
+"#,
+                "\n",
+            )
+            .replace(
+                r#"
+# Note: intentionally singular per OpenCode convention (.opencode/command, not .opencode/commands)
+[agents.opencode.targets.commands]
+source = "commands"
+destination = ".opencode/command"
+type = "symlink-contents"
+"#,
+                "\n",
+            );
+
+        let facts = build_wizard_layout_facts(&rendered).unwrap();
+        let layout = render_agent_config_layout_section(&facts);
+        let agents_md = upsert_agent_config_layout_block(DEFAULT_AGENTS_MD, &layout);
+
+        assert!(
+            !facts
+                .instructions
+                .iter()
+                .any(|target| target.destination == ".github/copilot-instructions.md")
+        );
+        assert!(
+            !facts
+                .skills
+                .iter()
+                .any(|target| target.destination == ".codex/skills")
+        );
+        assert!(
+            !facts
+                .commands
+                .iter()
+                .any(|target| target.destination == ".opencode/command")
+        );
+
+        assert!(!agents_md.contains("`.github/copilot-instructions.md`"));
+        assert!(!agents_md.contains("`.codex/skills`"));
+        assert!(!agents_md.contains("`.opencode/command`"));
+
+        assert!(agents_md.contains("`CLAUDE.md`"));
+        assert!(agents_md.contains("`.claude/skills`"));
+        assert!(agents_md.contains("`.claude/commands`"));
+    }
+
+    #[test]
+    fn test_upsert_agent_config_layout_block_places_block_after_default_intro() {
+        let layout_block = render_agent_config_layout_section(
+            &build_wizard_layout_facts(&build_default_config_with_skills_modes(&BTreeMap::new()))
+                .unwrap(),
+        );
+
+        let rendered = upsert_agent_config_layout_block(DEFAULT_AGENTS_MD, &layout_block);
+        let overview_index = rendered.find("## Project Overview").unwrap();
+        let layout_index = rendered.find("## Agent config layout").unwrap();
+        let intro_index = rendered
+            .find("> This file provides instructions for AI coding assistants working on this project.")
+            .unwrap();
+
+        assert!(intro_index < layout_index);
+        assert!(layout_index < overview_index);
+    }
+
+    #[test]
+    fn test_upsert_agent_config_layout_block_places_block_after_migrated_header() {
+        let base_content = "# Instructions from CLAUDE.md\n\nThis content was migrated.\n\n## Existing Section\n\nBody\n";
+        let layout_block = render_agent_config_layout_section(
+            &build_wizard_layout_facts(&build_default_config_with_skills_modes(&BTreeMap::new()))
+                .unwrap(),
+        );
+
+        let rendered = upsert_agent_config_layout_block(base_content, &layout_block);
+        let migrated_intro_index = rendered.find("This content was migrated.").unwrap();
+        let layout_index = rendered.find("## Agent config layout").unwrap();
+        let section_index = rendered.find("## Existing Section").unwrap();
+
+        assert!(migrated_intro_index < layout_index);
+        assert!(layout_index < section_index);
+    }
+
+    #[test]
+    fn test_upsert_agent_config_layout_block_replaces_existing_managed_block_idempotently() {
+        let old_layout = format!(
+            "{AGENT_CONFIG_LAYOUT_START_MARKER}\n## Agent config layout\n\nold\n\n{AGENT_CONFIG_LAYOUT_END_MARKER}"
+        );
+        let base_content =
+            format!("# AI Agent Instructions\n\n> Intro\n\n{old_layout}\n\n## Project Overview\n");
+        let layout_block = render_agent_config_layout_section(
+            &build_wizard_layout_facts(&build_default_config_with_skills_modes(&BTreeMap::new()))
+                .unwrap(),
+        );
+
+        let rendered_once = upsert_agent_config_layout_block(&base_content, &layout_block);
+        let rendered_twice = upsert_agent_config_layout_block(&rendered_once, &layout_block);
+
+        assert_eq!(rendered_once, rendered_twice);
+        assert_eq!(
+            rendered_twice
+                .matches(AGENT_CONFIG_LAYOUT_START_MARKER)
+                .count(),
+            1
+        );
+        assert_eq!(
+            rendered_twice
+                .matches(AGENT_CONFIG_LAYOUT_END_MARKER)
+                .count(),
+            1
+        );
+        assert!(!rendered_twice.contains("\n\nold\n\n"));
+    }
+
+    #[test]
+    fn test_wizard_preserve_without_force_leaves_existing_agents_md_unchanged() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let agents_md_path = agents_dir.join("AGENTS.md");
+        let existing_agents_md = "# Existing AGENTS\n\nKeep me unchanged.\n";
+        fs::write(&agents_md_path, existing_agents_md).unwrap();
+
+        let force = false;
+        let result = if agents_md_path.exists() && !force {
+            fs::read_to_string(&agents_md_path).unwrap()
+        } else {
+            let layout_block = render_agent_config_layout_section(
+                &build_wizard_layout_facts(&build_default_config_with_skills_modes(
+                    &BTreeMap::new(),
+                ))
+                .unwrap(),
+            );
+            upsert_agent_config_layout_block(existing_agents_md, &layout_block)
+        };
+
+        assert_eq!(result, existing_agents_md);
+        assert!(!result.contains("Agent config layout"));
     }
 
     #[test]
