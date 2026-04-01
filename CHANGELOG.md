@@ -8,6 +8,32 @@
 
 * update README.md for accuracy and formatting ([#159](https://github.com/dallay/agentsync/issues/159)) ([8cb9f19](https://github.com/dallay/agentsync/commit/8cb9f19b2302456f0e4536f7a37ad9af5645e605))
 
+## [1.36.0](https://github.com/dallay/agentsync/compare/v1.35.2...v1.36.0) (2026-04-01)
+
+
+### Features
+
+* add repository-based skill suggestions ([#272](https://github.com/dallay/agentsync/issues/272)) ([a534ace](https://github.com/dallay/agentsync/commit/a534ace5b8542cc800489f6a017dce48bd06cd48))
+* add wizard agent config layout guidance ([fa435fe](https://github.com/dallay/agentsync/commit/fa435feb0e7afe0532a9d1e24faf878768f9f715))
+
+
+### Bug Fixes
+
+* improve wizard gitignore workflows and documentation ([#278](https://github.com/dallay/agentsync/issues/278)) ([8d8c44c](https://github.com/dallay/agentsync/commit/8d8c44c009446bb4c5862ffcdf4119f29d5744b8))
+* path traversal vulnerability in symlink destinations ([#280](https://github.com/dallay/agentsync/issues/280)) ([6a72530](https://github.com/dallay/agentsync/commit/6a72530e45c5c0ce0c05c79354b04afc87fcdc2e))
+
+
+### Documentation
+
+* add git hook automation guide for apply ([#281](https://github.com/dallay/agentsync/issues/281)) ([be4660d](https://github.com/dallay/agentsync/commit/be4660de94ae89bef059bc6e3d26910a0cabfa7f))
+
+
+### Chores
+
+* **deps:** update codecov/codecov-action action to v6 ([#282](https://github.com/dallay/agentsync/issues/282)) ([dc82e0a](https://github.com/dallay/agentsync/commit/dc82e0a198659d92b812cc1d756940f938aa279b))
+* **deps:** update dtolnay/rust-toolchain digest to 3c5f7ea ([#268](https://github.com/dallay/agentsync/issues/268)) ([64a8682](https://github.com/dallay/agentsync/commit/64a8682a787efb32f7737e265dddcfc790365dcc))
+* **deps:** update node.js to v24.14.1 ([#267](https://github.com/dallay/agentsync/issues/267)) ([7c49f45](https://github.com/dallay/agentsync/commit/7c49f457cd776062e4a5cd9817d65051d11ab3b7))
+
 ## [1.35.2](https://github.com/dallay/agentsync/compare/v1.35.1...v1.35.2) (2026-03-29)
 
 
