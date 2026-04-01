@@ -56,7 +56,7 @@ check-rust:
 	@$(CARGO) test --all-features
 
 check-e2e:
-ifdef RUN_E2E
+ifeq ($(RUN_E2E),1)
 	@printf "\n🐳 Running E2E tests...\n"
 	@$(MAKE) e2e-test
 else

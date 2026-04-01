@@ -152,8 +152,8 @@ None.
 **SUGGESTION** (nice to have):
 
 - Add explicit tests for malformed `package.json`, malformed workspace package files, and file-extension depth boundary behavior.
-- Add a dedicated combo de-duplication test where the same skill is recommended by both a technology and a combo.
-- Add a lightweight performance regression test or benchmark harness for detection on representative repos.
+- Include a dedicated combo de-duplication test where the same skill is recommended by both a technology and a combo.
+- Provide a lightweight performance regression test or benchmark harness for detection on representative repos.
 
 ---
 
