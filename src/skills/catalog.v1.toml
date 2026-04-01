@@ -1,5 +1,9 @@
 version = "v1"
 
+# =============================================================================
+# Skills — existing local skills (from AgentSync's own skill set)
+# =============================================================================
+
 [[skills]]
 provider_skill_id = "accessibility"
 local_skill_id = "accessibility"
@@ -66,11 +70,858 @@ local_skill_id = "seo"
 title = "SEO"
 summary = "Improve search engine visibility and metadata quality."
 
+# =============================================================================
+# Skills — external provider skills (from autoskills / skills.sh ecosystem)
+# =============================================================================
+
+# --- Web Frontend (generic) ---
+
+[[skills]]
+provider_skill_id = "anthropics/skills/frontend-design"
+local_skill_id = "anthropics-frontend-design"
+title = "Frontend Design (Anthropic)"
+summary = "Build polished, accessible frontend interfaces with modern patterns."
+
+[[skills]]
+provider_skill_id = "addyosmani/web-quality-skills/accessibility"
+local_skill_id = "web-quality-accessibility"
+title = "Web Quality Accessibility"
+summary = "Improve web accessibility based on WCAG standards and best practices."
+
+[[skills]]
+provider_skill_id = "addyosmani/web-quality-skills/seo"
+local_skill_id = "web-quality-seo"
+title = "Web Quality SEO"
+summary = "Optimize search engine visibility with metadata, structured data, and content best practices."
+
+# --- Angular ---
+
+[[skills]]
+provider_skill_id = "angular/skills/angular-developer"
+local_skill_id = "angular-developer"
+title = "Angular Developer"
+summary = "Build Angular applications following official best practices and patterns."
+
+[[skills]]
+provider_skill_id = "angular/angular/reference-core"
+local_skill_id = "angular-reference-core"
+title = "Angular Core Reference"
+summary = "Reference guide for Angular core APIs and architecture."
+
+[[skills]]
+provider_skill_id = "angular/angular/reference-signal-forms"
+local_skill_id = "angular-reference-signal-forms"
+title = "Angular Signal Forms Reference"
+summary = "Reference guide for Angular signal-based forms."
+
+[[skills]]
+provider_skill_id = "angular/angular/reference-compiler-cli"
+local_skill_id = "angular-reference-compiler-cli"
+title = "Angular Compiler CLI Reference"
+summary = "Reference guide for the Angular compiler CLI."
+
+[[skills]]
+provider_skill_id = "angular/angular/adev-writing-guide"
+local_skill_id = "angular-adev-writing-guide"
+title = "Angular Dev Writing Guide"
+summary = "Writing guide for Angular documentation contributions."
+
+[[skills]]
+provider_skill_id = "angular/angular/PR Review"
+local_skill_id = "angular-pr-review"
+title = "Angular PR Review"
+summary = "Guidelines for reviewing Angular pull requests."
+
+# --- Astro (external) ---
+
+[[skills]]
+provider_skill_id = "astrolicious/agent-skills/astro"
+local_skill_id = "astrolicious-astro"
+title = "Astro Best Practices"
+summary = "Build Astro sites following framework best practices and patterns."
+
+# --- Azure ---
+
+[[skills]]
+provider_skill_id = "microsoft/github-copilot-for-azure/azure-deploy"
+local_skill_id = "azure-deploy"
+title = "Azure Deploy"
+summary = "Deploy applications to Azure cloud services."
+
+[[skills]]
+provider_skill_id = "microsoft/github-copilot-for-azure/azure-ai"
+local_skill_id = "azure-ai"
+title = "Azure AI"
+summary = "Build AI solutions with Azure AI services."
+
+[[skills]]
+provider_skill_id = "microsoft/github-copilot-for-azure/azure-cost-optimization"
+local_skill_id = "azure-cost-optimization"
+title = "Azure Cost Optimization"
+summary = "Optimize Azure resource costs and spending."
+
+[[skills]]
+provider_skill_id = "microsoft/github-copilot-for-azure/azure-diagnostics"
+local_skill_id = "azure-diagnostics"
+title = "Azure Diagnostics"
+summary = "Diagnose and troubleshoot Azure resource issues."
+
+# --- Better Auth ---
+
+[[skills]]
+provider_skill_id = "better-auth/skills/better-auth-best-practices"
+local_skill_id = "better-auth-best-practices"
+title = "Better Auth Best Practices"
+summary = "Implement authentication with Better Auth following best practices."
+
+[[skills]]
+provider_skill_id = "better-auth/skills/email-and-password-best-practices"
+local_skill_id = "better-auth-email-password"
+title = "Better Auth Email & Password"
+summary = "Implement email and password authentication with Better Auth."
+
+[[skills]]
+provider_skill_id = "better-auth/skills/organization-best-practices"
+local_skill_id = "better-auth-organization"
+title = "Better Auth Organizations"
+summary = "Implement organization management with Better Auth."
+
+[[skills]]
+provider_skill_id = "better-auth/skills/two-factor-authentication-best-practices"
+local_skill_id = "better-auth-two-factor"
+title = "Better Auth Two-Factor"
+summary = "Implement two-factor authentication with Better Auth."
+
+# --- Clerk ---
+
+[[skills]]
+provider_skill_id = "clerk/skills/clerk"
+local_skill_id = "clerk"
+title = "Clerk"
+summary = "Integrate Clerk authentication into your application."
+
+[[skills]]
+provider_skill_id = "clerk/skills/clerk-setup"
+local_skill_id = "clerk-setup"
+title = "Clerk Setup"
+summary = "Set up and configure Clerk authentication."
+
+[[skills]]
+provider_skill_id = "clerk/skills/clerk-custom-ui"
+local_skill_id = "clerk-custom-ui"
+title = "Clerk Custom UI"
+summary = "Build custom authentication UI with Clerk components."
+
+[[skills]]
+provider_skill_id = "clerk/skills/clerk-nextjs-patterns"
+local_skill_id = "clerk-nextjs-patterns"
+title = "Clerk Next.js Patterns"
+summary = "Implement Clerk authentication patterns in Next.js apps."
+
+[[skills]]
+provider_skill_id = "clerk/skills/clerk-orgs"
+local_skill_id = "clerk-orgs"
+title = "Clerk Organizations"
+summary = "Implement organization management with Clerk."
+
+[[skills]]
+provider_skill_id = "clerk/skills/clerk-webhooks"
+local_skill_id = "clerk-webhooks"
+title = "Clerk Webhooks"
+summary = "Handle Clerk webhooks for event-driven authentication flows."
+
+[[skills]]
+provider_skill_id = "clerk/skills/clerk-testing"
+local_skill_id = "clerk-testing"
+title = "Clerk Testing"
+summary = "Test Clerk authentication integrations."
+
+# --- Cloudflare ---
+
+[[skills]]
+provider_skill_id = "cloudflare/skills/cloudflare"
+local_skill_id = "cloudflare"
+title = "Cloudflare"
+summary = "Build and deploy on the Cloudflare platform."
+
+[[skills]]
+provider_skill_id = "cloudflare/skills/wrangler"
+local_skill_id = "cloudflare-wrangler"
+title = "Cloudflare Wrangler"
+summary = "Use Wrangler CLI for Cloudflare Workers development."
+
+[[skills]]
+provider_skill_id = "cloudflare/skills/workers-best-practices"
+local_skill_id = "cloudflare-workers-best-practices"
+title = "Cloudflare Workers Best Practices"
+summary = "Build Cloudflare Workers following best practices."
+
+[[skills]]
+provider_skill_id = "cloudflare/skills/web-perf"
+local_skill_id = "cloudflare-web-perf"
+title = "Cloudflare Web Performance"
+summary = "Optimize web performance with Cloudflare."
+
+[[skills]]
+provider_skill_id = "openai/skills/cloudflare-deploy"
+local_skill_id = "openai-cloudflare-deploy"
+title = "Cloudflare Deploy (OpenAI)"
+summary = "Deploy applications to Cloudflare Workers."
+
+[[skills]]
+provider_skill_id = "cloudflare/skills/durable-objects"
+local_skill_id = "cloudflare-durable-objects"
+title = "Cloudflare Durable Objects"
+summary = "Build stateful applications with Cloudflare Durable Objects."
+
+[[skills]]
+provider_skill_id = "cloudflare/skills/agents-sdk"
+local_skill_id = "cloudflare-agents-sdk"
+title = "Cloudflare Agents SDK"
+summary = "Build AI agents with the Cloudflare Agents SDK."
+
+[[skills]]
+provider_skill_id = "cloudflare/skills/building-mcp-server-on-cloudflare"
+local_skill_id = "cloudflare-mcp-server"
+title = "Cloudflare MCP Server"
+summary = "Build MCP servers on Cloudflare Workers."
+
+[[skills]]
+provider_skill_id = "cloudflare/skills/sandbox-sdk"
+local_skill_id = "cloudflare-sandbox-sdk"
+title = "Cloudflare Sandbox SDK"
+summary = "Use the Cloudflare Sandbox SDK for isolated execution."
+
+[[skills]]
+provider_skill_id = "cloudflare/skills/building-ai-agent-on-cloudflare"
+local_skill_id = "cloudflare-ai-agent"
+title = "Cloudflare AI Agent"
+summary = "Build AI agents on Cloudflare Workers."
+
+# --- Deno ---
+
+[[skills]]
+provider_skill_id = "denoland/skills/deno-expert"
+local_skill_id = "deno-expert"
+title = "Deno Expert"
+summary = "Master Deno runtime features and APIs."
+
+[[skills]]
+provider_skill_id = "denoland/skills/deno-guidance"
+local_skill_id = "deno-guidance"
+title = "Deno Guidance"
+summary = "Follow Deno best practices and conventions."
+
+[[skills]]
+provider_skill_id = "denoland/skills/deno-frontend"
+local_skill_id = "deno-frontend"
+title = "Deno Frontend"
+summary = "Build frontend applications with Deno."
+
+[[skills]]
+provider_skill_id = "denoland/skills/deno-deploy"
+local_skill_id = "deno-deploy"
+title = "Deno Deploy"
+summary = "Deploy applications to Deno Deploy."
+
+[[skills]]
+provider_skill_id = "denoland/skills/deno-sandbox"
+local_skill_id = "deno-sandbox"
+title = "Deno Sandbox"
+summary = "Use Deno sandbox for secure code execution."
+
+[[skills]]
+provider_skill_id = "mindrally/skills/deno-typescript"
+local_skill_id = "deno-typescript"
+title = "Deno TypeScript"
+summary = "Write TypeScript applications for the Deno runtime."
+
+# --- Drizzle ---
+
+[[skills]]
+provider_skill_id = "bobmatnyc/claude-mpm-skills/drizzle-orm"
+local_skill_id = "drizzle-orm"
+title = "Drizzle ORM"
+summary = "Use Drizzle ORM for type-safe database access."
+
+# --- ElevenLabs ---
+
+[[skills]]
+provider_skill_id = "inferen-sh/skills/elevenlabs-tts"
+local_skill_id = "elevenlabs-tts"
+title = "ElevenLabs TTS"
+summary = "Integrate ElevenLabs text-to-speech APIs."
+
+[[skills]]
+provider_skill_id = "inferen-sh/skills/elevenlabs-music"
+local_skill_id = "elevenlabs-music"
+title = "ElevenLabs Music"
+summary = "Generate music with ElevenLabs AI."
+
+# --- Expo ---
+
+[[skills]]
+provider_skill_id = "expo/skills/building-native-ui"
+local_skill_id = "expo-building-native-ui"
+title = "Expo Building Native UI"
+summary = "Build native UI components with Expo."
+
+[[skills]]
+provider_skill_id = "expo/skills/native-data-fetching"
+local_skill_id = "expo-native-data-fetching"
+title = "Expo Native Data Fetching"
+summary = "Implement data fetching in Expo apps."
+
+[[skills]]
+provider_skill_id = "expo/skills/upgrading-expo"
+local_skill_id = "expo-upgrading"
+title = "Expo Upgrading"
+summary = "Upgrade Expo SDK versions safely."
+
+[[skills]]
+provider_skill_id = "expo/skills/expo-tailwind-setup"
+local_skill_id = "expo-tailwind-setup"
+title = "Expo Tailwind Setup"
+summary = "Set up Tailwind CSS in Expo projects."
+
+[[skills]]
+provider_skill_id = "expo/skills/expo-dev-client"
+local_skill_id = "expo-dev-client"
+title = "Expo Dev Client"
+summary = "Configure and use Expo development client."
+
+[[skills]]
+provider_skill_id = "expo/skills/expo-deployment"
+local_skill_id = "expo-deployment"
+title = "Expo Deployment"
+summary = "Deploy Expo applications to app stores."
+
+[[skills]]
+provider_skill_id = "expo/skills/expo-cicd-workflows"
+local_skill_id = "expo-cicd-workflows"
+title = "Expo CI/CD Workflows"
+summary = "Set up CI/CD pipelines for Expo projects."
+
+[[skills]]
+provider_skill_id = "expo/skills/expo-api-routes"
+local_skill_id = "expo-api-routes"
+title = "Expo API Routes"
+summary = "Build API routes in Expo applications."
+
+[[skills]]
+provider_skill_id = "expo/skills/use-dom"
+local_skill_id = "expo-use-dom"
+title = "Expo use-dom"
+summary = "Use DOM components in Expo applications."
+
+# --- GSAP ---
+
+[[skills]]
+provider_skill_id = "greensock/gsap-skills/gsap-core"
+local_skill_id = "gsap-core"
+title = "GSAP Core"
+summary = "Animate with GSAP core tweens and timelines."
+
+[[skills]]
+provider_skill_id = "greensock/gsap-skills/gsap-scrolltrigger"
+local_skill_id = "gsap-scrolltrigger"
+title = "GSAP ScrollTrigger"
+summary = "Create scroll-driven animations with GSAP ScrollTrigger."
+
+[[skills]]
+provider_skill_id = "greensock/gsap-skills/gsap-performance"
+local_skill_id = "gsap-performance"
+title = "GSAP Performance"
+summary = "Optimize GSAP animation performance."
+
+[[skills]]
+provider_skill_id = "greensock/gsap-skills/gsap-plugins"
+local_skill_id = "gsap-plugins"
+title = "GSAP Plugins"
+summary = "Use GSAP plugins for advanced animation effects."
+
+[[skills]]
+provider_skill_id = "greensock/gsap-skills/gsap-timeline"
+local_skill_id = "gsap-timeline"
+title = "GSAP Timeline"
+summary = "Sequence complex animations with GSAP timelines."
+
+[[skills]]
+provider_skill_id = "greensock/gsap-skills/gsap-utils"
+local_skill_id = "gsap-utils"
+title = "GSAP Utilities"
+summary = "Use GSAP utility methods for common animation tasks."
+
+[[skills]]
+provider_skill_id = "greensock/gsap-skills/gsap-frameworks"
+local_skill_id = "gsap-frameworks"
+title = "GSAP Frameworks"
+summary = "Integrate GSAP with React, Vue, and other frameworks."
+
+[[skills]]
+provider_skill_id = "greensock/gsap-skills/gsap-react"
+local_skill_id = "gsap-react"
+title = "GSAP React"
+summary = "Use GSAP animations in React applications."
+
+# --- Hono ---
+
+[[skills]]
+provider_skill_id = "yusukebe/hono-skill/hono"
+local_skill_id = "hono"
+title = "Hono"
+summary = "Build fast web applications with the Hono framework."
+
+# --- Java ---
+
+[[skills]]
+provider_skill_id = "github/awesome-copilot/java-docs"
+local_skill_id = "java-docs"
+title = "Java Documentation"
+summary = "Write and maintain Java documentation."
+
+[[skills]]
+provider_skill_id = "affaan-m/everything-claude-code/java-coding-standards"
+local_skill_id = "java-coding-standards"
+title = "Java Coding Standards"
+summary = "Follow Java coding standards and conventions."
+
+# --- Spring Boot ---
+
+[[skills]]
+provider_skill_id = "github/awesome-copilot/java-springboot"
+local_skill_id = "java-springboot"
+title = "Java Spring Boot"
+summary = "Build Spring Boot applications following best practices."
+
+# --- Android ---
+
+[[skills]]
+provider_skill_id = "krutikJain/android-agent-skills/android-kotlin-core"
+local_skill_id = "android-kotlin-core"
+title = "Android Kotlin Core"
+summary = "Build Android apps with Kotlin fundamentals."
+
+[[skills]]
+provider_skill_id = "krutikJain/android-agent-skills/android-compose-foundations"
+local_skill_id = "android-compose-foundations"
+title = "Android Compose Foundations"
+summary = "Build UI with Jetpack Compose fundamentals."
+
+[[skills]]
+provider_skill_id = "krutikJain/android-agent-skills/android-architecture-clean"
+local_skill_id = "android-architecture-clean"
+title = "Android Clean Architecture"
+summary = "Implement clean architecture in Android apps."
+
+[[skills]]
+provider_skill_id = "krutikJain/android-agent-skills/android-di-hilt"
+local_skill_id = "android-di-hilt"
+title = "Android DI with Hilt"
+summary = "Implement dependency injection with Hilt in Android."
+
+[[skills]]
+provider_skill_id = "krutikJain/android-agent-skills/android-gradle-build-logic"
+local_skill_id = "android-gradle-build-logic"
+title = "Android Gradle Build Logic"
+summary = "Configure Gradle builds for Android projects."
+
+[[skills]]
+provider_skill_id = "krutikJain/android-agent-skills/android-coroutines-flow"
+local_skill_id = "android-coroutines-flow"
+title = "Android Coroutines & Flow"
+summary = "Use Kotlin Coroutines and Flow in Android apps."
+
+[[skills]]
+provider_skill_id = "krutikJain/android-agent-skills/android-networking-retrofit-okhttp"
+local_skill_id = "android-networking-retrofit-okhttp"
+title = "Android Networking"
+summary = "Implement networking with Retrofit and OkHttp in Android."
+
+[[skills]]
+provider_skill_id = "krutikJain/android-agent-skills/android-testing-unit"
+local_skill_id = "android-testing-unit"
+title = "Android Unit Testing"
+summary = "Write unit tests for Android applications."
+
+# --- Kotlin Multiplatform ---
+
+[[skills]]
+provider_skill_id = "Kotlin/kotlin-agent-skills/kotlin-tooling-cocoapods-spm-migration"
+local_skill_id = "kotlin-cocoapods-spm-migration"
+title = "Kotlin CocoaPods/SPM Migration"
+summary = "Migrate Kotlin Multiplatform from CocoaPods to SPM."
+
+[[skills]]
+provider_skill_id = "Kotlin/kotlin-agent-skills/kotlin-tooling-agp9-migration"
+local_skill_id = "kotlin-agp9-migration"
+title = "Kotlin AGP 9 Migration"
+summary = "Migrate Kotlin projects to Android Gradle Plugin 9."
+
+# --- NestJS ---
+
+[[skills]]
+provider_skill_id = "kadajett/agent-nestjs-skills/nestjs-best-practices"
+local_skill_id = "nestjs-best-practices"
+title = "NestJS Best Practices"
+summary = "Build NestJS applications following best practices."
+
+# --- Neon ---
+
+[[skills]]
+provider_skill_id = "neondatabase/agent-skills/neon-postgres"
+local_skill_id = "neon-postgres"
+title = "Neon Postgres"
+summary = "Use Neon serverless Postgres for database operations."
+
+# --- Next.js ---
+
+[[skills]]
+provider_skill_id = "vercel-labs/next-skills/next-best-practices"
+local_skill_id = "next-best-practices"
+title = "Next.js Best Practices"
+summary = "Build Next.js applications following best practices."
+
+[[skills]]
+provider_skill_id = "vercel-labs/next-skills/next-cache-components"
+local_skill_id = "next-cache-components"
+title = "Next.js Cache & Components"
+summary = "Use Next.js caching strategies and server components."
+
+[[skills]]
+provider_skill_id = "vercel-labs/next-skills/next-upgrade"
+local_skill_id = "next-upgrade"
+title = "Next.js Upgrade"
+summary = "Upgrade Next.js versions safely."
+
+# --- Node.js ---
+
+[[skills]]
+provider_skill_id = "wshobson/agents/nodejs-backend-patterns"
+local_skill_id = "nodejs-backend-patterns"
+title = "Node.js Backend Patterns"
+summary = "Implement Node.js backend patterns and best practices."
+
+[[skills]]
+provider_skill_id = "sickn33/antigravity-awesome-skills/nodejs-best-practices"
+local_skill_id = "nodejs-best-practices"
+title = "Node.js Best Practices"
+summary = "Follow Node.js development best practices."
+
+# --- Nuxt ---
+
+[[skills]]
+provider_skill_id = "antfu/skills/nuxt"
+local_skill_id = "nuxt"
+title = "Nuxt"
+summary = "Build Nuxt applications following best practices."
+
+# --- OxLint ---
+
+[[skills]]
+provider_skill_id = "delexw/claude-code-misc/oxlint"
+local_skill_id = "oxlint"
+title = "OxLint"
+summary = "Configure and use OxLint for fast JavaScript/TypeScript linting."
+
+# --- Pinia ---
+
+[[skills]]
+provider_skill_id = "vuejs-ai/skills/vue-pinia-best-practices"
+local_skill_id = "vue-pinia-best-practices"
+title = "Vue Pinia Best Practices"
+summary = "Use Pinia state management in Vue apps following best practices."
+
+# --- Playwright ---
+
+[[skills]]
+provider_skill_id = "currents-dev/playwright-best-practices-skill/playwright-best-practices"
+local_skill_id = "playwright-best-practices"
+title = "Playwright Best Practices"
+summary = "Write reliable end-to-end tests with Playwright."
+
+# --- Prisma ---
+
+[[skills]]
+provider_skill_id = "prisma/skills/prisma-database-setup"
+local_skill_id = "prisma-database-setup"
+title = "Prisma Database Setup"
+summary = "Set up databases with Prisma ORM."
+
+[[skills]]
+provider_skill_id = "prisma/skills/prisma-client-api"
+local_skill_id = "prisma-client-api"
+title = "Prisma Client API"
+summary = "Use the Prisma Client API for type-safe database queries."
+
+[[skills]]
+provider_skill_id = "prisma/skills/prisma-cli"
+local_skill_id = "prisma-cli"
+title = "Prisma CLI"
+summary = "Use the Prisma CLI for database management."
+
+[[skills]]
+provider_skill_id = "prisma/skills/prisma-postgres"
+local_skill_id = "prisma-postgres"
+title = "Prisma Postgres"
+summary = "Use Prisma with PostgreSQL databases."
+
+# --- React ---
+
+[[skills]]
+provider_skill_id = "vercel-labs/agent-skills/vercel-react-best-practices"
+local_skill_id = "vercel-react-best-practices"
+title = "React Best Practices"
+summary = "Build React applications following Vercel best practices."
+
+[[skills]]
+provider_skill_id = "vercel-labs/agent-skills/vercel-composition-patterns"
+local_skill_id = "vercel-composition-patterns"
+title = "React Composition Patterns"
+summary = "Use React composition patterns for scalable architectures."
+
+# --- React Native ---
+
+[[skills]]
+provider_skill_id = "sleekdotdesign/agent-skills/sleek-design-mobile-apps"
+local_skill_id = "sleek-design-mobile-apps"
+title = "Sleek Design Mobile Apps"
+summary = "Design and build polished React Native mobile applications."
+
+# --- Remotion ---
+
+[[skills]]
+provider_skill_id = "remotion-dev/skills/remotion-best-practices"
+local_skill_id = "remotion-best-practices"
+title = "Remotion Best Practices"
+summary = "Create programmatic videos with Remotion following best practices."
+
+# --- shadcn/ui ---
+
+[[skills]]
+provider_skill_id = "shadcn/ui/shadcn"
+local_skill_id = "shadcn"
+title = "shadcn/ui"
+summary = "Build UIs with shadcn/ui components."
+
+# --- Stripe ---
+
+[[skills]]
+provider_skill_id = "stripe/ai/stripe-best-practices"
+local_skill_id = "stripe-best-practices"
+title = "Stripe Best Practices"
+summary = "Integrate Stripe payments following best practices."
+
+[[skills]]
+provider_skill_id = "stripe/ai/upgrade-stripe"
+local_skill_id = "stripe-upgrade"
+title = "Stripe Upgrade"
+summary = "Upgrade Stripe SDK versions safely."
+
+# --- Supabase ---
+
+[[skills]]
+provider_skill_id = "supabase/agent-skills/supabase-postgres-best-practices"
+local_skill_id = "supabase-postgres-best-practices"
+title = "Supabase Postgres Best Practices"
+summary = "Use Supabase Postgres following best practices."
+
+# --- Svelte ---
+
+[[skills]]
+provider_skill_id = "ejirocodes/agent-skills/svelte5-best-practices"
+local_skill_id = "svelte5-best-practices"
+title = "Svelte 5 Best Practices"
+summary = "Build Svelte 5 applications following best practices."
+
+[[skills]]
+provider_skill_id = "sveltejs/ai-tools/svelte-code-writer"
+local_skill_id = "svelte-code-writer"
+title = "Svelte Code Writer"
+summary = "Generate Svelte code with AI-assisted tooling."
+
+# --- SwiftUI ---
+
+[[skills]]
+provider_skill_id = "avdlee/swiftui-agent-skill/swiftui-expert-skill"
+local_skill_id = "swiftui-expert"
+title = "SwiftUI Expert"
+summary = "Build SwiftUI applications with expert-level patterns."
+
+# --- Tailwind CSS ---
+
+[[skills]]
+provider_skill_id = "giuseppe-trisciuoglio/developer-kit/tailwind-css-patterns"
+local_skill_id = "tailwind-css-patterns"
+title = "Tailwind CSS Patterns"
+summary = "Use Tailwind CSS utility patterns for efficient styling."
+
+# --- Tauri ---
+
+[[skills]]
+provider_skill_id = "nodnarbnitram/claude-code-extensions/tauri-v2"
+local_skill_id = "tauri-v2"
+title = "Tauri v2"
+summary = "Build desktop applications with Tauri v2."
+
+# --- Turborepo ---
+
+[[skills]]
+provider_skill_id = "vercel/turborepo/turborepo"
+local_skill_id = "turborepo"
+title = "Turborepo"
+summary = "Manage monorepos with Turborepo build system."
+
+# --- TypeScript ---
+
+[[skills]]
+provider_skill_id = "wshobson/agents/typescript-advanced-types"
+local_skill_id = "typescript-advanced-types"
+title = "TypeScript Advanced Types"
+summary = "Use advanced TypeScript type patterns and utilities."
+
+# --- Vercel AI SDK ---
+
+[[skills]]
+provider_skill_id = "vercel/ai/ai-sdk"
+local_skill_id = "vercel-ai-sdk"
+title = "Vercel AI SDK"
+summary = "Build AI-powered features with the Vercel AI SDK."
+
+# --- Vercel Deploy ---
+
+[[skills]]
+provider_skill_id = "vercel-labs/agent-skills/deploy-to-vercel"
+local_skill_id = "deploy-to-vercel"
+title = "Deploy to Vercel"
+summary = "Deploy applications to the Vercel platform."
+
+# --- Vite ---
+
+[[skills]]
+provider_skill_id = "antfu/skills/vite"
+local_skill_id = "vite"
+title = "Vite"
+summary = "Configure and optimize Vite build tooling."
+
+# --- Vitest ---
+
+[[skills]]
+provider_skill_id = "antfu/skills/vitest"
+local_skill_id = "vitest"
+title = "Vitest"
+summary = "Write and run tests with Vitest."
+
+# --- Vue ---
+
+[[skills]]
+provider_skill_id = "hyf0/vue-skills/vue-best-practices"
+local_skill_id = "hyf0-vue-best-practices"
+title = "Vue Best Practices (hyf0)"
+summary = "Build Vue applications following community best practices."
+
+[[skills]]
+provider_skill_id = "hyf0/vue-skills/vue-debug-guides"
+local_skill_id = "vue-debug-guides"
+title = "Vue Debug Guides"
+summary = "Debug Vue applications effectively."
+
+[[skills]]
+provider_skill_id = "antfu/skills/vue"
+local_skill_id = "antfu-vue"
+title = "Vue (antfu)"
+summary = "Build Vue applications with antfu's patterns and tooling."
+
+[[skills]]
+provider_skill_id = "antfu/skills/vue-best-practices"
+local_skill_id = "vue-best-practices"
+title = "Vue Best Practices"
+summary = "Follow Vue.js best practices and conventions."
+
+# --- WordPress ---
+
+[[skills]]
+provider_skill_id = "wordpress/agent-skills/wp-plugin-development"
+local_skill_id = "wp-plugin-development"
+title = "WordPress Plugin Development"
+summary = "Develop WordPress plugins following best practices."
+
+[[skills]]
+provider_skill_id = "wordpress/agent-skills/wp-rest-api"
+local_skill_id = "wp-rest-api"
+title = "WordPress REST API"
+summary = "Build and consume the WordPress REST API."
+
+[[skills]]
+provider_skill_id = "wordpress/agent-skills/wp-block-themes"
+local_skill_id = "wp-block-themes"
+title = "WordPress Block Themes"
+summary = "Create WordPress block-based themes."
+
+[[skills]]
+provider_skill_id = "wordpress/agent-skills/wp-block-development"
+local_skill_id = "wp-block-development"
+title = "WordPress Block Development"
+summary = "Develop custom WordPress Gutenberg blocks."
+
+[[skills]]
+provider_skill_id = "wordpress/agent-skills/wp-performance"
+local_skill_id = "wp-performance"
+title = "WordPress Performance"
+summary = "Optimize WordPress site performance."
+
+[[skills]]
+provider_skill_id = "wordpress/agent-skills/wordpress-router"
+local_skill_id = "wordpress-router"
+title = "WordPress Router"
+summary = "Use WordPress routing and URL handling."
+
+[[skills]]
+provider_skill_id = "wordpress/agent-skills/wp-project-triage"
+local_skill_id = "wp-project-triage"
+title = "WordPress Project Triage"
+summary = "Triage and debug WordPress project issues."
+
+[[skills]]
+provider_skill_id = "wordpress/agent-skills/wp-wpcli-and-ops"
+local_skill_id = "wp-wpcli-and-ops"
+title = "WordPress WP-CLI & Ops"
+summary = "Use WP-CLI for WordPress operations and management."
+
+# --- Combo-only skills ---
+
+[[skills]]
+provider_skill_id = "secondsky/claude-skills/tailwind-v4-shadcn"
+local_skill_id = "tailwind-v4-shadcn"
+title = "Tailwind v4 + shadcn/ui"
+summary = "Use Tailwind CSS v4 with shadcn/ui components."
+
+[[skills]]
+provider_skill_id = "cloudflare/vinext/migrate-to-vinext"
+local_skill_id = "cloudflare-migrate-to-vinext"
+title = "Cloudflare Vite Migration"
+summary = "Migrate to Cloudflare's Vite-based deployment."
+
+[[skills]]
+provider_skill_id = "aj-geddes/useful-ai-prompts/nodejs-express-server"
+local_skill_id = "nodejs-express-server"
+title = "Node.js Express Server"
+summary = "Build Express.js server applications."
+
+# =============================================================================
+# Technologies
+# =============================================================================
+
+# --- Existing technologies (migrated with detect blocks) ---
+
 [[technologies]]
 id = "rust"
 name = "Rust"
 skills = ["rust-async-patterns"]
 min_confidence = "medium"
+
+[technologies.detect]
+config_files = ["Cargo.toml"]
 
 [[technologies]]
 id = "node_typescript"
@@ -78,11 +929,17 @@ name = "Node/TypeScript"
 skills = ["best-practices"]
 min_confidence = "medium"
 
+[technologies.detect]
+config_files = ["package.json", "tsconfig.json"]
+
 [[technologies]]
 id = "python"
 name = "Python"
 skills = ["best-practices"]
 min_confidence = "medium"
+
+[technologies.detect]
+config_files = ["pyproject.toml", "uv.lock", "poetry.lock", "requirements.txt"]
 
 [[technologies]]
 id = "astro"
@@ -93,8 +950,13 @@ skills = [
   "performance",
   "core-web-vitals",
   "seo",
+  "astrolicious/agent-skills/astro",
 ]
 min_confidence = "medium"
+
+[technologies.detect]
+packages = ["astro"]
+config_files = ["astro.config.mjs", "astro.config.js", "astro.config.ts"]
 
 [[technologies]]
 id = "github_actions"
@@ -103,11 +965,17 @@ skills = ["github-actions", "pinned-tag"]
 min_confidence = "medium"
 reason_template = "Recommended because {technology} workflows were detected from {evidence}."
 
+[technologies.detect]
+config_files = [".github/workflows"]
+
 [[technologies]]
 id = "docker"
 name = "Docker"
 skills = ["docker-expert"]
 min_confidence = "medium"
+
+[technologies.detect]
+config_files = ["Dockerfile", "compose.yml", "compose.yaml", "docker-compose.yml", "docker-compose.yaml"]
 
 [[technologies]]
 id = "make"
@@ -115,9 +983,637 @@ name = "Make"
 skills = ["makefile"]
 min_confidence = "medium"
 
+[technologies.detect]
+config_files = ["Makefile", "GNUmakefile"]
+
+# --- New technologies (from autoskills) ---
+
+[[technologies]]
+id = "react"
+name = "React"
+skills = ["vercel-labs/agent-skills/vercel-react-best-practices", "vercel-labs/agent-skills/vercel-composition-patterns"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["react", "react-dom"]
+
+[[technologies]]
+id = "nextjs"
+name = "Next.js"
+skills = ["vercel-labs/next-skills/next-best-practices", "vercel-labs/next-skills/next-cache-components", "vercel-labs/next-skills/next-upgrade"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["next"]
+config_files = ["next.config.js", "next.config.mjs", "next.config.ts"]
+
+[[technologies]]
+id = "vue"
+name = "Vue"
+skills = ["hyf0/vue-skills/vue-best-practices", "hyf0/vue-skills/vue-debug-guides", "antfu/skills/vue", "antfu/skills/vue-best-practices"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["vue"]
+
+[[technologies]]
+id = "nuxt"
+name = "Nuxt"
+skills = ["antfu/skills/nuxt"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["nuxt"]
+config_files = ["nuxt.config.js", "nuxt.config.ts"]
+
+[[technologies]]
+id = "pinia"
+name = "Pinia"
+skills = ["vuejs-ai/skills/vue-pinia-best-practices"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["pinia"]
+
+[[technologies]]
+id = "svelte"
+name = "Svelte"
+skills = ["ejirocodes/agent-skills/svelte5-best-practices", "sveltejs/ai-tools/svelte-code-writer"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["svelte", "@sveltejs/kit"]
+config_files = ["svelte.config.js"]
+
+[[technologies]]
+id = "angular"
+name = "Angular"
+skills = [
+  "angular/skills/angular-developer",
+  "angular/angular/reference-core",
+  "angular/angular/reference-signal-forms",
+  "angular/angular/reference-compiler-cli",
+  "angular/angular/adev-writing-guide",
+  "angular/angular/PR Review",
+]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["@angular/core"]
+config_files = ["angular.json"]
+
+[[technologies]]
+id = "tailwind"
+name = "Tailwind CSS"
+skills = ["giuseppe-trisciuoglio/developer-kit/tailwind-css-patterns"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["tailwindcss", "@tailwindcss/vite"]
+config_files = ["tailwind.config.js", "tailwind.config.ts", "tailwind.config.cjs"]
+
+[[technologies]]
+id = "shadcn"
+name = "shadcn/ui"
+skills = ["shadcn/ui/shadcn"]
+min_confidence = "medium"
+
+[technologies.detect]
+config_files = ["components.json"]
+
+[[technologies]]
+id = "typescript"
+name = "TypeScript"
+skills = ["wshobson/agents/typescript-advanced-types"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["typescript"]
+config_files = ["tsconfig.json"]
+
+[[technologies]]
+id = "supabase"
+name = "Supabase"
+skills = ["supabase/agent-skills/supabase-postgres-best-practices"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["@supabase/supabase-js", "@supabase/ssr"]
+
+[[technologies]]
+id = "neon"
+name = "Neon"
+skills = ["neondatabase/agent-skills/neon-postgres"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["@neondatabase/serverless"]
+
+[[technologies]]
+id = "playwright"
+name = "Playwright"
+skills = ["currents-dev/playwright-best-practices-skill/playwright-best-practices"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["@playwright/test", "playwright"]
+config_files = ["playwright.config.ts", "playwright.config.js"]
+
+[[technologies]]
+id = "expo"
+name = "Expo"
+skills = [
+  "expo/skills/building-native-ui",
+  "expo/skills/native-data-fetching",
+  "expo/skills/upgrading-expo",
+  "expo/skills/expo-tailwind-setup",
+  "expo/skills/expo-dev-client",
+  "expo/skills/expo-deployment",
+  "expo/skills/expo-cicd-workflows",
+  "expo/skills/expo-api-routes",
+  "expo/skills/use-dom",
+]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["expo"]
+
+[[technologies]]
+id = "react_native"
+name = "React Native"
+skills = ["sleekdotdesign/agent-skills/sleek-design-mobile-apps"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["react-native"]
+
+[[technologies]]
+id = "kotlin_multiplatform"
+name = "Kotlin Multiplatform"
+skills = ["Kotlin/kotlin-agent-skills/kotlin-tooling-cocoapods-spm-migration", "Kotlin/kotlin-agent-skills/kotlin-tooling-agp9-migration"]
+min_confidence = "medium"
+
+[technologies.detect.config_file_content]
+scan_gradle_layout = true
+patterns = ['kotlin\("multiplatform"\)', "org\\.jetbrains\\.kotlin\\.multiplatform", 'id\("org\\.jetbrains\\.kotlin\\.multiplatform"\)', "kotlin-multiplatform"]
+
+[[technologies]]
+id = "android"
+name = "Android"
+skills = [
+  "krutikJain/android-agent-skills/android-kotlin-core",
+  "krutikJain/android-agent-skills/android-compose-foundations",
+  "krutikJain/android-agent-skills/android-architecture-clean",
+  "krutikJain/android-agent-skills/android-di-hilt",
+  "krutikJain/android-agent-skills/android-gradle-build-logic",
+  "krutikJain/android-agent-skills/android-coroutines-flow",
+  "krutikJain/android-agent-skills/android-networking-retrofit-okhttp",
+  "krutikJain/android-agent-skills/android-testing-unit",
+]
+min_confidence = "medium"
+
+[technologies.detect.config_file_content]
+scan_gradle_layout = true
+patterns = ["com\\.android\\.application", "com\\.android\\.library", 'id\("com\\.android\\.application"\)', 'id\("com\\.android\\.library"\)', "com\\.android\\.kotlin\\.multiplatform\\.library"]
+
+[[technologies]]
+id = "remotion"
+name = "Remotion"
+skills = ["remotion-dev/skills/remotion-best-practices"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["remotion", "@remotion/cli"]
+
+[[technologies]]
+id = "clerk"
+name = "Clerk"
+skills = [
+  "clerk/skills/clerk",
+  "clerk/skills/clerk-setup",
+  "clerk/skills/clerk-custom-ui",
+  "clerk/skills/clerk-nextjs-patterns",
+  "clerk/skills/clerk-orgs",
+  "clerk/skills/clerk-webhooks",
+  "clerk/skills/clerk-testing",
+]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = [
+  "@clerk/nextjs",
+  "@clerk/remix",
+  "@clerk/astro",
+  "@clerk/express",
+  "@clerk/fastify",
+  "@clerk/nuxt",
+  "@clerk/vue",
+  "@clerk/react",
+  "@clerk/expo",
+  "@clerk/tanstack-react-start",
+  "@clerk/react-router",
+  "@clerk/chrome-extension",
+  "@clerk/backend",
+]
+package_patterns = ["^@clerk/"]
+
+[[technologies]]
+id = "better_auth"
+name = "Better Auth"
+skills = [
+  "better-auth/skills/better-auth-best-practices",
+  "better-auth/skills/email-and-password-best-practices",
+  "better-auth/skills/organization-best-practices",
+  "better-auth/skills/two-factor-authentication-best-practices",
+]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["better-auth"]
+
+[[technologies]]
+id = "turborepo"
+name = "Turborepo"
+skills = ["vercel/turborepo/turborepo"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["turbo"]
+config_files = ["turbo.json"]
+
+[[technologies]]
+id = "vite"
+name = "Vite"
+skills = ["antfu/skills/vite"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["vite"]
+config_files = ["vite.config.js", "vite.config.ts", "vite.config.mjs"]
+
+[[technologies]]
+id = "azure"
+name = "Azure"
+skills = [
+  "microsoft/github-copilot-for-azure/azure-deploy",
+  "microsoft/github-copilot-for-azure/azure-ai",
+  "microsoft/github-copilot-for-azure/azure-cost-optimization",
+  "microsoft/github-copilot-for-azure/azure-diagnostics",
+]
+min_confidence = "medium"
+
+[technologies.detect]
+package_patterns = ["^@azure/"]
+
+[[technologies]]
+id = "vercel_ai"
+name = "Vercel AI SDK"
+skills = ["vercel/ai/ai-sdk"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["ai", "@ai-sdk/openai", "@ai-sdk/anthropic", "@ai-sdk/google"]
+
+[[technologies]]
+id = "elevenlabs"
+name = "ElevenLabs"
+skills = ["inferen-sh/skills/elevenlabs-tts", "inferen-sh/skills/elevenlabs-music"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["elevenlabs"]
+
+[[technologies]]
+id = "vercel_deploy"
+name = "Vercel Deploy"
+skills = ["vercel-labs/agent-skills/deploy-to-vercel"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["vercel", "@astrojs/vercel"]
+config_files = ["vercel.json", ".vercel"]
+
+[[technologies]]
+id = "cloudflare"
+name = "Cloudflare"
+skills = [
+  "cloudflare/skills/cloudflare",
+  "cloudflare/skills/wrangler",
+  "cloudflare/skills/workers-best-practices",
+  "cloudflare/skills/web-perf",
+  "openai/skills/cloudflare-deploy",
+]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["wrangler", "@cloudflare/workers-types", "@astrojs/cloudflare"]
+config_files = ["wrangler.toml", "wrangler.json", "wrangler.jsonc"]
+
+[[technologies]]
+id = "cloudflare_durable_objects"
+name = "Cloudflare Durable Objects"
+skills = ["cloudflare/skills/durable-objects"]
+min_confidence = "medium"
+
+[technologies.detect.config_file_content]
+files = ["wrangler.json", "wrangler.jsonc", "wrangler.toml"]
+patterns = ["durable_objects"]
+
+[[technologies]]
+id = "cloudflare_agents"
+name = "Cloudflare Agents"
+skills = ["cloudflare/skills/agents-sdk", "cloudflare/skills/building-mcp-server-on-cloudflare", "cloudflare/skills/sandbox-sdk"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["agents"]
+
+[[technologies]]
+id = "cloudflare_ai"
+name = "Cloudflare AI"
+skills = ["cloudflare/skills/building-ai-agent-on-cloudflare"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["@cloudflare/ai"]
+
+[technologies.detect.config_file_content]
+files = ["wrangler.json", "wrangler.jsonc"]
+patterns = ['"ai"']
+
+[[technologies]]
+id = "swiftui"
+name = "SwiftUI"
+skills = ["avdlee/swiftui-agent-skill/swiftui-expert-skill"]
+min_confidence = "medium"
+
+[technologies.detect]
+config_files = ["Package.swift"]
+
+[[technologies]]
+id = "oxlint"
+name = "OxLint"
+skills = ["delexw/claude-code-misc/oxlint"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["oxlint"]
+config_files = [".oxlintrc.json", "oxlint.config.ts"]
+
+[[technologies]]
+id = "gsap"
+name = "GSAP"
+skills = [
+  "greensock/gsap-skills/gsap-core",
+  "greensock/gsap-skills/gsap-scrolltrigger",
+  "greensock/gsap-skills/gsap-performance",
+  "greensock/gsap-skills/gsap-plugins",
+  "greensock/gsap-skills/gsap-timeline",
+  "greensock/gsap-skills/gsap-utils",
+  "greensock/gsap-skills/gsap-frameworks",
+]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["gsap"]
+
+[[technologies]]
+id = "node"
+name = "Node.js"
+skills = ["wshobson/agents/nodejs-backend-patterns", "sickn33/antigravity-awesome-skills/nodejs-best-practices"]
+min_confidence = "medium"
+
+[technologies.detect]
+config_files = ["package-lock.json", "yarn.lock", "pnpm-lock.yaml", ".nvmrc", ".node-version"]
+
+[[technologies]]
+id = "deno"
+name = "Deno"
+skills = [
+  "denoland/skills/deno-expert",
+  "denoland/skills/deno-guidance",
+  "denoland/skills/deno-frontend",
+  "denoland/skills/deno-deploy",
+  "denoland/skills/deno-sandbox",
+  "mindrally/skills/deno-typescript",
+]
+min_confidence = "medium"
+
+[technologies.detect]
+config_files = ["deno.json", "deno.jsonc", "deno.lock"]
+
+[[technologies]]
+id = "wordpress"
+name = "WordPress"
+skills = [
+  "wordpress/agent-skills/wp-plugin-development",
+  "wordpress/agent-skills/wp-rest-api",
+  "wordpress/agent-skills/wp-block-themes",
+  "wordpress/agent-skills/wp-block-development",
+  "wordpress/agent-skills/wp-performance",
+  "wordpress/agent-skills/wordpress-router",
+  "wordpress/agent-skills/wp-project-triage",
+  "wordpress/agent-skills/wp-wpcli-and-ops",
+]
+min_confidence = "medium"
+
+[technologies.detect]
+config_files = ["wp-config.php", "wp-login.php"]
+package_patterns = ["^@wordpress/"]
+
+[technologies.detect.config_file_content]
+files = ["composer.json", "style.css"]
+patterns = ["johnpbloch/wordpress", "wpackagist", "Theme Name:"]
+
+[[technologies]]
+id = "java"
+name = "Java"
+skills = ["github/awesome-copilot/java-docs", "affaan-m/everything-claude-code/java-coding-standards"]
+min_confidence = "medium"
+
+[technologies.detect]
+config_files = ["pom.xml"]
+
+[technologies.detect.config_file_content]
+scan_gradle_layout = true
+patterns = ["sourceCompatibility", "targetCompatibility", "JavaVersion", 'id\("java"\)', "id 'java'", 'id\("java-library"\)', "id 'java-library'"]
+
+[[technologies]]
+id = "springboot"
+name = "Spring Boot"
+skills = ["github/awesome-copilot/java-springboot"]
+min_confidence = "medium"
+
+[technologies.detect]
+config_files = ["src/main/resources/application.properties", "src/main/resources/application.yml", "src/main/resources/application.yaml"]
+
+[technologies.detect.config_file_content]
+files = ["pom.xml"]
+patterns = ["spring-boot-starter", "org\\.springframework\\.boot"]
+
+[[technologies]]
+id = "prisma"
+name = "Prisma"
+skills = [
+  "prisma/skills/prisma-database-setup",
+  "prisma/skills/prisma-client-api",
+  "prisma/skills/prisma-cli",
+  "prisma/skills/prisma-postgres",
+]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["prisma", "@prisma/client"]
+
+[[technologies]]
+id = "stripe"
+name = "Stripe"
+skills = ["stripe/ai/stripe-best-practices", "stripe/ai/upgrade-stripe"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["stripe", "@stripe/stripe-js", "@stripe/react-stripe-js"]
+
+[[technologies]]
+id = "hono"
+name = "Hono"
+skills = ["yusukebe/hono-skill/hono"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["hono"]
+
+[[technologies]]
+id = "vitest"
+name = "Vitest"
+skills = ["antfu/skills/vitest"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["vitest"]
+config_files = ["vitest.config.ts", "vitest.config.js", "vitest.config.mts"]
+
+[[technologies]]
+id = "drizzle"
+name = "Drizzle"
+skills = ["bobmatnyc/claude-mpm-skills/drizzle-orm"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["drizzle-orm", "drizzle-kit"]
+
+[[technologies]]
+id = "nestjs"
+name = "NestJS"
+skills = ["kadajett/agent-nestjs-skills/nestjs-best-practices"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["@nestjs/core"]
+
+[[technologies]]
+id = "tauri"
+name = "Tauri"
+skills = ["nodnarbnitram/claude-code-extensions/tauri-v2"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["@tauri-apps/api", "@tauri-apps/cli"]
+config_files = ["src-tauri/tauri.conf.json"]
+
+[[technologies]]
+id = "web_frontend"
+name = "Web Frontend"
+skills = ["anthropics/skills/frontend-design", "addyosmani/web-quality-skills/accessibility", "addyosmani/web-quality-skills/seo"]
+min_confidence = "medium"
+
+[technologies.detect]
+file_extensions = [".html", ".htm", ".css", ".scss", ".sass", ".less", ".vue", ".svelte", ".jsx", ".tsx", ".twig", ".tpl", ".ejs", ".hbs", ".pug", ".njk"]
+
+# =============================================================================
+# Combos
+# =============================================================================
+
 [[combos]]
 id = "astro-github-actions"
 name = "Astro + GitHub Actions"
 requires = ["astro", "github_actions"]
 skills = ["github-actions"]
 enabled = false
+
+[[combos]]
+id = "expo-tailwind"
+name = "Expo + Tailwind CSS"
+requires = ["expo", "tailwind"]
+skills = ["expo/skills/expo-tailwind-setup"]
+enabled = true
+
+[[combos]]
+id = "nextjs-supabase"
+name = "Next.js + Supabase"
+requires = ["nextjs", "supabase"]
+skills = ["supabase/agent-skills/supabase-postgres-best-practices"]
+enabled = true
+
+[[combos]]
+id = "react-native-expo"
+name = "React Native + Expo"
+requires = ["react_native", "expo"]
+skills = ["expo/skills/building-native-ui", "sleekdotdesign/agent-skills/sleek-design-mobile-apps"]
+enabled = true
+
+[[combos]]
+id = "nextjs-vercel-ai"
+name = "Next.js + Vercel AI SDK"
+requires = ["nextjs", "vercel_ai"]
+skills = ["vercel/ai/ai-sdk", "vercel-labs/next-skills/next-best-practices"]
+enabled = true
+
+[[combos]]
+id = "nextjs-playwright"
+name = "Next.js + Playwright"
+requires = ["nextjs", "playwright"]
+skills = ["currents-dev/playwright-best-practices-skill/playwright-best-practices"]
+enabled = true
+
+[[combos]]
+id = "react-shadcn"
+name = "React + shadcn/ui"
+requires = ["react", "shadcn"]
+skills = ["shadcn/ui/shadcn", "vercel-labs/agent-skills/vercel-react-best-practices"]
+enabled = true
+
+[[combos]]
+id = "tailwind-shadcn"
+name = "Tailwind CSS + shadcn/ui"
+requires = ["tailwind", "shadcn"]
+skills = ["secondsky/claude-skills/tailwind-v4-shadcn"]
+enabled = true
+
+[[combos]]
+id = "gsap-react"
+name = "GSAP + React"
+requires = ["gsap", "react"]
+skills = ["greensock/gsap-skills/gsap-react"]
+enabled = true
+
+[[combos]]
+id = "cloudflare-vite"
+name = "Cloudflare + Vite"
+requires = ["cloudflare", "vite"]
+skills = ["cloudflare/vinext/migrate-to-vinext"]
+enabled = true
+
+[[combos]]
+id = "node-express"
+name = "Node.js + Express"
+requires = ["node", "express"]
+skills = ["aj-geddes/useful-ai-prompts/nodejs-express-server"]
+enabled = true
+
+[[combos]]
+id = "nextjs-clerk"
+name = "Next.js + Clerk"
+requires = ["nextjs", "clerk"]
+skills = ["clerk/skills/clerk-nextjs-patterns", "clerk/skills/clerk-setup", "clerk/skills/clerk"]
+enabled = true

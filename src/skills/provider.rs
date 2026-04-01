@@ -49,7 +49,7 @@ pub struct ProviderCatalogTechnology {
     pub name: String,
     pub skills: Vec<String>,
     #[serde(default)]
-    pub detect: Option<toml::Value>,
+    pub detect: Option<crate::skills::detect::DetectionRules>,
     #[serde(default)]
     pub min_confidence: Option<String>,
     #[serde(default)]
@@ -81,13 +81,50 @@ struct SearchSkill {
 
 pub struct SkillsShProvider;
 
-impl Provider for SkillsShProvider {
-    fn manifest(&self) -> Result<String> {
-        Ok("skills.sh".to_string())
+/// Well-known repo names where skills live in a `skills/` subdirectory.
+const SKILLS_REPO_NAMES: &[&str] = &["skills", "agent-skills", "agentic-skills"];
+
+impl SkillsShProvider {
+    /// Resolve a catalog-style `owner/repo/skill-name` ID deterministically by
+    /// constructing the GitHub download URL directly — no network call needed.
+    fn resolve_deterministic(&self, id: &str) -> Result<SkillInstallInfo> {
+        // Split into owner/repo and skill-name at the second '/' separator.
+        let first_slash = id
+            .find('/')
+            .ok_or_else(|| anyhow::anyhow!("invalid skill id (missing owner): {}", id))?;
+        let rest = &id[first_slash + 1..];
+        let second_slash = rest
+            .find('/')
+            .ok_or_else(|| anyhow::anyhow!("invalid skill id (missing repo): {}", id))?;
+
+        let owner = &id[..first_slash];
+        let repo = &rest[..second_slash];
+        let skill_name = &rest[second_slash + 1..];
+
+        if owner.is_empty() || repo.is_empty() || skill_name.is_empty() {
+            anyhow::bail!("invalid skill id (empty component): {}", id);
+        }
+
+        // Construct the subpath fragment for the archive unpacker.
+        // For repos named "skills", "agent-skills", etc., the skill typically
+        // lives under a `skills/` directory inside the repo.
+        let subpath = if SKILLS_REPO_NAMES.contains(&repo) {
+            format!("skills/{}", skill_name)
+        } else {
+            skill_name.to_string()
+        };
+
+        let final_url = format!("https://github.com/{owner}/{repo}/archive/HEAD.zip#{subpath}");
+
+        Ok(SkillInstallInfo {
+            download_url: final_url,
+            format: "zip".to_string(),
+        })
     }
 
-    fn resolve(&self, id: &str) -> Result<SkillInstallInfo> {
-        // Use tokio runtime to call API
+    /// Resolve a simple skill ID (e.g., "rust-async-patterns") by searching the
+    /// skills.sh API. This is the original behavior for non-catalog IDs.
+    fn resolve_via_search(&self, id: &str) -> Result<SkillInstallInfo> {
         let url = format!("https://skills.sh/api/search?q={}", urlencoding::encode(id));
 
         let client = reqwest::blocking::Client::builder()
@@ -102,34 +139,26 @@ impl Provider for SkillsShProvider {
             .find(|s| s.id == id || s.id.split('/').next_back() == Some(id))
             .ok_or_else(|| anyhow::anyhow!("Skill not found on skills.sh: {}", id))?;
 
-        // Construct GitHub zip URL
-        // source is "owner/repo"
+        // Construct GitHub zip URL — source is "owner/repo"
         let download_url = format!("https://github.com/{}", skill.source);
 
         // Robust subpath detection
-        // For antfu/skills/vitest with source antfu/skills, subpath is skills/vitest
-        // For astrolicious/agent-skills/astro with source astrolicious/agent-skills, subpath is skills/astro
         let subpath = if skill.id.starts_with(&skill.source) {
             let sub = &skill.id[skill.source.len()..];
             let sub = sub.trim_start_matches('/');
-
-            // Heuristic: Many repos have a 'skills/' prefix that might be omitted in the search ID
-            // but is present in the repo structure. Or the repo name itself IS 'skills'.
             if !sub.is_empty() {
-                // We'll pass the subpath as is, but our unpacker will be smart
                 sub.to_string()
             } else {
-                "".to_string()
+                String::new()
             }
         } else {
-            "".to_string()
+            String::new()
         };
 
-        // If the repo name is 'skills' or 'agent-skills', we might need to prefix 'skills/'
+        // If the repo name is a well-known skills repo, prefix 'skills/'
         let final_subpath = if !subpath.is_empty() && !subpath.starts_with("skills/") {
             let repo_name = skill.source.split('/').next_back().unwrap_or("");
-            if repo_name == "skills" || repo_name == "agent-skills" || repo_name == "agentic-skills"
-            {
+            if SKILLS_REPO_NAMES.contains(&repo_name) {
                 format!("skills/{}", subpath)
             } else {
                 subpath
@@ -148,5 +177,24 @@ impl Provider for SkillsShProvider {
             download_url: final_url,
             format: "zip".to_string(),
         })
+    }
+}
+
+impl Provider for SkillsShProvider {
+    fn manifest(&self) -> Result<String> {
+        Ok("skills.sh".to_string())
+    }
+
+    fn resolve(&self, id: &str) -> Result<SkillInstallInfo> {
+        // Deterministic path for catalog-style IDs with owner/repo/skill-name format.
+        // If the ID contains at least 2 '/' separators, we can construct the download
+        // URL directly without a network call to the skills.sh search API.
+        let slash_count = id.chars().filter(|&c| c == '/').count();
+        if slash_count >= 2 {
+            return self.resolve_deterministic(id);
+        }
+
+        // Fallback: use skills.sh search API for simple IDs (e.g., "rust-async-patterns")
+        self.resolve_via_search(id)
     }
 }

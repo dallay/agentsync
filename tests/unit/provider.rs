@@ -1,4 +1,4 @@
-use agentsync::skills::provider::{Provider, SkillInstallInfo};
+use agentsync::skills::provider::{Provider, SkillInstallInfo, SkillsShProvider};
 
 struct DummyProvider;
 
@@ -24,4 +24,72 @@ fn dummy_provider_resolves() {
     let info = p.resolve("sample").unwrap();
     assert!(info.download_url.contains("sample"));
     assert_eq!(info.format, "zip");
+}
+
+// ---------------------------------------------------------------------------
+// SkillsShProvider deterministic resolve tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn resolve_deterministic_owner_repo_skill_format() {
+    let provider = SkillsShProvider;
+    let info = provider
+        .resolve("vercel-labs/agent-skills/vercel-react-best-practices")
+        .unwrap();
+
+    assert_eq!(
+        info.download_url,
+        "https://github.com/vercel-labs/agent-skills/archive/HEAD.zip#skills/vercel-react-best-practices"
+    );
+    assert_eq!(info.format, "zip");
+}
+
+#[test]
+fn resolve_deterministic_non_skills_repo_omits_skills_prefix() {
+    let provider = SkillsShProvider;
+    let info = provider.resolve("acme/my-repo/my-skill-name").unwrap();
+
+    // "my-repo" is NOT in SKILLS_REPO_NAMES, so no "skills/" prefix
+    assert_eq!(
+        info.download_url,
+        "https://github.com/acme/my-repo/archive/HEAD.zip#my-skill-name"
+    );
+    assert_eq!(info.format, "zip");
+}
+
+#[test]
+fn resolve_deterministic_skills_repo_adds_skills_prefix() {
+    let provider = SkillsShProvider;
+
+    // "skills" is in SKILLS_REPO_NAMES
+    let info = provider
+        .resolve("cloudflare/skills/durable-objects")
+        .unwrap();
+    assert_eq!(
+        info.download_url,
+        "https://github.com/cloudflare/skills/archive/HEAD.zip#skills/durable-objects"
+    );
+
+    // "agent-skills" is also in SKILLS_REPO_NAMES
+    let info = provider
+        .resolve("krutikJain/agent-skills/android-kotlin-core")
+        .unwrap();
+    assert_eq!(
+        info.download_url,
+        "https://github.com/krutikJain/agent-skills/archive/HEAD.zip#skills/android-kotlin-core"
+    );
+}
+
+#[test]
+fn resolve_deterministic_rejects_invalid_ids() {
+    let provider = SkillsShProvider;
+
+    // Missing repo component (only 1 slash but we need 2+ for deterministic)
+    // This would fall through to search API, so we just test that owner/repo/skill works
+    // and that empty components are rejected
+    let result = provider.resolve("//empty-parts");
+    assert!(result.is_err(), "should reject empty owner component");
+
+    let result = provider.resolve("owner//empty-skill");
+    assert!(result.is_err(), "should reject empty repo component");
 }

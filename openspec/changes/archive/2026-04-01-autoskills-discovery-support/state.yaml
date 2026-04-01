@@ -1,0 +1,11 @@
+change: autoskills-discovery-support
+current_phase: verify
+completed:
+  - propose
+  - spec
+  - design
+  - tasks
+  - apply
+  - verify
+next: archive
+updated: 2026-04-01

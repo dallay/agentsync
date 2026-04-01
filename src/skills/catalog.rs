@@ -1,3 +1,4 @@
+use crate::skills::detect::DetectionRules;
 use crate::skills::provider::{Provider, ProviderCatalogMetadata};
 use crate::skills::suggest::{
     DetectionConfidence, SkillSuggestion, TechnologyDetection, TechnologyId,
@@ -34,7 +35,7 @@ pub struct CatalogSkillDefinition {
 pub struct CatalogTechnologyEntry {
     pub id: TechnologyId,
     pub name: String,
-    pub detect: Option<toml::Value>,
+    pub detect: Option<DetectionRules>,
     pub skills: Vec<String>,
     pub min_confidence: DetectionConfidence,
     pub reason_template: String,
@@ -77,8 +78,8 @@ impl ResolvedSkillCatalog {
         self.skill_definitions.get(provider_skill_id)
     }
 
-    pub fn get_technology(&self, technology: TechnologyId) -> Option<&CatalogTechnologyEntry> {
-        self.technologies.get(&technology)
+    pub fn get_technology(&self, technology: &TechnologyId) -> Option<&CatalogTechnologyEntry> {
+        self.technologies.get(technology)
     }
 
     pub fn get_combo(&self, combo_id: &str) -> Option<&CatalogComboEntry> {
@@ -87,6 +88,18 @@ impl ResolvedSkillCatalog {
 
     pub fn combos(&self) -> impl Iterator<Item = &CatalogComboEntry> {
         self.combos.values()
+    }
+
+    pub fn technologies(&self) -> impl Iterator<Item = (&TechnologyId, &CatalogTechnologyEntry)> {
+        self.technologies.iter()
+    }
+
+    /// Returns the human-readable name for a technology, falling back to the raw ID.
+    pub fn technology_name<'a>(&'a self, id: &'a TechnologyId) -> &'a str {
+        self.technologies
+            .get(id)
+            .map(|entry| entry.name.as_str())
+            .unwrap_or_else(|| id.as_ref())
     }
 }
 
@@ -135,7 +148,7 @@ struct RawCatalogTechnology {
     name: String,
     skills: Vec<String>,
     #[serde(default)]
-    detect: Option<toml::Value>,
+    detect: Option<DetectionRules>,
     #[serde(default)]
     min_confidence: Option<String>,
     #[serde(default)]
@@ -261,8 +274,9 @@ pub fn recommend_skills(
 ) -> Vec<SkillSuggestion> {
     let mut suggestions = BTreeMap::<String, SkillSuggestion>::new();
 
+    // Phase 1: Individual technology-based recommendations.
     for detection in detections {
-        let Some(entry) = catalog.get_technology(detection.technology) else {
+        let Some(entry) = catalog.get_technology(&detection.technology) else {
             continue;
         };
 
@@ -286,6 +300,47 @@ pub fn recommend_skills(
                 .or_insert_with(|| SkillSuggestion::new(&metadata, catalog));
 
             suggestion.add_match(detection, &entry.reason_template);
+        }
+    }
+
+    // Phase 2: Combo-based recommendations.
+    // Evaluate all enabled combos — if every required technology was detected,
+    // add the combo's skills to the suggestion set.
+    for combo in catalog.combos() {
+        if !combo.enabled {
+            continue;
+        }
+
+        let all_required_detected = combo
+            .requires
+            .iter()
+            .all(|required_tech| detections.iter().any(|d| d.technology == *required_tech));
+
+        if !all_required_detected {
+            continue;
+        }
+
+        for provider_skill_id in &combo.skills {
+            let Some(definition) = catalog.get_skill_definition(provider_skill_id) else {
+                continue;
+            };
+
+            let metadata = CatalogSkillMetadata {
+                skill_id: definition.local_skill_id.clone(),
+                title: definition.title.clone(),
+                summary: definition.summary.clone(),
+            };
+
+            let suggestion = suggestions
+                .entry(definition.local_skill_id.clone())
+                .or_insert_with(|| SkillSuggestion::new(&metadata, catalog));
+
+            let reason = combo
+                .reason_template
+                .as_deref()
+                .unwrap_or("Recommended for {combo_name} combination.")
+                .replace("{combo_name}", &combo.name);
+            suggestion.add_combo_match(&combo.name, &reason);
         }
     }
 
@@ -489,7 +544,8 @@ fn normalize_technologies(
 
         match result {
             Ok(technology) => {
-                normalized.insert(technology.id, technology);
+                let key = technology.id.clone();
+                normalized.insert(key, technology);
             }
             Err(error) if mode == ValidationMode::Lenient => {
                 warn!(
@@ -568,8 +624,7 @@ fn normalize_technology_entry(
     known_skills: &BTreeMap<String, CatalogSkillDefinition>,
 ) -> Result<CatalogTechnologyEntry> {
     let technology_id = require_non_empty("technology.id", &raw_technology.id)?;
-    let id = TechnologyId::from_catalog_key(technology_id)
-        .ok_or_else(|| anyhow!("unknown technology id '{technology_id}'"))?;
+    let id = TechnologyId::new(technology_id);
     let name = require_non_empty("technology.name", &raw_technology.name)?;
     let skills =
         normalize_skill_references("technology.skills", &raw_technology.skills, known_skills)?;
@@ -611,8 +666,7 @@ fn normalize_combo_entry(
     let mut requires = Vec::new();
     for required in &raw_combo.requires {
         let required = require_non_empty("combo.requires", required)?;
-        let technology = TechnologyId::from_catalog_key(required)
-            .ok_or_else(|| anyhow!("unknown combo technology id '{required}'"))?;
+        let technology = TechnologyId::new(required);
         if !requires.contains(&technology) {
             requires.push(technology);
         }

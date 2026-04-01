@@ -261,9 +261,13 @@ impl StaticDetector {
     fn rust_and_docker() -> Self {
         Self {
             detections: vec![
-                detection(TechnologyId::Rust, DetectionConfidence::High, "Cargo.toml"),
                 detection(
-                    TechnologyId::Docker,
+                    TechnologyId::new(TechnologyId::RUST),
+                    DetectionConfidence::High,
+                    "Cargo.toml",
+                ),
+                detection(
+                    TechnologyId::new(TechnologyId::DOCKER),
                     DetectionConfidence::High,
                     "Dockerfile",
                 ),
@@ -274,7 +278,7 @@ impl StaticDetector {
     fn rust_only() -> Self {
         Self {
             detections: vec![detection(
-                TechnologyId::Rust,
+                TechnologyId::new(TechnologyId::RUST),
                 DetectionConfidence::High,
                 "Cargo.toml",
             )],
@@ -284,13 +288,21 @@ impl StaticDetector {
     fn rust_docker_and_make() -> Self {
         Self {
             detections: vec![
-                detection(TechnologyId::Rust, DetectionConfidence::High, "Cargo.toml"),
                 detection(
-                    TechnologyId::Docker,
+                    TechnologyId::new(TechnologyId::RUST),
+                    DetectionConfidence::High,
+                    "Cargo.toml",
+                ),
+                detection(
+                    TechnologyId::new(TechnologyId::DOCKER),
                     DetectionConfidence::High,
                     "Dockerfile",
                 ),
-                detection(TechnologyId::Make, DetectionConfidence::High, "Makefile"),
+                detection(
+                    TechnologyId::new(TechnologyId::MAKE),
+                    DetectionConfidence::High,
+                    "Makefile",
+                ),
             ],
         }
     }
