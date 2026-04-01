@@ -1606,6 +1606,28 @@ mod tests {
     }
 
     #[test]
+    fn test_ensure_safe_destination_rejects_absolute_path_and_accepts_valid_relative() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        fs::write(&config_path, "").unwrap();
+
+        let linker = Linker::new(create_test_config(), config_path);
+
+        let absolute = temp_dir.path().join("absolute.md");
+        assert!(
+            linker
+                .ensure_safe_destination(&absolute.display().to_string())
+                .is_err()
+        );
+
+        let valid = linker.ensure_safe_destination("nested/output.md").unwrap();
+        assert_eq!(valid, temp_dir.path().join("nested/output.md"));
+    }
+
+    #[test]
     #[cfg(unix)]
     fn test_ensure_safe_destination_rejects_symlink_ancestor_escape() {
         let temp_dir = TempDir::new().unwrap();
@@ -3446,6 +3468,45 @@ mod tests {
         assert_eq!(result.removed, 0);
     }
 
+    #[test]
+    #[cfg(unix)]
+    fn test_nested_glob_sync_skips_empty_expanded_destination() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+        fs::create_dir_all(temp_dir.path().join("clients")).unwrap();
+        fs::write(temp_dir.path().join("clients/AGENTS"), "# Instructions").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.nested]
+            source = "."
+            pattern = "clients/AGENTS"
+            exclude = [".agents/**"]
+            destination = "{ext}"
+            type = "nested-glob"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker
+            .sync(&SyncOptions {
+                verbose: true,
+                ..Default::default()
+            })
+            .unwrap();
+
+        assert_eq!(result.created, 0);
+        assert_eq!(result.skipped, 1);
+    }
+
     // =========================================================================
     // MODULE-MAP INTEGRATION TESTS
     // =========================================================================
@@ -3896,5 +3957,102 @@ mod tests {
         let result = linker.sync(&SyncOptions::default()).unwrap();
         assert_eq!(result.created, 0);
         assert_eq!(result.errors, 0);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_module_map_sync_skips_invalid_destination() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        let claude_dir = agents_dir.join("claude");
+        fs::create_dir_all(&claude_dir).unwrap();
+        fs::write(claude_dir.join("api-context.md"), "# API").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "claude"
+
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.modules]
+            source = "."
+            destination = "."
+            type = "module-map"
+
+            [[agents.claude.targets.modules.mappings]]
+            source = "api-context.md"
+            destination = "../escape"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker
+            .sync(&SyncOptions {
+                verbose: true,
+                ..Default::default()
+            })
+            .unwrap();
+
+        assert_eq!(result.created, 0);
+        assert_eq!(result.skipped, 1);
+        assert!(
+            !temp_dir
+                .path()
+                .parent()
+                .unwrap()
+                .join("escape/CLAUDE.md")
+                .exists()
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_module_map_clean_skips_invalid_destination() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        let claude_dir = agents_dir.join("claude");
+        fs::create_dir_all(&claude_dir).unwrap();
+        fs::write(claude_dir.join("api-context.md"), "# API").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "claude"
+
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.modules]
+            source = "."
+            destination = "."
+            type = "module-map"
+
+            [[agents.claude.targets.modules.mappings]]
+            source = "api-context.md"
+            destination = "../escape"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker
+            .clean(&SyncOptions {
+                verbose: true,
+                ..Default::default()
+            })
+            .unwrap();
+
+        assert_eq!(result.removed, 0);
+        assert!(
+            !temp_dir
+                .path()
+                .parent()
+                .unwrap()
+                .join("escape/CLAUDE.md")
+                .exists()
+        );
     }
 }
