@@ -2,23 +2,30 @@
 
 ## Purpose
 
-Defines how AgentSync reconciles the managed `.gitignore` section during `apply`, including enabled, disabled, dry-run, and opt-out behavior, so repository state matches the configured gitignore policy without disturbing unmanaged lines.
+Defines how AgentSync reconciles the managed `.gitignore` section during `apply`, including enabled,
+disabled, dry-run, and opt-out behavior, so repository state matches the configured gitignore policy
+without disturbing unmanaged lines.
 
 ## Requirements
 
 ### Requirement: Apply Removes Managed Gitignore Block When Management Is Disabled
 
-When `[gitignore].enabled = false`, `agentsync apply` MUST reconcile `.gitignore` by removing an existing AgentSync-managed block identified by the configured marker.
+When `[gitignore].enabled = false`, `agentsync apply` MUST reconcile `.gitignore` by removing an
+existing AgentSync-managed block identified by the configured marker.
 
-The cleanup MUST remove only the matching managed block and MUST preserve unmanaged content before and after that block.
+The cleanup MUST remove only the matching managed block and MUST preserve unmanaged content before
+and after that block.
 
-The cleanup MUST be idempotent. If no matching managed block exists, `agentsync apply` MUST leave `.gitignore` unchanged and MUST NOT introduce a replacement block while management remains disabled.
+The cleanup MUST be idempotent. If no matching managed block exists, `agentsync apply` MUST leave
+`.gitignore` unchanged and MUST NOT introduce a replacement block while management remains disabled.
 
-The product default for gitignore management MUST remain unchanged; this requirement applies only when the effective configuration disables gitignore management.
+The product default for gitignore management MUST remain unchanged; this requirement applies only
+when the effective configuration disables gitignore management.
 
 #### Scenario: Apply removes stale managed block when disabled
 
-- GIVEN a repository `.gitignore` contains unmanaged lines and an AgentSync-managed block using the effective marker
+- GIVEN a repository `.gitignore` contains unmanaged lines and an AgentSync-managed block using the
+  effective marker
 - AND the effective configuration sets `[gitignore].enabled = false`
 - WHEN the user runs `agentsync apply`
 - THEN the managed block MUST be removed from `.gitignore`
@@ -36,7 +43,8 @@ The product default for gitignore management MUST remain unchanged; this require
 
 #### Scenario: Cleanup respects custom markers
 
-- GIVEN a repository `.gitignore` contains an AgentSync-managed block delimited by a custom configured marker
+- GIVEN a repository `.gitignore` contains an AgentSync-managed block delimited by a custom
+  configured marker
 - AND `[gitignore].enabled = false`
 - WHEN the user runs `agentsync apply`
 - THEN AgentSync MUST remove the block matching that custom marker
@@ -46,7 +54,8 @@ The product default for gitignore management MUST remain unchanged; this require
 
 ### Requirement: Dry-Run Reports Disabled Gitignore Cleanup Without Writing
 
-When `[gitignore].enabled = false` and a matching managed `.gitignore` block exists, `agentsync apply --dry-run` MUST report that the managed `.gitignore` block would be removed.
+When `[gitignore].enabled = false` and a matching managed `.gitignore` block exists,
+`agentsync apply --dry-run` MUST report that the managed `.gitignore` block would be removed.
 
 Dry-run MUST NOT modify `.gitignore` or any other file.
 
@@ -72,9 +81,11 @@ If no matching managed block exists, dry-run MUST NOT report a cleanup that woul
 
 ### Requirement: No-Gitignore Flag Strictly Opts Out Of Gitignore Reconciliation
 
-When the user passes `--no-gitignore`, that flag MUST take precedence over gitignore enablement or disablement settings.
+When the user passes `--no-gitignore`, that flag MUST take precedence over gitignore enablement or
+disablement settings.
 
-With `--no-gitignore`, `agentsync apply` MUST NOT create, update, remove, or otherwise rewrite a managed `.gitignore` block.
+With `--no-gitignore`, `agentsync apply` MUST NOT create, update, remove, or otherwise rewrite a
+managed `.gitignore` block.
 
 This strict opt-out MUST apply equally to normal apply and dry-run behavior.
 
@@ -98,16 +109,21 @@ This strict opt-out MUST apply equally to normal apply and dry-run behavior.
 
 ### Requirement: Diagnostics Remain Aligned With Disabled Gitignore Policy
 
-When gitignore management is disabled, AgentSync diagnostics such as `doctor` MUST treat the absence of an AgentSync-managed `.gitignore` block as the expected healthy state.
+When gitignore management is disabled, AgentSync diagnostics such as `doctor` MUST treat the absence
+of an AgentSync-managed `.gitignore` block as the expected healthy state.
 
-Diagnostics MUST NOT require a managed `.gitignore` block to exist when `[gitignore].enabled = false`.
+Diagnostics MUST NOT require a managed `.gitignore` block to exist when
+`[gitignore].enabled = false`.
 
-This change MUST NOT alter the product default; it only clarifies that disabled gitignore management and successful cleanup are consistent with a healthy repository state.
+This change MUST NOT alter the product default; it only clarifies that disabled gitignore management
+and successful cleanup are consistent with a healthy repository state.
 
 #### Scenario: Doctor accepts cleaned state when gitignore is disabled
 
 - GIVEN `[gitignore].enabled = false`
-- AND `.gitignore` does not contain a managed block matching the effective marker because cleanup has already occurred
+- AND `.gitignore` does not contain a managed block matching the effective marker because cleanup
+  has already occurred
 - WHEN the user runs `agentsync doctor`
 - THEN doctor MUST treat the missing managed `.gitignore` block as expected for the configuration
-- AND doctor MUST NOT instruct the user to restore a managed `.gitignore` block while management remains disabled
+- AND doctor MUST NOT instruct the user to restore a managed `.gitignore` block while management
+  remains disabled

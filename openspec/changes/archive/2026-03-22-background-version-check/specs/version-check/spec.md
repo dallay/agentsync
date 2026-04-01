@@ -8,7 +8,10 @@
 
 ## Purpose
 
-Define the behavior of a non-blocking background version check that queries crates.io on every CLI invocation and displays a one-time update hint when a newer version is available. The check runs on a detached background thread, respects user opt-out via environment variables, and caches results to avoid redundant network calls.
+Define the behavior of a non-blocking background version check that queries crates.io on every CLI
+invocation and displays a one-time update hint when a newer version is available. The check runs on
+a detached background thread, respects user opt-out via environment variables, and caches results to
+avoid redundant network calls.
 
 ---
 
@@ -20,13 +23,14 @@ The system SHALL store version check state in `~/.cache/agentsync/update-check.j
 
 The cache file MUST contain the following JSON fields:
 
-| Field              | Type     | Description                                              |
-|--------------------|----------|----------------------------------------------------------|
-| `last_checked`     | integer  | Unix timestamp (seconds) of the last API fetch           |
-| `latest_version`   | string   | The newest version string from crates.io                 |
-| `notified_version` | string   | The version for which a hint has been printed            |
+| Field              | Type    | Description                                    |
+|--------------------|---------|------------------------------------------------|
+| `last_checked`     | integer | Unix timestamp (seconds) of the last API fetch |
+| `latest_version`   | string  | The newest version string from crates.io       |
+| `notified_version` | string  | The version for which a hint has been printed  |
 
-The cache file SHALL be created with `std::fs::create_dir_all` for parent directories if they do not exist.
+The cache file SHALL be created with `std::fs::create_dir_all` for parent directories if they do not
+exist.
 
 #### Scenario: Cache file does not exist
 
@@ -37,7 +41,8 @@ The cache file SHALL be created with `std::fs::create_dir_all` for parent direct
 
 #### Scenario: Cache file is valid and fresh
 
-- GIVEN a valid cache file with `last_checked` within 24 hours and `notified_version` equal to `latest_version`
+- GIVEN a valid cache file with `last_checked` within 24 hours and `notified_version` equal to
+  `latest_version`
 - WHEN the version check runs
 - THEN the system SHALL skip the HTTP request
 - AND no hint SHALL be printed
@@ -127,7 +132,8 @@ The system SHALL only print the update hint to stderr when stderr is a TTY.
 
 The system SHALL use the `is-terminal` crate to detect TTY status.
 
-When stderr is not a TTY, the system SHALL still perform the background check and cache updates, but SHALL NOT print output.
+When stderr is not a TTY, the system SHALL still perform the background check and cache updates, but
+SHALL NOT print output.
 
 #### Scenario: stderr is a TTY
 
@@ -194,7 +200,8 @@ On success, the system SHALL parse the JSON response and extract the `crate.newe
 
 The system SHALL parse versions using `semver::Version`.
 
-Pre-release versions (e.g., `"0.4.0-beta.1"`) SHALL be ignored in comparisons and SHALL NOT trigger hints.
+Pre-release versions (e.g., `"0.4.0-beta.1"`) SHALL be ignored in comparisons and SHALL NOT trigger
+hints.
 
 The hint SHALL only print when the latest version is strictly greater than the running version.
 
@@ -241,7 +248,8 @@ The hint SHALL be printed to stderr only once per new version.
 
 The `notified_version` field in the cache SHALL track which version has been notified.
 
-The hint SHALL use the emoji prefix `💡` followed by the format: `AgentSync {latest} available — you have {current}. Update: cargo install agentsync`
+The hint SHALL use the emoji prefix `💡` followed by the format:
+`AgentSync {latest} available — you have {current}. Update: cargo install agentsync`
 
 #### Scenario: New version first detected
 
@@ -297,7 +305,8 @@ If the thread cannot be spawned, the CLI SHALL continue normally.
 
 The background thread SHALL be a daemon thread — it SHALL not prevent process exit.
 
-The thread SHALL be spawned with `std::thread::Builder::spawn` and the handle SHALL be dropped immediately.
+The thread SHALL be spawned with `std::thread::Builder::spawn` and the handle SHALL be dropped
+immediately.
 
 ---
 
@@ -320,7 +329,8 @@ The thread SHALL be spawned with `std::thread::Builder::spawn` and the handle SH
 
 ### EC-3: Cache file has wrong schema (missing fields)
 
-- GIVEN the cache file contains valid JSON but missing `last_checked`, `latest_version`, or `notified_version`
+- GIVEN the cache file contains valid JSON but missing `last_checked`, `latest_version`, or
+  `notified_version`
 - WHEN the cache is read
 - THEN the system SHALL treat it as a cache miss
 - AND SHALL fetch the API normally

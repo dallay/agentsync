@@ -2,15 +2,19 @@
 
 ## Purpose
 
-Define the expected behavior for AgentSync-managed `.gitignore` entries, including how managed entries are scoped, how user-authored entries are preserved, and how audit-style checks evaluate generated output.
+Define the expected behavior for AgentSync-managed `.gitignore` entries, including how managed
+entries are scoped, how user-authored entries are preserved, and how audit-style checks evaluate
+generated output.
 
 ## Requirements
 
 ### Requirement: Root-Level Managed File Destinations Are Root-Scoped
 
-The system MUST render auto-generated managed `.gitignore` entries for concrete repository-root file destinations as root-scoped patterns.
+The system MUST render auto-generated managed `.gitignore` entries for concrete repository-root file
+destinations as root-scoped patterns.
 
-For this requirement, a concrete repository-root file destination is an auto-generated managed entry that represents a single file at the repository root and does not already contain a slash.
+For this requirement, a concrete repository-root file destination is an auto-generated managed entry
+that represents a single file at the repository root and does not already contain a slash.
 
 #### Scenario: Root-level managed file destination gains leading slash
 
@@ -31,7 +35,8 @@ For this requirement, a concrete repository-root file destination is an auto-gen
 
 ### Requirement: Root-Level Managed Backup Entries Are Root-Scoped
 
-The system MUST render auto-generated managed backup ignore entries for repository-root managed files as root-scoped patterns.
+The system MUST render auto-generated managed backup ignore entries for repository-root managed
+files as root-scoped patterns.
 
 #### Scenario: Root-level backup entry gains leading slash
 
@@ -52,14 +57,17 @@ The system MUST render auto-generated managed backup ignore entries for reposito
 
 ### Requirement: Known Root-Level Ignore Patterns Are Root-Scoped
 
-The system MUST render known auto-generated managed ignore patterns for concrete repository-root files as root-scoped patterns.
+The system MUST render known auto-generated managed ignore patterns for concrete repository-root
+files as root-scoped patterns.
 
-This requirement applies to built-in managed patterns whose intended location is the repository root, including canonical root files and known generated root artifacts.
+This requirement applies to built-in managed patterns whose intended location is the repository
+root, including canonical root files and known generated root artifacts.
 
 #### Scenario: Known root-level generated patterns are normalized
 
 - GIVEN managed `.gitignore` generation is enabled
-- AND the built-in managed ignore set includes root-level filenames such as `.mcp.json`, `opencode.json`, `CLAUDE.md`, `GEMINI.md`, and `WARP.md`
+- AND the built-in managed ignore set includes root-level filenames such as `.mcp.json`,
+  `opencode.json`, `CLAUDE.md`, `GEMINI.md`, and `WARP.md`
 - WHEN the managed `.gitignore` entries are assembled
 - THEN each root-level built-in managed filename MUST be emitted with a leading `/`
 
@@ -73,7 +81,8 @@ This requirement applies to built-in managed patterns whose intended location is
 
 ### Requirement: Slash-Containing Generated Entries Remain Unchanged
 
-The system MUST NOT rewrite an auto-generated managed `.gitignore` entry that already contains a slash.
+The system MUST NOT rewrite an auto-generated managed `.gitignore` entry that already contains a
+slash.
 
 #### Scenario: Generated nested destination is preserved verbatim
 
@@ -95,7 +104,8 @@ The system MUST NOT rewrite an auto-generated managed `.gitignore` entry that al
 
 The system MUST NOT normalize, reinterpret, or rewrite user-supplied `[gitignore].entries`.
 
-User-authored entries SHALL retain their existing matching semantics exactly as configured, whether they are root-scoped, slash-containing, or bare filenames.
+User-authored entries SHALL retain their existing matching semantics exactly as configured, whether
+they are root-scoped, slash-containing, or bare filenames.
 
 #### Scenario: Manual bare filename remains bare
 
@@ -123,21 +133,26 @@ The system MUST keep `[gitignore].enabled = true` as the product default.
 
 ### Requirement: Audit Uses The Same Normalized Managed Entries
 
-Any doctor or audit behavior that evaluates managed `.gitignore` content MUST use the same normalized managed entry set that rendering uses.
+Any doctor or audit behavior that evaluates managed `.gitignore` content MUST use the same
+normalized managed entry set that rendering uses.
 
-Doctor or audit checks MUST treat legacy unscoped managed root-file entries as drift when the normalized managed form is root-scoped.
+Doctor or audit checks MUST treat legacy unscoped managed root-file entries as drift when the
+normalized managed form is root-scoped.
 
 #### Scenario: Audit accepts normalized root-scoped managed entries
 
 - GIVEN managed `.gitignore` generation is enabled
-- AND the repository `.gitignore` managed section contains normalized entries such as `/AGENTS.md` and `/AGENTS.md.bak`
+- AND the repository `.gitignore` managed section contains normalized entries such as `/AGENTS.md`
+  and `/AGENTS.md.bak`
 - WHEN `agentsync doctor` or an equivalent managed gitignore audit is run
 - THEN the audit MUST treat those normalized entries as the expected managed output
 
 #### Scenario: Audit flags legacy unscoped managed root entry as drift
 
 - GIVEN managed `.gitignore` generation is enabled
-- AND the repository `.gitignore` managed section contains a legacy unscoped managed entry `AGENTS.md`
+- AND the repository `.gitignore` managed section contains a legacy unscoped managed entry
+  `AGENTS.md`
 - WHEN `agentsync doctor` or an equivalent managed gitignore audit is run
-- THEN the audit MUST report that managed `.gitignore` content is out of sync with the expected normalized output
+- THEN the audit MUST report that managed `.gitignore` content is out of sync with the expected
+  normalized output
 - AND the expected managed output MUST use `/AGENTS.md`

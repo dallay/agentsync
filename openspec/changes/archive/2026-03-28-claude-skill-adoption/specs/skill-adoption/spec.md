@@ -2,23 +2,28 @@
 
 ## Purpose
 
-Defines how AgentSync detects, migrates, and manages Claude skills so that `.agents/skills/` is the single source of truth and skills are automatically symlinked to `.claude/skills/` out of the box.
+Defines how AgentSync detects, migrates, and manages Claude skills so that `.agents/skills/` is the
+single source of truth and skills are automatically symlinked to `.claude/skills/` out of the box.
 
 ## Requirements
 
 ### Requirement: Default Config Includes Claude Skills Target
 
-The `DEFAULT_CONFIG` template MUST include an `[agents.claude.targets.skills]` entry that maps the `skills` source directory to `.claude/skills` using the `symlink-contents` sync type.
+The `DEFAULT_CONFIG` template MUST include an `[agents.claude.targets.skills]` entry that maps the
+`skills` source directory to `.claude/skills` using the `symlink-contents` sync type.
 
-The entry MUST be placed within the existing `[agents.claude]` section, after the `[agents.claude.targets.instructions]` entry.
+The entry MUST be placed within the existing `[agents.claude]` section, after the
+`[agents.claude.targets.instructions]` entry.
 
-The `DEFAULT_CONFIG` template MUST remain valid TOML that parses into a `Config` struct without errors.
+The `DEFAULT_CONFIG` template MUST remain valid TOML that parses into a `Config` struct without
+errors.
 
 #### Scenario: Fresh init generates config with Claude skills target
 
 - GIVEN a project directory with no `.agents/` directory
 - WHEN the user runs `agentsync init`
-- THEN the generated `.agents/agentsync.toml` MUST contain an `[agents.claude.targets.skills]` section
+- THEN the generated `.agents/agentsync.toml` MUST contain an `[agents.claude.targets.skills]`
+  section
 - AND the section MUST specify `source = "skills"`
 - AND the section MUST specify `destination = ".claude/skills"`
 - AND the section MUST specify `type = "symlink-contents"`
@@ -35,7 +40,8 @@ The `DEFAULT_CONFIG` template MUST remain valid TOML that parses into a `Config`
 - GIVEN a freshly initialized project (via `agentsync init`)
 - AND `.agents/skills/` contains a skill subdirectory `my-skill/` with a `SKILL.md` file
 - WHEN the user runs `agentsync apply`
-- THEN a symlink MUST be created at `.claude/skills/my-skill` pointing to the corresponding source in `.agents/skills/my-skill`
+- THEN a symlink MUST be created at `.claude/skills/my-skill` pointing to the corresponding source
+  in `.agents/skills/my-skill`
 
 #### Scenario: Apply with empty skills directory
 
@@ -50,15 +56,18 @@ The `DEFAULT_CONFIG` template MUST remain valid TOML that parses into a `Config`
 
 ### Requirement: Scan Detects Claude Skills Directory
 
-The `AgentFileType` enum MUST include a `ClaudeSkills` variant representing the `.claude/skills/` directory.
+The `AgentFileType` enum MUST include a `ClaudeSkills` variant representing the `.claude/skills/`
+directory.
 
-The `scan_agent_files()` function MUST detect `.claude/skills/` when it exists as a directory and contains at least one entry (file or subdirectory).
+The `scan_agent_files()` function MUST detect `.claude/skills/` when it exists as a directory and
+contains at least one entry (file or subdirectory).
 
 #### Scenario: Scan finds .claude/skills with content
 
 - GIVEN a project directory containing `.claude/skills/my-skill/SKILL.md`
 - WHEN `scan_agent_files()` is called on that project root
-- THEN the result MUST include a `DiscoveredFile` with `file_type` equal to `AgentFileType::ClaudeSkills`
+- THEN the result MUST include a `DiscoveredFile` with `file_type` equal to
+  `AgentFileType::ClaudeSkills`
 - AND the `path` field MUST be `.claude/skills`
 - AND the `display_name` MUST contain "Claude" and "skills"
 
@@ -85,15 +94,20 @@ The `scan_agent_files()` function MUST detect `.claude/skills/` when it exists a
 
 ### Requirement: Wizard Migrates Claude Skills
 
-When the init wizard discovers `.claude/skills/` and the user selects it for migration, the wizard MUST copy each immediate child (subdirectory or file) of `.claude/skills/` into `.agents/skills/`.
+When the init wizard discovers `.claude/skills/` and the user selects it for migration, the wizard
+MUST copy each immediate child (subdirectory or file) of `.claude/skills/` into `.agents/skills/`.
 
-The wizard MUST handle name collisions: if a child name in `.claude/skills/` already exists in `.agents/skills/`, the wizard MUST skip that child and print a warning message identifying the conflicting name.
+The wizard MUST handle name collisions: if a child name in `.claude/skills/` already exists in
+`.agents/skills/`, the wizard MUST skip that child and print a warning message identifying the
+conflicting name.
 
-The wizard MUST NOT modify or delete the original `.claude/skills/` directory during migration (deletion happens only if the user opts into the backup step).
+The wizard MUST NOT modify or delete the original `.claude/skills/` directory during migration (
+deletion happens only if the user opts into the backup step).
 
 #### Scenario: Wizard migrates skills from .claude/skills to .agents/skills
 
-- GIVEN a project directory containing `.claude/skills/skill-a/SKILL.md` and `.claude/skills/skill-b/SKILL.md`
+- GIVEN a project directory containing `.claude/skills/skill-a/SKILL.md` and
+  `.claude/skills/skill-b/SKILL.md`
 - AND no `.agents/` directory exists
 - WHEN the user runs `agentsync init --wizard`
 - AND the user selects `.claude/skills/` for migration
@@ -136,7 +150,8 @@ The wizard MUST NOT modify or delete the original `.claude/skills/` directory du
 
 #### Scenario: Re-init with --force overwrites config
 
-- GIVEN a project that was previously initialized with an old config (no `[agents.claude.targets.skills]`)
+- GIVEN a project that was previously initialized with an old config (no
+  `[agents.claude.targets.skills]`)
 - WHEN the user runs `agentsync init --force`
 - THEN `.agents/agentsync.toml` MUST be overwritten with the updated `DEFAULT_CONFIG`
 - AND the new config MUST contain `[agents.claude.targets.skills]`
@@ -145,17 +160,21 @@ The wizard MUST NOT modify or delete the original `.claude/skills/` directory du
 
 ### Requirement: Apply-Time Diagnostic for Unmanaged Claude Skills
 
-After processing all sync targets, the `apply` command SHOULD check whether `.claude/skills/` exists at the project root, contains at least one entry, and is not the destination of any enabled target in the current configuration.
+After processing all sync targets, the `apply` command SHOULD check whether `.claude/skills/` exists
+at the project root, contains at least one entry, and is not the destination of any enabled target
+in the current configuration.
 
 If all three conditions are true, the system MUST print a warning message to standard output.
 
 The warning MUST NOT be treated as an error (the apply command MUST still exit successfully).
 
-The diagnostic MUST be suppressed when any enabled target already has `.claude/skills` (or a path that resolves to it) as its destination.
+The diagnostic MUST be suppressed when any enabled target already has `.claude/skills` (or a path
+that resolves to it) as its destination.
 
 #### Scenario: Apply warns about unmanaged .claude/skills
 
-- GIVEN a project with `.agents/agentsync.toml` that does NOT have a target with destination `.claude/skills`
+- GIVEN a project with `.agents/agentsync.toml` that does NOT have a target with destination
+  `.claude/skills`
 - AND `.claude/skills/` exists and contains `orphan-skill/SKILL.md`
 - WHEN the user runs `agentsync apply`
 - THEN the command MUST print a warning containing ".claude/skills"
@@ -164,7 +183,8 @@ The diagnostic MUST be suppressed when any enabled target already has `.claude/s
 
 #### Scenario: Apply does not warn when .claude/skills is managed
 
-- GIVEN a project with `.agents/agentsync.toml` containing `[agents.claude.targets.skills]` with `destination = ".claude/skills"`
+- GIVEN a project with `.agents/agentsync.toml` containing `[agents.claude.targets.skills]` with
+  `destination = ".claude/skills"`
 - AND `.claude/skills/` exists with content (created by symlink-contents)
 - WHEN the user runs `agentsync apply`
 - THEN no warning about unmanaged `.claude/skills` SHALL be printed
@@ -178,7 +198,8 @@ The diagnostic MUST be suppressed when any enabled target already has `.claude/s
 
 #### Scenario: Apply does not warn when .claude/skills is empty
 
-- GIVEN a project with `.agents/agentsync.toml` that does NOT have a target managing `.claude/skills`
+- GIVEN a project with `.agents/agentsync.toml` that does NOT have a target managing
+  `.claude/skills`
 - AND `.claude/skills/` exists but is empty (no files or subdirectories)
 - WHEN the user runs `agentsync apply`
 - THEN no warning about unmanaged `.claude/skills` SHALL be printed
@@ -192,9 +213,13 @@ The diagnostic MUST be suppressed when any enabled target already has `.claude/s
 
 ## Acceptance Criteria
 
-1. `DEFAULT_CONFIG` parses as valid TOML and includes `[agents.claude.targets.skills]` with correct source, destination, and type.
-2. `scan_agent_files()` detects `.claude/skills/` when it exists with content and ignores it when empty or absent.
-3. The init wizard copies skills from `.claude/skills/` into `.agents/skills/`, skipping collisions with a warning.
+1. `DEFAULT_CONFIG` parses as valid TOML and includes `[agents.claude.targets.skills]` with correct
+   source, destination, and type.
+2. `scan_agent_files()` detects `.claude/skills/` when it exists with content and ignores it when
+   empty or absent.
+3. The init wizard copies skills from `.claude/skills/` into `.agents/skills/`, skipping collisions
+   with a warning.
 4. `agentsync apply` prints a diagnostic warning when `.claude/skills/` has unmanaged content.
 5. All existing tests continue to pass (no regressions).
-6. New tests cover: template parsing with skills target, scan detection, collision handling, and diagnostic warning logic.
+6. New tests cover: template parsing with skills target, scan detection, collision handling, and
+   diagnostic warning logic.

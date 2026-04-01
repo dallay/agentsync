@@ -20,7 +20,10 @@ src/
 
 `srC/main.rs:118` — after `tracing_subscriber::fmt::init()`, before `Cli::parse()`.
 
-**Rationale**: The check must run for every command invocation regardless of which subcommand fires. Spawning before CLI parsing also means it starts as early as possible, maximizing the window for the background thread to complete before the process exits. Tracing must be initialized first so the background thread can use `tracing` for any diagnostics.
+**Rationale**: The check must run for every command invocation regardless of which subcommand fires.
+Spawning before CLI parsing also means it starts as early as possible, maximizing the window for the
+background thread to complete before the process exits. Tracing must be initialized first so the
+background thread can use `tracing` for any diagnostics.
 
 ---
 
@@ -39,11 +42,13 @@ struct CheckedVersion {
 ```
 
 Fields:
+
 - `last_checked`: when the cache was written
 - `latest_version`: the version string returned by crates.io (e.g. `"1.33.0"`)
 - `notified_for_version`: the version the user was already notified about (`None` = never notified)
 
-**Rationale**: `notified_for_version` is a separate field so the "once per version" behavior survives across cache refreshes. The hint only re-appears when a *new* version is detected.
+**Rationale**: `notified_for_version` is a separate field so the "once per version" behavior
+survives across cache refreshes. The hint only re-appears when a *new* version is detected.
 
 #### `Cache` struct
 
@@ -124,31 +129,31 @@ main()
 
 ## 4. Key Decisions
 
-| Decision | Rationale |
-|---|---|
-| **Daemon thread (no `join()`)** | The thread is purely advisory; it must not block or delay process exit. Process termination kills the thread automatically. |
-| **`is_terminal` on `stderr`** | The hint must not pollute redirected output in scripts/CI. Using `stderr` (not `stdout`) also avoids interfering with command output. |
-| **Skip pre-releases** | Avoids noisy hints for beta/alpha users when a stable release is behind a pre-release. |
-| **`CheckedVersion.notified_for_version`** | Enables "once per new version" without a separate flag file. The cache itself records what was already seen. |
-| **Silent error handling** | All errors in the background thread are swallowed. No logging, no user-facing errors. The feature is purely advisory. |
-| **Cache dir creation via `create_dir_all`** | Avoids failure if `~/.cache` doesn't exist on first run. |
-| **`chrono::DateTime<Utc>` for timestamps** | Already a dependency (used elsewhere in the crate), provides reliable UTC timestamps for cache freshness checks. |
-| **`reqwest::blocking::Client`** | Simpler than async for a single short-lived HTTP call in a background thread. Avoids bringing async runtime concerns into `main`. |
-| **`env!("CARGO_PKG_VERSION")`** | Compile-time constant — no need to pass the version at runtime. Works reliably in any build. |
+| Decision                                    | Rationale                                                                                                                             |
+|---------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------|
+| **Daemon thread (no `join()`)**             | The thread is purely advisory; it must not block or delay process exit. Process termination kills the thread automatically.           |
+| **`is_terminal` on `stderr`**               | The hint must not pollute redirected output in scripts/CI. Using `stderr` (not `stdout`) also avoids interfering with command output. |
+| **Skip pre-releases**                       | Avoids noisy hints for beta/alpha users when a stable release is behind a pre-release.                                                |
+| **`CheckedVersion.notified_for_version`**   | Enables "once per new version" without a separate flag file. The cache itself records what was already seen.                          |
+| **Silent error handling**                   | All errors in the background thread are swallowed. No logging, no user-facing errors. The feature is purely advisory.                 |
+| **Cache dir creation via `create_dir_all`** | Avoids failure if `~/.cache` doesn't exist on first run.                                                                              |
+| **`chrono::DateTime<Utc>` for timestamps**  | Already a dependency (used elsewhere in the crate), provides reliable UTC timestamps for cache freshness checks.                      |
+| **`reqwest::blocking::Client`**             | Simpler than async for a single short-lived HTTP call in a background thread. Avoids bringing async runtime concerns into `main`.     |
+| **`env!("CARGO_PKG_VERSION")`**             | Compile-time constant — no need to pass the version at runtime. Works reliably in any build.                                          |
 
 ---
 
 ## 5. Dependencies
 
-| Dependency | Change | Purpose |
-|---|---|---|
-| `is-terminal = "0.4"` | **Add** | `is_terminal(Stderr)` guard |
-| `reqwest` (with `blocking`) | Existing | crates.io HTTP fetch |
-| `semver` | Existing | Version parse + compare |
-| `chrono` (with `serde`) | Existing | UTC timestamp for cache TTL |
-| `serde` + `serde_json` | Existing | Cache serialization |
-| `colored` | Existing | Yellow bold hint formatting |
-| `anyhow` | Existing | Error wrapping in `Cache::save` |
+| Dependency                  | Change   | Purpose                         |
+|-----------------------------|----------|---------------------------------|
+| `is-terminal = "0.4"`       | **Add**  | `is_terminal(Stderr)` guard     |
+| `reqwest` (with `blocking`) | Existing | crates.io HTTP fetch            |
+| `semver`                    | Existing | Version parse + compare         |
+| `chrono` (with `serde`)     | Existing | UTC timestamp for cache TTL     |
+| `serde` + `serde_json`      | Existing | Cache serialization             |
+| `colored`                   | Existing | Yellow bold hint formatting     |
+| `anyhow`                    | Existing | Error wrapping in `Cache::save` |
 
 **No new crates needed.** `is-terminal` is the only addition.
 
@@ -212,6 +217,8 @@ Only emitted once per new version. Subsequent runs with the same cached `latest_
 
 ## 9. Testing Approach
 
-- **Unit tests** in `src/update_check.rs`: mock the cache path via a `Cache` constructor that accepts a `PathBuf`; test TTL logic, pre-release skipping, once-per-version logic.
-- **Integration tests** in `tests/`: use `cargo test --test all_tests` with a temporary cache dir to verify the spawn doesn't panic and doesn't block.
+- **Unit tests** in `src/update_check.rs`: mock the cache path via a `Cache` constructor that
+  accepts a `PathBuf`; test TTL logic, pre-release skipping, once-per-version logic.
+- **Integration tests** in `tests/`: use `cargo test --test all_tests` with a temporary cache dir to
+  verify the spawn doesn't panic and doesn't block.
 - **Contract test**: verify the hint output format matches the expected emoji + version pattern.
