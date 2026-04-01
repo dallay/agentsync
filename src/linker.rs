@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 #[cfg(windows)]
 use std::os::windows::fs::FileTypeExt;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use walkdir::WalkDir;
 
 use crate::config::{Config, SyncType, TargetConfig};
@@ -85,6 +85,91 @@ impl Linker {
     /// Get the config
     pub fn config(&self) -> &Config {
         &self.config
+    }
+
+    fn canonicalize_uncached(&self, path: &Path) -> Result<PathBuf> {
+        fs::canonicalize(path)
+            .with_context(|| format!("Failed to canonicalize path: {}", path.display()))
+    }
+
+    /// Validate that an absolute destination path resolves within the project root.
+    fn ensure_safe_destination_path(&self, joined: &Path, display_path: &str) -> Result<PathBuf> {
+        let existing_ancestor = joined
+            .ancestors()
+            .find(|ancestor| ancestor.exists())
+            .with_context(|| {
+                format!(
+                    "Failed to resolve destination path within project root: {}",
+                    joined.display()
+                )
+            })?;
+
+        let canonical_project_root = self
+            .canonicalize_uncached(&self.project_root)
+            .with_context(|| {
+                format!(
+                    "Failed to canonicalize project root: {}",
+                    self.project_root.display()
+                )
+            })?;
+
+        let canonical_ancestor =
+            self.canonicalize_uncached(existing_ancestor)
+                .with_context(|| {
+                    format!(
+                        "Failed to canonicalize destination ancestor: {}",
+                        existing_ancestor.display()
+                    )
+                })?;
+
+        if !canonical_ancestor.starts_with(&canonical_project_root) {
+            anyhow::bail!(
+                "Destination path resolves outside project root: {}",
+                display_path
+            );
+        }
+
+        Ok(joined.to_path_buf())
+    }
+
+    /// Validate that a destination path is safe (relative and no traversal).
+    /// Returns the resolved path within project_root if safe.
+    fn ensure_safe_destination(&self, dest_path: &str) -> Result<PathBuf> {
+        let path = Path::new(dest_path);
+
+        // SECURITY: Reject absolute paths to prevent writing to arbitrary locations.
+        if path.is_absolute() {
+            anyhow::bail!("Destination path must be relative: {}", dest_path);
+        }
+
+        let components: Vec<_> = path.components().collect();
+
+        // SECURITY: Reject empty destinations like "" or "." that do not identify a concrete file.
+        if !components.iter().any(|c| matches!(c, Component::Normal(_))) {
+            anyhow::bail!("Destination path must not be empty: {}", dest_path);
+        }
+
+        // SECURITY: Reject traversal, root, and drive-prefixed components.
+        if components.iter().any(|c| {
+            matches!(
+                c,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        }) {
+            anyhow::bail!(
+                "Destination path contains invalid path components: {}",
+                dest_path
+            );
+        }
+
+        let joined = self.project_root.join(path);
+        self.ensure_safe_destination_path(&joined, dest_path)
+    }
+
+    /// Re-validate a previously joined destination immediately before filesystem mutation.
+    fn revalidate_destination_path(&self, dest: &Path) -> Result<()> {
+        self.ensure_safe_destination_path(dest, &dest.display().to_string())
+            .map(|_| ())
     }
 
     /// Resolve the expected source path for status checks.
@@ -201,21 +286,28 @@ impl Linker {
         options: &SyncOptions,
     ) -> Result<SyncResult> {
         let source = self.source_dir.join(&target.source);
-        let dest = self.project_root.join(&target.destination);
 
         match target.sync_type {
             SyncType::Symlink => {
+                let dest = self.ensure_safe_destination(&target.destination)?;
                 let resolved = self.resolve_source_path(&source, target, options)?;
                 self.create_symlink(&resolved, &dest, options)
             }
-            SyncType::SymlinkContents => self.create_symlinks_for_contents(
-                &source,
-                &dest,
-                target.pattern.as_deref(),
-                target,
-                options,
-            ),
+            SyncType::SymlinkContents => {
+                let dest = self.ensure_safe_destination(&target.destination)?;
+                self.create_symlinks_for_contents(
+                    &source,
+                    &dest,
+                    target.pattern.as_deref(),
+                    target,
+                    options,
+                )
+            }
             SyncType::NestedGlob => {
+                // SECURITY: Validate destination template for traversal/absolute paths.
+                // We validate the template itself before expansion.
+                let _ = self.ensure_safe_destination(&target.destination)?;
+
                 // For NestedGlob, `source` is relative to the project root (not source_dir).
                 let search_root = self.project_root.join(&target.source);
                 self.process_nested_glob(
@@ -283,6 +375,7 @@ impl Linker {
                         println!("  {} Would create directory: {}", "→".cyan(), dir.display());
                     }
                 } else {
+                    self.revalidate_destination_path(dir)?;
                     fs::create_dir_all(dir).with_context(|| {
                         format!("Failed to create directory: {}", dir.display())
                     })?;
@@ -333,6 +426,7 @@ impl Linker {
             self.ensure_directory(parent, options)?;
         }
 
+        self.revalidate_destination_path(dest)?;
         fs::write(dest, &compressed)
             .with_context(|| format!("Failed to write compressed AGENTS.md: {}", dest.display()))?;
 
@@ -390,6 +484,7 @@ impl Linker {
                         relative_source.display()
                     );
                 } else {
+                    self.revalidate_destination_path(dest)?;
                     remove_symlink(dest)?;
                     if options.verbose {
                         println!(
@@ -412,6 +507,8 @@ impl Linker {
                 );
             } else {
                 let backup = backup_path_for_destination(dest);
+                self.revalidate_destination_path(dest)?;
+                self.revalidate_destination_path(&backup)?;
                 remove_existing_path(&backup)?;
                 fs::rename(dest, &backup)?;
                 println!(
@@ -437,6 +534,7 @@ impl Linker {
                 );
             }
         } else {
+            self.revalidate_destination_path(dest)?;
             #[cfg(unix)]
             std::os::unix::fs::symlink(&relative_source, dest)
                 .with_context(|| format!("Failed to create symlink: {}", dest.display()))?;
@@ -625,7 +723,21 @@ impl Linker {
                     return Ok(());
                 }
 
-                let dest = self.project_root.join(&dest_str);
+                let dest = match self.ensure_safe_destination(&dest_str) {
+                    Ok(dest) => dest,
+                    Err(err) => {
+                        if options.verbose {
+                            println!(
+                                "  {} Skipping nested-glob destination {}: {}",
+                                "!".yellow(),
+                                dest_str,
+                                err
+                            );
+                        }
+                        result.skipped += 1;
+                        return Ok(());
+                    }
+                };
 
                 let resolved = ResolvedSource {
                     path: full_path.to_path_buf(),
@@ -756,23 +868,23 @@ impl Linker {
             // Resolve destination filename
             let filename = crate::config::resolve_module_map_filename(mapping, agent_name);
 
-            // Validate: dest components must be relative and safe
-            if let Some(err) =
-                Self::validate_module_map_path_components(&mapping.destination, &filename)
-            {
-                if options.verbose {
-                    println!(
-                        "  {} Skipping mapping {}: {}",
-                        "!".yellow(),
-                        mapping.source,
-                        err
-                    );
+            // SECURITY: Validate that the joined destination (dir + filename) is safe.
+            let dest_str = format!("{}/{}", mapping.destination, filename);
+            let dest = match self.ensure_safe_destination(&dest_str) {
+                Ok(d) => d,
+                Err(e) => {
+                    if options.verbose {
+                        println!(
+                            "  {} Skipping mapping {}: {}",
+                            "!".yellow(),
+                            mapping.source,
+                            e
+                        );
+                    }
+                    result.skipped += 1;
+                    continue;
                 }
-                result.skipped += 1;
-                continue;
-            }
-
-            let dest = self.project_root.join(&mapping.destination).join(&filename);
+            };
 
             let resolved = ResolvedSource {
                 path: source_path.clone(),
@@ -846,6 +958,14 @@ impl Linker {
             for target_config in agent_config.targets.values() {
                 match target_config.sync_type {
                     SyncType::NestedGlob => {
+                        // SECURITY: Validate destination template for traversal/absolute paths.
+                        if self
+                            .ensure_safe_destination(&target_config.destination)
+                            .is_err()
+                        {
+                            continue;
+                        }
+
                         // Re-discover the same files and remove the corresponding symlinks.
                         let search_root = self.project_root.join(&target_config.source);
                         if !search_root.exists() || !search_root.is_dir() {
@@ -868,7 +988,10 @@ impl Linker {
                                     return Ok(());
                                 }
 
-                                let dest = self.project_root.join(&dest_str);
+                                let dest = match self.ensure_safe_destination(&dest_str) {
+                                    Ok(dest) => dest,
+                                    Err(_) => return Ok(()),
+                                };
                                 if dest.is_symlink() {
                                     if options.dry_run {
                                         println!(
@@ -877,6 +1000,7 @@ impl Linker {
                                             dest.display()
                                         );
                                     } else {
+                                        self.revalidate_destination_path(&dest)?;
                                         fs::remove_file(&dest)?;
                                         println!("  {} Removed: {}", "✔".green(), dest.display());
                                     }
@@ -888,7 +1012,10 @@ impl Linker {
                         )?;
                     }
                     SyncType::SymlinkContents => {
-                        let dest = self.project_root.join(&target_config.destination);
+                        let dest = match self.ensure_safe_destination(&target_config.destination) {
+                            Ok(d) => d,
+                            Err(_) => continue,
+                        };
                         if dest.is_dir() {
                             // For symlink-contents, remove symlinks inside the directory
                             for entry in fs::read_dir(&dest).with_context(|| {
@@ -905,6 +1032,7 @@ impl Linker {
                                             entry.path().display()
                                         );
                                     } else {
+                                        self.revalidate_destination_path(&entry.path())?;
                                         fs::remove_file(entry.path())?;
                                         println!(
                                             "  {} Removed: {}",
@@ -917,16 +1045,21 @@ impl Linker {
                             }
                             // Try to remove the directory if empty
                             if !options.dry_run {
+                                self.revalidate_destination_path(&dest)?;
                                 let _ = fs::remove_dir(&dest);
                             }
                         }
                     }
                     SyncType::Symlink => {
-                        let dest = self.project_root.join(&target_config.destination);
+                        let dest = match self.ensure_safe_destination(&target_config.destination) {
+                            Ok(d) => d,
+                            Err(_) => continue,
+                        };
                         if dest.is_symlink() {
                             if options.dry_run {
                                 println!("  {} Would remove: {}", "→".cyan(), dest.display());
                             } else {
+                                self.revalidate_destination_path(&dest)?;
                                 remove_symlink(&dest)?;
                                 println!("  {} Removed: {}", "✔".green(), dest.display());
                             }
@@ -938,28 +1071,28 @@ impl Linker {
                             let filename =
                                 crate::config::resolve_module_map_filename(mapping, agent_name);
 
-                            // Validate: dest components must be relative and safe
-                            if let Some(err) = Self::validate_module_map_path_components(
-                                &mapping.destination,
-                                &filename,
-                            ) {
-                                if options.verbose {
-                                    println!(
-                                        "  {} Skipping mapping {}: {}",
-                                        "!".yellow(),
-                                        mapping.source,
-                                        err
-                                    );
+                            // SECURITY: Validate that the joined destination (dir + filename) is safe.
+                            let dest_str = format!("{}/{}", mapping.destination, filename);
+                            let dest = match self.ensure_safe_destination(&dest_str) {
+                                Ok(d) => d,
+                                Err(e) => {
+                                    if options.verbose {
+                                        println!(
+                                            "  {} Skipping mapping {}: {}",
+                                            "!".yellow(),
+                                            mapping.source,
+                                            e
+                                        );
+                                    }
+                                    continue;
                                 }
-                                continue;
-                            }
-
-                            let dest = self.project_root.join(&mapping.destination).join(&filename);
+                            };
 
                             if dest.is_symlink() {
                                 if options.dry_run {
                                     println!("  {} Would remove: {}", "→".cyan(), dest.display());
                                 } else {
+                                    self.revalidate_destination_path(&dest)?;
                                     fs::remove_file(&dest)?;
                                     println!("  {} Removed: {}", "✔".green(), dest.display());
                                 }
@@ -972,38 +1105,6 @@ impl Linker {
         }
 
         Ok(result)
-    }
-
-    /// Validate that destination directory and filename components are safe for joining
-    /// to project_root (i.e., they are relative and contain no parent-dir traversal).
-    ///
-    /// Returns `Some(error_message)` if validation fails, `None` if safe.
-    fn validate_module_map_path_components(dest_dir: &str, filename: &str) -> Option<String> {
-        // Check destination directory
-        if Path::new(dest_dir).is_absolute() {
-            return Some(format!("destination directory is absolute: {dest_dir}"));
-        }
-        if Path::new(dest_dir)
-            .components()
-            .any(|c| matches!(c, std::path::Component::ParentDir))
-        {
-            return Some(format!(
-                "destination directory contains parent-dir component: {dest_dir}"
-            ));
-        }
-        // Check filename
-        if Path::new(filename).is_absolute() {
-            return Some(format!("filename is absolute: {filename}"));
-        }
-        if Path::new(filename)
-            .components()
-            .any(|c| matches!(c, std::path::Component::ParentDir))
-        {
-            return Some(format!(
-                "filename contains parent-dir component: {filename}"
-            ));
-        }
-        None
     }
 
     /// Sync MCP configurations for enabled agents
@@ -1309,6 +1410,8 @@ fn remove_symlink(path: &Path) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
+    use std::os::unix::fs::symlink;
     use tempfile::TempDir;
 
     // ==========================================================================
@@ -1511,6 +1614,99 @@ mod tests {
         let linker = Linker::new(config, config_path);
 
         assert!(linker.config().agents.contains_key("test"));
+    }
+
+    #[test]
+    fn test_ensure_safe_destination_rejects_empty_and_parent_traversal() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        fs::write(&config_path, "").unwrap();
+
+        let linker = Linker::new(create_test_config(), config_path);
+
+        assert!(linker.ensure_safe_destination("").is_err());
+        assert!(linker.ensure_safe_destination(".").is_err());
+        assert!(linker.ensure_safe_destination("../escape.md").is_err());
+    }
+
+    #[test]
+    fn test_ensure_safe_destination_rejects_absolute_path_and_accepts_valid_relative() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        fs::write(&config_path, "").unwrap();
+
+        let linker = Linker::new(create_test_config(), config_path);
+
+        let absolute = temp_dir.path().join("absolute.md");
+        assert!(
+            linker
+                .ensure_safe_destination(&absolute.display().to_string())
+                .is_err()
+        );
+
+        let valid = linker.ensure_safe_destination("nested/output.md").unwrap();
+        assert_eq!(valid, temp_dir.path().join("nested/output.md"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_ensure_safe_destination_rejects_symlink_ancestor_escape() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        let escaped_dir = TempDir::new_in(temp_dir.path().parent().unwrap()).unwrap();
+        fs::create_dir_all(&agents_dir).unwrap();
+        symlink(escaped_dir.path(), temp_dir.path().join("escape-link")).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        fs::write(&config_path, "").unwrap();
+
+        let linker = Linker::new(create_test_config(), config_path);
+
+        assert!(
+            linker
+                .ensure_safe_destination("escape-link/linked.md")
+                .is_err()
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_ensure_safe_destination_uses_fresh_canonicalization() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        let safe_dir = temp_dir.path().join("safe-link-target");
+        let escaped_dir = TempDir::new_in(temp_dir.path().parent().unwrap()).unwrap();
+        fs::create_dir_all(&agents_dir).unwrap();
+        fs::create_dir_all(&safe_dir).unwrap();
+
+        let link_path = temp_dir.path().join("dynamic-link");
+        symlink(&safe_dir, &link_path).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        fs::write(&config_path, "").unwrap();
+
+        let linker = Linker::new(create_test_config(), config_path);
+
+        assert!(
+            linker
+                .ensure_safe_destination("dynamic-link/linked.md")
+                .is_ok()
+        );
+
+        fs::remove_file(&link_path).unwrap();
+        symlink(escaped_dir.path(), &link_path).unwrap();
+
+        assert!(
+            linker
+                .ensure_safe_destination("dynamic-link/linked.md")
+                .is_err()
+        );
     }
 
     // ==========================================================================
@@ -3268,6 +3464,110 @@ mod tests {
         assert_eq!(result.created, 0);
     }
 
+    #[test]
+    #[cfg(unix)]
+    fn test_nested_glob_sync_skips_invalid_expanded_destination() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+        fs::write(temp_dir.path().join("AGENTS.md"), "# Instructions").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.nested]
+            source = "."
+            pattern = "**/AGENTS.md"
+            exclude = [".agents/**"]
+            destination = "{relative_path}"
+            type = "nested-glob"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker.sync(&SyncOptions::default()).unwrap();
+
+        assert_eq!(result.created, 0);
+        assert_eq!(result.skipped, 1);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_nested_glob_clean_skips_invalid_expanded_destination() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+        fs::write(temp_dir.path().join("AGENTS.md"), "# Instructions").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.nested]
+            source = "."
+            pattern = "**/AGENTS.md"
+            exclude = [".agents/**"]
+            destination = "{relative_path}"
+            type = "nested-glob"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker.clean(&SyncOptions::default()).unwrap();
+
+        assert_eq!(result.removed, 0);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_nested_glob_sync_skips_empty_expanded_destination() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+        fs::create_dir_all(temp_dir.path().join("clients")).unwrap();
+        fs::write(temp_dir.path().join("clients/AGENTS"), "# Instructions").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.nested]
+            source = "."
+            pattern = "clients/AGENTS"
+            exclude = [".agents/**"]
+            destination = "{ext}"
+            type = "nested-glob"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker
+            .sync(&SyncOptions {
+                verbose: true,
+                ..Default::default()
+            })
+            .unwrap();
+
+        assert_eq!(result.created, 0);
+        assert_eq!(result.skipped, 1);
+    }
+
     // =========================================================================
     // MODULE-MAP INTEGRATION TESTS
     // =========================================================================
@@ -3718,5 +4018,102 @@ mod tests {
         let result = linker.sync(&SyncOptions::default()).unwrap();
         assert_eq!(result.created, 0);
         assert_eq!(result.errors, 0);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_module_map_sync_skips_invalid_destination() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        let claude_dir = agents_dir.join("claude");
+        fs::create_dir_all(&claude_dir).unwrap();
+        fs::write(claude_dir.join("api-context.md"), "# API").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "claude"
+
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.modules]
+            source = "."
+            destination = "."
+            type = "module-map"
+
+            [[agents.claude.targets.modules.mappings]]
+            source = "api-context.md"
+            destination = "../escape"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker
+            .sync(&SyncOptions {
+                verbose: true,
+                ..Default::default()
+            })
+            .unwrap();
+
+        assert_eq!(result.created, 0);
+        assert_eq!(result.skipped, 1);
+        assert!(
+            !temp_dir
+                .path()
+                .parent()
+                .unwrap()
+                .join("escape/CLAUDE.md")
+                .exists()
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_module_map_clean_skips_invalid_destination() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        let claude_dir = agents_dir.join("claude");
+        fs::create_dir_all(&claude_dir).unwrap();
+        fs::write(claude_dir.join("api-context.md"), "# API").unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "claude"
+
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.modules]
+            source = "."
+            destination = "."
+            type = "module-map"
+
+            [[agents.claude.targets.modules.mappings]]
+            source = "api-context.md"
+            destination = "../escape"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker
+            .clean(&SyncOptions {
+                verbose: true,
+                ..Default::default()
+            })
+            .unwrap();
+
+        assert_eq!(result.removed, 0);
+        assert!(
+            !temp_dir
+                .path()
+                .parent()
+                .unwrap()
+                .join("escape/CLAUDE.md")
+                .exists()
+        );
     }
 }
