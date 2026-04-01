@@ -218,6 +218,8 @@ AgentSync defaults to managed `.gitignore` mode (`[gitignore].enabled = true`), 
 
 If you run AgentSync from Windows and need native symlink prerequisites, WSL guidance, or recovery steps, use the dedicated setup guide: https://dallay.github.io/agentsync/guides/windows-symlink-setup/
 
+If your team wants `agentsync apply` to run after branch switches, merges, or rebases, use the Git hook automation guide for Lefthook, Husky, simple-git-hooks, and native hook examples: https://dallay.github.io/agentsync/guides/git-hook-automation/
+
 ## Usage
 
 ```bash

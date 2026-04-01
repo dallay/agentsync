@@ -42,6 +42,10 @@ export default defineConfig({
 							label: "Gitignore Team Workflows",
 							slug: "guides/gitignore-team-workflows",
 						},
+						{
+							label: "Git Hook Automation",
+							slug: "guides/git-hook-automation",
+						},
 						{ label: "MCP Integration", slug: "guides/mcp" },
 						{ label: "Skills", slug: "guides/skills" },
 						{ label: "Development", slug: "guides/development" },
