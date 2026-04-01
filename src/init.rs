@@ -1422,7 +1422,7 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
     let selections = MultiSelect::with_theme(&ColorfulTheme::default())
         .with_prompt("Select files to migrate (use Space to select, Enter to confirm)")
         .items(
-            &discovered_files
+            discovered_files
                 .iter()
                 .map(|f| f.display_name.as_str())
                 .collect::<Vec<_>>(),
@@ -1505,7 +1505,7 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
 
             let selection = Select::with_theme(&ColorfulTheme::default())
                 .with_prompt("How should this skills target sync?")
-                .items(&[
+                .items([
                     "symlink — link the whole directory to .agents/skills",
                     "symlink-contents — keep a directory and link each item inside it",
                 ])

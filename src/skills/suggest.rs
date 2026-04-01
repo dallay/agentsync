@@ -1,60 +1,48 @@
 use crate::skills::catalog::{
     CatalogSkillMetadata, ResolvedSkillCatalog, load_catalog, recommend_skills,
 };
-use crate::skills::detect::{FileSystemRepoDetector, RepoDetector};
+use crate::skills::detect::{CatalogDrivenDetector, RepoDetector};
 use crate::skills::install::blocking_fetch_and_install_skill;
 use crate::skills::provider::{Provider, SkillsShProvider};
 use crate::skills::registry::{InstalledSkillState, read_installed_skill_states};
 use anyhow::{Result, anyhow, bail};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum TechnologyId {
-    Rust,
-    #[serde(rename = "node_typescript")]
-    NodeTypeScript,
-    Astro,
-    #[serde(rename = "github_actions")]
-    GitHubActions,
-    Docker,
-    Make,
-    Python,
-}
+/// Identifies a technology detected in a project repository.
+///
+/// This is an open newtype over `String`, allowing any catalog-defined technology
+/// to be represented without requiring code changes. Well-known technology IDs
+/// from the original hardcoded set are available as `&str` constants.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TechnologyId(String);
 
 impl TechnologyId {
-    pub fn as_human_label(self) -> &'static str {
-        match self {
-            Self::Rust => "Rust",
-            Self::NodeTypeScript => "Node/TypeScript",
-            Self::Astro => "Astro",
-            Self::GitHubActions => "GitHub Actions",
-            Self::Docker => "Docker",
-            Self::Make => "Make",
-            Self::Python => "Python",
-        }
-    }
+    pub const RUST: &str = "rust";
+    pub const NODE_TYPESCRIPT: &str = "node_typescript";
+    pub const ASTRO: &str = "astro";
+    pub const GITHUB_ACTIONS: &str = "github_actions";
+    pub const DOCKER: &str = "docker";
+    pub const MAKE: &str = "make";
+    pub const PYTHON: &str = "python";
 
-    pub fn from_catalog_key(value: &str) -> Option<Self> {
-        match value {
-            "rust" => Some(Self::Rust),
-            "node_typescript" => Some(Self::NodeTypeScript),
-            "astro" => Some(Self::Astro),
-            "github_actions" => Some(Self::GitHubActions),
-            "docker" => Some(Self::Docker),
-            "make" => Some(Self::Make),
-            "python" => Some(Self::Python),
-            _ => None,
-        }
+    pub fn new(id: impl Into<String>) -> Self {
+        Self(id.into())
+    }
+}
+
+impl AsRef<str> for TechnologyId {
+    fn as_ref(&self) -> &str {
+        &self.0
     }
 }
 
 impl fmt::Display for TechnologyId {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.as_human_label())
+        formatter.write_str(&self.0)
     }
 }
 
@@ -132,21 +120,30 @@ impl SkillSuggestion {
             .binary_search(&detection.technology)
         {
             self.matched_technologies
-                .insert(index, detection.technology);
+                .insert(index, detection.technology.clone());
         }
 
         let evidence = detection
             .evidence
             .first()
             .map(|evidence| evidence.path.display().to_string())
-            .unwrap_or_else(|| detection.technology.as_human_label().to_string());
+            .unwrap_or_else(|| detection.technology.to_string());
         let reason = reason_template
-            .replace("{technology}", detection.technology.as_human_label())
+            .replace("{technology}", detection.technology.as_ref())
             .replace("{evidence}", &evidence);
 
         if let Err(index) = self.reasons.binary_search(&reason) {
             self.reasons.insert(index, reason);
         }
+    }
+
+    pub fn add_combo_match(&mut self, combo_name: &str, reason: &str) {
+        if let Err(index) = self.reasons.binary_search_by(|r| r.as_str().cmp(reason)) {
+            self.reasons.insert(index, reason.to_string());
+        }
+        // Combos don't add individual technologies — they represent combinations.
+        // The reason string captures the combo name for display.
+        let _ = combo_name;
     }
 
     pub fn annotate_installed_state(&mut self, installed_skill: Option<&InstalledSkillState>) {
@@ -233,9 +230,13 @@ pub struct SuggestionService;
 
 impl SuggestionService {
     pub fn suggest(&self, project_root: &Path) -> Result<SuggestResponse> {
-        let detector = FileSystemRepoDetector;
         let provider = SkillsShProvider;
-        self.suggest_with(project_root, &detector, Some(&provider))
+        let catalog = load_catalog(Some(&provider))?;
+
+        let detector = CatalogDrivenDetector::new(&catalog)?;
+        let detections = detector.detect(project_root)?;
+
+        self.build_response(project_root, &catalog, detections)
     }
 
     pub fn suggest_with<D: RepoDetector>(
@@ -246,6 +247,15 @@ impl SuggestionService {
     ) -> Result<SuggestResponse> {
         let catalog = load_catalog(provider)?;
         let detections = detector.detect(project_root)?;
+        self.build_response(project_root, &catalog, detections)
+    }
+
+    fn build_response(
+        &self,
+        project_root: &Path,
+        catalog: &ResolvedSkillCatalog,
+        detections: Vec<TechnologyDetection>,
+    ) -> Result<SuggestResponse> {
         let installed_skill_states = read_installed_skill_states(
             &project_root
                 .join(".agents")
@@ -253,7 +263,7 @@ impl SuggestionService {
                 .join("registry.json"),
         )?;
 
-        let mut recommendations = recommend_skills(&catalog, &detections);
+        let mut recommendations = recommend_skills(catalog, &detections);
         for recommendation in &mut recommendations {
             recommendation
                 .annotate_installed_state(installed_skill_states.get(&recommendation.skill_id));
@@ -425,7 +435,7 @@ impl SuggestResponse {
                 .detections
                 .iter()
                 .map(|detection| SuggestJsonDetection {
-                    technology: detection.technology,
+                    technology: detection.technology.clone(),
                     confidence: detection.confidence,
                     evidence: detection
                         .evidence
@@ -523,7 +533,7 @@ impl SuggestInstallJsonResponse {
             for detection in &self.suggest.detections {
                 lines.push(format!(
                     "- {} ({}): {}",
-                    detection.technology.as_human_label(),
+                    detection.technology,
                     detection.confidence,
                     detection.evidence.join(", ")
                 ));

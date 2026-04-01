@@ -17,17 +17,19 @@ run_with_tty "\n" "cd '$REPO_ROOT' && agentsync skill suggest --install"
 
 cd "$REPO_ROOT"
 for skill_id in \
-    rust-async-patterns \
-    best-practices \
-    frontend-design \
     accessibility \
-    performance \
+    astrolicious-astro \
+    best-practices \
     core-web-vitals \
-    seo \
-    github-actions \
-    pinned-tag \
     docker-expert \
-    makefile; do
+    frontend-design \
+    github-actions \
+    makefile \
+    performance \
+    pinned-tag \
+    rust-async-patterns \
+    seo \
+    typescript-advanced-types; do
     assert_file_exists ".agents/skills/${skill_id}/SKILL.md"
 done
 

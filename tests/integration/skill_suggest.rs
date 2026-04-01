@@ -313,7 +313,7 @@ fn suggestion_service_preserves_local_install_lookup_with_provider_overlay() {
     assert_eq!(recommendation.installed_version.as_deref(), Some("1.0.0"));
     assert_eq!(
         recommendation.matched_technologies,
-        vec![TechnologyId::Rust]
+        vec![TechnologyId::new(TechnologyId::RUST)]
     );
 }
 
@@ -332,7 +332,7 @@ struct StaticDetector;
 impl agentsync::skills::detect::RepoDetector for StaticDetector {
     fn detect(&self, _project_root: &std::path::Path) -> Result<Vec<TechnologyDetection>> {
         Ok(vec![TechnologyDetection {
-            technology: TechnologyId::Rust,
+            technology: TechnologyId::new(TechnologyId::RUST),
             confidence: DetectionConfidence::High,
             root_relative_paths: vec!["Cargo.toml".into()],
             evidence: vec![DetectionEvidence {

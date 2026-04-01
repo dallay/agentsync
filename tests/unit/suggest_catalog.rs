@@ -2,6 +2,7 @@ use agentsync::skills::catalog::{
     EmbeddedSkillCatalog, load_catalog, overlay_catalog, parse_catalog, parse_embedded_catalog,
     recommend_skills,
 };
+use agentsync::skills::detect::DetectionRules;
 use agentsync::skills::provider::{
     Provider, ProviderCatalogCombo, ProviderCatalogMetadata, ProviderCatalogSkill,
     ProviderCatalogTechnology, SkillInstallInfo,
@@ -20,14 +21,19 @@ use tempfile::TempDir;
 fn embedded_catalog_loads_expected_baseline_entries() {
     let catalog = EmbeddedSkillCatalog::default();
 
-    let astro = catalog.get_technology(TechnologyId::Astro).unwrap();
+    let astro = catalog
+        .get_technology(&TechnologyId::new(TechnologyId::ASTRO))
+        .unwrap();
     assert_eq!(astro.name, "Astro");
-    assert_eq!(astro.skills.len(), 5);
+    assert_eq!(astro.skills.len(), 6);
 
     let combo = catalog.get_combo("astro-github-actions").unwrap();
     assert_eq!(
         combo.requires,
-        vec![TechnologyId::Astro, TechnologyId::GitHubActions]
+        vec![
+            TechnologyId::new(TechnologyId::ASTRO),
+            TechnologyId::new(TechnologyId::GITHUB_ACTIONS)
+        ]
     );
     assert!(!combo.enabled);
 }
@@ -60,12 +66,12 @@ fn merges_duplicate_skill_recommendations_across_multiple_technologies() {
     let catalog = EmbeddedSkillCatalog::default();
     let detections = vec![
         detection(
-            TechnologyId::NodeTypeScript,
+            TechnologyId::new(TechnologyId::NODE_TYPESCRIPT),
             DetectionConfidence::High,
             "package.json",
         ),
         detection(
-            TechnologyId::Python,
+            TechnologyId::new(TechnologyId::PYTHON),
             DetectionConfidence::High,
             "pyproject.toml",
         ),
@@ -81,12 +87,12 @@ fn merges_duplicate_skill_recommendations_across_multiple_technologies() {
     assert!(
         best_practices
             .matched_technologies
-            .contains(&TechnologyId::NodeTypeScript)
+            .contains(&TechnologyId::new(TechnologyId::NODE_TYPESCRIPT))
     );
     assert!(
         best_practices
             .matched_technologies
-            .contains(&TechnologyId::Python)
+            .contains(&TechnologyId::new(TechnologyId::PYTHON))
     );
     assert_eq!(best_practices.reasons.len(), 2);
 }
@@ -96,7 +102,7 @@ fn canonical_provider_skill_ids_use_local_aliases_in_recommendations() {
     let provider = CanonicalCatalogProvider;
     let catalog = load_catalog(Some(&provider)).unwrap();
     let detections = vec![detection(
-        TechnologyId::Rust,
+        TechnologyId::new(TechnologyId::RUST),
         DetectionConfidence::High,
         "Cargo.toml",
     )];
@@ -123,7 +129,7 @@ fn canonical_provider_skill_ids_use_local_aliases_in_recommendations() {
 fn annotates_installed_state_without_hiding_recommendations() {
     let catalog = EmbeddedSkillCatalog::default();
     let detections = vec![detection(
-        TechnologyId::Docker,
+        TechnologyId::new(TechnologyId::DOCKER),
         DetectionConfidence::High,
         "Dockerfile",
     )];
@@ -170,7 +176,7 @@ fn provider_overlay_can_override_existing_technology_mapping() {
     let provider = OverrideCatalogProvider;
     let catalog = load_catalog(Some(&provider)).unwrap();
     let detections = vec![detection(
-        TechnologyId::Rust,
+        TechnologyId::new(TechnologyId::RUST),
         DetectionConfidence::High,
         "Cargo.toml",
     )];
@@ -230,8 +236,14 @@ skills = ["rust-async-patterns"]
         .unwrap();
 
     assert_eq!(catalog.source_name(), "extension-provider");
-    assert!(catalog.get_technology(TechnologyId::Rust).is_some());
-    let make = catalog.get_technology(TechnologyId::Make).unwrap();
+    assert!(
+        catalog
+            .get_technology(&TechnologyId::new(TechnologyId::RUST))
+            .is_some()
+    );
+    let make = catalog
+        .get_technology(&TechnologyId::new(TechnologyId::MAKE))
+        .unwrap();
     assert_eq!(make.name, "Make");
     assert_eq!(make.skills, vec!["makefile"]);
 }
@@ -305,9 +317,13 @@ fn partially_invalid_provider_metadata_keeps_valid_overlay_entries() {
     let provider = PartiallyInvalidCatalogProvider;
     let catalog = load_catalog(Some(&provider)).unwrap();
     let detections = vec![
-        detection(TechnologyId::Rust, DetectionConfidence::High, "Cargo.toml"),
         detection(
-            TechnologyId::Docker,
+            TechnologyId::new(TechnologyId::RUST),
+            DetectionConfidence::High,
+            "Cargo.toml",
+        ),
+        detection(
+            TechnologyId::new(TechnologyId::DOCKER),
             DetectionConfidence::High,
             "Dockerfile",
         ),
@@ -333,7 +349,7 @@ fn suggest_reports_detections_when_catalog_has_no_matching_rules() {
     let temp_dir = TempDir::new().unwrap();
     let service = SuggestionService;
     let detector = StaticDetector::new(vec![detection(
-        TechnologyId::Rust,
+        TechnologyId::new(TechnologyId::RUST),
         DetectionConfidence::Medium,
         "Cargo.toml",
     )]);
@@ -344,7 +360,10 @@ fn suggest_reports_detections_when_catalog_has_no_matching_rules() {
         .unwrap();
 
     assert_eq!(response.detections.len(), 1);
-    assert_eq!(response.detections[0].technology, TechnologyId::Rust);
+    assert_eq!(
+        response.detections[0].technology,
+        TechnologyId::new(TechnologyId::RUST)
+    );
     assert!(response.recommendations.is_empty());
     assert_eq!(response.summary.detected_count, 1);
     assert_eq!(response.summary.recommended_count, 0);
@@ -356,7 +375,7 @@ fn provider_detect_metadata_does_not_change_detection_results() {
     let temp_dir = TempDir::new().unwrap();
     let service = SuggestionService;
     let detector = StaticDetector::new(vec![detection(
-        TechnologyId::Rust,
+        TechnologyId::new(TechnologyId::RUST),
         DetectionConfidence::High,
         "Cargo.toml",
     )]);
@@ -367,7 +386,10 @@ fn provider_detect_metadata_does_not_change_detection_results() {
         .unwrap();
 
     assert_eq!(response.detections.len(), 1);
-    assert_eq!(response.detections[0].technology, TechnologyId::Rust);
+    assert_eq!(
+        response.detections[0].technology,
+        TechnologyId::new(TechnologyId::RUST)
+    );
     assert!(
         response
             .recommendations
@@ -609,6 +631,129 @@ impl Provider for NoMatchCatalogProvider {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Combo detection tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn combo_triggers_when_all_required_technologies_detected() {
+    let catalog = EmbeddedSkillCatalog::default();
+
+    // react-shadcn combo requires both "react" and "shadcn"
+    let detections = vec![
+        detection(
+            TechnologyId::new("react"),
+            DetectionConfidence::High,
+            "package.json",
+        ),
+        detection(
+            TechnologyId::new("shadcn"),
+            DetectionConfidence::High,
+            "components.json",
+        ),
+    ];
+
+    let recommendations = recommend_skills(&catalog, &detections);
+
+    // The react-shadcn combo should inject its skills into recommendations.
+    // At minimum, the combo's reason should appear.
+    let has_combo_reason = recommendations.iter().any(|r| {
+        r.reasons
+            .iter()
+            .any(|reason| reason.contains("React + shadcn/ui"))
+    });
+    assert!(
+        has_combo_reason,
+        "should have a combo-based recommendation mentioning 'React + shadcn/ui', got reasons: {:?}",
+        recommendations
+            .iter()
+            .flat_map(|r| r.reasons.iter())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn combo_does_not_trigger_with_partial_requirements() {
+    let catalog = EmbeddedSkillCatalog::default();
+
+    // Only "react" detected, no "shadcn" — the react-shadcn combo should NOT trigger
+    let detections = vec![detection(
+        TechnologyId::new("react"),
+        DetectionConfidence::High,
+        "package.json",
+    )];
+
+    let recommendations = recommend_skills(&catalog, &detections);
+
+    let has_combo_reason = recommendations.iter().any(|r| {
+        r.reasons
+            .iter()
+            .any(|reason| reason.contains("React + shadcn/ui"))
+    });
+    assert!(
+        !has_combo_reason,
+        "should NOT have combo reason with partial requirements, got reasons: {:?}",
+        recommendations
+            .iter()
+            .flat_map(|r| r.reasons.iter())
+            .collect::<Vec<_>>()
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Expanded catalog validation tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn expanded_catalog_has_minimum_expected_counts() {
+    let catalog = EmbeddedSkillCatalog::default();
+
+    let skill_count = catalog
+        .technologies()
+        .flat_map(|(_, tech)| tech.skills.iter())
+        .count();
+    let technology_count = catalog.technologies().count();
+    let combo_count = catalog.combos().count();
+
+    // The expanded catalog should have substantial content
+    assert!(
+        skill_count >= 100,
+        "expected at least 100 skill references across technologies, got {skill_count}"
+    );
+    assert!(
+        technology_count >= 40,
+        "expected at least 40 technologies, got {technology_count}"
+    );
+    assert!(
+        combo_count >= 10,
+        "expected at least 10 combos, got {combo_count}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TechnologyId serialization tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn technology_id_serializes_transparently_to_json() {
+    let rust = TechnologyId::new("rust");
+    let json = serde_json::to_string(&rust).unwrap();
+    assert_eq!(json, r#""rust""#);
+
+    let node_ts = TechnologyId::new("node_typescript");
+    let json = serde_json::to_string(&node_ts).unwrap();
+    assert_eq!(json, r#""node_typescript""#);
+}
+
+#[test]
+fn technology_id_deserializes_from_json_string() {
+    let deserialized: TechnologyId = serde_json::from_str(r#""react""#).unwrap();
+    assert_eq!(deserialized.as_ref(), "react");
+
+    let deserialized: TechnologyId = serde_json::from_str(r#""node_typescript""#).unwrap();
+    assert_eq!(deserialized, TechnologyId::new("node_typescript"));
+}
+
 struct DetectMetadataCatalogProvider;
 
 impl Provider for DetectMetadataCatalogProvider {
@@ -621,8 +766,10 @@ impl Provider for DetectMetadataCatalogProvider {
     }
 
     fn recommendation_catalog(&self) -> Result<Option<ProviderCatalogMetadata>> {
-        let detect =
-            toml::from_str::<toml::Value>("markers = ['Makefile']\npath_globs = ['frontend/**']")?;
+        let detect = DetectionRules {
+            config_files: Some(vec!["Makefile".to_string()]),
+            ..Default::default()
+        };
 
         Ok(Some(ProviderCatalogMetadata {
             provider: "detect-metadata-provider".to_string(),

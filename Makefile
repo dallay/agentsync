@@ -11,14 +11,14 @@ JS_WORKSPACE := $(PNPM) --filter agentsync
 
 .PHONY: help all install js-install js-test js-build \
         rust-build rust-test rust-run e2e-test fmt docs-dev docs-build docs-preview \
-        agents-sync agents-sync-clean clean verify-all
+        agents-sync agents-sync-clean clean verify-all check-all check-rust check-js check-docs check-e2e
 
 help:
 	@echo "Makefile for agentsync"
 	@echo ""
 	@echo "Main targets:"
 	@echo "  make all             -> install + build (js + rust)"
-	@echo "  make verify-all      -> run all tests and linters"
+	@echo "  make verify-all      -> run all tests, linters, and checks (RUN_E2E=1 for e2e)"
 	@echo "  make install         -> install dependencies (pnpm + cargo build deps)"
 	@echo "  make js-install      -> pnpm install (workspace root)"
 	@echo "  make js-test         -> run JS tests (pnpm test)"
@@ -43,17 +43,25 @@ all: install js-build
 
 verify-all: check-all
 
-check-all: check-rust check-js check-docs
+check-all: check-rust check-js check-docs check-e2e
 	@printf "\n✅ All checks passed successfully!\n"
 
 check-rust:
 	@printf "\n🦀 Verifying Rust...\n"
 	@echo "→ Checking formatting..."
-	@$(CARGO) fmt -- --check
+	@$(CARGO) fmt --all -- --check
 	@echo "→ Running clippy (strict)..."
 	@$(CARGO) clippy --all-targets --all-features -- -D warnings
-	@echo "→ Running tests..."
-	@$(CARGO) test
+	@echo "→ Running tests (all features)..."
+	@$(CARGO) test --all-features
+
+check-e2e:
+ifeq ($(RUN_E2E),1)
+	@printf "\n🐳 Running E2E tests...\n"
+	@$(MAKE) e2e-test
+else
+	@printf "\n⏭️  Skipping E2E tests (set RUN_E2E=1 to enable)\n"
+endif
 
 check-js:
 	@printf "\n📜 Verifying JavaScript/TypeScript...\n"
@@ -93,7 +101,7 @@ rust-build:
 
 rust-test:
 	@echo "Running Rust tests..."
-	$(CARGO) test
+	$(CARGO) test --all-features
 
 rust-run:
 	@echo "Running Rust project..."

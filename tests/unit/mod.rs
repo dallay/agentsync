@@ -1,4 +1,7 @@
 #[cfg(test)]
+mod provider;
+
+#[cfg(test)]
 mod suggest_catalog;
 
 #[cfg(test)]

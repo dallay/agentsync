@@ -19,7 +19,8 @@ assert_json_expr "mega-suggest.json" '.detections | any(.technology == "github_a
 assert_json_expr "mega-suggest.json" '.detections | any(.technology == "docker")'
 assert_json_expr "mega-suggest.json" '.detections | any(.technology == "make")'
 assert_json_expr "mega-suggest.json" '.detections | any(.technology == "python")'
-assert_json_expr "mega-suggest.json" '.detections | any(.technology == "rust" and .confidence == "medium")'
-assert_json_expr "mega-suggest.json" '.detections | any(.technology == "node_typescript" and .confidence == "medium")'
+assert_json_expr "mega-suggest.json" '.detections | any(.technology == "rust" and .confidence == "high")'
+assert_json_expr "mega-suggest.json" '.detections | any(.technology == "node_typescript" and .confidence == "high")'
+assert_json_expr "mega-suggest.json" '.detections | any(.technology == "astro" and .confidence == "high")'
 
 echo "✅ suggest mega-monorepo scenario passed"
