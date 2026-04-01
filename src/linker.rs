@@ -87,6 +87,51 @@ impl Linker {
         &self.config
     }
 
+    fn canonicalize_uncached(&self, path: &Path) -> Result<PathBuf> {
+        fs::canonicalize(path)
+            .with_context(|| format!("Failed to canonicalize path: {}", path.display()))
+    }
+
+    /// Validate that an absolute destination path resolves within the project root.
+    fn ensure_safe_destination_path(&self, joined: &Path, display_path: &str) -> Result<PathBuf> {
+        let existing_ancestor = joined
+            .ancestors()
+            .find(|ancestor| ancestor.exists())
+            .with_context(|| {
+                format!(
+                    "Failed to resolve destination path within project root: {}",
+                    joined.display()
+                )
+            })?;
+
+        let canonical_project_root = self
+            .canonicalize_uncached(&self.project_root)
+            .with_context(|| {
+                format!(
+                    "Failed to canonicalize project root: {}",
+                    self.project_root.display()
+                )
+            })?;
+
+        let canonical_ancestor =
+            self.canonicalize_uncached(existing_ancestor)
+                .with_context(|| {
+                    format!(
+                        "Failed to canonicalize destination ancestor: {}",
+                        existing_ancestor.display()
+                    )
+                })?;
+
+        if !canonical_ancestor.starts_with(&canonical_project_root) {
+            anyhow::bail!(
+                "Destination path resolves outside project root: {}",
+                display_path
+            );
+        }
+
+        Ok(joined.to_path_buf())
+    }
+
     /// Validate that a destination path is safe (relative and no traversal).
     /// Returns the resolved path within project_root if safe.
     fn ensure_safe_destination(&self, dest_path: &str) -> Result<PathBuf> {
@@ -118,42 +163,13 @@ impl Linker {
         }
 
         let joined = self.project_root.join(path);
-        let existing_ancestor = joined
-            .ancestors()
-            .find(|ancestor| ancestor.exists())
-            .with_context(|| {
-                format!(
-                    "Failed to resolve destination path within project root: {}",
-                    joined.display()
-                )
-            })?;
+        self.ensure_safe_destination_path(&joined, dest_path)
+    }
 
-        let canonical_project_root =
-            self.canonicalize_cached(&self.project_root)
-                .with_context(|| {
-                    format!(
-                        "Failed to canonicalize project root: {}",
-                        self.project_root.display()
-                    )
-                })?;
-
-        let canonical_ancestor =
-            self.canonicalize_cached(existing_ancestor)
-                .with_context(|| {
-                    format!(
-                        "Failed to canonicalize destination ancestor: {}",
-                        existing_ancestor.display()
-                    )
-                })?;
-
-        if !canonical_ancestor.starts_with(&canonical_project_root) {
-            anyhow::bail!(
-                "Destination path resolves outside project root: {}",
-                dest_path
-            );
-        }
-
-        Ok(joined)
+    /// Re-validate a previously joined destination immediately before filesystem mutation.
+    fn revalidate_destination_path(&self, dest: &Path) -> Result<()> {
+        self.ensure_safe_destination_path(dest, &dest.display().to_string())
+            .map(|_| ())
     }
 
     /// Resolve the expected source path for status checks.
@@ -359,6 +375,7 @@ impl Linker {
                         println!("  {} Would create directory: {}", "→".cyan(), dir.display());
                     }
                 } else {
+                    self.revalidate_destination_path(dir)?;
                     fs::create_dir_all(dir).with_context(|| {
                         format!("Failed to create directory: {}", dir.display())
                     })?;
@@ -409,6 +426,7 @@ impl Linker {
             self.ensure_directory(parent, options)?;
         }
 
+        self.revalidate_destination_path(dest)?;
         fs::write(dest, &compressed)
             .with_context(|| format!("Failed to write compressed AGENTS.md: {}", dest.display()))?;
 
@@ -466,6 +484,7 @@ impl Linker {
                         relative_source.display()
                     );
                 } else {
+                    self.revalidate_destination_path(dest)?;
                     remove_symlink(dest)?;
                     if options.verbose {
                         println!(
@@ -488,6 +507,8 @@ impl Linker {
                 );
             } else {
                 let backup = backup_path_for_destination(dest);
+                self.revalidate_destination_path(dest)?;
+                self.revalidate_destination_path(&backup)?;
                 remove_existing_path(&backup)?;
                 fs::rename(dest, &backup)?;
                 println!(
@@ -513,6 +534,7 @@ impl Linker {
                 );
             }
         } else {
+            self.revalidate_destination_path(dest)?;
             #[cfg(unix)]
             std::os::unix::fs::symlink(&relative_source, dest)
                 .with_context(|| format!("Failed to create symlink: {}", dest.display()))?;
@@ -978,6 +1000,7 @@ impl Linker {
                                             dest.display()
                                         );
                                     } else {
+                                        self.revalidate_destination_path(&dest)?;
                                         fs::remove_file(&dest)?;
                                         println!("  {} Removed: {}", "✔".green(), dest.display());
                                     }
@@ -1009,6 +1032,7 @@ impl Linker {
                                             entry.path().display()
                                         );
                                     } else {
+                                        self.revalidate_destination_path(&entry.path())?;
                                         fs::remove_file(entry.path())?;
                                         println!(
                                             "  {} Removed: {}",
@@ -1021,6 +1045,7 @@ impl Linker {
                             }
                             // Try to remove the directory if empty
                             if !options.dry_run {
+                                self.revalidate_destination_path(&dest)?;
                                 let _ = fs::remove_dir(&dest);
                             }
                         }
@@ -1034,6 +1059,7 @@ impl Linker {
                             if options.dry_run {
                                 println!("  {} Would remove: {}", "→".cyan(), dest.display());
                             } else {
+                                self.revalidate_destination_path(&dest)?;
                                 remove_symlink(&dest)?;
                                 println!("  {} Removed: {}", "✔".green(), dest.display());
                             }
@@ -1066,6 +1092,7 @@ impl Linker {
                                 if options.dry_run {
                                     println!("  {} Would remove: {}", "→".cyan(), dest.display());
                                 } else {
+                                    self.revalidate_destination_path(&dest)?;
                                     fs::remove_file(&dest)?;
                                     println!("  {} Removed: {}", "✔".green(), dest.display());
                                 }
@@ -1644,6 +1671,40 @@ mod tests {
         assert!(
             linker
                 .ensure_safe_destination("escape-link/linked.md")
+                .is_err()
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_ensure_safe_destination_uses_fresh_canonicalization() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        let safe_dir = temp_dir.path().join("safe-link-target");
+        let escaped_dir = TempDir::new_in(temp_dir.path().parent().unwrap()).unwrap();
+        fs::create_dir_all(&agents_dir).unwrap();
+        fs::create_dir_all(&safe_dir).unwrap();
+
+        let link_path = temp_dir.path().join("dynamic-link");
+        symlink(&safe_dir, &link_path).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        fs::write(&config_path, "").unwrap();
+
+        let linker = Linker::new(create_test_config(), config_path);
+
+        assert!(
+            linker
+                .ensure_safe_destination("dynamic-link/linked.md")
+                .is_ok()
+        );
+
+        fs::remove_file(&link_path).unwrap();
+        symlink(escaped_dir.path(), &link_path).unwrap();
+
+        assert!(
+            linker
+                .ensure_safe_destination("dynamic-link/linked.md")
                 .is_err()
         );
     }
