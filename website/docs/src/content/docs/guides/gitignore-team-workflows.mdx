@@ -13,7 +13,7 @@ The short version:
 - **Intentional opt-out:** set `[gitignore].enabled = false` only if your team wants to commit AgentSync-managed destinations.
 - **Temporary CLI opt-out:** use `agentsync apply --no-gitignore` when you want one run to skip `.gitignore` reconciliation without changing team policy.
 
-For field-by-field details, see the <BaseLink href="/reference/configuration/#gitignore-management">configuration reference</BaseLink>. For command semantics, see the <BaseLink href="/reference/cli/#apply">CLI reference</BaseLink>.
+See the <BaseLink href="/reference/configuration/#gitignore-management">configuration reference</BaseLink> for field-by-field details, the <BaseLink href="/reference/cli/#apply">CLI reference</BaseLink> for command semantics, and <BaseLink href="/guides/git-hook-automation/">Git Hook Automation</BaseLink> for hook-manager and native Git hook examples.
 
 ## When to choose each workflow
 
@@ -144,6 +144,8 @@ Use the hook when you want onboarding and dependency install flows to refresh sy
 - they installed AgentSync after the initial clone
 - they want to re-run setup after changing `.agents/agentsync.toml`
 
+If your team also wants automatic refreshes after branch switches, merges, or rebases, add Git lifecycle hooks too. Use the copy-pasteable Lefthook, Husky, `simple-git-hooks`, or native Git hook examples in <BaseLink href="/guides/git-hook-automation/">Git Hook Automation</BaseLink>.
+
 ## Workflow 2: Committed-destination opt-out
 
 Choose this only when your team intentionally wants AgentSync-managed destinations committed to version control.
@@ -225,6 +227,8 @@ Expected local outcome:
 - symlinks and managed destinations are refreshed
 - `.gitignore` remains unmanaged by AgentSync
 - committed AgentSync-managed destinations may now appear in normal Git diffs and reviews
+
+Teams in this workflow can still use the same hook patterns from <BaseLink href="/guides/git-hook-automation/">Git Hook Automation</BaseLink>, but Git hooks are usually more optional because the managed destination files already travel with the repository.
 
 ## Temporary opt-out for one command
 

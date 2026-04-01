@@ -1,0 +1,229 @@
+---
+title: Git hook automation
+description: Automate agentsync apply with prepare scripts, Git hook managers, and native Git hooks.
+---
+
+import BaseLink from "../../../components/BaseLink.astro";
+
+Use this guide when your team wants `agentsync apply` to run automatically during install, branch switches, merges, or rebases.
+
+This page is about automation patterns only. Keep `.gitignore` policy and maintainer-versus-collaborator expectations in the <BaseLink href="/guides/gitignore-team-workflows/">Gitignore Team Workflows guide</BaseLink>.
+
+## Choose the lightest automation that fits your workflow
+
+### Use `prepare` alone when
+
+- you mainly want onboarding and dependency-install flows to create symlinks
+- contributors already run `pnpm install`, `npm install`, or equivalent after cloning
+- your team can tolerate running `agentsync apply` manually after branch switches or rebases
+
+Minimal example:
+
+```json
+{
+  "scripts": {
+    "prepare": "agentsync apply || true"
+  }
+}
+```
+
+### Add Git hooks when
+
+- your team uses the default managed `.gitignore` workflow
+- AgentSync-managed destinations are local symlinks that are usually not committed
+- contributors frequently switch branches, pull merges, or rebase local work
+
+That is where `post-checkout`, `post-merge`, and `post-rewrite` help most:
+
+- `post-checkout`: refreshes symlinks after switching branches
+- `post-merge`: refreshes symlinks after `git pull` or manual merges
+- `post-rewrite`: refreshes symlinks after rebases or other rewritten history
+
+### Git hooks are optional when
+
+- your team intentionally uses the committed-destination workflow with `[gitignore].enabled = false`
+- the managed files already travel with the repository
+
+Even there, hooks can still be useful if you want local symlinks refreshed automatically after rebases or branch changes.
+
+## Failure handling
+
+For local automation, prefer this pattern:
+
+```sh
+agentsync apply || true
+```
+
+Why:
+
+- it keeps install and hook flows from failing when `agentsync` is not available yet
+- it avoids blocking normal Git operations over local setup drift
+
+Practical rule:
+
+- use `|| true` for local developer automation
+- keep output visible at first so teams can confirm the hook is running
+- only make hooks quieter later if your team already trusts the setup
+
+If a hook did not run or local state still looks wrong, run `agentsync apply` manually.
+
+## Recommended hook matrix
+
+### Lowest-friction setup
+
+- `prepare`
+
+### Recommended for most teams using ignored local symlinks
+
+- `prepare`
+- `post-checkout`
+- `post-merge`
+- `post-rewrite`
+
+### Reasonable committed-destination setup
+
+- `prepare`
+- optionally the Git hooks above if your team still wants automatic local refreshes
+
+## Lefthook
+
+If your repo already uses Lefthook, add AgentSync as local post-operation automation instead of inventing a second hook system.
+
+`lefthook.yml`:
+
+```yaml
+post-checkout:
+  commands:
+    agentsync-apply:
+      run: agentsync apply || true
+
+post-merge:
+  commands:
+    agentsync-apply:
+      run: agentsync apply || true
+
+post-rewrite:
+  commands:
+    agentsync-apply:
+      run: agentsync apply || true
+```
+
+Pair that with a package-manager `prepare` script:
+
+```json
+{
+  "scripts": {
+    "prepare": "lefthook install && agentsync apply || true"
+  }
+}
+```
+
+If you already have a longer `prepare` script, just append AgentSync in the same flow instead of replacing your existing setup.
+
+## Husky
+
+Use Husky when your repo already manages hooks under `.husky/`.
+
+`package.json`:
+
+```json
+{
+  "scripts": {
+    "prepare": "husky && agentsync apply || true"
+  }
+}
+```
+
+`.husky/post-checkout`:
+
+```sh
+#!/usr/bin/env sh
+agentsync apply || true
+```
+
+`.husky/post-merge`:
+
+```sh
+#!/usr/bin/env sh
+agentsync apply || true
+```
+
+`.husky/post-rewrite`:
+
+```sh
+#!/usr/bin/env sh
+agentsync apply || true
+```
+
+Husky hook files can stay this small because AgentSync does not need the Git hook arguments for this refresh workflow.
+
+## simple-git-hooks
+
+Use `simple-git-hooks` when you want hook configuration to live entirely in `package.json`.
+
+`package.json`:
+
+```json
+{
+  "scripts": {
+    "prepare": "simple-git-hooks && agentsync apply || true"
+  },
+  "simple-git-hooks": {
+    "post-checkout": "agentsync apply || true",
+    "post-merge": "agentsync apply || true",
+    "post-rewrite": "agentsync apply || true"
+  }
+}
+```
+
+That gives you install-time setup plus Git lifecycle refreshes without adding separate hook files.
+
+## Native Git hooks
+
+Use native hooks when you do not want another dependency or hook manager.
+
+Create these executable files in `.git/hooks/`.
+
+`.git/hooks/post-checkout`:
+
+```sh
+#!/usr/bin/env sh
+agentsync apply || true
+```
+
+`.git/hooks/post-merge`:
+
+```sh
+#!/usr/bin/env sh
+agentsync apply || true
+```
+
+`.git/hooks/post-rewrite`:
+
+```sh
+#!/usr/bin/env sh
+agentsync apply || true
+```
+
+Then make them executable:
+
+```sh
+chmod +x .git/hooks/post-checkout .git/hooks/post-merge .git/hooks/post-rewrite
+```
+
+Native hooks are simple, but remember they live in local Git metadata and are not shared automatically with collaborators the way Husky, Lefthook, or `simple-git-hooks` configs are.
+
+## Which example should most teams copy?
+
+- already using **Lefthook**: keep using Lefthook
+- already using **Husky**: keep using Husky
+- want config in `package.json`: use **simple-git-hooks**
+- want zero extra dependencies: use **native Git hooks**
+
+The main decision is not the hook tool. It is whether your team needs only install-time setup or also post-checkout/post-merge/post-rewrite refreshes.
+
+## Related docs
+
+- <BaseLink href="/guides/getting-started/">Getting started</BaseLink> for the initial `agentsync init` and `agentsync apply` flow
+- <BaseLink href="/guides/gitignore-team-workflows/">Gitignore Team Workflows</BaseLink> for deciding whether managed destinations stay ignored or become committed
+- <BaseLink href="/reference/cli/#apply">CLI reference for `apply`</BaseLink> for command semantics
