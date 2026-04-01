@@ -120,15 +120,11 @@ fn test_absolute_path_in_symlink_destination_is_rejected() {
 fn test_symlinked_destination_ancestor_is_rejected() {
     let temp_dir = TempDir::new().unwrap();
     let agents_dir = temp_dir.path().join(".agents");
-    let escaped_dir = temp_dir.path().parent().unwrap().join(format!(
-        "{}-escape-target",
-        temp_dir.path().file_name().unwrap().to_string_lossy()
-    ));
-    let linked_output = escaped_dir.join("linked.md");
+    let escaped_dir = TempDir::new_in(temp_dir.path().parent().unwrap()).unwrap();
+    let linked_output = escaped_dir.path().join("linked.md");
 
     fs::create_dir_all(&agents_dir).unwrap();
-    fs::create_dir_all(&escaped_dir).unwrap();
-    symlink(&escaped_dir, temp_dir.path().join("escape-link")).unwrap();
+    symlink(escaped_dir.path(), temp_dir.path().join("escape-link")).unwrap();
 
     let source_file = agents_dir.join("AGENTS.md");
     fs::write(&source_file, "# Test").unwrap();
