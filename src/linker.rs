@@ -17,6 +17,9 @@ use crate::config::{Config, SyncType, TargetConfig};
 
 const COMPRESSED_AGENTS_MD_NAME: &str = "AGENTS.compact.md";
 
+type NestedGlobKey = (PathBuf, String, Vec<String>);
+type NestedGlobMatches = Vec<(PathBuf, PathBuf)>;
+
 /// Options for the sync operation
 #[derive(Debug, Default)]
 pub struct SyncOptions {
@@ -55,8 +58,11 @@ pub struct Linker {
     source_dir: PathBuf,
     path_cache: RefCell<HashMap<PathBuf, PathBuf>>,
     compression_cache: RefCell<HashMap<PathBuf, String>>,
+    /// Cache for NestedGlob discovery results: (search_root, pattern, excludes) -> [(full_path, rel_path)]
+    glob_cache: RefCell<HashMap<NestedGlobKey, NestedGlobMatches>>,
     ensured_dirs: RefCell<HashSet<PathBuf>>,
     ensured_compressed: RefCell<HashSet<PathBuf>>,
+    canonical_project_root: RefCell<Option<PathBuf>>,
 }
 
 impl Linker {
@@ -72,8 +78,10 @@ impl Linker {
             source_dir,
             path_cache: RefCell::new(HashMap::new()),
             compression_cache: RefCell::new(HashMap::new()),
+            glob_cache: RefCell::new(HashMap::new()),
             ensured_dirs: RefCell::new(HashSet::new()),
             ensured_compressed: RefCell::new(HashSet::new()),
+            canonical_project_root: RefCell::new(None),
         }
     }
 
@@ -104,14 +112,21 @@ impl Linker {
                 )
             })?;
 
-        let canonical_project_root = self
-            .canonicalize_uncached(&self.project_root)
-            .with_context(|| {
-                format!(
-                    "Failed to canonicalize project root: {}",
-                    self.project_root.display()
-                )
-            })?;
+        let mut root_cache = self.canonical_project_root.borrow_mut();
+        let canonical_project_root = if let Some(ref root) = *root_cache {
+            root.clone()
+        } else {
+            let root = self
+                .canonicalize_uncached(&self.project_root)
+                .with_context(|| {
+                    format!(
+                        "Failed to canonicalize project root: {}",
+                        self.project_root.display()
+                    )
+                })?;
+            *root_cache = Some(root.clone());
+            root
+        };
 
         let canonical_ancestor =
             self.canonicalize_uncached(existing_ancestor)
@@ -201,6 +216,8 @@ impl Linker {
         self.ensured_dirs.borrow_mut().clear();
         self.ensured_compressed.borrow_mut().clear();
         self.path_cache.borrow_mut().clear();
+        self.glob_cache.borrow_mut().clear();
+        self.canonical_project_root.borrow_mut().take();
 
         let mut result = SyncResult::default();
 
@@ -704,54 +721,73 @@ impl Linker {
             return Ok(result);
         }
 
-        self.for_each_nested_glob_match(
-            search_root,
-            glob_pattern,
-            excludes,
-            options,
-            |full_path, rel_path| {
-                let dest_str = Self::expand_destination_template(dest_template, rel_path);
-                if dest_str.is_empty() {
+        let key = (
+            search_root.to_path_buf(),
+            glob_pattern.to_string(),
+            excludes.to_vec(),
+        );
+
+        let matches = {
+            let mut cache = self.glob_cache.borrow_mut();
+            if let Some(cached) = cache.get(&key) {
+                cached.clone()
+            } else {
+                let mut found = Vec::new();
+                self.for_each_nested_glob_match(
+                    search_root,
+                    glob_pattern,
+                    excludes,
+                    options,
+                    |full_path, rel_path| {
+                        found.push((full_path.to_path_buf(), rel_path.to_path_buf()));
+                        Ok(())
+                    },
+                )?;
+                cache.insert(key, found.clone());
+                found
+            }
+        };
+
+        for (full_path, rel_path) in matches {
+            let dest_str = Self::expand_destination_template(dest_template, &rel_path);
+            if dest_str.is_empty() {
+                if options.verbose {
+                    println!(
+                        "  {} Destination template produced empty path for: {}",
+                        "!".yellow(),
+                        full_path.display()
+                    );
+                }
+                result.skipped += 1;
+                continue;
+            }
+
+            let dest = match self.ensure_safe_destination(&dest_str) {
+                Ok(dest) => dest,
+                Err(err) => {
                     if options.verbose {
                         println!(
-                            "  {} Destination template produced empty path for: {}",
+                            "  {} Skipping nested-glob destination {}: {}",
                             "!".yellow(),
-                            full_path.display()
+                            dest_str,
+                            err
                         );
                     }
                     result.skipped += 1;
-                    return Ok(());
+                    continue;
                 }
+            };
 
-                let dest = match self.ensure_safe_destination(&dest_str) {
-                    Ok(dest) => dest,
-                    Err(err) => {
-                        if options.verbose {
-                            println!(
-                                "  {} Skipping nested-glob destination {}: {}",
-                                "!".yellow(),
-                                dest_str,
-                                err
-                            );
-                        }
-                        result.skipped += 1;
-                        return Ok(());
-                    }
-                };
+            let resolved = ResolvedSource {
+                path: full_path.to_path_buf(),
+                exists: true,
+            };
 
-                let resolved = ResolvedSource {
-                    path: full_path.to_path_buf(),
-                    exists: true,
-                };
-
-                let item_result = self.create_symlink(&resolved, &dest, options)?;
-                result.created += item_result.created;
-                result.updated += item_result.updated;
-                result.skipped += item_result.skipped;
-
-                Ok(())
-            },
-        )?;
+            let item_result = self.create_symlink(&resolved, &dest, options)?;
+            result.created += item_result.created;
+            result.updated += item_result.updated;
+            result.skipped += item_result.skipped;
+        }
 
         Ok(result)
     }
