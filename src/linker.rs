@@ -11,6 +11,7 @@ use std::fs;
 #[cfg(windows)]
 use std::os::windows::fs::FileTypeExt;
 use std::path::{Component, Path, PathBuf};
+use std::rc::Rc;
 use walkdir::WalkDir;
 
 use crate::config::{Config, SyncType, TargetConfig};
@@ -18,7 +19,7 @@ use crate::config::{Config, SyncType, TargetConfig};
 const COMPRESSED_AGENTS_MD_NAME: &str = "AGENTS.compact.md";
 
 type NestedGlobKey = (PathBuf, String, Vec<String>);
-type NestedGlobMatches = Vec<(PathBuf, PathBuf)>;
+type NestedGlobMatches = Rc<Vec<(PathBuf, PathBuf)>>;
 
 /// Options for the sync operation
 #[derive(Debug, Default)]
@@ -730,7 +731,7 @@ impl Linker {
         let matches = {
             let mut cache = self.glob_cache.borrow_mut();
             if let Some(cached) = cache.get(&key) {
-                cached.clone()
+                Rc::clone(cached)
             } else {
                 let mut found = Vec::new();
                 self.for_each_nested_glob_match(
@@ -743,12 +744,13 @@ impl Linker {
                         Ok(())
                     },
                 )?;
-                cache.insert(key, found.clone());
-                found
+                let rc_found = Rc::new(found);
+                cache.insert(key, Rc::clone(&rc_found));
+                rc_found
             }
         };
 
-        for (full_path, rel_path) in matches {
+        for (full_path, rel_path) in matches.iter() {
             let dest_str = Self::expand_destination_template(dest_template, &rel_path);
             if dest_str.is_empty() {
                 if options.verbose {
