@@ -3,6 +3,8 @@ title: CLI Reference
 description: Detailed documentation for all agentsync commands.
 ---
 
+import CommandTabs from '../../../components/CommandTabs.astro';
+
 `agentsync` provides a straightforward set of commands to manage your AI agent configurations.
 
 If you run AgentSync from Windows and need symlink prerequisites, WSL setup positioning, or recovery help, use the <a href="/guides/windows-symlink-setup/">Windows Symlink Setup guide</a>. The command reference below stays focused on CLI behavior.
@@ -77,24 +79,38 @@ When running `agentsync apply`, agents are selected in this order:
 3. **All enabled agents** (if neither above is set) → runs all agents with `enabled = true`
 
 Examples:
-```bash
-# With default_agents = ["copilot", "claude"] in config:
-agentsync apply              # Runs only copilot and claude
-agentsync apply --agents gemini  # Runs only gemini (CLI overrides config)
-agentsync apply --agents copilot,claude,gemini  # Runs all three
 
-# Without default_agents in config:
-agentsync apply              # Runs all enabled agents
+With `default_agents = ["copilot", "claude"]` in config:
 
-# Preview symlink and gitignore reconciliation
-agentsync apply --dry-run
+<CommandTabs command="apply" />
 
-# Skip gitignore reconciliation for this run only
-agentsync apply --no-gitignore
+Runs only copilot and claude.
 
-# Preview without any gitignore writes or cleanup
-agentsync apply --dry-run --no-gitignore
-```
+<CommandTabs command="apply --agents gemini" />
+
+Runs only gemini (CLI overrides config).
+
+<CommandTabs command="apply --agents copilot,claude,gemini" />
+
+Runs all three.
+
+Without `default_agents` in config:
+
+<CommandTabs command="apply" />
+
+Runs all enabled agents.
+
+Preview symlink and gitignore reconciliation:
+
+<CommandTabs command="apply --dry-run" />
+
+Skip gitignore reconciliation for this run only:
+
+<CommandTabs command="apply --no-gitignore" />
+
+Preview without any gitignore writes or cleanup:
+
+<CommandTabs command="apply --dry-run --no-gitignore" />
 
 ---
 
@@ -169,12 +185,13 @@ Compatibility note:
 
 Examples:
 
-```bash
-agentsync skill suggest
-agentsync skill suggest --json
-agentsync skill suggest --install
-agentsync skill suggest --install --all
-```
+<CommandTabs command="skill suggest" />
+
+<CommandTabs command="skill suggest --json" />
+
+<CommandTabs command="skill suggest --install" />
+
+<CommandTabs command="skill suggest --install --all" />
 
 #### `update`
 
@@ -230,9 +247,7 @@ agentsync doctor [OPTIONS]
 
 Shows the current version of the AgentSync CLI.
 
-```bash
-agentsync --version
-```
+<CommandTabs command="--version" />
 
 ---
 
@@ -240,10 +255,9 @@ agentsync --version
 
 Shows help information for the CLI or a specific command.
 
-```bash
-agentsync --help
-agentsync apply --help
-```
+<CommandTabs command="--help" />
+
+<CommandTabs command="apply --help" />
 
 ## Global Flags
 
@@ -287,10 +301,10 @@ Exit codes
 
 Examples
 - Human readable:
-  - `agentsync status`
+  - <CommandTabs command="status" />
 - JSON for CI:
-  - `agentsync status --json`
+  - <CommandTabs command="status --json" />
 - With custom project root:
-  - `agentsync status --project-root /path/to/repo --json`
+  - <CommandTabs command="status --project-root /path/to/repo --json" />
 
 On Windows, `status` is also a practical post-setup verification step after you fix symlink permissions or switch to WSL. See the <a href="/guides/windows-symlink-setup/">Windows Symlink Setup guide</a> for the broader verification flow.

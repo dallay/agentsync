@@ -3,6 +3,8 @@ title: Skills
 description: How to install, author, and manage AgentSync skills (skills.sh providers and local skills).
 ---
 
+import CommandTabs from '../../../components/CommandTabs.astro';
+
 AgentSync supports "skills": small bundles of content, prompts, or helper files that live under `.agents/skills/` and can be installed, updated, and managed with the CLI.
 
 This guide explains the expected layout and manifest format, how to install/update skills from providers (for example skills.sh), and troubleshooting tips.
@@ -11,9 +13,7 @@ This guide explains the expected layout and manifest format, how to install/upda
 
 If you already have skills in agent-specific directories (`.claude/skills/`, `.cursor/skills/`, `.codex/skills/`, `.gemini/skills/`, `.opencode/skills/`, `.roo/skills/`, `.factory/skills/`, `.vibe/skills/`, or `.agent/skills/`), the init wizard will detect and offer to migrate them:
 
-```bash
-agentsync init --wizard
-```
+<CommandTabs command="init --wizard" />
 
 The wizard:
 - **Detects** skill directories across all known agents
@@ -101,12 +101,10 @@ AgentSync exposes skill management via `agentsync skill` subcommands.
 
 - Suggest repository-aware skills without modifying `.agents/skills/`:
 
-```bash
-agentsync skill suggest
-agentsync skill suggest --json
-agentsync skill suggest --install
-agentsync skill suggest --install --all
-```
+<CommandTabs command="skill suggest" />
+<CommandTabs command="skill suggest --json" />
+<CommandTabs command="skill suggest --install" />
+<CommandTabs command="skill suggest --install --all" />
 
 `agentsync skill suggest` is repository-aware, but still conservative:
 
@@ -178,15 +176,11 @@ Human output shows detections, recommended skills, reasons, and install state. `
 
 Example read-only flow:
 
-```bash
-agentsync skill suggest
-```
+<CommandTabs command="skill suggest" />
 
 Example JSON flow:
 
-```bash
-agentsync skill suggest --json
-```
+<CommandTabs command="skill suggest --json" />
 
 Phase 2 adds recommendation-driven installs:
 
@@ -197,33 +191,23 @@ Phase 2 adds recommendation-driven installs:
 
 Example interactive install:
 
-```bash
-agentsync skill suggest --install
-```
+<CommandTabs command="skill suggest --install" />
 
 Example non-interactive install-all:
 
-```bash
-agentsync skill suggest --install --all
-```
+<CommandTabs command="skill suggest --install --all" />
 
 - Install a skill (from a provider id, local archive, or directory):
 
-```bash
-agentsync skill install my-skill --source https://example.com/my-skill.zip
-```
+<CommandTabs command="skill install my-skill --source https://example.com/my-skill.zip" />
 
 - Update a skill to the latest/source provided:
 
-```bash
-agentsync skill update my-skill
-```
+<CommandTabs command="skill update my-skill" />
 
 - List installed skills (structured JSON output is planned for future releases):
 
-```bash
-agentsync skill list
-```
+<CommandTabs command="skill list" />
 
 Flags:
 - `--source` — optional for `skill install` and `skill update`. Use a local path, archive URL, or provider-specific identifier.

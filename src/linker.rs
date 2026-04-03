@@ -751,7 +751,7 @@ impl Linker {
         };
 
         for (full_path, rel_path) in matches.iter() {
-            let dest_str = Self::expand_destination_template(dest_template, &rel_path);
+            let dest_str = Self::expand_destination_template(dest_template, rel_path);
             if dest_str.is_empty() {
                 if options.verbose {
                     println!(
