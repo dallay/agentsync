@@ -10,7 +10,7 @@
 
 ### Current State
 
-```
+```text
 ┌──────────────────────────────────────────────────┐
 │                  agentsync CLI                    │
 │                                                   │
@@ -41,7 +41,7 @@
 
 ### Target State
 
-```
+```text
 ┌──────────────────────────────────────────────────────────────┐
 │                       agentsync CLI                          │
 │                                                              │
@@ -76,7 +76,7 @@
 
 ### Resolution Flow (Target)
 
-```
+```text
 User: agentsync skill install docker-expert
 
 1. CLI looks up "docker-expert" in catalog.v1.toml
@@ -98,7 +98,7 @@ NO search API call. Fully deterministic.
 
 ### Suggest Flow (Unchanged)
 
-```
+```text
 User: agentsync skill suggest
 
 1. Load embedded catalog.v1.toml
@@ -134,25 +134,22 @@ No change to the suggest flow itself — only the catalog data changes.
 - `agents-skills` does NOT match those special names, so we need to understand
   the resolver behavior:
 
-**IMPORTANT — Verify resolver behavior:**
+**RESOLVED — Resolver behavior verified and implemented:**
 
-The current `resolve_deterministic()` in `provider.rs` does:
+`resolve_deterministic()` in `provider.rs` checks `SKILLS_REPO_NAMES`:
+
 ```rust
-// If repo is named "skills", "agent-skills", or "agentic-skills",
-// prepend "skills/" to the subpath
+const SKILLS_REPO_NAMES: &[&str] = &["skills", "agent-skills", "agentic-skills", "agents-skills"];
 ```
 
 For `dallay/agents-skills/docker-expert`:
 - owner = `dallay`
-- repo = `agents-skills`  (does NOT match the special list — need to verify)
+- repo = `agents-skills` (matches `SKILLS_REPO_NAMES`)
 - skill = `docker-expert`
+- subpath = `skills/docker-expert` (prefix added automatically)
+- URL = `https://github.com/dallay/agents-skills/archive/HEAD.zip#skills/docker-expert`
 
-We need to verify whether the resolver will construct the correct subpath
-`skills/docker-expert` or just `docker-expert`. If the latter, we either:
-1. Add `agents-skills` to the special repo name list, OR
-2. Use the full path in `provider_skill_id`: `dallay/agents-skills/skills/docker-expert`
-
-**This must be verified before implementation.**
+This was implemented by adding `"agents-skills"` to the `SKILLS_REPO_NAMES` constant.
 
 ### DD-03: Skills directory convention
 
@@ -310,7 +307,7 @@ fn test_dallay_skill_urls_are_reachable() {
 
 ## Data Flow Diagram
 
-```
+```text
                     ┌─────────────┐
                     │ Contributor  │
                     └──────┬──────┘
@@ -370,9 +367,9 @@ fn test_dallay_skill_urls_are_reachable() {
 
 ## Open Questions
 
-1. **Resolver subpath behavior** — Does `dallay/agents-skills/docker-expert` resolve
-   to `#skills/docker-expert` or `#docker-expert`? Need to verify `resolve_deterministic()`
-   logic in `provider.rs` and potentially add `agents-skills` to the special repo name list.
+1. ~~**Resolver subpath behavior**~~ — **RESOLVED.** `agents-skills` was added to
+   `SKILLS_REPO_NAMES` in `provider.rs`. `dallay/agents-skills/docker-expert` resolves
+   to `#skills/docker-expert` deterministically.
 
 2. **Skill content sources** — Where do the current built-in skills actually live?
    Some may be on skills.sh, some may be in the user's own `.agents/skills/`. We need

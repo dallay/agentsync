@@ -8,7 +8,7 @@
 
 ## Task Overview
 
-```
+```text
 Phase 1: Repo Setup          [5 tasks]  ──  No agentsync changes
 Phase 2: Content Migration    [3 tasks]  ──  Skill files moved
 Phase 3: Catalog Integration  [4 tasks]  ──  agentsync changes
@@ -45,7 +45,7 @@ Create the repo on GitHub with:
 
 Create initial structure:
 
-```
+```text
 agents-skills/
 ├── README.md
 ├── CONTRIBUTING.md
@@ -227,7 +227,7 @@ Investigate `resolve_deterministic()` in `src/skills/provider.rs`:
 ```rust
 #[test]
 fn test_resolve_dallay_agents_skills_deterministic() {
-    let provider = SkillsShProvider::new();
+    let provider = SkillsShProvider;
     let info = provider.resolve("dallay/agents-skills/docker-expert").unwrap();
     assert!(info.download_url.contains("dallay/agents-skills/archive/HEAD.zip"));
     assert!(info.download_url.contains("#skills/docker-expert"));
@@ -402,7 +402,7 @@ New page in docs site: `/guides/creating-skills/`
 
 ## Execution Order (Dependency Graph)
 
-```
+```text
 TASK-01 ─── TASK-02 ─── TASK-03 ─── TASK-04
                 │            │        TASK-05
                 │            │

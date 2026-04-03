@@ -12,7 +12,7 @@
 
 The `dallay/agents-skills` repository MUST follow this structure:
 
-```
+```text
 agents-skills/
 ├── README.md                      # Overview, badges, quick install
 ├── CONTRIBUTING.md                # How to add/update skills
@@ -97,7 +97,7 @@ When the CLI resolves a skill with `provider_skill_id` matching pattern
 `dallay/agents-skills/{skill-name}`, it MUST construct the download URL
 deterministically as:
 
-```
+```text
 https://github.com/dallay/agents-skills/archive/HEAD.zip#skills/{skill-name}
 ```
 
@@ -159,7 +159,7 @@ The `CONTRIBUTING.md` MUST document:
 
 ### SC-01: Install a dallay-owned skill
 
-```
+```text
 GIVEN the catalog maps "accessibility" to provider_skill_id "dallay/agents-skills/accessibility"
 WHEN  the user runs: agentsync skill install accessibility
 THEN  the CLI resolves to https://github.com/dallay/agents-skills/archive/HEAD.zip#skills/accessibility
@@ -169,7 +169,7 @@ AND   NO search API call is made
 
 ### SC-02: Install an externally-owned skill
 
-```
+```text
 GIVEN the catalog maps "angular-developer" to provider_skill_id "angular/skills/angular-developer"
 WHEN  the user runs: agentsync skill install angular-developer
 THEN  the CLI resolves to https://github.com/angular/skills/archive/HEAD.zip#skills/angular-developer
@@ -178,7 +178,7 @@ AND   the external resolution path is unchanged
 
 ### SC-03: Suggest detects and recommends dallay skills
 
-```
+```text
 GIVEN a project with Dockerfiles detected
 WHEN  the user runs: agentsync skill suggest
 THEN  "docker-expert" appears in recommendations
@@ -187,7 +187,7 @@ AND   its source shows "dallay/agents-skills"
 
 ### SC-04: Community submits a new skill via PR
 
-```
+```text
 GIVEN a contributor creates skills/terraform/SKILL.md with valid manifest
 WHEN  they open a PR to dallay/agents-skills
 THEN  CI validates the manifest automatically
@@ -197,7 +197,7 @@ AND   a follow-up PR to agentsync adds the catalog entry
 
 ### SC-05: Catalog drift detection
 
-```
+```text
 GIVEN "dallay/agents-skills/old-skill" is in catalog.v1.toml
 BUT   skills/old-skill/ was deleted from agents-skills repo
 WHEN  the agentsync CI integrity check runs

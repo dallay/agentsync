@@ -31,7 +31,7 @@ skills.sh search API, which:
 
 ### Hybrid monorepo approach
 
-```
+```text
 dallay/agents-skills/          <-- NEW REPO: dallay-owned skill content
 dallay/agentsync/              <-- EXISTING: CLI + embedded catalog (catalog.v1.toml)
 External repos (angular/skills, vercel-labs/next-skills, ...)  <-- UNCHANGED

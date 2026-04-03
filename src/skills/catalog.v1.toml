@@ -1160,12 +1160,12 @@ packages = ["@neondatabase/serverless"]
 [[technologies]]
 id = "playwright"
 name = "Playwright"
-skills = ["currents-dev/playwright-best-practices-skill/playwright-best-practices"]
+skills = ["currents-dev/playwright-best-practices-skill/playwright-best-practices", "dallay/agents-skills/webapp-testing"]
 min_confidence = "medium"
 
 [technologies.detect]
 packages = ["@playwright/test", "playwright"]
-config_files = ["playwright.config.ts", "playwright.config.js"]
+config_files = ["playwright.config.ts", "playwright.config.js", "playwright.config.mjs"]
 
 [[technologies]]
 id = "expo"
@@ -1601,16 +1601,6 @@ min_confidence = "medium"
 file_extensions = [".sql"]
 config_files = ["knexfile.js", "knexfile.ts", "ormconfig.json", "ormconfig.ts"]
 
-# --- Web App Testing (Playwright) ---
-
-[[technologies]]
-id = "webapp_testing"
-name = "Web App Testing"
-skills = ["dallay/agents-skills/webapp-testing"]
-min_confidence = "medium"
-
-[technologies.detect]
-config_files = ["playwright.config.ts", "playwright.config.js", "playwright.config.mjs"]
 
 # =============================================================================
 # Combos
