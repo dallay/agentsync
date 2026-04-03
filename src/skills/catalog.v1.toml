@@ -980,6 +980,222 @@ local_skill_id = "openapi-to-application-code"
 title = "OpenAPI to Application Code"
 summary = "Generate application code from OpenAPI/Swagger specifications."
 
+[[skills]]
+provider_skill_id = "dotnet/skills"
+local_skill_id = "dotnet-skills"
+title = "C# / .NET Development"
+summary = "Official .NET skills for C#, EF Core, ASP.NET, and more."
+
+[[skills]]
+provider_skill_id = "dallay/agents-skills/go-development"
+local_skill_id = "go-development"
+title = "Go Development"
+summary = "Go best practices, error handling, concurrency, testing, and project structure."
+
+[[skills]]
+provider_skill_id = "dallay/agents-skills/ruby-development"
+local_skill_id = "ruby-development"
+title = "Ruby Development"
+summary = "Ruby best practices, gems, blocks, testing with RSpec/Minitest."
+
+[[skills]]
+provider_skill_id = "dallay/agents-skills/php-development"
+local_skill_id = "php-development"
+title = "PHP Development"
+summary = "Modern PHP 8.x+ best practices, Composer, PSR standards, testing."
+
+[[skills]]
+provider_skill_id = "dallay/agents-skills/elixir-development"
+local_skill_id = "elixir-development"
+title = "Elixir Development"
+summary = "Elixir/OTP patterns, GenServer, Supervisors, Phoenix, Ecto."
+
+[[skills]]
+provider_skill_id = "dallay/agents-skills/zig-development"
+local_skill_id = "zig-development"
+title = "Zig Development"
+summary = "Zig systems programming, comptime, error unions, allocators, C interop."
+
+[[skills]]
+provider_skill_id = "dallay/agents-skills/express-api"
+local_skill_id = "express-api"
+title = "Express.js API"
+summary = "Express.js server patterns, middleware, routing, error handling, security."
+
+[[skills]]
+provider_skill_id = "dallay/agents-skills/rails-development"
+local_skill_id = "rails-development"
+title = "Ruby on Rails"
+summary = "Rails conventions, ActiveRecord, migrations, testing with RSpec."
+
+[[skills]]
+provider_skill_id = "laravel/boost"
+local_skill_id = "laravel-boost"
+title = "Laravel Development"
+summary = "Official Laravel skills for Livewire, Flux UI, and best practices."
+
+[[skills]]
+provider_skill_id = "dallay/agents-skills/jest-testing"
+local_skill_id = "jest-testing"
+title = "Jest Testing"
+summary = "Jest testing patterns, mocking, async tests, snapshot testing."
+
+[[skills]]
+provider_skill_id = "dallay/agents-skills/cypress-e2e"
+local_skill_id = "cypress-e2e"
+title = "Cypress E2E Testing"
+summary = "Cypress end-to-end testing patterns, custom commands, API mocking."
+
+[[skills]]
+provider_skill_id = "dallay/agents-skills/testing-library"
+local_skill_id = "testing-library"
+title = "Testing Library"
+summary = "User-centric component testing with @testing-library for React, Vue, DOM."
+
+[[skills]]
+provider_skill_id = "dallay/agents-skills/kubernetes-orchestration"
+local_skill_id = "kubernetes-orchestration"
+title = "Kubernetes Orchestration"
+summary = "Kubernetes deployments, services, config, health probes, and scaling."
+
+[[skills]]
+provider_skill_id = "dallay/agents-skills/helm-charts"
+local_skill_id = "helm-charts"
+title = "Helm Charts"
+summary = "Helm chart development, templates, values, hooks, and best practices."
+
+[[skills]]
+provider_skill_id = "awslabs/agent-plugins"
+local_skill_id = "aws-agent-plugins"
+title = "AWS Development"
+summary = "Official AWS Labs skills for Lambda, CDK, and cloud services."
+
+[[skills]]
+provider_skill_id = "googlecloudplatform/devrel-demos"
+local_skill_id = "gcp-devrel"
+title = "Google Cloud Platform"
+summary = "Official GCP skills for Cloud Run, agent architecture, and more."
+
+[[skills]]
+provider_skill_id = "hashicorp/agent-skills"
+local_skill_id = "hashicorp-terraform"
+title = "Terraform"
+summary = "Official HashiCorp Terraform skills for IaC, modules, testing, and providers."
+
+[[skills]]
+provider_skill_id = "pulumi/agent-skills"
+local_skill_id = "pulumi-iac"
+title = "Pulumi IaC"
+summary = "Official Pulumi skills for infrastructure as code across cloud providers."
+
+[[skills]]
+provider_skill_id = "dallay/agents-skills/solidjs-development"
+local_skill_id = "solidjs-development"
+title = "Solid.js Development"
+summary = "Solid.js reactive patterns, signals, fine-grained reactivity, SolidStart."
+
+[[skills]]
+provider_skill_id = "dallay/agents-skills/qwik-development"
+local_skill_id = "qwik-development"
+title = "Qwik Development"
+summary = "Qwik framework patterns, resumability, QwikCity routing."
+
+[[skills]]
+provider_skill_id = "dallay/agents-skills/swift-ios-development"
+local_skill_id = "swift-ios-development"
+title = "Swift/iOS Development"
+summary = "Swift and iOS patterns, UIKit, SwiftUI, async/await, testing."
+
+[[skills]]
+provider_skill_id = "remix-run/agent-skills"
+local_skill_id = "remix-agent-skills"
+title = "Remix/React Router"
+summary = "Official Remix skills for React Router framework, declarative, and data modes."
+
+[[skills]]
+provider_skill_id = "flutter/skills"
+local_skill_id = "flutter-skills"
+title = "Flutter Development"
+summary = "Official Flutter skills for layouts, state, animation, testing, and more."
+
+[[skills]]
+provider_skill_id = "dallay/agents-skills/eslint-config"
+local_skill_id = "eslint-config"
+title = "ESLint Configuration"
+summary = "ESLint flat config, rules, TypeScript ESLint, custom rules."
+
+[[skills]]
+provider_skill_id = "dallay/agents-skills/prettier-formatting"
+local_skill_id = "prettier-formatting"
+title = "Prettier Formatting"
+summary = "Prettier code formatting setup, config, editor and ESLint integration."
+
+[[skills]]
+provider_skill_id = "dallay/agents-skills/postgresql-development"
+local_skill_id = "postgresql-development"
+title = "PostgreSQL Development"
+summary = "PostgreSQL schema design, indexing, CTEs, JSONB, performance tuning."
+
+[[skills]]
+provider_skill_id = "dallay/agents-skills/tensorflow-ml"
+local_skill_id = "tensorflow-ml"
+title = "TensorFlow ML"
+summary = "TensorFlow/Keras model building, training, data pipelines, transfer learning."
+
+[[skills]]
+provider_skill_id = "nrwl/nx-ai-agents-config"
+local_skill_id = "nx-workspace"
+title = "Nx Workspace"
+summary = "Official Nx skills for monorepo workspace management and CI."
+
+[[skills]]
+provider_skill_id = "storybookjs/react-native"
+local_skill_id = "storybook-rn"
+title = "Storybook"
+summary = "Official Storybook skills for component development and testing."
+
+[[skills]]
+provider_skill_id = "biomejs/biome"
+local_skill_id = "biome-linter"
+title = "Biome Linter"
+summary = "Official Biome skills for linting, formatting, and ESLint migration."
+
+[[skills]]
+provider_skill_id = "mongodb/agent-skills"
+local_skill_id = "mongodb-skills"
+title = "MongoDB Development"
+summary = "Official MongoDB skills for schema design, connections, and queries."
+
+[[skills]]
+provider_skill_id = "redis/agent-skills"
+local_skill_id = "redis-skills"
+title = "Redis Development"
+summary = "Official Redis skills for caching, data structures, and best practices."
+
+[[skills]]
+provider_skill_id = "langchain-ai/langchain-skills"
+local_skill_id = "langchain-skills"
+title = "LangChain"
+summary = "Official LangChain skills for AI agents, orchestration, and LangSmith."
+
+[[skills]]
+provider_skill_id = "openai/skills"
+local_skill_id = "openai-skills"
+title = "OpenAI SDK"
+summary = "Official OpenAI skills for API usage, assistants, and tools."
+
+[[skills]]
+provider_skill_id = "pytorch/pytorch"
+local_skill_id = "pytorch-skills"
+title = "PyTorch"
+summary = "Official PyTorch skills for ML development, PR review, and triaging."
+
+[[skills]]
+provider_skill_id = "huggingface/skills"
+local_skill_id = "huggingface-skills"
+title = "Hugging Face"
+summary = "Official Hugging Face skills for transformers, model training, and publishing."
+
 # =============================================================================
 # Technologies
 # =============================================================================
@@ -1012,6 +1228,383 @@ min_confidence = "medium"
 
 [technologies.detect]
 config_files = ["pyproject.toml", "uv.lock", "poetry.lock", "requirements.txt"]
+
+# --- Additional languages ---
+
+[[technologies]]
+id = "go"
+name = "Go"
+skills = ["dallay/agents-skills/go-development"]
+min_confidence = "medium"
+
+[technologies.detect]
+config_files = ["go.mod", "go.sum"]
+file_extensions = [".go"]
+
+[[technologies]]
+id = "ruby"
+name = "Ruby"
+skills = ["dallay/agents-skills/ruby-development"]
+min_confidence = "medium"
+
+[technologies.detect]
+config_files = ["Gemfile", "Gemfile.lock", ".ruby-version"]
+
+[[technologies]]
+id = "php"
+name = "PHP"
+skills = ["dallay/agents-skills/php-development"]
+min_confidence = "medium"
+
+[technologies.detect]
+config_files = ["composer.json", "composer.lock"]
+file_extensions = [".php"]
+
+[[technologies]]
+id = "dotnet"
+name = "C# / .NET"
+skills = ["dotnet/skills"]
+min_confidence = "medium"
+
+[technologies.detect]
+config_files = ["global.json"]
+file_extensions = [".cs", ".csproj", ".sln"]
+
+[[technologies]]
+id = "elixir"
+name = "Elixir"
+skills = ["dallay/agents-skills/elixir-development"]
+min_confidence = "medium"
+
+[technologies.detect]
+config_files = ["mix.exs", "mix.lock"]
+
+[[technologies]]
+id = "zig"
+name = "Zig"
+skills = ["dallay/agents-skills/zig-development"]
+min_confidence = "medium"
+
+[technologies.detect]
+config_files = ["build.zig", "build.zig.zon"]
+
+# --- Backend frameworks ---
+
+[[technologies]]
+id = "express"
+name = "Express.js"
+skills = ["dallay/agents-skills/express-api"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["express"]
+
+[[technologies]]
+id = "rails"
+name = "Ruby on Rails"
+skills = ["dallay/agents-skills/rails-development"]
+min_confidence = "medium"
+
+[technologies.detect]
+config_files = ["Gemfile", "config/routes.rb", "Rakefile"]
+
+[technologies.detect.config_file_content]
+files = ["Gemfile"]
+patterns = ["rails"]
+
+[[technologies]]
+id = "laravel"
+name = "Laravel"
+skills = ["laravel/boost"]
+min_confidence = "medium"
+
+[technologies.detect]
+config_files = ["artisan"]
+
+[technologies.detect.config_file_content]
+files = ["composer.json"]
+patterns = ["laravel/framework"]
+
+[[technologies]]
+id = "aspnet"
+name = "ASP.NET"
+skills = ["dotnet/skills"]
+min_confidence = "medium"
+
+[technologies.detect.config_file_content]
+files = ["*.csproj"]
+patterns = ["Microsoft\\.AspNetCore"]
+
+# --- Testing frameworks ---
+
+[[technologies]]
+id = "jest"
+name = "Jest"
+skills = ["dallay/agents-skills/jest-testing"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["jest"]
+config_files = ["jest.config.js", "jest.config.ts", "jest.config.cjs", "jest.config.mjs"]
+
+[[technologies]]
+id = "cypress"
+name = "Cypress"
+skills = ["dallay/agents-skills/cypress-e2e"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["cypress"]
+config_files = ["cypress.config.js", "cypress.config.ts", "cypress/"]
+
+[[technologies]]
+id = "testing_library"
+name = "Testing Library"
+skills = ["dallay/agents-skills/testing-library"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["@testing-library/react", "@testing-library/vue", "@testing-library/svelte", "@testing-library/dom", "@testing-library/jest-dom"]
+
+# --- Cloud/Infra ---
+
+[[technologies]]
+id = "aws"
+name = "AWS"
+skills = ["awslabs/agent-plugins"]
+min_confidence = "medium"
+
+[technologies.detect]
+package_patterns = ["^@aws-sdk/", "^aws-"]
+config_files = ["samconfig.toml", "cdk.json", "serverless.yml", "template.yaml"]
+
+[[technologies]]
+id = "gcp"
+name = "Google Cloud Platform"
+skills = ["googlecloudplatform/devrel-demos"]
+min_confidence = "medium"
+
+[technologies.detect]
+package_patterns = ["^@google-cloud/"]
+config_files = ["app.yaml"]
+
+[[technologies]]
+id = "terraform"
+name = "Terraform"
+skills = ["hashicorp/agent-skills"]
+min_confidence = "medium"
+
+[technologies.detect]
+config_files = ["terraform.tfvars", ".terraform.lock.hcl"]
+file_extensions = [".tf"]
+
+[[technologies]]
+id = "kubernetes"
+name = "Kubernetes"
+skills = ["dallay/agents-skills/kubernetes-orchestration"]
+min_confidence = "medium"
+
+[technologies.detect]
+config_files = ["kustomization.yaml", "kustomization.yml"]
+
+[[technologies]]
+id = "helm"
+name = "Helm"
+skills = ["dallay/agents-skills/helm-charts"]
+min_confidence = "medium"
+
+[technologies.detect]
+config_files = ["Chart.yaml"]
+
+[[technologies]]
+id = "pulumi"
+name = "Pulumi"
+skills = ["pulumi/agent-skills"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["@pulumi/pulumi", "@pulumi/aws", "@pulumi/azure", "@pulumi/gcp"]
+config_files = ["Pulumi.yaml"]
+
+# --- Additional frontend/mobile ---
+
+[[technologies]]
+id = "solidjs"
+name = "Solid.js"
+skills = ["dallay/agents-skills/solidjs-development"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["solid-js"]
+config_files = ["solid-start.config.ts", "solid-start.config.js"]
+
+[[technologies]]
+id = "remix"
+name = "Remix"
+skills = ["remix-run/agent-skills"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["@remix-run/react", "@remix-run/node", "@remix-run/cloudflare"]
+
+[[technologies]]
+id = "qwik"
+name = "Qwik"
+skills = ["dallay/agents-skills/qwik-development"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["@builder.io/qwik"]
+
+[[technologies]]
+id = "flutter"
+name = "Flutter"
+skills = ["flutter/skills"]
+min_confidence = "medium"
+
+[technologies.detect]
+config_files = ["pubspec.yaml"]
+
+[technologies.detect.config_file_content]
+files = ["pubspec.yaml"]
+patterns = ["flutter"]
+
+[[technologies]]
+id = "swift_ios"
+name = "Swift/iOS"
+skills = ["dallay/agents-skills/swift-ios-development"]
+min_confidence = "medium"
+
+[technologies.detect]
+file_extensions = [".swift"]
+
+# --- Dev tooling ---
+
+[[technologies]]
+id = "nx"
+name = "Nx"
+skills = ["nrwl/nx-ai-agents-config"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["nx", "@nx/workspace"]
+config_files = ["nx.json"]
+
+[[technologies]]
+id = "storybook"
+name = "Storybook"
+skills = ["storybookjs/react-native"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["storybook", "@storybook/react", "@storybook/vue3", "@storybook/angular"]
+config_files = [".storybook/"]
+
+[[technologies]]
+id = "eslint"
+name = "ESLint"
+skills = ["dallay/agents-skills/eslint-config"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["eslint"]
+config_files = ["eslint.config.js", "eslint.config.mjs", "eslint.config.cjs", ".eslintrc.json", ".eslintrc.js", ".eslintrc.yml"]
+
+[[technologies]]
+id = "biome"
+name = "Biome"
+skills = ["biomejs/biome"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["@biomejs/biome"]
+config_files = ["biome.json", "biome.jsonc"]
+
+[[technologies]]
+id = "prettier"
+name = "Prettier"
+skills = ["dallay/agents-skills/prettier-formatting"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["prettier"]
+config_files = [".prettierrc", ".prettierrc.json", ".prettierrc.yml", ".prettierrc.js", "prettier.config.js", "prettier.config.mjs"]
+
+# --- Databases ---
+
+[[technologies]]
+id = "mongodb"
+name = "MongoDB"
+skills = ["mongodb/agent-skills"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["mongoose", "mongodb"]
+
+[[technologies]]
+id = "redis"
+name = "Redis"
+skills = ["redis/agent-skills"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["redis", "ioredis", "@redis/client", "@upstash/redis"]
+
+[[technologies]]
+id = "postgresql"
+name = "PostgreSQL"
+skills = ["dallay/agents-skills/postgresql-development"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["pg", "postgres", "@vercel/postgres"]
+
+# --- AI/ML ---
+
+[[technologies]]
+id = "langchain"
+name = "LangChain"
+skills = ["langchain-ai/langchain-skills"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["langchain", "@langchain/core", "@langchain/openai", "@langchain/anthropic"]
+
+[[technologies]]
+id = "openai_sdk"
+name = "OpenAI SDK"
+skills = ["openai/skills"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["openai"]
+
+[[technologies]]
+id = "tensorflow"
+name = "TensorFlow"
+skills = ["dallay/agents-skills/tensorflow-ml"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["@tensorflow/tfjs", "@tensorflow/tfjs-node"]
+
+[[technologies]]
+id = "pytorch"
+name = "PyTorch"
+skills = ["pytorch/pytorch"]
+min_confidence = "medium"
+
+[technologies.detect]
+file_extensions = [".pth"]
+
+[[technologies]]
+id = "huggingface"
+name = "Hugging Face"
+skills = ["huggingface/skills"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["@huggingface/inference", "@huggingface/hub"]
 
 [[technologies]]
 id = "astro"
