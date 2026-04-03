@@ -5,70 +5,118 @@ version = "v1"
 # =============================================================================
 
 [[skills]]
-provider_skill_id = "accessibility"
+provider_skill_id = "dallay/agents-skills/accessibility"
 local_skill_id = "accessibility"
 title = "Accessibility"
 summary = "Audit and improve web accessibility following WCAG guidance."
 
 [[skills]]
-provider_skill_id = "best-practices"
+provider_skill_id = "dallay/agents-skills/best-practices"
 local_skill_id = "best-practices"
 title = "Best Practices"
 summary = "Apply modern development best practices for security, compatibility, and code quality."
 
 [[skills]]
-provider_skill_id = "core-web-vitals"
+provider_skill_id = "dallay/agents-skills/core-web-vitals"
 local_skill_id = "core-web-vitals"
 title = "Core Web Vitals"
 summary = "Optimize LCP, INP, and CLS for better page experience."
 
 [[skills]]
-provider_skill_id = "docker-expert"
+provider_skill_id = "dallay/agents-skills/docker-expert"
 local_skill_id = "docker-expert"
 title = "Docker Expert"
 summary = "Improve containerization, image optimization, and Compose workflows."
 
 [[skills]]
-provider_skill_id = "frontend-design"
+provider_skill_id = "dallay/agents-skills/frontend-design"
 local_skill_id = "frontend-design"
 title = "Frontend Design"
 summary = "Create polished, production-grade frontend interfaces."
 
 [[skills]]
-provider_skill_id = "github-actions"
+provider_skill_id = "dallay/agents-skills/github-actions"
 local_skill_id = "github-actions"
 title = "GitHub Actions"
 summary = "Build and review robust GitHub Actions workflows."
 
 [[skills]]
-provider_skill_id = "makefile"
+provider_skill_id = "dallay/agents-skills/makefile"
 local_skill_id = "makefile"
 title = "Makefile"
 summary = "Author clean, maintainable, portable GNU Make automation."
 
 [[skills]]
-provider_skill_id = "performance"
+provider_skill_id = "dallay/agents-skills/performance"
 local_skill_id = "performance"
 title = "Performance"
 summary = "Optimize application performance and loading behavior."
 
 [[skills]]
-provider_skill_id = "pinned-tag"
+provider_skill_id = "dallay/agents-skills/pinned-tag"
 local_skill_id = "pinned-tag"
 title = "Pinned Tag"
 summary = "Pin mutable GitHub Actions tags to immutable commit SHAs."
 
 [[skills]]
-provider_skill_id = "rust-async-patterns"
+provider_skill_id = "dallay/agents-skills/rust-async-patterns"
 local_skill_id = "rust-async-patterns"
 title = "Rust Async Patterns"
 summary = "Use Tokio and idiomatic async Rust implementation patterns."
 
 [[skills]]
-provider_skill_id = "seo"
+provider_skill_id = "dallay/agents-skills/seo"
 local_skill_id = "seo"
 title = "SEO"
 summary = "Improve search engine visibility and metadata quality."
+
+[[skills]]
+provider_skill_id = "dallay/agents-skills/brainstorming"
+local_skill_id = "brainstorming"
+title = "Brainstorming"
+summary = "Creative exploration of user intent, requirements and design before implementation."
+
+[[skills]]
+provider_skill_id = "dallay/agents-skills/grafana-dashboards"
+local_skill_id = "grafana-dashboards"
+title = "Grafana Dashboards"
+summary = "Create and manage production Grafana dashboards for real-time visualization."
+
+[[skills]]
+provider_skill_id = "dallay/agents-skills/markdown-a11y"
+local_skill_id = "markdown-a11y"
+title = "Markdown Accessibility"
+summary = "Markdown accessibility review based on GitHub's best practices for inclusive documentation."
+
+[[skills]]
+provider_skill_id = "dallay/agents-skills/pr-creator"
+local_skill_id = "pr-creator"
+title = "PR Creator"
+summary = "Create pull requests following repository established templates and standards."
+
+[[skills]]
+provider_skill_id = "dallay/agents-skills/skill-creator"
+local_skill_id = "skill-creator"
+title = "Skill Creator"
+summary = "Creates new AI agent skills following a generic Agent Skills specification."
+
+[[skills]]
+provider_skill_id = "dallay/agents-skills/sql-optimization-patterns"
+local_skill_id = "sql-optimization-patterns"
+title = "SQL Optimization"
+summary = "SQL query optimization, indexing strategies, and EXPLAIN analysis."
+
+[[skills]]
+provider_skill_id = "dallay/agents-skills/web-quality-audit"
+local_skill_id = "web-quality-audit"
+title = "Web Quality Audit"
+summary = "Comprehensive web quality audit covering performance, accessibility, SEO, and best practices."
+
+[[skills]]
+provider_skill_id = "dallay/agents-skills/webapp-testing"
+local_skill_id = "webapp-testing"
+title = "Web App Testing"
+summary = "Toolkit for interacting with and testing local web applications using Playwright."
 
 # =============================================================================
 # Skills — external provider skills (from autoskills / skills.sh ecosystem)
@@ -917,7 +965,7 @@ summary = "Build Express.js server applications."
 [[technologies]]
 id = "rust"
 name = "Rust"
-skills = ["rust-async-patterns"]
+skills = ["dallay/agents-skills/rust-async-patterns"]
 min_confidence = "medium"
 
 [technologies.detect]
@@ -926,7 +974,7 @@ config_files = ["Cargo.toml"]
 [[technologies]]
 id = "node_typescript"
 name = "Node/TypeScript"
-skills = ["best-practices"]
+skills = ["dallay/agents-skills/best-practices"]
 min_confidence = "medium"
 
 [technologies.detect]
@@ -935,7 +983,7 @@ config_files = ["package.json", "tsconfig.json"]
 [[technologies]]
 id = "python"
 name = "Python"
-skills = ["best-practices"]
+skills = ["dallay/agents-skills/best-practices"]
 min_confidence = "medium"
 
 [technologies.detect]
@@ -945,11 +993,11 @@ config_files = ["pyproject.toml", "uv.lock", "poetry.lock", "requirements.txt"]
 id = "astro"
 name = "Astro"
 skills = [
-  "frontend-design",
-  "accessibility",
-  "performance",
-  "core-web-vitals",
-  "seo",
+  "dallay/agents-skills/frontend-design",
+  "dallay/agents-skills/accessibility",
+  "dallay/agents-skills/performance",
+  "dallay/agents-skills/core-web-vitals",
+  "dallay/agents-skills/seo",
   "astrolicious/agent-skills/astro",
 ]
 min_confidence = "medium"
@@ -961,7 +1009,7 @@ config_files = ["astro.config.mjs", "astro.config.js", "astro.config.ts"]
 [[technologies]]
 id = "github_actions"
 name = "GitHub Actions"
-skills = ["github-actions", "pinned-tag"]
+skills = ["dallay/agents-skills/github-actions", "dallay/agents-skills/pinned-tag"]
 min_confidence = "medium"
 reason_template = "Recommended because {technology} workflows were detected from {evidence}."
 
@@ -971,7 +1019,7 @@ config_files = [".github/workflows"]
 [[technologies]]
 id = "docker"
 name = "Docker"
-skills = ["docker-expert"]
+skills = ["dallay/agents-skills/docker-expert"]
 min_confidence = "medium"
 
 [technologies.detect]
@@ -980,7 +1028,7 @@ config_files = ["Dockerfile", "compose.yml", "compose.yaml", "docker-compose.yml
 [[technologies]]
 id = "make"
 name = "Make"
-skills = ["makefile"]
+skills = ["dallay/agents-skills/makefile"]
 min_confidence = "medium"
 
 [technologies.detect]
@@ -1530,6 +1578,41 @@ min_confidence = "medium"
 [technologies.detect]
 file_extensions = [".html", ".htm", ".css", ".scss", ".sass", ".less", ".vue", ".svelte", ".jsx", ".tsx", ".twig", ".tpl", ".ejs", ".hbs", ".pug", ".njk"]
 
+# --- Grafana ---
+
+[[technologies]]
+id = "grafana"
+name = "Grafana"
+skills = ["dallay/agents-skills/grafana-dashboards"]
+min_confidence = "medium"
+
+[technologies.detect]
+config_files = ["grafana.ini", "provisioning/dashboards"]
+file_extensions = [".json"]
+
+# --- SQL ---
+
+[[technologies]]
+id = "sql"
+name = "SQL"
+skills = ["dallay/agents-skills/sql-optimization-patterns"]
+min_confidence = "medium"
+
+[technologies.detect]
+file_extensions = [".sql"]
+config_files = ["knexfile.js", "knexfile.ts", "ormconfig.json", "ormconfig.ts"]
+
+# --- Web App Testing (Playwright) ---
+
+[[technologies]]
+id = "webapp_testing"
+name = "Web App Testing"
+skills = ["dallay/agents-skills/webapp-testing"]
+min_confidence = "medium"
+
+[technologies.detect]
+config_files = ["playwright.config.ts", "playwright.config.js", "playwright.config.mjs"]
+
 # =============================================================================
 # Combos
 # =============================================================================
@@ -1538,7 +1621,7 @@ file_extensions = [".html", ".htm", ".css", ".scss", ".sass", ".less", ".vue", "
 id = "astro-github-actions"
 name = "Astro + GitHub Actions"
 requires = ["astro", "github_actions"]
-skills = ["github-actions"]
+skills = ["dallay/agents-skills/github-actions"]
 enabled = false
 
 [[combos]]

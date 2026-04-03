@@ -515,8 +515,15 @@ impl Provider for OverrideCatalogProvider {
             provider: "override-provider".to_string(),
             version: "2026.03".to_string(),
             schema_version: "v1".to_string(),
-            skills: vec![provider_skill("best-practices", "best-practices")],
-            technologies: vec![provider_technology("rust", "Rust", &["best-practices"])],
+            skills: vec![provider_skill(
+                "dallay/agents-skills/best-practices",
+                "best-practices",
+            )],
+            technologies: vec![provider_technology(
+                "rust",
+                "Rust",
+                &["dallay/agents-skills/best-practices"],
+            )],
             combos: vec![],
         }))
     }

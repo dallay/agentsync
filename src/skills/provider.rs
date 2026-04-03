@@ -82,7 +82,7 @@ struct SearchSkill {
 pub struct SkillsShProvider;
 
 /// Well-known repo names where skills live in a `skills/` subdirectory.
-const SKILLS_REPO_NAMES: &[&str] = &["skills", "agent-skills", "agentic-skills"];
+const SKILLS_REPO_NAMES: &[&str] = &["skills", "agent-skills", "agentic-skills", "agents-skills"];
 
 impl SkillsShProvider {
     /// Resolve a catalog-style `owner/repo/skill-name` ID deterministically by

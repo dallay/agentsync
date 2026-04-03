@@ -78,6 +78,15 @@ fn resolve_deterministic_skills_repo_adds_skills_prefix() {
         info.download_url,
         "https://github.com/krutikJain/agent-skills/archive/HEAD.zip#skills/android-kotlin-core"
     );
+
+    // "agents-skills" is also in SKILLS_REPO_NAMES (dallay monorepo)
+    let info = provider
+        .resolve("dallay/agents-skills/docker-expert")
+        .unwrap();
+    assert_eq!(
+        info.download_url,
+        "https://github.com/dallay/agents-skills/archive/HEAD.zip#skills/docker-expert"
+    );
 }
 
 #[test]
