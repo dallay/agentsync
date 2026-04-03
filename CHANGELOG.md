@@ -8,6 +8,35 @@
 
 * update README.md for accuracy and formatting ([#159](https://github.com/dallay/agentsync/issues/159)) ([8cb9f19](https://github.com/dallay/agentsync/commit/8cb9f19b2302456f0e4536f7a37ad9af5645e605))
 
+## [1.38.0](https://github.com/dallay/agentsync/compare/v1.37.0...v1.38.0) (2026-04-03)
+
+
+### Features
+
+* add dallay/agents-skills deterministic resolution and catalog entries ([#296](https://github.com/dallay/agentsync/issues/296)) ([cdcd4ab](https://github.com/dallay/agentsync/commit/cdcd4ab378e01f4a3efb6ac2fb40f2d002418da2))
+
+
+### Performance
+
+* implement caching for NestedGlob and project root ([#293](https://github.com/dallay/agentsync/issues/293)) ([039a868](https://github.com/dallay/agentsync/commit/039a86827fb20c07b907a9ace47e2a62c25a3f7c))
+
+
+### Documentation
+
+* add managed agent config layout section to wizard-generated AGENTS.md ([705836b](https://github.com/dallay/agentsync/commit/705836b58c6ddd5d8245d0b35ba2951e4b2f8cc7))
+* improve formatting and clarity in proposal, spec, and tasks documentation ([93d5eb3](https://github.com/dallay/agentsync/commit/93d5eb3883c1bebd75289f362ec2f3b469f064e2))
+* mark TASK-07 as complete in tasks.md ([cca30e6](https://github.com/dallay/agentsync/commit/cca30e6c82adee247c3e198f005c7dc25d633c09))
+
+
+### Chores
+
+* **deps:** bump the npm_and_yarn group across 2 directories with 1 update ([#289](https://github.com/dallay/agentsync/issues/289)) ([0d72b77](https://github.com/dallay/agentsync/commit/0d72b77028142d2ffe8c9178716c3a9bd72cf7b8))
+* **deps:** lock file maintenance ([#292](https://github.com/dallay/agentsync/issues/292)) ([244590a](https://github.com/dallay/agentsync/commit/244590a425b437ea597f7a9af8920deeb69e3aa9))
+* **deps:** update dependency @dallay/agentsync to v1.37.0 ([#291](https://github.com/dallay/agentsync/issues/291)) ([b4e2fb8](https://github.com/dallay/agentsync/commit/b4e2fb846d19d973f3b423d25c46c3cb6a4e6afa))
+* **deps:** update dependency @iconify/json to v2.2.458 ([#294](https://github.com/dallay/agentsync/issues/294)) ([0cc22fe](https://github.com/dallay/agentsync/commit/0cc22fe236db2ee9de30e7543d8da8152c70d3b0))
+* **deps:** update docker/login-action action to v4.1.0 ([#295](https://github.com/dallay/agentsync/issues/295)) ([4fb81a5](https://github.com/dallay/agentsync/commit/4fb81a58ee3412fc85d045b5b662cca25017ca79))
+* **deps:** update rust crate zip to v8.5.0 ([#285](https://github.com/dallay/agentsync/issues/285)) ([56b5cef](https://github.com/dallay/agentsync/commit/56b5cef976b16aab53b55ea16cc0183f93b10274))
+
 ## [1.37.0](https://github.com/dallay/agentsync/compare/v1.36.0...v1.37.0) (2026-04-01)
 
 
