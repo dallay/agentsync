@@ -96,6 +96,13 @@ impl Linker {
         &self.config
     }
 
+    /// Drop discovery caches after filesystem mutations that can affect later
+    /// nested-glob walks or destination safety checks in the same run.
+    fn invalidate_discovery_caches(&self) {
+        self.glob_cache.borrow_mut().clear();
+        self.canonical_project_root.borrow_mut().take();
+    }
+
     fn canonicalize_uncached(&self, path: &Path) -> Result<PathBuf> {
         fs::canonicalize(path)
             .with_context(|| format!("Failed to canonicalize path: {}", path.display()))
@@ -217,8 +224,7 @@ impl Linker {
         self.ensured_dirs.borrow_mut().clear();
         self.ensured_compressed.borrow_mut().clear();
         self.path_cache.borrow_mut().clear();
-        self.glob_cache.borrow_mut().clear();
-        self.canonical_project_root.borrow_mut().take();
+        self.invalidate_discovery_caches();
 
         let mut result = SyncResult::default();
 
@@ -447,6 +453,7 @@ impl Linker {
         self.revalidate_destination_path(dest)?;
         fs::write(dest, &compressed)
             .with_context(|| format!("Failed to write compressed AGENTS.md: {}", dest.display()))?;
+        self.invalidate_discovery_caches();
 
         self.ensured_compressed
             .borrow_mut()
@@ -504,6 +511,7 @@ impl Linker {
                 } else {
                     self.revalidate_destination_path(dest)?;
                     remove_symlink(dest)?;
+                    self.invalidate_discovery_caches();
                     if options.verbose {
                         println!(
                             "  {} Removed old symlink: {} (was -> {})",
@@ -529,6 +537,7 @@ impl Linker {
                 self.revalidate_destination_path(&backup)?;
                 remove_existing_path(&backup)?;
                 fs::rename(dest, &backup)?;
+                self.invalidate_discovery_caches();
                 println!(
                     "  {} Backed up: {} -> {}",
                     "!".yellow(),
@@ -556,6 +565,7 @@ impl Linker {
             #[cfg(unix)]
             std::os::unix::fs::symlink(&relative_source, dest)
                 .with_context(|| format!("Failed to create symlink: {}", dest.display()))?;
+            self.invalidate_discovery_caches();
 
             #[cfg(windows)]
             {
@@ -564,6 +574,7 @@ impl Linker {
                 } else {
                     std::os::windows::fs::symlink_file(&relative_source, dest)?;
                 }
+                self.invalidate_discovery_caches();
             }
 
             println!(
@@ -1040,6 +1051,7 @@ impl Linker {
                                     } else {
                                         self.revalidate_destination_path(&dest)?;
                                         fs::remove_file(&dest)?;
+                                        self.invalidate_discovery_caches();
                                         println!("  {} Removed: {}", "✔".green(), dest.display());
                                     }
                                     result.removed += 1;
@@ -1072,6 +1084,7 @@ impl Linker {
                                     } else {
                                         self.revalidate_destination_path(&entry.path())?;
                                         fs::remove_file(entry.path())?;
+                                        self.invalidate_discovery_caches();
                                         println!(
                                             "  {} Removed: {}",
                                             "✔".green(),
@@ -1099,6 +1112,7 @@ impl Linker {
                             } else {
                                 self.revalidate_destination_path(&dest)?;
                                 remove_symlink(&dest)?;
+                                self.invalidate_discovery_caches();
                                 println!("  {} Removed: {}", "✔".green(), dest.display());
                             }
                             result.removed += 1;
@@ -1132,6 +1146,7 @@ impl Linker {
                                 } else {
                                     self.revalidate_destination_path(&dest)?;
                                     fs::remove_file(&dest)?;
+                                    self.invalidate_discovery_caches();
                                     println!("  {} Removed: {}", "✔".green(), dest.display());
                                 }
                                 result.removed += 1;
@@ -3341,6 +3356,77 @@ mod tests {
                 .path()
                 .join("modules/core-kmp/CLAUDE.md")
                 .is_symlink()
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_nested_glob_invalidates_cache_after_compressed_write() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        fs::write(&config_path, "source_dir = \".\"\n").unwrap();
+
+        let search_root = temp_dir.path().join("workspace");
+        let old_dir = search_root.join("old");
+        let new_dir = search_root.join("new");
+        fs::create_dir_all(&old_dir).unwrap();
+        fs::write(old_dir.join("legacy.compact.md"), "# old").unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let dry_run_options = SyncOptions {
+            dry_run: true,
+            ..Default::default()
+        };
+
+        linker
+            .process_nested_glob(
+                &search_root,
+                "**/*.compact.md",
+                &[],
+                "linked/{relative_path}/{file_name}",
+                &dry_run_options,
+            )
+            .unwrap();
+
+        fs::rename(
+            old_dir.join("legacy.compact.md"),
+            old_dir.join("legacy.md.bak"),
+        )
+        .unwrap();
+
+        let source = temp_dir.path().join("AGENTS.md");
+        fs::write(&source, "# compressed").unwrap();
+        let compressed_dest = new_dir.join(COMPRESSED_AGENTS_MD_NAME);
+        linker
+            .write_compressed_agents_md(&source, &compressed_dest, &SyncOptions::default())
+            .unwrap();
+
+        let result = linker
+            .process_nested_glob(
+                &search_root,
+                "**/*.compact.md",
+                &[],
+                "linked/{relative_path}/{file_name}",
+                &SyncOptions::default(),
+            )
+            .unwrap();
+
+        assert_eq!(result.created, 1);
+
+        let new_link = temp_dir.path().join("linked/new/AGENTS.compact.md");
+        let old_link = temp_dir.path().join("linked/old/legacy.compact.md");
+        assert!(
+            new_link.is_symlink(),
+            "Expected fresh nested-glob discovery"
+        );
+        assert!(
+            !old_link.exists(),
+            "Expected removed files to be omitted from refreshed nested-glob discovery"
         );
     }
 
