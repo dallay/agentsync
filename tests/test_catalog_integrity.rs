@@ -9,6 +9,12 @@
 //! ```bash
 //! RUN_E2E=1 cargo test --test test_catalog_integrity -- --nocapture
 //! ```
+//!
+//! **Rate limits:** Unauthenticated GitHub API requests are limited to 60/hour.
+//! Set `GITHUB_TOKEN` to use authenticated requests (5,000/hour):
+//! ```bash
+//! RUN_E2E=1 GITHUB_TOKEN="ghp_..." cargo test --test test_catalog_integrity -- --nocapture
+//! ```
 
 use agentsync::skills::catalog::EmbeddedSkillCatalog;
 
@@ -43,6 +49,14 @@ fn catalog_dallay_skill_urls_are_reachable() {
         .build()
         .expect("failed to build HTTP client");
 
+    // Optional: use GITHUB_TOKEN for authenticated requests (5,000 req/hr vs 60).
+    let github_token = std::env::var("GITHUB_TOKEN").ok();
+    if github_token.is_some() {
+        eprintln!("Using GITHUB_TOKEN for authenticated API requests");
+    } else {
+        eprintln!("No GITHUB_TOKEN set — using unauthenticated requests (60/hr limit)");
+    }
+
     let mut failures: Vec<String> = Vec::new();
 
     for provider_skill_id in &dallay_skills {
@@ -50,16 +64,21 @@ fn catalog_dallay_skill_urls_are_reachable() {
             .strip_prefix(DALLAY_SKILLS_PREFIX)
             .unwrap();
 
-        // Use the GitHub Contents API to check for the skill directory.
+        // Use the GitHub Contents API to check for the SKILL.md file.
         let url = format!(
             "https://api.github.com/repos/dallay/agents-skills/contents/skills/{}/SKILL.md",
             skill_name
         );
 
-        let resp = client
+        let mut request = client
             .get(&url)
-            .header("User-Agent", "agentsync-catalog-integrity-test")
-            .send();
+            .header("User-Agent", "agentsync-catalog-integrity-test");
+
+        if let Some(ref token) = github_token {
+            request = request.header("Authorization", format!("Bearer {}", token));
+        }
+
+        let resp = request.send();
 
         match resp {
             Ok(r) if r.status().is_success() => {
