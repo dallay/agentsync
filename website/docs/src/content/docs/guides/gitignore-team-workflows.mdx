@@ -4,6 +4,7 @@ description: Choose the default managed gitignore workflow or the committed-dest
 ---
 
 import BaseLink from "../../../components/BaseLink.astro";
+import CommandTabs from "../../../components/CommandTabs.astro";
 
 Use this guide when your team needs to decide how `agentsync` should interact with `.gitignore`.
 
@@ -70,25 +71,19 @@ The `# START <marker>` / `# END <marker>` lines use the configured marker exactl
 
 1. Initialize or update AgentSync config.
 
-   ```bash
-   agentsync init
-   # or
-   agentsync init --wizard
-   ```
+   <CommandTabs command="init" />
+   or
+   <CommandTabs command="init --wizard" />
 
 2. Keep `[gitignore].enabled = true` (or omit it and use the default).
 
 3. Preview the first reconciliation if you want to review changes before writing them.
 
-   ```bash
-   agentsync apply --dry-run
-   ```
+   <CommandTabs command="apply --dry-run" />
 
 4. Apply the config.
 
-   ```bash
-   agentsync apply
-   ```
+   <CommandTabs command="apply" />
 
 5. Review and stage the expected changes:
    - `.agents/agentsync.toml`
@@ -115,9 +110,7 @@ In practical review terms, a maintainer should treat the `.gitignore` block upda
 3. If your repo already uses a package-manager `prepare` hook, let that hook run `agentsync apply` for you.
 4. If no hook runs automatically, run:
 
-   ```bash
-   agentsync apply
-   ```
+   <CommandTabs command="apply" />
 
 Expected local outcome:
 
@@ -179,15 +172,11 @@ marker = "AI Agent Symlinks"
 
 2. Preview the change if you want to confirm cleanup first.
 
-   ```bash
-   agentsync apply --dry-run
-   ```
+   <CommandTabs command="apply --dry-run" />
 
 3. Reconcile the repository.
 
-   ```bash
-   agentsync apply
-   ```
+   <CommandTabs command="apply" />
 
 4. Review and stage the expected changes:
    - `.agents/agentsync.toml`
@@ -218,9 +207,7 @@ After that cleanup, future `agentsync apply` runs leave `.gitignore` alone unles
 3. If your project uses a `prepare` hook, it can still run `agentsync apply`.
 4. Otherwise run:
 
-   ```bash
-   agentsync apply
-   ```
+   <CommandTabs command="apply" />
 
 Expected local outcome:
 
@@ -234,10 +221,8 @@ Teams in this workflow can still use the same hook patterns from <BaseLink href=
 
 Use `--no-gitignore` when you want to skip `.gitignore` reconciliation for a single invocation.
 
-```bash
-agentsync apply --no-gitignore
-agentsync apply --dry-run --no-gitignore
-```
+<CommandTabs command="apply --no-gitignore" />
+<CommandTabs command="apply --dry-run --no-gitignore" />
 
 This is stricter and narrower than changing config:
 

@@ -4,6 +4,7 @@ description: Quickstart for installing and using agentsync in your project.
 ---
 
 import BaseLink from "../../../components/BaseLink.astro";
+import CommandTabs from '../../../components/CommandTabs.astro';
 
 `agentsync` is a fast, portable CLI tool for synchronizing AI agent configurations across multiple coding assistants using symbolic links.
 
@@ -98,9 +99,7 @@ cargo install --git https://github.com/dallay/agentsync
 
 Run `init` in your project root to create the default structure:
 
-```bash
-agentsync init
-```
+<CommandTabs command="init" />
 
 This creates a `.agents/` directory with an initial `agentsync.toml` and an `AGENTS.md` file.
 
@@ -108,9 +107,7 @@ This creates a `.agents/` directory with an initial `agentsync.toml` and an `AGE
 
 If you already have agent configuration files (like `CLAUDE.md`, `.cursor/`, or `.github/copilot-instructions.md`), use the interactive wizard:
 
-```bash
-agentsync init --wizard
-```
+<CommandTabs command="init --wizard" />
 
 The wizard will:
 1. **Scan** your project for existing agent-related files — instruction files (CLAUDE.md, .windsurfrules, OPENCODE.md, etc.), skill directories (.claude/skills/, .cursor/skills/, .codex/skills/, and more), command directories (.claude/commands/, .gemini/commands/, .opencode/command/), and MCP configurations
@@ -159,9 +156,7 @@ See <BaseLink href="/reference/configuration/">Configuration Reference</BaseLink
 
 Create the symbolic links in your project root:
 
-```bash
-agentsync apply
-```
+<CommandTabs command="apply" />
 
 This will create files like `CLAUDE.md` and `.github/copilot-instructions.md` that point back to your single source of truth in `.agents/`.
 

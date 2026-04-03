@@ -1,0 +1,34 @@
+---
+/**
+ * Reusable tabbed command display for AgentSync CLI commands.
+ * Shows the same command across all supported package manager runners,
+ * synchronized via Starlight's syncKey so the user's choice persists.
+ *
+ * Usage in MDX:
+ *   import CommandTabs from '../../../components/CommandTabs.astro';
+ *   <CommandTabs command="apply" />
+ *   <CommandTabs command="skill suggest --json" />
+ */
+import { Tabs, TabItem, Code } from "@astrojs/starlight/components";
+
+interface Props {
+	command: string;
+}
+
+const { command } = Astro.props;
+
+const variants = [
+	{ label: "npm", code: `npx @dallay/agentsync ${command}` },
+	{ label: "pnpm", code: `pnpm dlx @dallay/agentsync ${command}` },
+	{ label: "Yarn", code: `yarn dlx @dallay/agentsync ${command}` },
+	{ label: "Bun", code: `bunx @dallay/agentsync ${command}` },
+];
+---
+
+<Tabs syncKey="pkg">
+	{variants.map(({ label, code }) => (
+		<TabItem label={label}>
+			<Code code={code} lang="bash" />
+		</TabItem>
+	))}
+</Tabs>

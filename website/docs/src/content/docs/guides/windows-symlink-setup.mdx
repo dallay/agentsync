@@ -4,6 +4,7 @@ description: Prepare a native Windows or WSL environment for reliable AgentSync 
 ---
 
 import BaseLink from "../../../components/BaseLink.astro";
+import CommandTabs from "../../../components/CommandTabs.astro";
 
 Use this guide when you run AgentSync on Windows and need a reliable setup path for symlink creation.
 
@@ -45,10 +46,8 @@ If that succeeds, your shell is usually ready for AgentSync-managed symlinks.
 
 Then run:
 
-```powershell
-agentsync apply
-agentsync status
-```
+<CommandTabs command="apply" />
+<CommandTabs command="status" />
 
 What you want to see:
 
@@ -77,15 +76,17 @@ Use verification to separate environment problems from normal workflow questions
 
 ### Native Windows
 
+<CommandTabs command="status" />
+
 ```powershell
-agentsync status
 Get-Item .\CLAUDE.md | Format-List FullName,LinkType,Target
 ```
 
 ### WSL
 
+<CommandTabs command="status" />
+
 ```bash
-agentsync status
 ls -l CLAUDE.md
 ```
 
@@ -117,11 +118,9 @@ Keep recovery focused on Windows setup readiness:
 
 For example, if you switched from a broken native attempt to a working WSL flow:
 
-```bash
-agentsync clean
-agentsync apply
-agentsync status
-```
+<CommandTabs command="clean" />
+<CommandTabs command="apply" />
+<CommandTabs command="status" />
 
 Use `clean` only when you intentionally want AgentSync to remove its managed links before recreating them.
 
