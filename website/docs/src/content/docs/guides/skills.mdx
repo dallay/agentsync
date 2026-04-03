@@ -310,7 +310,7 @@ AgentSync resolves skills from two kinds of sources:
 
 ### dallay-owned skills (`dallay/agents-skills`)
 
-The **[dallay/agents-skills](https://github.com/dallay/agents-skills)** repository is the canonical home for all skills maintained by the AgentSync team. These include accessibility, docker-expert, github-actions, rust-async-patterns, and many more.
+The **[dallay/agents-skills](https://github.com/dallay/agents-skills)** repository is the canonical home for all skills maintained by the AgentSync team. These include accessibility, docker-expert, github-actions, rust-async-patterns, and more. For the full, up-to-date list of skills, see the repository.
 
 When you install a dallay-owned skill, the CLI resolves it **deterministically** — it constructs the download URL directly from the catalog entry without making any search API call:
 
@@ -319,6 +319,8 @@ agentsync skill install docker-expert
 → resolves to: dallay/agents-skills/docker-expert
 → downloads: https://github.com/dallay/agents-skills/archive/HEAD.zip#skills/docker-expert
 ```
+
+In this URL, the `#skills/docker-expert` fragment identifies the `skills/docker-expert` subdirectory inside the downloaded ZIP archive, so the CLI can extract and install just that skill directory.
 
 This means installs are fast, reliable, and work even when external search APIs are unavailable.
 
@@ -334,7 +336,7 @@ agentsync skill install angular-developer
 → downloads: https://github.com/angular/skills/archive/HEAD.zip#skills/angular-developer
 ```
 
-For skills without a catalog entry, AgentSync falls back to the skills.sh search API.
+For skill IDs that don't match the `owner/repo/skill-name` pattern (simple IDs), AgentSync falls back to the skills.sh search API after first checking the catalog.
 
 ## Providers and sources
 
@@ -355,7 +357,7 @@ When an install/update fails, re-run with higher verbosity or use `--json` to ge
 
 ## Security & safe usage
 
-- The CLI validates skill identifiers and rejects path traversal (no `/` or `\` and no absolute paths). This protects projects from accidental overwrites. The validation is implemented in the CLI: see `src/commands/skill.rs` (function `validate_skill_id`).
+- The CLI validates skill identifiers and rejects path traversal (no `/` or `\` and no absolute paths). This protects projects from accidental overwrites. The validation logic lives in `src/skills/catalog.rs` (function `validate_local_skill_id`), which is invoked by the CLI.
 - Treat third-party skill archives as untrusted input. Review the contents before installing in sensitive environments.
 
 ## Links & further reading

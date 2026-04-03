@@ -1,13 +1,3 @@
-## [1.28.0](https://github.com/dallay/agentsync/compare/v1.27.2...v1.28.0) (2026-02-09)
-
-### ✨ Features
-
-* add GitHub URL conversion for ZIP downloads and implement condition-based waiting skill ([#160](https://github.com/dallay/agentsync/issues/160)) ([86be61b](https://github.com/dallay/agentsync/commit/86be61b94fa83f3d9fc106fb6e6e4714a44fbb47))
-
-### 📝 Documentation
-
-* update README.md for accuracy and formatting ([#159](https://github.com/dallay/agentsync/issues/159)) ([8cb9f19](https://github.com/dallay/agentsync/commit/8cb9f19b2302456f0e4536f7a37ad9af5645e605))
-
 ## [1.38.0](https://github.com/dallay/agentsync/compare/v1.37.0...v1.38.0) (2026-04-03)
 
 
@@ -235,6 +225,16 @@
 * **deps:** update github actions ([#221](https://github.com/dallay/agentsync/issues/221)) ([42a4349](https://github.com/dallay/agentsync/commit/42a43490303f935a802abec2809a0462e0f1cca6))
 * **deps:** update node.js to v24.14.0 ([#222](https://github.com/dallay/agentsync/issues/222)) ([e02702a](https://github.com/dallay/agentsync/commit/e02702afa38a99025ec380978b526a34b6f138d8))
 * remove old Spec-Driven Development scripts and templates ([0a9209c](https://github.com/dallay/agentsync/commit/0a9209c4204496894d0525c433da066f9f5e6a24))
+
+## [1.28.0](https://github.com/dallay/agentsync/compare/v1.27.2...v1.28.0) (2026-02-09)
+
+### ✨ Features
+
+* add GitHub URL conversion for ZIP downloads and implement condition-based waiting skill ([#160](https://github.com/dallay/agentsync/issues/160)) ([86be61b](https://github.com/dallay/agentsync/commit/86be61b94fa83f3d9fc106fb6e6e4714a44fbb47))
+
+### 📝 Documentation
+
+* update README.md for accuracy and formatting ([#159](https://github.com/dallay/agentsync/issues/159)) ([8cb9f19](https://github.com/dallay/agentsync/commit/8cb9f19b2302456f0e4536f7a37ad9af5645e605))
 
 ## [1.27.2](https://github.com/dallay/agentsync/compare/v1.27.1...v1.27.2) (2026-02-08)
 
