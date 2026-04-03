@@ -70,15 +70,24 @@ fn catalog_dallay_skill_urls_are_reachable() {
             skill_name
         );
 
-        let mut request = client
-            .get(&url)
-            .header("User-Agent", "agentsync-catalog-integrity-test");
+        let send_request = || {
+            let mut req = client
+                .get(&url)
+                .header("User-Agent", "agentsync-catalog-integrity-test");
+            if let Some(ref token) = github_token {
+                req = req.header("Authorization", format!("Bearer {}", token));
+            }
+            req.send()
+        };
 
-        if let Some(ref token) = github_token {
-            request = request.header("Authorization", format!("Bearer {}", token));
-        }
-
-        let resp = request.send();
+        let resp = match send_request() {
+            Ok(r) => Ok(r),
+            Err(_) => {
+                // Retry once after a short delay to avoid flaky CI failures.
+                std::thread::sleep(std::time::Duration::from_secs(2));
+                send_request()
+            }
+        };
 
         match resp {
             Ok(r) if r.status().is_success() => {
@@ -93,7 +102,10 @@ fn catalog_dallay_skill_urls_are_reachable() {
                 ));
             }
             Err(e) => {
-                failures.push(format!("{} → network error: {}", provider_skill_id, e));
+                failures.push(format!(
+                    "{} → network error (after retry): {}",
+                    provider_skill_id, e
+                ));
             }
         }
     }
