@@ -1,5 +1,5 @@
 change: agents-skills-monorepo
-current_phase: verify
+current_phase: archive
 completed:
   - explore
   - propose
@@ -8,5 +8,7 @@ completed:
   - tasks
   - apply
   - verify
-next: archive
+  - archive
+next: none
 updated: 2026-04-03T00:00:00Z
+archived: true

@@ -1,5 +1,5 @@
 change: init-wizard-agent-config-layout
-current_phase: verify
+current_phase: archive
 completed:
   - explore
   - propose
@@ -8,5 +8,7 @@ completed:
   - tasks
   - apply
   - verify
-next: archive
-updated: 2026-04-01
+  - archive
+next: none
+archived: true
+updated: 2026-04-03

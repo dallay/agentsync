@@ -2,128 +2,157 @@
 
 ## Purpose
 
-Defines how AgentSync reconciles the managed `.gitignore` section during `apply`, including enabled,
-disabled, dry-run, and opt-out behavior, so repository state matches the configured gitignore policy
-without disturbing unmanaged lines.
+Define the expected behavior for AgentSync-managed `.gitignore` entries, including how managed
+entries are scoped, how user-authored entries are preserved, and how audit-style checks evaluate
+generated output.
 
 ## Requirements
 
-### Requirement: Apply Removes Managed Gitignore Block When Management Is Disabled
+### Requirement: Root-Level Managed File Destinations Are Root-Scoped
 
-When `[gitignore].enabled = false`, `agentsync apply` MUST reconcile `.gitignore` by removing an
-existing AgentSync-managed block identified by the configured marker.
+The system MUST render auto-generated managed `.gitignore` entries for concrete repository-root file
+destinations as root-scoped patterns.
 
-The cleanup MUST remove only the matching managed block and MUST preserve unmanaged content before
-and after that block.
+For this requirement, a concrete repository-root file destination is an auto-generated managed entry
+that represents a single file at the repository root and does not already contain a slash.
 
-The cleanup MUST be idempotent. If no matching managed block exists, `agentsync apply` MUST leave
-`.gitignore` unchanged and MUST NOT introduce a replacement block while management remains disabled.
+#### Scenario: Root-level managed file destination gains leading slash
 
-The product default for gitignore management MUST remain unchanged; this requirement applies only
-when the effective configuration disables gitignore management.
+- GIVEN managed `.gitignore` generation is enabled
+- AND an auto-generated managed destination resolves to `AGENTS.md` at the repository root
+- WHEN the managed `.gitignore` entries are assembled
+- THEN the resulting managed entry MUST be `/AGENTS.md`
+- AND the resulting managed entry MUST NOT be `AGENTS.md`
 
-#### Scenario: Apply removes stale managed block when disabled
+#### Scenario: Nested canonical file is not matched by root-scoped managed destination
 
-- GIVEN a repository `.gitignore` contains unmanaged lines and an AgentSync-managed block using the
-  effective marker
-- AND the effective configuration sets `[gitignore].enabled = false`
-- WHEN the user runs `agentsync apply`
-- THEN the managed block MUST be removed from `.gitignore`
-- AND the unmanaged lines before and after the removed block MUST be preserved
-- AND no new managed `.gitignore` block SHALL be written
+- GIVEN managed `.gitignore` generation is enabled
+- AND the managed output contains the root-scoped entry `/AGENTS.md`
+- AND the repository contains `.agents/AGENTS.md`
+- WHEN Git evaluates the managed ignore pattern
+- THEN the managed entry MUST apply only to the repository-root `AGENTS.md`
+- AND `.agents/AGENTS.md` MUST remain unaffected by that managed entry
 
-#### Scenario: Repeat apply is idempotent after cleanup
+### Requirement: Root-Level Managed Backup Entries Are Root-Scoped
 
-- GIVEN `[gitignore].enabled = false`
-- AND a prior `agentsync apply` has already removed the matching managed `.gitignore` block
-- WHEN the user runs `agentsync apply` again
-- THEN `.gitignore` MUST remain unchanged
-- AND the command MUST NOT recreate a managed block
-- AND the command MUST NOT rewrite `.gitignore` solely to express a no-op cleanup state
+The system MUST render auto-generated managed backup ignore entries for repository-root managed
+files as root-scoped patterns.
 
-#### Scenario: Cleanup respects custom markers
+#### Scenario: Root-level backup entry gains leading slash
 
-- GIVEN a repository `.gitignore` contains an AgentSync-managed block delimited by a custom
-  configured marker
-- AND `[gitignore].enabled = false`
-- WHEN the user runs `agentsync apply`
-- THEN AgentSync MUST remove the block matching that custom marker
-- AND AgentSync MUST NOT remove text associated with any different marker value
+- GIVEN managed `.gitignore` generation is enabled
+- AND an auto-generated managed destination resolves to `AGENTS.md` at the repository root
+- WHEN the corresponding backup ignore entry is assembled
+- THEN the resulting managed backup entry MUST be `/AGENTS.md.bak`
+- AND the resulting managed backup entry MUST NOT be `AGENTS.md.bak`
 
----
+#### Scenario: Root-level backup entry does not match nested backup file
 
-### Requirement: Dry-Run Reports Disabled Gitignore Cleanup Without Writing
+- GIVEN managed `.gitignore` generation is enabled
+- AND the managed output contains `/AGENTS.md.bak`
+- AND the repository contains `.agents/AGENTS.md.bak`
+- WHEN Git evaluates the managed backup pattern
+- THEN the managed backup entry MUST apply only to the repository-root backup file
+- AND `.agents/AGENTS.md.bak` MUST remain unaffected by that managed entry
 
-When `[gitignore].enabled = false` and a matching managed `.gitignore` block exists,
-`agentsync apply --dry-run` MUST report that the managed `.gitignore` block would be removed.
+### Requirement: Known Root-Level Ignore Patterns Are Root-Scoped
 
-Dry-run MUST NOT modify `.gitignore` or any other file.
+The system MUST render known auto-generated managed ignore patterns for concrete repository-root
+files as root-scoped patterns.
 
-If no matching managed block exists, dry-run MUST NOT report a cleanup that would not occur.
+This requirement applies to built-in managed patterns whose intended location is the repository
+root, including canonical root files and known generated root artifacts.
 
-#### Scenario: Dry-run reports pending cleanup
+#### Scenario: Known root-level generated patterns are normalized
 
-- GIVEN a repository `.gitignore` contains a matching AgentSync-managed block
-- AND `[gitignore].enabled = false`
-- WHEN the user runs `agentsync apply --dry-run`
-- THEN the output MUST report that the managed `.gitignore` block would be removed
-- AND the `.gitignore` file on disk MUST remain unchanged
+- GIVEN managed `.gitignore` generation is enabled
+- AND the built-in managed ignore set includes root-level filenames such as `.mcp.json`,
+  `opencode.json`, `CLAUDE.md`, `GEMINI.md`, and `WARP.md`
+- WHEN the managed `.gitignore` entries are assembled
+- THEN each root-level built-in managed filename MUST be emitted with a leading `/`
 
-#### Scenario: Dry-run with no matching managed block is a no-op
+#### Scenario: Existing slash-containing known pattern remains as authored
 
-- GIVEN a repository `.gitignore` does not contain a managed block matching the effective marker
-- AND `[gitignore].enabled = false`
-- WHEN the user runs `agentsync apply --dry-run`
-- THEN the output MUST NOT claim that `.gitignore` would be cleaned up
-- AND `.gitignore` MUST remain unchanged
+- GIVEN managed `.gitignore` generation is enabled
+- AND a built-in managed ignore pattern already contains a slash
+- WHEN the managed `.gitignore` entries are assembled
+- THEN that built-in managed ignore pattern MUST remain unchanged
+- AND the system MUST NOT prepend an additional `/` solely because the entry is managed
 
----
+### Requirement: Slash-Containing Generated Entries Remain Unchanged
 
-### Requirement: No-Gitignore Flag Strictly Opts Out Of Gitignore Reconciliation
+The system MUST NOT rewrite an auto-generated managed `.gitignore` entry that already contains a
+slash.
 
-When the user passes `--no-gitignore`, that flag MUST take precedence over gitignore enablement or
-disablement settings.
+#### Scenario: Generated nested destination is preserved verbatim
 
-With `--no-gitignore`, `agentsync apply` MUST NOT create, update, remove, or otherwise rewrite a
-managed `.gitignore` block.
+- GIVEN managed `.gitignore` generation is enabled
+- AND an auto-generated managed destination resolves to `src/api/CLAUDE.md`
+- WHEN the managed `.gitignore` entries are assembled
+- THEN the resulting managed entry MUST be `src/api/CLAUDE.md`
+- AND the system MUST NOT rewrite it to `/src/api/CLAUDE.md`
 
-This strict opt-out MUST apply equally to normal apply and dry-run behavior.
+#### Scenario: Generated nested backup entry is preserved verbatim
 
-#### Scenario: Disabled cleanup is skipped when no-gitignore is set
+- GIVEN managed `.gitignore` generation is enabled
+- AND an auto-generated managed backup entry resolves to `src/api/CLAUDE.md.bak`
+- WHEN the managed `.gitignore` entries are assembled
+- THEN the resulting managed backup entry MUST be `src/api/CLAUDE.md.bak`
+- AND the system MUST NOT rewrite it to `/src/api/CLAUDE.md.bak`
 
-- GIVEN a repository `.gitignore` contains a stale AgentSync-managed block
-- AND `[gitignore].enabled = false`
-- WHEN the user runs `agentsync apply --no-gitignore`
-- THEN `.gitignore` MUST remain unchanged
-- AND AgentSync MUST NOT remove the managed block
+### Requirement: Manual Gitignore Entries Remain Unchanged
 
-#### Scenario: Dry-run with no-gitignore does not report gitignore cleanup
+The system MUST NOT normalize, reinterpret, or rewrite user-supplied `[gitignore].entries`.
 
-- GIVEN a repository `.gitignore` contains a stale AgentSync-managed block
-- AND `[gitignore].enabled = false`
-- WHEN the user runs `agentsync apply --dry-run --no-gitignore`
-- THEN the output MUST NOT report a `.gitignore` cleanup action
-- AND `.gitignore` MUST remain unchanged
+User-authored entries SHALL retain their existing matching semantics exactly as configured, whether
+they are root-scoped, slash-containing, or bare filenames.
 
----
+#### Scenario: Manual bare filename remains bare
 
-### Requirement: Diagnostics Remain Aligned With Disabled Gitignore Policy
+- GIVEN a user configures `[gitignore].entries = ["AGENTS.md"]`
+- WHEN the effective `.gitignore` entries are assembled
+- THEN the user-supplied entry MUST remain `AGENTS.md`
+- AND the system MUST NOT rewrite it to `/AGENTS.md`
 
-When gitignore management is disabled, AgentSync diagnostics such as `doctor` MUST treat the absence
-of an AgentSync-managed `.gitignore` block as the expected healthy state.
+#### Scenario: Manual slash-containing pattern remains unchanged
 
-Diagnostics MUST NOT require a managed `.gitignore` block to exist when
-`[gitignore].enabled = false`.
+- GIVEN a user configures `[gitignore].entries = ["docs/AGENTS.md"]`
+- WHEN the effective `.gitignore` entries are assembled
+- THEN the user-supplied entry MUST remain `docs/AGENTS.md`
+- AND the system MUST NOT alter its spelling or scope
 
-This change MUST NOT alter the product default; it only clarifies that disabled gitignore management
-and successful cleanup are consistent with a healthy repository state.
+### Requirement: Gitignore Default Enablement Remains Unchanged
 
-#### Scenario: Doctor accepts cleaned state when gitignore is disabled
+The system MUST keep `[gitignore].enabled = true` as the product default.
 
-- GIVEN `[gitignore].enabled = false`
-- AND `.gitignore` does not contain a managed block matching the effective marker because cleanup
-  has already occurred
-- WHEN the user runs `agentsync doctor`
-- THEN doctor MUST treat the missing managed `.gitignore` block as expected for the configuration
-- AND doctor MUST NOT instruct the user to restore a managed `.gitignore` block while management
-  remains disabled
+#### Scenario: Default config still enables managed gitignore generation
+
+- GIVEN a configuration that does not explicitly set `[gitignore].enabled`
+- WHEN the configuration is loaded
+- THEN managed gitignore generation MUST remain enabled by default
+
+### Requirement: Audit Uses The Same Normalized Managed Entries
+
+Any doctor or audit behavior that evaluates managed `.gitignore` content MUST use the same
+normalized managed entry set that rendering uses.
+
+Doctor or audit checks MUST treat legacy unscoped managed root-file entries as drift when the
+normalized managed form is root-scoped.
+
+#### Scenario: Audit accepts normalized root-scoped managed entries
+
+- GIVEN managed `.gitignore` generation is enabled
+- AND the repository `.gitignore` managed section contains normalized entries such as `/AGENTS.md`
+  and `/AGENTS.md.bak`
+- WHEN `agentsync doctor` or an equivalent managed gitignore audit is run
+- THEN the audit MUST treat those normalized entries as the expected managed output
+
+#### Scenario: Audit flags legacy unscoped managed root entry as drift
+
+- GIVEN managed `.gitignore` generation is enabled
+- AND the repository `.gitignore` managed section contains a legacy unscoped managed entry
+  `AGENTS.md`
+- WHEN `agentsync doctor` or an equivalent managed gitignore audit is run
+- THEN the audit MUST report that managed `.gitignore` content is out of sync with the expected
+  normalized output
+- AND the expected managed output MUST use `/AGENTS.md`
