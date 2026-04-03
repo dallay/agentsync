@@ -304,6 +304,38 @@ skills = ["antfu/skills/vue", "frontend-design"]
 
 That TOML shape is already supported by the catalog model. But the repository would not start detecting Vue until the Rust detector also learned how to report `vue`.
 
+## Skill sources: owned vs external
+
+AgentSync resolves skills from two kinds of sources:
+
+### dallay-owned skills (`dallay/agents-skills`)
+
+The **[dallay/agents-skills](https://github.com/dallay/agents-skills)** repository is the canonical home for all skills maintained by the AgentSync team. These include accessibility, docker-expert, github-actions, rust-async-patterns, and many more.
+
+When you install a dallay-owned skill, the CLI resolves it **deterministically** — it constructs the download URL directly from the catalog entry without making any search API call:
+
+```
+agentsync skill install docker-expert
+→ resolves to: dallay/agents-skills/docker-expert
+→ downloads: https://github.com/dallay/agents-skills/archive/HEAD.zip#skills/docker-expert
+```
+
+This means installs are fast, reliable, and work even when external search APIs are unavailable.
+
+**Want to contribute a skill?** See the [CONTRIBUTING.md](https://github.com/dallay/agents-skills/blob/main/CONTRIBUTING.md) in the agents-skills repo for the skill directory structure, manifest format, quality expectations, and PR process.
+
+### External provider skills
+
+Skills maintained by external organizations (Angular, Vercel, Cloudflare, Expo, Stripe, etc.) are resolved from their respective GitHub repositories. These follow the same `owner/repo/skill-name` pattern:
+
+```
+agentsync skill install angular-developer
+→ resolves to: angular/skills/angular-developer
+→ downloads: https://github.com/angular/skills/archive/HEAD.zip#skills/angular-developer
+```
+
+For skills without a catalog entry, AgentSync falls back to the skills.sh search API.
+
 ## Providers and sources
 
 AgentSync supports installing skills from multiple providers (for example skills.sh) as well as local archives or directories. The install logic accepts ZIP/tar archives or local paths.
@@ -328,6 +360,7 @@ When an install/update fails, re-run with higher verbosity or use `--json` to ge
 
 ## Links & further reading
 
+- **[dallay/agents-skills](https://github.com/dallay/agents-skills)** — Curated skill repository (dallay-maintained skills, community contributions)
 - Manifest parser (source): https://github.com/dallay/agentsync/blob/main/src/skills/manifest.rs
 - CLI skill command implementation: https://github.com/dallay/agentsync/blob/main/src/commands/skill.rs
 - Skills spec (work in progress): https://github.com/dallay/agentsync/blob/main/specs/001-skills-sh-integration/README.md

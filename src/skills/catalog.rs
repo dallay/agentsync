@@ -94,6 +94,11 @@ impl ResolvedSkillCatalog {
         self.technologies.iter()
     }
 
+    /// Iterate over all skill definitions in the catalog.
+    pub fn skill_definitions(&self) -> impl Iterator<Item = &CatalogSkillDefinition> {
+        self.skill_definitions.values()
+    }
+
     /// Returns the human-readable name for a technology, falling back to the raw ID.
     pub fn technology_name<'a>(&'a self, id: &'a TechnologyId) -> &'a str {
         self.technologies

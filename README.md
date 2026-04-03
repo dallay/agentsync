@@ -48,6 +48,7 @@ locations.
 - 🖥️ **Cross-platform** - Linux, macOS, Windows
 - 🚀 **CI-friendly** - Gracefully skips when binary unavailable
 - ⚡ **Fast** - Single static binary, no runtime dependencies
+- 🧩 **Curated skills** - Install from the [dallay/agents-skills](https://github.com/dallay/agents-skills) collection or external providers
 
 ## Installation
 
@@ -515,6 +516,26 @@ If you need agentsync in CI, you can download the latest version automatically u
     tar xzf agentsync-${VERSION}-${PLATFORM}.tar.gz
     sudo mv agentsync-*/agentsync /usr/local/bin/
 ```
+
+## Skills
+
+AgentSync includes a curated skill catalog with 100+ skills across 40+ technologies. Skills are small bundles of AI-agent instructions that can be installed into your project.
+
+- **[dallay/agents-skills](https://github.com/dallay/agents-skills)** — Canonical home for all dallay-maintained skills. Community contributions welcome via PR.
+- **External providers** — Skills from Angular, Vercel, Cloudflare, Expo, Stripe, and many more are resolved from their respective repositories.
+
+```bash
+# Detect project technologies and get skill recommendations
+agentsync skill suggest
+
+# Install a skill
+agentsync skill install docker-expert
+
+# Install all recommended skills non-interactively
+agentsync skill suggest --install --all
+```
+
+See the [Skills Guide](https://dallay.github.io/agentsync/guides/skills/) for full documentation.
 
 ## Getting Started (Development)
 

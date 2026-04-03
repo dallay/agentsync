@@ -1,10 +1,11 @@
 change: agents-skills-monorepo
-current_phase: tasks
+current_phase: apply
 completed:
   - explore
   - propose
   - spec
   - design
   - tasks
-next: apply
+  - apply
+next: verify
 updated: 2026-04-03T00:00:00Z

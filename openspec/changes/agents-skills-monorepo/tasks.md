@@ -209,7 +209,7 @@ Verify:
 
 ## Phase 3: Catalog Integration (agentsync repo)
 
-### TASK-09: Verify resolver behavior for `dallay/agents-skills/*`
+### TASK-09: Verify resolver behavior for `dallay/agents-skills/*` ✅
 
 **Type:** Research / Implementation
 **Effort:** Medium
@@ -238,7 +238,7 @@ fn test_resolve_dallay_agents_skills_deterministic() {
 
 ---
 
-### TASK-10: Update catalog.v1.toml with new provider_skill_ids
+### TASK-10: Update catalog.v1.toml with new provider_skill_ids ✅
 
 **Type:** Implementation
 **Effort:** Medium
@@ -263,7 +263,7 @@ Update all dallay-owned skill entries:
 
 ---
 
-### TASK-11: Add catalog integrity E2E test
+### TASK-11: Add catalog integrity E2E test ✅
 
 **Type:** Testing
 **Effort:** Small
@@ -355,7 +355,7 @@ Add markdown link checking to CI to catch broken URLs in skill content.
 
 ## Phase 5: Documentation
 
-### TASK-16: Update agentsync skills guide
+### TASK-16: Update agentsync skills guide ✅
 
 **Type:** Documentation
 **Effort:** Medium
@@ -370,7 +370,7 @@ Update `website/docs/src/content/docs/guides/skills.mdx`:
 
 ---
 
-### TASK-17: Update agentsync README
+### TASK-17: Update agentsync README ✅
 
 **Type:** Documentation
 **Effort:** Small
