@@ -68,16 +68,24 @@ prepare_default_skill_sources() {
         accessibility \
         astrolicious-astro \
         best-practices \
+        brainstorming \
         core-web-vitals \
         docker-expert \
         frontend-design \
         github-actions \
+        grafana-dashboards \
         makefile \
+        markdown-a11y \
         performance \
         pinned-tag \
+        pr-creator \
         rust-async-patterns \
         seo \
-        typescript-advanced-types
+        skill-creator \
+        sql-optimization-patterns \
+        typescript-advanced-types \
+        web-quality-audit \
+        webapp-testing
 }
 
 wait_for_mock_provider() {
