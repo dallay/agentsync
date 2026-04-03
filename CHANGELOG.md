@@ -27,6 +27,19 @@
 * **deps:** update docker/login-action action to v4.1.0 ([#295](https://github.com/dallay/agentsync/issues/295)) ([4fb81a5](https://github.com/dallay/agentsync/commit/4fb81a58ee3412fc85d045b5b662cca25017ca79))
 * **deps:** update rust crate zip to v8.5.0 ([#285](https://github.com/dallay/agentsync/issues/285)) ([56b5cef](https://github.com/dallay/agentsync/commit/56b5cef976b16aab53b55ea16cc0183f93b10274))
 
+## [1.39.0](https://github.com/dallay/agentsync/compare/v1.38.0...v1.39.0) (2026-04-03)
+
+
+### Features
+
+* **suggest:** add 37 technology detections across 9 categories ([541b750](https://github.com/dallay/agentsync/commit/541b750f8a784a6e2b64b2b8678060ef0c7b0797))
+* **suggest:** add API technology detection — GraphQL, gRPC, tRPC, OpenAPI ([#309](https://github.com/dallay/agentsync/issues/309)) ([7bae96b](https://github.com/dallay/agentsync/commit/7bae96bc3e2c62a36a0068ff4411edc1d49471bc)), closes [#301](https://github.com/dallay/agentsync/issues/301)
+
+
+### Documentation
+
+* fix changelog ordering and multiple documentation inconsistencies ([#308](https://github.com/dallay/agentsync/issues/308)) ([2ccca0b](https://github.com/dallay/agentsync/commit/2ccca0b949598924f11f025f36f7a9d91a46d73d))
+
 ## [1.37.0](https://github.com/dallay/agentsync/compare/v1.36.0...v1.37.0) (2026-04-01)
 
 
