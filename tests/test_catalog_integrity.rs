@@ -52,7 +52,7 @@ fn catalog_dallay_skill_urls_are_reachable() {
 
         // Use the GitHub Contents API to check for the skill directory.
         let url = format!(
-            "https://api.github.com/repos/dallay/agents-skills/contents/skills/{}",
+            "https://api.github.com/repos/dallay/agents-skills/contents/skills/{}/SKILL.md",
             skill_name
         );
 

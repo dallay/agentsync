@@ -4,7 +4,7 @@
 |-------|-------|
 | **Change ID** | agents-skills-monorepo |
 | **Version** | 1.0 |
-| **Status** | Draft |
+| **Status** | Completed |
 
 ## Task Overview
 
@@ -378,9 +378,8 @@ Update `website/docs/src/content/docs/guides/skills.mdx`:
 
 Add to agentsync README:
 - Link to agents-skills repo in the Skills section
-- Badge for skills count
 
-**Acceptance:** README links to agents-skills
+**Acceptance:** README links to agents-skills (skills-count badge is a separate enhancement tracked by TASK-14)
 
 ---
 

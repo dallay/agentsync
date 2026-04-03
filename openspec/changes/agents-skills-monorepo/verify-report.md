@@ -91,7 +91,7 @@ cargo test --test test_catalog_integrity → 1 ignored (gated behind RUN_E2E=1, 
 
 | Decision | Followed? | Notes |
 |----------|-----------|-------|
-| DD-01: Separate repos, no submodule | ✅ Yes | `agents-skills` is independent at `/Users/acosta/Dev/agents-skills/`, no git submodule in agentsync |
+| DD-01: Separate repos, no submodule | ✅ Yes | `agents-skills` is an independent repository with no git submodule in agentsync |
 | DD-02: Repo naming + SKILLS_REPO_NAMES | ✅ Yes | `"agents-skills"` added to `SKILLS_REPO_NAMES` constant (line 85, provider.rs) |
 | DD-03: Skills directory convention | ✅ Yes | All skills under `skills/{skill-id}/` in repo root |
 | DD-04: CI validation as quality gate | ✅ Yes | validate-skills.yml implements thorough manifest validation |
