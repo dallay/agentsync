@@ -956,6 +956,30 @@ local_skill_id = "nodejs-express-server"
 title = "Node.js Express Server"
 summary = "Build Express.js server applications."
 
+[[skills]]
+provider_skill_id = "apollographql/skills/graphql-schema"
+local_skill_id = "graphql-schema"
+title = "GraphQL Schema Design"
+summary = "Design and implement GraphQL schemas with Apollo best practices."
+
+[[skills]]
+provider_skill_id = "dallay/agents-skills/grpc-api"
+local_skill_id = "grpc-api"
+title = "gRPC API Development"
+summary = "Build high-performance gRPC services with Protocol Buffers and streaming patterns."
+
+[[skills]]
+provider_skill_id = "dallay/agents-skills/trpc-type-safety"
+local_skill_id = "trpc-type-safety"
+title = "tRPC Type Safety"
+summary = "End-to-end type-safe APIs for TypeScript with React Query integration."
+
+[[skills]]
+provider_skill_id = "github/awesome-copilot/openapi-to-application-code"
+local_skill_id = "openapi-to-application-code"
+title = "OpenAPI to Application Code"
+summary = "Generate application code from OpenAPI/Swagger specifications."
+
 # =============================================================================
 # Technologies
 # =============================================================================
@@ -1600,6 +1624,48 @@ min_confidence = "medium"
 [technologies.detect]
 file_extensions = [".sql"]
 config_files = ["knexfile.js", "knexfile.ts", "ormconfig.json", "ormconfig.ts"]
+
+# --- API Technologies ---
+
+[[technologies]]
+id = "graphql"
+name = "GraphQL"
+skills = ["apollographql/skills/graphql-schema"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["graphql", "@apollo/client", "@apollo/server", "urql", "graphql-yoga", "@graphql-tools/schema"]
+config_files = [".graphqlrc", ".graphqlrc.json", ".graphqlrc.yaml", ".graphqlrc.yml", "graphql.config.ts", "graphql.config.js", "graphql.config.yml"]
+file_extensions = [".graphql", ".gql"]
+
+[[technologies]]
+id = "grpc"
+name = "gRPC"
+skills = ["dallay/agents-skills/grpc-api"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["@grpc/grpc-js", "@grpc/proto-loader", "grpc"]
+file_extensions = [".proto"]
+
+[[technologies]]
+id = "trpc"
+name = "tRPC"
+skills = ["dallay/agents-skills/trpc-type-safety"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["@trpc/server", "@trpc/client", "@trpc/react-query", "@trpc/next"]
+
+[[technologies]]
+id = "openapi"
+name = "OpenAPI"
+skills = ["github/awesome-copilot/openapi-to-application-code"]
+min_confidence = "medium"
+
+[technologies.detect]
+config_files = ["openapi.yaml", "openapi.yml", "openapi.json", "swagger.yaml", "swagger.yml", "swagger.json"]
+packages = ["swagger-ui-express", "@nestjs/swagger", "swagger-jsdoc", "openapi-typescript"]
 
 
 # =============================================================================
