@@ -162,7 +162,7 @@ Create a migration spreadsheet:
 
 ---
 
-### TASK-07: Migrate skill content to agents-skills repo
+### TASK-07: Migrate skill content to agents-skills repo ✅
 
 **Type:** Implementation
 **Effort:** Large
