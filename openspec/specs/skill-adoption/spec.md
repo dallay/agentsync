@@ -1290,7 +1290,8 @@ as the public contract.
     targets.
 24. `DEFAULT_CONFIG` remains valid TOML that parses into a `Config` struct.
 25. New tests cover each new scan entry, migration path, collision scenario, and config parsing.
-26. `agentsync init --wizard` generates a managed `Agent config layout` section in `.agents/AGENTS.md`
+26. `agentsync init --wizard` generates a managed `Agent config layout` section in
+    `.agents/AGENTS.md`
     derived from the wizard's final target layout.
 27. The managed layout section uses stable markers for idempotent replacement on `--force` reruns.
 28. The layout section reflects actual enabled destinations and sync-type-specific wording.

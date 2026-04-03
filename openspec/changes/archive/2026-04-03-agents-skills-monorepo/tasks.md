@@ -1,10 +1,10 @@
 # Task Breakdown: agents-skills Monorepo
 
-| Field | Value |
-|-------|-------|
+| Field         | Value                  |
+|---------------|------------------------|
 | **Change ID** | agents-skills-monorepo |
-| **Version** | 1.0 |
-| **Status** | Completed |
+| **Version**   | 1.0                    |
+| **Status**    | Completed              |
 
 ## Task Overview
 
@@ -27,10 +27,12 @@ Phase 5: Documentation        [3 tasks]  ──  Both repos
 **Dependencies:** None
 
 Create the repo on GitHub with:
+
 - Public visibility
 - MIT license
 - Main branch protection (require PR reviews, CI passing)
-- Description: "Curated AI agent skills for AgentSync — install, contribute, and manage reusable skills"
+- Description: "Curated AI agent skills for AgentSync — install, contribute, and manage reusable
+  skills"
 - Topics: `ai-agents`, `skills`, `agentsync`, `ai-coding-assistants`
 
 **Acceptance:** Repo exists and is accessible at `github.com/dallay/agents-skills`
@@ -59,6 +61,7 @@ agents-skills/
 ```
 
 **README.md content:**
+
 - Project description and purpose
 - Quick install example: `agentsync skill install <name>`
 - Link to full skill list
@@ -66,6 +69,7 @@ agents-skills/
 - Link to agentsync CLI
 
 **CONTRIBUTING.md content:**
+
 - Skill directory structure
 - SKILL.md manifest format with example
 - Naming conventions
@@ -84,6 +88,7 @@ agents-skills/
 **Dependencies:** TASK-02
 
 Create `.github/workflows/validate-skills.yml` that:
+
 1. Triggers on push to main and PRs touching `skills/**`
 2. Finds all `skills/*/SKILL.md` files
 3. Validates frontmatter (name, version, description, triggers)
@@ -93,6 +98,7 @@ Create `.github/workflows/validate-skills.yml` that:
 7. Reports clear error messages per file
 
 **Options:**
+
 - A) Shell script (zero dependencies, works immediately)
 - B) Rust binary using agentsync's manifest parser (more thorough, requires build)
 - C) Node.js script with gray-matter (middle ground)
@@ -111,6 +117,7 @@ exposes manifest validation as a library function.
 **Dependencies:** TASK-03
 
 Configure main branch protection:
+
 - Require PR reviews (1 reviewer minimum)
 - Require CI to pass (validate-skills workflow)
 - Require branches to be up-to-date
@@ -127,6 +134,7 @@ Configure main branch protection:
 **Dependencies:** TASK-02
 
 Add workflow to enforce conventional commit PR titles:
+
 - `feat:` — new skill
 - `fix:` — skill content fix
 - `docs:` — README/CONTRIBUTING changes
@@ -146,17 +154,18 @@ Add workflow to enforce conventional commit PR titles:
 
 For each skill in `catalog.v1.toml` where `provider_skill_id == local_skill_id`
 (the built-in pattern), determine:
+
 1. Where the skill content currently lives
 2. Whether it has a SKILL.md with valid frontmatter
 3. What the canonical content should be
 
 Create a migration spreadsheet:
 
-| Skill ID | Current Source | Has Valid Manifest | Action |
-|----------|---------------|-------------------|--------|
-| accessibility | skills.sh search | ? | Migrate |
-| docker-expert | skills.sh search | ? | Migrate |
-| ... | ... | ... | ... |
+| Skill ID      | Current Source   | Has Valid Manifest | Action  |
+|---------------|------------------|--------------------|---------|
+| accessibility | skills.sh search | ?                  | Migrate |
+| docker-expert | skills.sh search | ?                  | Migrate |
+| ...           | ...              | ...                | ...     |
 
 **Acceptance:** Complete inventory of all skills to migrate with source locations
 
@@ -169,12 +178,14 @@ Create a migration spreadsheet:
 **Dependencies:** TASK-02, TASK-06
 
 For each dallay-owned skill:
+
 1. Copy/create `skills/{skill-id}/SKILL.md` with valid frontmatter
 2. Include any supporting resources (templates, scripts)
 3. Ensure CI validation passes
 4. One PR per batch (5-10 skills per PR for manageable review)
 
 **Migration batches:**
+
 - Batch 1: Core web skills (accessibility, best-practices, performance, seo, core-web-vitals)
 - Batch 2: Frontend skills (frontend-design, webapp-testing, web-quality-audit)
 - Batch 3: DevOps skills (docker-expert, github-actions, makefile, grafana-dashboards)
@@ -192,12 +203,14 @@ For each dallay-owned skill:
 **Dependencies:** TASK-07
 
 Manually test:
+
 ```bash
 # Direct install from the new repo
 agentsync skill install accessibility --source https://github.com/dallay/agents-skills
 ```
 
 Verify:
+
 - ZIP download succeeds
 - Correct subdirectory extracted
 - SKILL.md validates
@@ -216,6 +229,7 @@ Verify:
 **Dependencies:** TASK-07
 
 Investigate `resolve_deterministic()` in `src/skills/provider.rs`:
+
 1. What subpath does `dallay/agents-skills/docker-expert` resolve to?
 2. Does the repo name `agents-skills` trigger the `skills/` prefix logic?
 3. If not, either:
@@ -256,6 +270,7 @@ Update all dallay-owned skill entries:
 ```
 
 **Acceptance:**
+
 - All dallay-owned skills use `dallay/agents-skills/*` format
 - External skills remain unchanged
 - `cargo test suggest_catalog` passes
@@ -306,8 +321,8 @@ when skills are added/removed on main. This is advisory only — no auto-modific
 # .github/workflows/notify-catalog.yml
 on:
   push:
-    branches: [main]
-    paths: ['skills/**']
+    branches: [ main ]
+    paths: [ 'skills/**' ]
 jobs:
   notify:
     runs-on: ubuntu-latest
@@ -331,6 +346,7 @@ jobs:
 **Dependencies:** TASK-07
 
 Add a dynamic badge showing skill count:
+
 ```markdown
 ![Skills](https://img.shields.io/badge/dynamic/json?url=...&label=skills&query=$.count)
 ```
@@ -362,6 +378,7 @@ Add markdown link checking to CI to catch broken URLs in skill content.
 **Dependencies:** TASK-10
 
 Update `website/docs/src/content/docs/guides/skills.mdx`:
+
 - Add section about the agents-skills repo
 - Link to CONTRIBUTING.md for skill authors
 - Explain the dual-source model (owned vs external)
@@ -377,9 +394,11 @@ Update `website/docs/src/content/docs/guides/skills.mdx`:
 **Dependencies:** TASK-10
 
 Add to agentsync README:
+
 - Link to agents-skills repo in the Skills section
 
-**Acceptance:** README links to agents-skills (skills-count badge is a separate enhancement tracked by TASK-14)
+**Acceptance:** README links to agents-skills (skills-count badge is a separate enhancement tracked
+by TASK-14)
 
 ---
 
@@ -390,6 +409,7 @@ Add to agentsync README:
 **Dependencies:** TASK-16
 
 New page in docs site: `/guides/creating-skills/`
+
 - Step-by-step guide to creating a skill
 - SKILL.md format reference
 - How to test locally

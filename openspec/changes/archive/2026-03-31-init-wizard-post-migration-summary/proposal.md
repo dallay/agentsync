@@ -15,7 +15,8 @@ mental model of what remains before the repo is fully reconciled.
 
 ### In Scope
 
-- Update wizard completion output to summarize migrated content, config creation, optional backup results, and required manual follow-up actions.
+- Update wizard completion output to summarize migrated content, config creation, optional backup
+  results, and required manual follow-up actions.
 
 - Explicitly explain that the wizard does **not** run `agentsync apply`, does **not** update
   `.gitignore`, and does **not** inspect or summarize git status.

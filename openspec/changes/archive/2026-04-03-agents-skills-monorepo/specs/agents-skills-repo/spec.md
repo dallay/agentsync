@@ -1,10 +1,10 @@
 # Specification: agents-skills Monorepo
 
-| Field | Value |
-|-------|-------|
+| Field         | Value                  |
+|---------------|------------------------|
 | **Change ID** | agents-skills-monorepo |
-| **Version** | 1.0 |
-| **Status** | Draft |
+| **Version**   | 1.0                    |
+| **Status**    | Draft                  |
 
 ## Requirements
 
@@ -73,7 +73,7 @@ name: skill-name          # Required. kebab-case, matches directory name
 version: 1.0.0            # Optional. Semver format
 description: >            # Required. Short description
   One-line description of what this skill does.
-triggers:                 # Required. List of trigger phrases
+triggers: # Required. List of trigger phrases
   - "trigger phrase 1"
   - "trigger phrase 2"
 ---
@@ -84,6 +84,7 @@ Skill instructions content here...
 ```
 
 **Validation rules:**
+
 - `name` MUST be kebab-case and MUST match the parent directory name
 - `name` MUST NOT contain path separators, dots, or special characters
 - `version`, if present, MUST be valid semver

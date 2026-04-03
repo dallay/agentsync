@@ -117,7 +117,8 @@ default change for new projects and explicit opt-in for existing ones.
   not new to this change. The `create_symlink` method already uses `symlink_dir` for directories.
 - **Clean then sync ordering**: If a user has `.claude/skills/` as a real directory with per-skill
   symlinks, running sync with the new `symlink` type will trigger the backup logic in
-  `create_symlink()` which renames the existing directory to `.claude/skills.bak.<timestamp>`. This is safe but users
+  `create_symlink()` which renames the existing directory to `.claude/skills.bak.<timestamp>`. This
+  is safe but users
   should be aware.
 
 ### Ready for Proposal

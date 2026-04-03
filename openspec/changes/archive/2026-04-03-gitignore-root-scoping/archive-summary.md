@@ -18,13 +18,13 @@ automated tests, 2/13 verified manually via `git check-ignore`.
 
 ## Artifacts
 
-| Artifact           | Description                                                        |
-|--------------------|--------------------------------------------------------------------|
-| `proposal.md`      | Change proposal with intent, scope, approach, and risks            |
-| `specs/`           | Delta spec for gitignore-management (synced to main specs)         |
-| `design.md`        | Technical design: normalize in config.rs, preserve manual entries   |
-| `tasks.md`         | 10 implementation tasks across 3 phases, all complete              |
-| `verify-report.md` | Verification report with compliance matrix and test evidence       |
+| Artifact           | Description                                                       |
+|--------------------|-------------------------------------------------------------------|
+| `proposal.md`      | Change proposal with intent, scope, approach, and risks           |
+| `specs/`           | Delta spec for gitignore-management (synced to main specs)        |
+| `design.md`        | Technical design: normalize in config.rs, preserve manual entries |
+| `tasks.md`         | 10 implementation tasks across 3 phases, all complete             |
+| `verify-report.md` | Verification report with compliance matrix and test evidence      |
 
 ## Spec Sync
 

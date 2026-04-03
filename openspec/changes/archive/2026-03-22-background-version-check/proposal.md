@@ -29,7 +29,7 @@ Provide CLI users with frictionless awareness of available updates by:
 ### Out of Scope
 
 - Automatic updates (no self-update mechanism)
-  - GUI/TTY progress indicators or interactive prompts
+    - GUI/TTY progress indicators or interactive prompts
 - Cross-crate version comparison (only checks agentsync)
 
 ## Approach

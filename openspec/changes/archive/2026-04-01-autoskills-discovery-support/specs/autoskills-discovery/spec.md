@@ -181,7 +181,8 @@ evaluate detection rules in the following order:
 3. `config_files` — check file existence at the project root
 4. `config_file_content` — read specified files and search for patterns
 
-The detector MUST stop evaluating a technology's rules after the first successful match (short-circuit).
+The detector MUST stop evaluating a technology's rules after the first successful match (
+short-circuit).
 
 Each successful detection MUST produce a `TechnologyDetection` containing the `TechnologyId`,
 a `DetectionConfidence` value, and evidence describing the matched rule and artifact.
@@ -361,7 +362,8 @@ and continue processing other workspaces.
 The system MUST support a special `web_frontend` technology that is detected by scanning for
 frontend-related file extensions in the repository.
 
-The detector MUST scan for the following file extensions: `.html`, `.css`, `.scss`, `.sass`, `.less`,
+The detector MUST scan for the following file extensions: `.html`, `.css`, `.scss`, `.sass`,
+`.less`,
 `.vue`, `.svelte`, `.jsx`, `.tsx`, `.astro`, `.mdx`.
 
 The scan depth MUST be limited to a maximum of 3 directory levels from the project root.

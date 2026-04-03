@@ -1,10 +1,10 @@
 # Technical Design: agents-skills Monorepo
 
-| Field | Value |
-|-------|-------|
+| Field         | Value                  |
+|---------------|------------------------|
 | **Change ID** | agents-skills-monorepo |
-| **Version** | 1.0 |
-| **Status** | Draft |
+| **Version**   | 1.0                    |
+| **Status**    | Draft                  |
 
 ## System Architecture
 
@@ -34,6 +34,7 @@
 ```
 
 **Problems with current state:**
+
 - Built-in skills have no canonical repo (resolved via search API)
 - Search API is a single point of failure
 - No CI validation of skill content
@@ -118,6 +119,7 @@ No change to the suggest flow itself — only the catalog data changes.
 **Decision:** `dallay/agents-skills` is an independent repo with no git link to `dallay/agentsync`.
 
 **Rationale:**
+
 - Different release cycles (catalog vs content)
 - Zero clone friction for agentsync contributors
 - No CI coordination needed for content-only updates
@@ -128,6 +130,7 @@ No change to the suggest flow itself — only the catalog data changes.
 **Decision:** Name the repo `agents-skills` (not `skills` or `agentsync-skills`).
 
 **Rationale:**
+
 - Generic enough for broader ecosystem use
 - The existing resolver checks for repos named exactly `skills`, `agent-skills`,
   or `agentic-skills` and adds a `skills/` prefix to the subpath.
@@ -143,6 +146,7 @@ const SKILLS_REPO_NAMES: &[&str] = &["skills", "agent-skills", "agentic-skills",
 ```
 
 For `dallay/agents-skills/docker-expert`:
+
 - owner = `dallay`
 - repo = `agents-skills` (matches `SKILLS_REPO_NAMES`)
 - skill = `docker-expert`
@@ -156,6 +160,7 @@ This was implemented by adding `"agents-skills"` to the `SKILLS_REPO_NAMES` cons
 **Decision:** All skills live under `skills/{skill-id}/` in the repo root.
 
 **Rationale:**
+
 - Matches the convention used by angular/skills, expo/skills, etc.
 - The `#skills/{skill-id}` fragment in the ZIP URL maps directly
 - Clean separation from repo metadata (README, CI, etc.)
@@ -165,6 +170,7 @@ This was implemented by adding `"agents-skills"` to the `SKILLS_REPO_NAMES` cons
 **Decision:** GitHub Actions workflow validates all SKILL.md manifests on every PR.
 
 **Rationale:**
+
 - Catches broken manifests before merge
 - Ensures naming consistency (dir name == manifest name)
 - Low maintenance — can reuse agentsync's manifest parser logic
@@ -175,6 +181,7 @@ This was implemented by adding `"agents-skills"` to the `SKILLS_REPO_NAMES` cons
 **Decision:** Catalog updates in agentsync require manual PRs. No automated sync.
 
 **Rationale:**
+
 - Adding a skill to the catalog is a deliberate decision (includes detection rules)
 - Auto-sync would require cross-repo workflow permissions (security concern)
 - The two repos have different approval flows
@@ -186,6 +193,7 @@ This was implemented by adding `"agents-skills"` to the `SKILLS_REPO_NAMES` cons
 `agentsync` when a skill is added/removed, as a reminder to update the catalog.
 
 **Rationale:**
+
 - Low-cost notification that does not auto-modify anything
 - Can trigger a "catalog check" workflow in agentsync
 - Purely advisory — does not block anything
@@ -200,10 +208,10 @@ name: Validate Skills
 
 on:
   push:
-    branches: [main]
-    paths: ['skills/**']
+    branches: [ main ]
+    paths: [ 'skills/**' ]
   pull_request:
-    paths: ['skills/**']
+    paths: [ 'skills/**' ]
 
 jobs:
   validate:
@@ -353,7 +361,7 @@ fn test_dallay_skill_urls_are_reachable() {
 ### Phase 2: Update catalog references
 
 1. Update `catalog.v1.toml` entries for dallay-owned skills:
-   - Change `provider_skill_id` from simple names to `dallay/agents-skills/{name}`
+    - Change `provider_skill_id` from simple names to `dallay/agents-skills/{name}`
 2. Verify deterministic resolution works (may need resolver adjustment — see DD-02)
 3. Add E2E catalog integrity test
 4. Release agentsync with updated catalog

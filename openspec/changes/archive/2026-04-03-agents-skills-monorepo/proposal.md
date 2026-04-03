@@ -1,12 +1,12 @@
 # Proposal: agents-skills Monorepo
 
-| Field | Value |
-|-------|-------|
-| **Change ID** | agents-skills-monorepo |
-| **Author** | dallay |
-| **Status** | Draft |
-| **Created** | 2026-04-03 |
-| **Related** | agentsync CLI, skills suggest/install system |
+| Field         | Value                                        |
+|---------------|----------------------------------------------|
+| **Change ID** | agents-skills-monorepo                       |
+| **Author**    | dallay                                       |
+| **Status**    | Draft                                        |
+| **Created**   | 2026-04-03                                   |
+| **Related**   | agentsync CLI, skills suggest/install system |
 
 ## Intent
 
@@ -38,11 +38,13 @@ External repos (angular/skills, vercel-labs/next-skills, ...)  <-- UNCHANGED
 ```
 
 **Scope of `agents-skills`:**
+
 - All skills where dallay is the author/maintainer
 - Community-contributed skills accepted via PR
 - CI pipeline for manifest validation and quality gates
 
 **NOT in scope:**
+
 - Skills maintained by external organizations (Angular, Vercel, Cloudflare, etc.)
 - The catalog itself (stays embedded in agentsync binary)
 - The provider/resolver architecture (stays in agentsync)
@@ -59,21 +61,21 @@ External repos (angular/skills, vercel-labs/next-skills, ...)  <-- UNCHANGED
 
 ## Risks
 
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| Maintenance burden of 30+ skills | Medium | Start with existing built-ins only, grow organically |
-| Catalog drift (skill renamed/deleted but catalog not updated) | High | CI check in agentsync that validates all dallay/* skill URLs exist |
-| Breaking existing installs during migration | High | Keep skills.sh fallback during transition period |
-| Community PRs with low-quality skills | Medium | Clear CONTRIBUTING.md + CI manifest validation |
+| Risk                                                          | Impact | Mitigation                                                         |
+|---------------------------------------------------------------|--------|--------------------------------------------------------------------|
+| Maintenance burden of 30+ skills                              | Medium | Start with existing built-ins only, grow organically               |
+| Catalog drift (skill renamed/deleted but catalog not updated) | High   | CI check in agentsync that validates all dallay/* skill URLs exist |
+| Breaking existing installs during migration                   | High   | Keep skills.sh fallback during transition period                   |
+| Community PRs with low-quality skills                         | Medium | Clear CONTRIBUTING.md + CI manifest validation                     |
 
 ## Alternatives Considered
 
-| Alternative | Why rejected |
-|-------------|-------------|
-| Git submodule in agentsync | DX nightmare: clone friction, CI complexity, pin hell, coordinated PRs |
-| All skills in agentsync repo | Mixes concerns, bloats binary repo, different release cycles |
-| Keep status quo (skills.sh only) | No CI, no community hub, fragile resolution, no offline support |
-| Fork all external skills too | Maintenance hell, licensing issues, stale content |
+| Alternative                      | Why rejected                                                           |
+|----------------------------------|------------------------------------------------------------------------|
+| Git submodule in agentsync       | DX nightmare: clone friction, CI complexity, pin hell, coordinated PRs |
+| All skills in agentsync repo     | Mixes concerns, bloats binary repo, different release cycles           |
+| Keep status quo (skills.sh only) | No CI, no community hub, fragile resolution, no offline support        |
+| Fork all external skills too     | Maintenance hell, licensing issues, stale content                      |
 
 ## Approach
 
