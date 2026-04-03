@@ -1588,7 +1588,6 @@ min_confidence = "medium"
 
 [technologies.detect]
 config_files = ["grafana.ini", "provisioning/dashboards"]
-file_extensions = [".json"]
 
 # --- SQL ---
 
