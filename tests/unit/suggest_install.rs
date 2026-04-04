@@ -16,7 +16,16 @@ fn guided_install_only_installs_selected_recommendations() {
     fs::write(root.join("Cargo.toml"), "[package]\nname='demo'\n").unwrap();
     fs::write(root.join("Dockerfile"), "FROM scratch\n").unwrap();
 
-    let provider = LocalSkillProvider::new(root, &["rust-async-patterns", "docker-expert"]);
+    let provider = LocalSkillProvider::new(
+        root,
+        &[
+            (
+                "dallay/agents-skills/rust-async-patterns",
+                "rust-async-patterns",
+            ),
+            ("dallay/agents-skills/docker-expert", "docker-expert"),
+        ],
+    );
     let service = SuggestionService;
     let response = service
         .suggest_with(root, &StaticDetector::rust_and_docker(), Some(&provider))
@@ -80,7 +89,16 @@ fn install_all_skips_already_installed_recommendations() {
     )
     .unwrap();
 
-    let provider = LocalSkillProvider::new(root, &["rust-async-patterns", "docker-expert"]);
+    let provider = LocalSkillProvider::new(
+        root,
+        &[
+            (
+                "dallay/agents-skills/rust-async-patterns",
+                "rust-async-patterns",
+            ),
+            ("dallay/agents-skills/docker-expert", "docker-expert"),
+        ],
+    );
     let service = SuggestionService;
     let response = service
         .suggest_with(root, &StaticDetector::rust_and_docker(), Some(&provider))
@@ -129,7 +147,13 @@ fn install_flow_rechecks_registry_before_installing() {
     let root = temp_dir.path();
     fs::write(root.join("Cargo.toml"), "[package]\nname='demo'\n").unwrap();
 
-    let provider = LocalSkillProvider::new(root, &["rust-async-patterns"]);
+    let provider = LocalSkillProvider::new(
+        root,
+        &[(
+            "dallay/agents-skills/rust-async-patterns",
+            "rust-async-patterns",
+        )],
+    );
     let service = SuggestionService;
     let response = service
         .suggest_with(root, &StaticDetector::rust_only(), Some(&provider))
@@ -336,20 +360,20 @@ struct LocalSkillProvider {
 }
 
 impl LocalSkillProvider {
-    fn new(root: &Path, skill_ids: &[&str]) -> Self {
+    fn new(root: &Path, skills: &[(&str, &str)]) -> Self {
         let sources_root = root.join("skill-sources");
         fs::create_dir_all(&sources_root).unwrap();
 
         let mut sources = BTreeMap::new();
-        for skill_id in skill_ids {
-            let source_dir = sources_root.join(skill_id);
+        for (provider_skill_id, local_skill_id) in skills {
+            let source_dir = sources_root.join(local_skill_id);
             fs::create_dir_all(&source_dir).unwrap();
             fs::write(
                 source_dir.join("SKILL.md"),
-                format!("---\nname: {skill_id}\nversion: 1.0.0\n---\n# {skill_id}\n"),
+                format!("---\nname: {local_skill_id}\nversion: 1.0.0\n---\n# {local_skill_id}\n"),
             )
             .unwrap();
-            sources.insert((*skill_id).to_string(), source_dir);
+            sources.insert((*provider_skill_id).to_string(), source_dir);
         }
 
         Self { sources }
@@ -380,7 +404,13 @@ struct PartiallyFailingProvider {
 impl PartiallyFailingProvider {
     fn new(root: &Path) -> Self {
         Self {
-            inner: LocalSkillProvider::new(root, &["docker-expert", "makefile"]),
+            inner: LocalSkillProvider::new(
+                root,
+                &[
+                    ("dallay/agents-skills/docker-expert", "docker-expert"),
+                    ("dallay/agents-skills/makefile", "makefile"),
+                ],
+            ),
         }
     }
 }
@@ -391,8 +421,8 @@ impl Provider for PartiallyFailingProvider {
     }
 
     fn resolve(&self, id: &str) -> Result<SkillInstallInfo> {
-        if id == "rust-async-patterns" {
-            anyhow::bail!("simulated resolve failure for {id}");
+        if id == "dallay/agents-skills/rust-async-patterns" {
+            anyhow::bail!("simulated resolve failure for rust-async-patterns");
         }
 
         self.inner.resolve(id)

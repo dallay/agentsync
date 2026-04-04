@@ -412,7 +412,10 @@ impl Provider for SuggestInstallProvider {
 
     fn resolve(&self, id: &str) -> Result<agentsync::skills::provider::SkillInstallInfo> {
         if let Ok(source_root) = std::env::var("AGENTSYNC_TEST_SKILL_SOURCE_DIR") {
-            let source_path = PathBuf::from(source_root).join(id);
+            // The id may be a qualified provider_skill_id (e.g., "dallay/agents-skills/foo")
+            // or a simple local name. Extract the last segment to find the local source directory.
+            let local_name = id.rsplit('/').next().unwrap_or(id);
+            let source_path = PathBuf::from(source_root).join(local_name);
             if source_path.exists() {
                 return Ok(agentsync::skills::provider::SkillInstallInfo {
                     download_url: source_path.display().to_string(),
