@@ -153,6 +153,13 @@ type = "symlink"
 source = "commands"
 destination = ".claude/commands"
 type = "symlink-contents"
+
+[agents.claude.targets.monorepo]
+type = "nested-glob"
+source = "." # Search from project root
+pattern = "**/AGENTS.md"
+destination = "{relative_path}/CLAUDE.md"
+exclude = ["node_modules/**", ".agents/**"]
 ```
 
 ### Skills
@@ -227,6 +234,7 @@ The matrix below documents common agent locations and whether AgentSync can hand
 | :--- | :--- |
 | `symlink` | Creates a direct symbolic link from `destination` to `source`. |
 | `symlink-contents` | Creates individual symbolic links for every file inside the `source` directory into the `destination` directory. |
+| `nested-glob` | Recursively discovers files matching a `pattern` under `source` (relative to project root) and creates a symlink for each at the path produced by expanding the `destination` template. |
 | `module-map` | Maps centrally-managed source files to specific module directories, creating a symlink per mapping with convention-based filenames. |
 
 These target types do not change on Windows. If the local Windows environment is not ready to create symlinks, use the <BaseLink href="/guides/windows-symlink-setup/">Windows Symlink Setup guide</BaseLink> rather than changing target semantics.
@@ -240,6 +248,26 @@ source = "command"
 destination = ".claude/commands"
 type = "symlink-contents"
 pattern = "*.agent.md"
+```
+
+#### `nested-glob` targets
+The `nested-glob` type is designed for monorepos or projects with nested context files. It walks the `source` directory (which is relative to the **project root**, unlike other types) and creates a symlink for every file matching the `pattern`.
+
+The `destination` field for `nested-glob` is a template string that supports the following placeholders:
+- `{relative_path}`: The parent directory of the matched file, relative to the search root (e.g., `clients/runtime`). Files directly in the search root resolve to `.`.
+- `{file_name}`: The full name of the matched file (e.g., `AGENTS.md`).
+- `{stem}`: The filename without its extension (e.g., `AGENTS`).
+- `{ext}`: The file extension without the leading dot (e.g., `md`).
+
+You can use the `exclude` field to prune entire subtrees (like `node_modules`) from the search.
+
+```toml
+[agents.claude.targets.monorepo]
+type = "nested-glob"
+source = "packages"
+pattern = "**/CONTEXT.md"
+destination = "packages/{relative_path}/CLAUDE.md"
+exclude = ["**/tests/**", "**/node_modules/**"]
 ```
 
 #### `module-map` targets

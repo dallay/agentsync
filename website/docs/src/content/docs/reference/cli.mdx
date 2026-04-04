@@ -209,12 +209,17 @@ agentsync skill update [OPTIONS] <SKILL_ID>
 Uninstall a skill.
 
 ```bash
-agentsync skill uninstall <SKILL_ID>
+agentsync skill uninstall [OPTIONS] <SKILL_ID>
 ```
+
+- `--json`: Output machine-readable JSON.
 
 #### `list`
 
 List all installed skills.
+
+> [!NOTE]
+> The `list` command is currently not implemented.
 
 ```bash
 agentsync skill list
@@ -235,6 +240,8 @@ agentsync doctor [OPTIONS]
 
 **Diagnostics**:
 - Validates `agentsync.toml` existence and syntax.
+- **Verifies target source existence** — checks that all files or directories referenced as sources in your configuration actually exist.
+- **Detects configuration anomalies** — warns if a target is misconfigured (e.g., a `module-map` target with no mappings).
 - Detects destination conflicts.
 - Audits `.gitignore` with marker-aware parsing.
 - Verifies MCP server executability.
@@ -258,11 +265,6 @@ Shows help information for the CLI or a specific command.
 <CommandTabs command="--help" />
 
 <CommandTabs command="apply --help" />
-
-## Global Flags
-
-- `-v, --verbose`: Enable verbose logging for debugging purposes.
-- `-q, --quiet`: Only output errors.
 
 ---
 
