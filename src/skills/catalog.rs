@@ -18,6 +18,7 @@ const DEFAULT_REASON_TEMPLATE: &str =
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CatalogSkillMetadata {
+    pub provider_skill_id: String,
     pub skill_id: String,
     pub title: String,
     pub summary: String,
@@ -295,6 +296,7 @@ pub fn recommend_skills(
             };
 
             let metadata = CatalogSkillMetadata {
+                provider_skill_id: definition.provider_skill_id.clone(),
                 skill_id: definition.local_skill_id.clone(),
                 title: definition.title.clone(),
                 summary: definition.summary.clone(),
@@ -331,6 +333,7 @@ pub fn recommend_skills(
             };
 
             let metadata = CatalogSkillMetadata {
+                provider_skill_id: definition.provider_skill_id.clone(),
                 skill_id: definition.local_skill_id.clone(),
                 title: definition.title.clone(),
                 summary: definition.summary.clone(),
@@ -729,6 +732,7 @@ fn rebuild_local_skill_index(catalog: &mut ResolvedSkillCatalog) -> Result<()> {
         local_skills.insert(
             definition.local_skill_id.clone(),
             CatalogSkillMetadata {
+                provider_skill_id: definition.provider_skill_id.clone(),
                 skill_id: definition.local_skill_id.clone(),
                 title: definition.title.clone(),
                 summary: definition.summary.clone(),

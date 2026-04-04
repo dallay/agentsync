@@ -91,6 +91,7 @@ pub struct TechnologyDetection {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkillSuggestion {
     pub skill_id: String,
+    pub provider_skill_id: String,
     pub title: String,
     pub summary: String,
     pub reasons: Vec<String>,
@@ -104,6 +105,7 @@ impl SkillSuggestion {
     pub fn new(metadata: &CatalogSkillMetadata, catalog: &ResolvedSkillCatalog) -> Self {
         Self {
             skill_id: metadata.skill_id.clone(),
+            provider_skill_id: metadata.provider_skill_id.clone(),
             title: metadata.title.clone(),
             summary: metadata.summary.clone(),
             reasons: Vec::new(),
@@ -188,6 +190,7 @@ pub struct SuggestJsonDetection {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SuggestJsonRecommendation {
     pub skill_id: String,
+    pub provider_skill_id: String,
     pub matched_technologies: Vec<TechnologyId>,
     pub reasons: Vec<String>,
     pub installed: bool,
@@ -367,7 +370,7 @@ impl SuggestionService {
                 continue;
             }
 
-            match provider.resolve(&recommendation.skill_id) {
+            match provider.resolve(&recommendation.provider_skill_id) {
                 Ok(resolved) => match install_fn(
                     &recommendation.skill_id,
                     &resolved.download_url,
@@ -449,6 +452,7 @@ impl SuggestResponse {
                 .iter()
                 .map(|recommendation| SuggestJsonRecommendation {
                     skill_id: recommendation.skill_id.clone(),
+                    provider_skill_id: recommendation.provider_skill_id.clone(),
                     matched_technologies: recommendation.matched_technologies.clone(),
                     reasons: recommendation.reasons.clone(),
                     installed: recommendation.installed,
