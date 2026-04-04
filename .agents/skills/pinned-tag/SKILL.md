@@ -5,7 +5,7 @@ description: >
   Trigger: When fixing "Unpinned tag for a non-immutable Action" warnings or when pinning dependencies to specific git versions.
 license: Apache-2.0
 metadata:
-  author: yuniel
+  author: yuniel-acosta
   version: "1.1"
 ---
 

@@ -6,7 +6,7 @@ description: >
   AI agent symlinks, suggest/install/update skills, or initialize/sync AgentSync-managed configuration.
 license: Apache-2.0
 metadata:
-  author: generic-author
+  author: yuniel-acosta
   version: "1.0.0"
 ---
 
