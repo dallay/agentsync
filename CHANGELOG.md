@@ -27,6 +27,18 @@
 * **deps:** update docker/login-action action to v4.1.0 ([#295](https://github.com/dallay/agentsync/issues/295)) ([4fb81a5](https://github.com/dallay/agentsync/commit/4fb81a58ee3412fc85d045b5b662cca25017ca79))
 * **deps:** update rust crate zip to v8.5.0 ([#285](https://github.com/dallay/agentsync/issues/285)) ([56b5cef](https://github.com/dallay/agentsync/commit/56b5cef976b16aab53b55ea16cc0183f93b10274))
 
+## [1.40.0](https://github.com/dallay/agentsync/compare/v1.39.0...v1.40.0) (2026-04-04)
+
+
+### Features
+
+* **skills:** add agentsync guidance and broaden design recommendations ([#314](https://github.com/dallay/agentsync/issues/314)) ([407de7c](https://github.com/dallay/agentsync/commit/407de7c08576c4a935852dfb843d754af6e636da))
+
+
+### Documentation
+
+* synchronize documentation with Rust source code ([#311](https://github.com/dallay/agentsync/issues/311)) ([820a396](https://github.com/dallay/agentsync/commit/820a3966535563e290b0ba03974a818ab78e4694))
+
 ## [1.39.0](https://github.com/dallay/agentsync/compare/v1.38.0...v1.39.0) (2026-04-03)
 
 
