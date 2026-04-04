@@ -25,7 +25,43 @@ fn embedded_catalog_loads_expected_baseline_entries() {
         .get_technology(&TechnologyId::new(TechnologyId::ASTRO))
         .unwrap();
     assert_eq!(astro.name, "Astro");
-    assert_eq!(astro.skills.len(), 6);
+    assert_eq!(astro.skills.len(), 7);
+    assert!(
+        astro
+            .skills
+            .contains(&"dallay/agents-skills/nothing-design".to_string())
+    );
+
+    let web_frontend = catalog
+        .get_technology(&TechnologyId::new("web_frontend"))
+        .unwrap();
+    assert!(
+        web_frontend
+            .skills
+            .contains(&"dallay/agents-skills/nothing-design".to_string())
+    );
+
+    let react = catalog.get_technology(&TechnologyId::new("react")).unwrap();
+    assert!(
+        react
+            .skills
+            .contains(&"dallay/agents-skills/nothing-design".to_string())
+    );
+
+    let vue = catalog.get_technology(&TechnologyId::new("vue")).unwrap();
+    assert!(
+        vue.skills
+            .contains(&"dallay/agents-skills/nothing-design".to_string())
+    );
+
+    let angular = catalog
+        .get_technology(&TechnologyId::new("angular"))
+        .unwrap();
+    assert!(
+        angular
+            .skills
+            .contains(&"dallay/agents-skills/nothing-design".to_string())
+    );
 
     let combo = catalog.get_combo("astro-github-actions").unwrap();
     assert_eq!(
@@ -95,6 +131,72 @@ fn merges_duplicate_skill_recommendations_across_multiple_technologies() {
             .contains(&TechnologyId::new(TechnologyId::PYTHON))
     );
     assert_eq!(best_practices.reasons.len(), 2);
+}
+
+#[test]
+fn recommends_nothing_design_for_web_projects_and_frontend_frameworks() {
+    let catalog = EmbeddedSkillCatalog::default();
+    let detections = vec![
+        detection(
+            TechnologyId::new("web_frontend"),
+            DetectionConfidence::High,
+            "src/index.html",
+        ),
+        detection(
+            TechnologyId::new(TechnologyId::ASTRO),
+            DetectionConfidence::High,
+            "astro.config.mjs",
+        ),
+        detection(
+            TechnologyId::new("react"),
+            DetectionConfidence::High,
+            "package.json",
+        ),
+        detection(
+            TechnologyId::new("vue"),
+            DetectionConfidence::High,
+            "package.json",
+        ),
+        detection(
+            TechnologyId::new("angular"),
+            DetectionConfidence::High,
+            "angular.json",
+        ),
+    ];
+
+    let recommendations = recommend_skills(&catalog, &detections);
+    let nothing_design = recommendations
+        .iter()
+        .find(|recommendation| recommendation.skill_id == "nothing-design")
+        .unwrap();
+
+    assert_eq!(nothing_design.matched_technologies.len(), 5);
+    assert!(
+        nothing_design
+            .matched_technologies
+            .contains(&TechnologyId::new("web_frontend"))
+    );
+    assert!(
+        nothing_design
+            .matched_technologies
+            .contains(&TechnologyId::new(TechnologyId::ASTRO))
+    );
+    assert!(
+        nothing_design
+            .matched_technologies
+            .contains(&TechnologyId::new("react"))
+    );
+    assert!(
+        nothing_design
+            .matched_technologies
+            .contains(&TechnologyId::new("vue"))
+    );
+    assert!(
+        nothing_design
+            .matched_technologies
+            .contains(&TechnologyId::new("angular"))
+    );
+    assert_eq!(nothing_design.reasons.len(), 5);
 }
 
 #[test]
