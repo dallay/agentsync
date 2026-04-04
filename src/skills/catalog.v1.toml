@@ -35,6 +35,12 @@ title = "Frontend Design"
 summary = "Create polished, production-grade frontend interfaces."
 
 [[skills]]
+provider_skill_id = "dallay/agents-skills/nothing-design"
+local_skill_id = "nothing-design"
+title = "Nothing Design"
+summary = "Design Nothing-inspired landing pages and web interfaces with disciplined visual hierarchy."
+
+[[skills]]
 provider_skill_id = "dallay/agents-skills/github-actions"
 local_skill_id = "github-actions"
 title = "GitHub Actions"
@@ -1431,7 +1437,7 @@ config_files = ["Pulumi.yaml"]
 [[technologies]]
 id = "solidjs"
 name = "Solid.js"
-skills = ["dallay/agents-skills/solidjs-development"]
+skills = ["dallay/agents-skills/nothing-design", "dallay/agents-skills/solidjs-development"]
 min_confidence = "medium"
 
 [technologies.detect]
@@ -1441,7 +1447,7 @@ config_files = ["solid-start.config.ts", "solid-start.config.js"]
 [[technologies]]
 id = "remix"
 name = "Remix"
-skills = ["remix-run/agent-skills"]
+skills = ["dallay/agents-skills/nothing-design", "remix-run/agent-skills"]
 min_confidence = "medium"
 
 [technologies.detect]
@@ -1450,7 +1456,7 @@ packages = ["@remix-run/react", "@remix-run/node", "@remix-run/cloudflare"]
 [[technologies]]
 id = "qwik"
 name = "Qwik"
-skills = ["dallay/agents-skills/qwik-development"]
+skills = ["dallay/agents-skills/nothing-design", "dallay/agents-skills/qwik-development"]
 min_confidence = "medium"
 
 [technologies.detect]
@@ -1611,6 +1617,7 @@ id = "astro"
 name = "Astro"
 skills = [
   "dallay/agents-skills/frontend-design",
+  "dallay/agents-skills/nothing-design",
   "dallay/agents-skills/accessibility",
   "dallay/agents-skills/performance",
   "dallay/agents-skills/core-web-vitals",
@@ -1656,7 +1663,7 @@ config_files = ["Makefile", "GNUmakefile"]
 [[technologies]]
 id = "react"
 name = "React"
-skills = ["vercel-labs/agent-skills/vercel-react-best-practices", "vercel-labs/agent-skills/vercel-composition-patterns"]
+skills = ["dallay/agents-skills/nothing-design", "vercel-labs/agent-skills/vercel-react-best-practices", "vercel-labs/agent-skills/vercel-composition-patterns"]
 min_confidence = "medium"
 
 [technologies.detect]
@@ -1665,7 +1672,7 @@ packages = ["react", "react-dom"]
 [[technologies]]
 id = "nextjs"
 name = "Next.js"
-skills = ["vercel-labs/next-skills/next-best-practices", "vercel-labs/next-skills/next-cache-components", "vercel-labs/next-skills/next-upgrade"]
+skills = ["dallay/agents-skills/nothing-design", "vercel-labs/next-skills/next-best-practices", "vercel-labs/next-skills/next-cache-components", "vercel-labs/next-skills/next-upgrade"]
 min_confidence = "medium"
 
 [technologies.detect]
@@ -1675,7 +1682,7 @@ config_files = ["next.config.js", "next.config.mjs", "next.config.ts"]
 [[technologies]]
 id = "vue"
 name = "Vue"
-skills = ["hyf0/vue-skills/vue-best-practices", "hyf0/vue-skills/vue-debug-guides", "antfu/skills/vue", "antfu/skills/vue-best-practices"]
+skills = ["dallay/agents-skills/nothing-design", "hyf0/vue-skills/vue-best-practices", "hyf0/vue-skills/vue-debug-guides", "antfu/skills/vue", "antfu/skills/vue-best-practices"]
 min_confidence = "medium"
 
 [technologies.detect]
@@ -1684,7 +1691,7 @@ packages = ["vue"]
 [[technologies]]
 id = "nuxt"
 name = "Nuxt"
-skills = ["antfu/skills/nuxt"]
+skills = ["dallay/agents-skills/nothing-design", "antfu/skills/nuxt"]
 min_confidence = "medium"
 
 [technologies.detect]
@@ -1703,7 +1710,7 @@ packages = ["pinia"]
 [[technologies]]
 id = "svelte"
 name = "Svelte"
-skills = ["ejirocodes/agent-skills/svelte5-best-practices", "sveltejs/ai-tools/svelte-code-writer"]
+skills = ["dallay/agents-skills/nothing-design", "ejirocodes/agent-skills/svelte5-best-practices", "sveltejs/ai-tools/svelte-code-writer"]
 min_confidence = "medium"
 
 [technologies.detect]
@@ -1714,6 +1721,7 @@ config_files = ["svelte.config.js"]
 id = "angular"
 name = "Angular"
 skills = [
+  "dallay/agents-skills/nothing-design",
   "angular/skills/angular-developer",
   "angular/angular/reference-core",
   "angular/angular/reference-signal-forms",
@@ -1909,7 +1917,7 @@ config_files = ["turbo.json"]
 [[technologies]]
 id = "vite"
 name = "Vite"
-skills = ["antfu/skills/vite"]
+skills = ["dallay/agents-skills/nothing-design", "antfu/skills/vite"]
 min_confidence = "medium"
 
 [technologies.detect]
@@ -2189,7 +2197,7 @@ config_files = ["src-tauri/tauri.conf.json"]
 [[technologies]]
 id = "web_frontend"
 name = "Web Frontend"
-skills = ["anthropics/skills/frontend-design", "addyosmani/web-quality-skills/accessibility", "addyosmani/web-quality-skills/seo"]
+skills = ["anthropics/skills/frontend-design", "dallay/agents-skills/nothing-design", "addyosmani/web-quality-skills/accessibility", "addyosmani/web-quality-skills/seo"]
 min_confidence = "medium"
 
 [technologies.detect]
