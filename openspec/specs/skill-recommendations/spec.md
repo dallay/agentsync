@@ -673,7 +673,7 @@ The `skill_id` (local ID) MUST continue to be used for:
 
 ### Requirement: JSON Output Includes Provider Skill ID
 
-`SuggestJsonRecommendation` SHOULD include a `provider_skill_id` field in its serialized JSON
+`SuggestJsonRecommendation` MUST include a `provider_skill_id` field in its serialized JSON
 output so that JSON consumers can access the fully qualified provider identifier alongside the
 local `skill_id`.
 
@@ -693,8 +693,8 @@ The `provider_skill_id` field is additive; existing JSON fields (`skill_id`,
 
 - GIVEN a JSON consumer that reads `skill_id`, `matched_technologies`, `reasons`, and `installed`
 - WHEN the system adds the `provider_skill_id` field to the recommendation JSON
-- THEN the existing fields MUST NOT change position, type, or semantics
-- AND the new field MUST be additive only
+- THEN the existing fields MUST NOT change name, type, or semantics
+- AND the new `provider_skill_id` field MUST be additive only (i.e., allowed but not required and must not break consumers)
 
 ---
 

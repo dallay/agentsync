@@ -1,0 +1,10 @@
+--- openspec/specs/skill-recommendations/spec.md
++++ openspec/specs/skill-recommendations/spec.md
+@@ -676,1 +676,1 @@
+-`SuggestJsonRecommendation` SHOULD include a `provider_skill_id` field in its serialized JSON
++`SuggestJsonRecommendation` MUST include a `provider_skill_id` field in its serialized JSON
+@@ -696,2 +696,2 @@
+-- THEN the existing fields MUST NOT change position, type, or semantics
+-- AND the new field MUST be additive only
++- THEN the existing fields MUST NOT change name, type, or semantics
++- AND the new `provider_skill_id` field MUST be additive only (i.e., allowed but not required and must not break consumers)

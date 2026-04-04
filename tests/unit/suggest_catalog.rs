@@ -303,13 +303,13 @@ fn provider_overlay_can_extend_baseline_with_new_supported_technology_entry() {
 version = "v1"
 
 [[skills]]
-provider_skill_id = "rust-async-patterns"
+provider_skill_id = "dallay/agents-skills/rust-async-patterns"
 local_skill_id = "rust-async-patterns"
 title = "Rust Async Patterns"
 summary = "Rust async guidance"
 
 [[skills]]
-provider_skill_id = "makefile"
+provider_skill_id = "dallay/agents-skills/makefile"
 local_skill_id = "makefile"
 title = "Makefile"
 summary = "Make guidance"
@@ -317,7 +317,7 @@ summary = "Make guidance"
 [[technologies]]
 id = "rust"
 name = "Rust"
-skills = ["rust-async-patterns"]
+skills = ["dallay/agents-skills/rust-async-patterns"]
 "#,
         "fixture",
         "fixture-v1",
@@ -329,7 +329,7 @@ skills = ["rust-async-patterns"]
         version: "2026.03".to_string(),
         schema_version: "v1".to_string(),
         skills: vec![],
-        technologies: vec![provider_technology("make", "Make", &["makefile"])],
+        technologies: vec![provider_technology("make", "Make", &["dallay/agents-skills/makefile"])],
         combos: vec![],
     };
 
@@ -347,7 +347,7 @@ skills = ["rust-async-patterns"]
         .get_technology(&TechnologyId::new(TechnologyId::MAKE))
         .unwrap();
     assert_eq!(make.name, "Make");
-    assert_eq!(make.skills, vec!["makefile"]);
+    assert_eq!(make.skills, vec!["dallay/agents-skills/makefile"]);
 }
 
 #[test]
@@ -357,13 +357,13 @@ fn provider_overlay_prefers_combo_override_by_stable_id() {
 version = "v1"
 
 [[skills]]
-provider_skill_id = "docker-expert"
+provider_skill_id = "dallay/agents-skills/docker-expert"
 local_skill_id = "docker-expert"
 title = "Docker Expert"
 summary = "Docker guidance"
 
 [[skills]]
-provider_skill_id = "best-practices"
+provider_skill_id = "dallay/agents-skills/best-practices"
 local_skill_id = "best-practices"
 title = "Best Practices"
 summary = "Best practices guidance"
@@ -372,7 +372,7 @@ summary = "Best practices guidance"
 id = "rust-docker"
 name = "Rust + Docker"
 requires = ["rust", "docker"]
-skills = ["docker-expert"]
+skills = ["dallay/agents-skills/docker-expert"]
 enabled = false
 "#,
         "fixture",
@@ -392,7 +392,7 @@ enabled = false
                 id: "rust-docker".to_string(),
                 name: "Rust + Docker Override".to_string(),
                 requires: vec!["rust".to_string(), "docker".to_string()],
-                skills: vec!["best-practices".to_string()],
+                skills: vec!["dallay/agents-skills/best-practices".to_string()],
                 enabled: Some(true),
                 reason_template: Some("Provider combo override".to_string()),
             }],
@@ -403,7 +403,7 @@ enabled = false
 
     let combo = catalog.get_combo("rust-docker").unwrap();
     assert_eq!(combo.name, "Rust + Docker Override");
-    assert_eq!(combo.skills, vec!["best-practices"]);
+    assert_eq!(combo.skills, vec!["dallay/agents-skills/best-practices"]);
     assert!(combo.enabled);
     assert_eq!(
         catalog

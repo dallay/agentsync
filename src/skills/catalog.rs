@@ -618,6 +618,7 @@ fn normalize_skill_definition(raw_skill: &RawCatalogSkill) -> Result<CatalogSkil
     let title = require_non_empty("title", &raw_skill.title)?;
     let summary = require_non_empty("summary", &raw_skill.summary)?;
     validate_local_skill_id(local_skill_id)?;
+    validate_provider_skill_id(provider_skill_id)?;
 
     Ok(CatalogSkillDefinition {
         provider_skill_id: provider_skill_id.to_string(),
@@ -783,5 +784,13 @@ fn validate_local_skill_id(skill_id: &str) -> Result<()> {
         bail!("local skill id must be a single path-safe segment");
     }
 
+    Ok(())
+}
+
+fn validate_provider_skill_id(provider_skill_id: &str) -> Result<()> {
+    let slash_count = provider_skill_id.chars().filter(|&c| c == '/').count();
+    if slash_count < 1 {
+        bail!("provider_skill_id must follow the 'owner/repo/skill' pattern (at least one slash)");
+    }
     Ok(())
 }

@@ -234,7 +234,7 @@ fn skill_suggest_install_all_surfaces_direct_install_failure_semantics() {
     fs::write(root.join("Cargo.toml"), "[package]\nname='demo'\n").unwrap();
 
     let source_root = root.join("skill-sources");
-    let failing_source = source_root.join("rust-async-patterns");
+    let failing_source = source_root.join("dallay/agents-skills/rust-async-patterns");
     fs::create_dir_all(&failing_source).unwrap();
 
     let suggest_output = Command::new(agentsync_bin())
