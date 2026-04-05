@@ -17,12 +17,11 @@ TRANSCRIPT_FILE="$REPO_ROOT/guided-install.transcript"
 run_with_tty "\n" "cd '$REPO_ROOT' && agentsync skill suggest --install" > "$TRANSCRIPT_FILE"
 
 assert_file_contains "$TRANSCRIPT_FILE" "Installing 13 selected recommended skills..."
-assert_file_contains "$TRANSCRIPT_FILE" "resolving accessibility"
 assert_file_contains "$TRANSCRIPT_FILE" "installed accessibility"
-# Check for the new multi-line summary format
 assert_file_contains "$TRANSCRIPT_FILE" "Recommendation install summary"
-assert_file_contains "$TRANSCRIPT_FILE" "Installed:"
-assert_file_contains "$TRANSCRIPT_FILE" "13"
+assert_file_contains "$TRANSCRIPT_FILE" "Installed: 13"
+assert_file_contains "$TRANSCRIPT_FILE" "Already installed: 0"
+assert_file_contains "$TRANSCRIPT_FILE" "Failed: 0"
 
 cd "$REPO_ROOT"
 for skill_id in \

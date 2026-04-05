@@ -1442,19 +1442,19 @@ mod tests {
             results: vec![
                 agentsync::skills::suggest::SuggestInstallResult {
                     skill_id: "a".to_string(),
-                    provider_skill_id: Some("dallay/test-a".to_string()),
+                    provider_skill_id: "dallay/test-a".to_string(),
                     status: SuggestInstallStatus::Installed,
                     error_message: None,
                 },
                 agentsync::skills::suggest::SuggestInstallResult {
                     skill_id: "b".to_string(),
-                    provider_skill_id: Some("dallay/test-b".to_string()),
+                    provider_skill_id: "dallay/test-b".to_string(),
                     status: SuggestInstallStatus::AlreadyInstalled,
                     error_message: None,
                 },
                 agentsync::skills::suggest::SuggestInstallResult {
                     skill_id: "c".to_string(),
-                    provider_skill_id: Some("dallay/test-c".to_string()),
+                    provider_skill_id: "dallay/test-c".to_string(),
                     status: SuggestInstallStatus::Failed,
                     error_message: Some("simulated install failure".to_string()),
                 },
@@ -1493,13 +1493,13 @@ mod tests {
             results: vec![
                 agentsync::skills::suggest::SuggestInstallResult {
                     skill_id: "a".to_string(),
-                    provider_skill_id: Some("dallay/test-a".to_string()),
+                    provider_skill_id: "dallay/test-a".to_string(),
                     status: SuggestInstallStatus::AlreadyInstalled,
                     error_message: None,
                 },
                 agentsync::skills::suggest::SuggestInstallResult {
                     skill_id: "b".to_string(),
-                    provider_skill_id: Some("dallay/test-b".to_string()),
+                    provider_skill_id: "dallay/test-b".to_string(),
                     status: SuggestInstallStatus::AlreadyInstalled,
                     error_message: None,
                 },
