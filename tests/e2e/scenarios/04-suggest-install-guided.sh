@@ -14,12 +14,15 @@ export AGENTSYNC_TEST_SKILL_SOURCE_DIR="$SKILL_SOURCE_ROOT"
 
 log_step "Running guided install in a pseudo-TTY"
 TRANSCRIPT_FILE="$REPO_ROOT/guided-install.transcript"
-run_with_tty "\n" "cd '$REPO_ROOT' && agentsync skill suggest --install | tee '$TRANSCRIPT_FILE'"
+run_with_tty "\n" "cd '$REPO_ROOT' && agentsync skill suggest --install" > "$TRANSCRIPT_FILE"
 
 assert_file_contains "$TRANSCRIPT_FILE" "Installing 13 selected recommended skills..."
 assert_file_contains "$TRANSCRIPT_FILE" "resolving accessibility"
 assert_file_contains "$TRANSCRIPT_FILE" "installed accessibility"
-assert_file_contains "$TRANSCRIPT_FILE" "Completed suggest install: 13 installed, 0 already installed, 0 failed."
+# Check for the new multi-line summary format
+assert_file_contains "$TRANSCRIPT_FILE" "Recommendation install summary"
+assert_file_contains "$TRANSCRIPT_FILE" "Installed:"
+assert_file_contains "$TRANSCRIPT_FILE" "13"
 
 cd "$REPO_ROOT"
 for skill_id in \

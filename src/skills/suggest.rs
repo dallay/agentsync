@@ -252,6 +252,8 @@ impl SuggestInstallProgressReporter for NoopSuggestInstallProgressReporter {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SuggestInstallResult {
     pub skill_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_skill_id: Option<String>,
     pub status: SuggestInstallStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_message: Option<String>,
@@ -433,10 +435,13 @@ impl SuggestionService {
         let mut installed_state = read_installed_skill_states(&registry_path)?;
 
         let mut results = Vec::new();
-        for recommendation in &response.recommendations {
-            if !selected_skill_ids.contains(&recommendation.skill_id) {
-                continue;
-            }
+
+        // Iterate over selected_skill_ids in order to preserve user order
+        for skill_id in &selected_skill_ids {
+            // Get the recommendation from the map (already validated above)
+            let recommendation = recommendation_map
+                .get(skill_id.as_str())
+                .expect("skill_id should be in recommendation_map - this is a bug");
 
             if installed_state
                 .get(&recommendation.skill_id)
@@ -447,6 +452,7 @@ impl SuggestionService {
                 });
                 results.push(SuggestInstallResult {
                     skill_id: recommendation.skill_id.clone(),
+                    provider_skill_id: Some(recommendation.provider_skill_id.clone()),
                     status: SuggestInstallStatus::AlreadyInstalled,
                     error_message: None,
                 });
@@ -479,6 +485,7 @@ impl SuggestionService {
                             });
                             results.push(SuggestInstallResult {
                                 skill_id: recommendation.skill_id.clone(),
+                                provider_skill_id: Some(recommendation.provider_skill_id.clone()),
                                 status: SuggestInstallStatus::Installed,
                                 error_message: None,
                             });
@@ -492,6 +499,7 @@ impl SuggestionService {
                             });
                             results.push(SuggestInstallResult {
                                 skill_id: recommendation.skill_id.clone(),
+                                provider_skill_id: Some(recommendation.provider_skill_id.clone()),
                                 status: SuggestInstallStatus::Failed,
                                 error_message: Some(message),
                             });
@@ -507,6 +515,7 @@ impl SuggestionService {
                     });
                     results.push(SuggestInstallResult {
                         skill_id: recommendation.skill_id.clone(),
+                        provider_skill_id: Some(recommendation.provider_skill_id.clone()),
                         status: SuggestInstallStatus::Failed,
                         error_message: Some(message),
                     });

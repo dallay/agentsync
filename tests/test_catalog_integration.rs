@@ -11,7 +11,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output};
 use tempfile::TempDir;
 
 /// Represents a skill from the catalog to test.
@@ -25,25 +25,29 @@ struct CatalogSkill {
     is_local: bool,
 }
 
+/// TOML structure for deserializing catalog entries
+#[derive(Debug, serde::Deserialize)]
+struct CatalogFile {
+    skills: Vec<CatalogEntry>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct CatalogEntry {
+    provider_skill_id: String,
+    local_skill_id: String,
+}
+
 /// Parse the catalog.v1.toml and extract skills to test.
-/// Uses a simple state machine to parse skill blocks.
+/// Uses proper TOML deserialization.
 fn extract_catalog_skills() -> Vec<CatalogSkill> {
-    // Need to find the source directory - during test it's in target/debug/deps or similar
-    // We'll use the CARGO_MANIFEST_DIR and navigate up to find the project root
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
 
-    // The tests are run from the project root, so we need to find src/skills/catalog.v1.toml
-    // CARGO_MANIFEST_DIR during test is the package root
-    let project_root = manifest_dir; // This should be the agentsync root
-
-    // Also check if there's a src directory (means we're in the right place)
-    let catalog_path = if project_root.join("src").exists() {
-        project_root
+    let catalog_path = if manifest_dir.join("src").exists() {
+        manifest_dir
             .join("src")
             .join("skills")
             .join("catalog.v1.toml")
     } else {
-        // Try to find it from the current working directory instead
         std::env::current_dir()
             .unwrap_or_else(|_| PathBuf::from("."))
             .join("src")
@@ -53,68 +57,21 @@ fn extract_catalog_skills() -> Vec<CatalogSkill> {
 
     let content = fs::read_to_string(&catalog_path).expect("Failed to read catalog.v1.toml");
 
-    let mut skills = Vec::new();
+    // Parse using toml
+    let catalog: CatalogFile = toml::from_str(&content).expect("Failed to parse catalog.v1.toml");
 
-    // Parse each [[skills]] block using a simple state machine
-    let mut current_provider = String::new();
-    let mut current_local = String::new();
-
-    for line in content.lines() {
-        let trimmed = line.trim();
-
-        // End of skills section (start of technologies)
-        if trimmed.starts_with(
-            "# =============================================================================",
-        ) && trimmed.contains("Technologies")
-        {
-            break;
-        }
-
-        // Detect skill block start
-        if trimmed.starts_with("[[skills]]") {
-            // Save previous skill if we have both fields
-            if !current_provider.is_empty() && !current_local.is_empty() {
-                let is_local = current_provider.starts_with("dallay/");
-                skills.push(CatalogSkill {
-                    provider_skill_id: current_provider.clone(),
-                    local_skill_id: current_local.clone(),
-                    is_local,
-                });
+    catalog
+        .skills
+        .into_iter()
+        .map(|entry| {
+            let is_local = entry.provider_skill_id.starts_with("dallay/");
+            CatalogSkill {
+                provider_skill_id: entry.provider_skill_id,
+                local_skill_id: entry.local_skill_id,
+                is_local,
             }
-            // Reset for new block
-            current_provider.clear();
-            current_local.clear();
-            continue;
-        }
-
-        // Extract provider_skill_id
-        if trimmed.starts_with("provider_skill_id") {
-            // Need to parse: provider_skill_id = "value"
-            let parts: Vec<&str> = trimmed.splitn(2, '=').collect();
-            if parts.len() == 2 {
-                current_provider = parts[1].trim().trim_matches('"').to_string();
-            }
-        }
-        // Extract local_skill_id
-        else if trimmed.starts_with("local_skill_id") {
-            let parts: Vec<&str> = trimmed.splitn(2, '=').collect();
-            if parts.len() == 2 {
-                current_local = parts[1].trim().trim_matches('"').to_string();
-            }
-        }
-    }
-
-    // Don't forget the last skill
-    if !current_provider.is_empty() && !current_local.is_empty() {
-        let is_local = current_provider.starts_with("dallay/");
-        skills.push(CatalogSkill {
-            provider_skill_id: current_provider,
-            local_skill_id: current_local,
-            is_local,
-        });
-    }
-
-    skills
+        })
+        .collect()
 }
 
 /// Determine if we should run this test based on environment variables.
@@ -125,14 +82,55 @@ fn should_run_skill_test(skill_index: usize, _total_skills: usize) -> bool {
     }
 
     // Check if we have a limit
-    if let Ok(limit) = std::env::var("E2E_CATALOG_SKILL_LIMIT") {
-        if let Ok(n) = limit.parse::<usize>() {
-            return skill_index < n;
-        }
+    if let Ok(limit) = std::env::var("E2E_CATALOG_SKILL_LIMIT")
+        && let Ok(n) = limit.parse::<usize>()
+    {
+        return skill_index < n;
     }
 
     // Default: run only first 5 skills for quick sanity check
     skill_index < 5
+}
+
+/// Initialize a temporary project with agentsync.
+/// Returns Ok(()) on success, or an error string on failure.
+fn init_temp_project(root: &Path) -> Result<(), String> {
+    let output = Command::new("cargo")
+        .args(["run", "--", "init", "--path"])
+        .arg(root)
+        .output()
+        .map_err(|e| format!("failed to execute init: {}", e))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("init failed: {}", stderr))
+    }
+}
+
+/// Install a skill in the given project.
+/// Returns the command output, or an error string on failure.
+fn install_skill(root: &Path, skill_id: &str, source: Option<&str>) -> Result<Output, String> {
+    let mut cmd = Command::new("cargo");
+    cmd.args(["run", "--", "skill"]);
+
+    if let Some(source_path) = source {
+        cmd.args(["install", skill_id, "--source", source_path]);
+    } else {
+        cmd.args(["install", skill_id]);
+    }
+
+    cmd.arg("--project-root").arg(root);
+
+    cmd.output()
+        .map_err(|e| format!("failed to execute install: {}", e))
+}
+
+/// Verify a skill is installed in the given project.
+fn verify_skill_installed(root: &Path, skill_id: &str) -> bool {
+    let skill_dir = root.join(".agents/skills").join(skill_id);
+    skill_dir.exists() && skill_dir.join("SKILL.md").exists()
 }
 
 /// Test installation of a skill from the catalog.
@@ -167,42 +165,29 @@ fn test_install_skill_from_catalog() {
         let root = temp.path();
 
         // 1. Init agentsync
-        let init_status = Command::new("cargo")
-            .args(["run", "--", "init", "--path"])
-            .arg(root)
-            .status()
-            .unwrap();
-
-        if !init_status.success() {
-            eprintln!("  ⚠️ Init failed, skipping skill");
+        if let Err(e) = init_temp_project(root) {
+            eprintln!("  ⚠️ Init failed: {}, skipping skill", e);
             continue;
         }
 
         // 2. Try to install the skill
-        let install_result = Command::new("cargo")
-            .args(["run", "--", "skill", "--project-root"])
-            .arg(root)
-            .args(["install", &skill.local_skill_id])
-            .output();
+        let result = install_skill(root, &skill.local_skill_id, None);
 
-        match install_result {
+        match result {
             Ok(output) => {
-                let _stdout = String::from_utf8_lossy(&output.stdout);
-                let stderr = String::from_utf8_lossy(&output.stderr);
-
                 if output.status.success() {
                     // 3. Verify installation
-                    let skill_dir = root.join(".agents/skills").join(&skill.local_skill_id);
-                    if skill_dir.exists() && skill_dir.join("SKILL.md").exists() {
+                    if verify_skill_installed(root, &skill.local_skill_id) {
                         println!("  ✅ Installed successfully");
                     } else {
                         println!(
                             "  ⚠️ Command succeeded but skill files not found at {:?}",
-                            skill_dir
+                            root.join(".agents/skills").join(&skill.local_skill_id)
                         );
                     }
                 } else {
                     // Installation failed - could be network issue or skill doesn't exist
+                    let stderr = String::from_utf8_lossy(&output.stderr);
                     println!(
                         "  ⚠️ Install failed: {}",
                         if stderr.len() > 200 {
@@ -266,34 +251,22 @@ fn test_install_local_dallay_skills() {
         let root = temp.path();
 
         // Init
-        let init_status = Command::new("cargo")
-            .args(["run", "--", "init", "--path"])
-            .arg(root)
-            .status()
-            .unwrap();
-
-        if !init_status.success() {
-            println!("  ⚠️ Init failed for {}", skill.local_skill_id);
+        if let Err(e) = init_temp_project(root) {
+            println!("  ⚠️ Init failed for {}: {}", skill.local_skill_id, e);
             continue;
         }
 
-        // Install from local path
-        let install_result = Command::new("cargo")
-            .args(["run", "--", "skill", "--project-root"])
-            .arg(root)
-            .args([
-                "install",
-                &skill.local_skill_id,
-                "--source",
-                source_dir.to_str().unwrap(),
-            ])
-            .output();
+        // Install from local path - fix the flag order here
+        let result = install_skill(
+            root,
+            &skill.local_skill_id,
+            Some(source_dir.to_str().unwrap()),
+        );
 
-        match install_result {
+        match result {
             Ok(output) => {
                 if output.status.success() {
-                    let skill_dir = root.join(".agents/skills").join(&skill.local_skill_id);
-                    if skill_dir.exists() && skill_dir.join("SKILL.md").exists() {
+                    if verify_skill_installed(root, &skill.local_skill_id) {
                         println!("    ✅ Installed successfully");
                     } else {
                         println!("    ⚠️ Install succeeded but files missing");

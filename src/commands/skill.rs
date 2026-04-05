@@ -1,4 +1,4 @@
-use super::skill_fmt::{self, HumanFormatter, LabelKind, OutputMode};
+use crate::commands::skill_fmt::{self, HumanFormatter, LabelKind, OutputMode};
 use agentsync::skills::provider::{Provider, SkillsShProvider};
 use agentsync::skills::registry;
 use agentsync::skills::suggest::{
@@ -723,6 +723,8 @@ pub fn run_suggest(args: SkillSuggestArgs, project_root: PathBuf) -> Result<()> 
 
         match output_mode {
             SuggestInstallOutputMode::Json => {
+                // In JSON mode, include failure information in the output but don't fail the command
+                // since the response contains detailed results that consumers can inspect
                 println!("{}", serde_json::to_string(&install_response)?);
             }
             SuggestInstallOutputMode::HumanLine { use_color }
@@ -1000,7 +1002,7 @@ pub fn run_uninstall(args: SkillUninstallArgs, project_root: PathBuf) -> Result<
             let (code, remediation) = match &e {
                 agentsync::skills::uninstall::SkillUninstallError::NotFound(_) => (
                     "skill_not_found",
-                    "Skill is not installed. Use 'list' to see installed skills.",
+                    "Skill is not installed. Check .agents/skills/ directory for installed skills.",
                 ),
                 agentsync::skills::uninstall::SkillUninstallError::Validation(_) => (
                     "validation_error",
@@ -1440,16 +1442,19 @@ mod tests {
             results: vec![
                 agentsync::skills::suggest::SuggestInstallResult {
                     skill_id: "a".to_string(),
+                    provider_skill_id: Some("dallay/test-a".to_string()),
                     status: SuggestInstallStatus::Installed,
                     error_message: None,
                 },
                 agentsync::skills::suggest::SuggestInstallResult {
                     skill_id: "b".to_string(),
+                    provider_skill_id: Some("dallay/test-b".to_string()),
                     status: SuggestInstallStatus::AlreadyInstalled,
                     error_message: None,
                 },
                 agentsync::skills::suggest::SuggestInstallResult {
                     skill_id: "c".to_string(),
+                    provider_skill_id: Some("dallay/test-c".to_string()),
                     status: SuggestInstallStatus::Failed,
                     error_message: Some("simulated install failure".to_string()),
                 },
@@ -1488,11 +1493,13 @@ mod tests {
             results: vec![
                 agentsync::skills::suggest::SuggestInstallResult {
                     skill_id: "a".to_string(),
+                    provider_skill_id: Some("dallay/test-a".to_string()),
                     status: SuggestInstallStatus::AlreadyInstalled,
                     error_message: None,
                 },
                 agentsync::skills::suggest::SuggestInstallResult {
                     skill_id: "b".to_string(),
+                    provider_skill_id: Some("dallay/test-b".to_string()),
                     status: SuggestInstallStatus::AlreadyInstalled,
                     error_message: None,
                 },

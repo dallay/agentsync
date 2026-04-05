@@ -1495,7 +1495,7 @@ config_files = ["eslint.config.js", "eslint.config.mjs", "eslint.config.cjs", ".
 [[technologies]]
 id = "biome"
 name = "Biome"
-skills = ["dallay/agents-skills/prettier-formatting"]
+skills = ["dallay/agents-skills/best-practices"]
 min_confidence = "medium"
 
 [technologies.detect]

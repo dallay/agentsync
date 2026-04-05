@@ -19,12 +19,18 @@ agentsync skill suggest --install --all > install-all.txt
 assert_file_contains "install-all.txt" "Installing 13 recommended skills..."
 assert_file_contains "install-all.txt" "installed rust-async-patterns"
 assert_file_contains "install-all.txt" "installed docker-expert"
-assert_file_contains "install-all.txt" "Completed suggest install: 13 installed, 0 already installed, 0 failed."
+# Check for the new multi-line summary format
+assert_file_contains "install-all.txt" "Recommendation install summary"
+assert_file_contains "install-all.txt" "Installed:"
+assert_file_contains "install-all.txt" "13"
 
 log_step "Re-running install-all to confirm already-installed behavior"
 agentsync skill suggest --install --all > install-all-repeat.txt
 assert_file_contains "install-all-repeat.txt" "already installed rust-async-patterns"
 assert_file_contains "install-all-repeat.txt" "already installed docker-expert"
-assert_file_contains "install-all-repeat.txt" "Completed suggest install: nothing installable to do (13 already installed)."
+# Check for the new summary format with already installed
+assert_file_contains "install-all-repeat.txt" "Recommendation install summary"
+assert_file_contains "install-all-repeat.txt" "Already installed:"
+assert_file_contains "install-all-repeat.txt" "nothing installable to do"
 
 echo "✅ suggest install-all scenario passed"

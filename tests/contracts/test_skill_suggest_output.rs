@@ -256,6 +256,21 @@ fn skill_suggest_install_all_json_contract_has_no_progress_preamble() {
     assert!(!trimmed.contains("⠋"), "{stdout}");
     let value: serde_json::Value = serde_json::from_str(trimmed).unwrap();
     assert_eq!(value["mode"], "install_all");
+    // Verify provider_skill_id is present in results
+    assert!(
+        value
+            .get("results")
+            .and_then(|r| r.as_array())
+            .map(|arr| !arr.is_empty())
+            .unwrap_or(false),
+        "results should not be empty"
+    );
+    let first_result = &value["results"][0];
+    assert!(
+        first_result.get("provider_skill_id").is_some(),
+        "provider_skill_id should be present in results: {:?}",
+        first_result
+    );
 }
 
 #[test]

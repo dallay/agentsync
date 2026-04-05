@@ -188,7 +188,7 @@ fn embedded_catalog_policy_cleanup_removes_disallowed_entries_and_keeps_valid_ma
     let biome = catalog.get_technology(&TechnologyId::new("biome")).unwrap();
     assert_eq!(
         biome.skills,
-        vec!["dallay/agents-skills/prettier-formatting".to_string()]
+        vec!["dallay/agents-skills/best-practices".to_string()]
     );
 
     let all_references = catalog

@@ -73,9 +73,8 @@ prepare_default_skill_sources() {
         docker-expert \
         frontend-design \
         github-actions \
-        grafana-dashboards \
         makefile \
-        markdown-a11y \
+        nothing-design \
         performance \
         pinned-tag \
         pr-creator \
@@ -84,7 +83,9 @@ prepare_default_skill_sources() {
         skill-creator \
         sql-optimization-patterns \
         web-quality-audit \
-        webapp-testing
+        webapp-testing \
+        grafana-dashboards \
+        markdown-a11y
 }
 
 wait_for_mock_provider() {
