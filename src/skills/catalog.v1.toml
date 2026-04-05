@@ -650,18 +650,6 @@ summary = "Upgrade Next.js versions safely."
 
 # --- Node.js ---
 
-[[skills]]
-provider_skill_id = "wshobson/agents/nodejs-backend-patterns"
-local_skill_id = "nodejs-backend-patterns"
-title = "Node.js Backend Patterns"
-summary = "Implement Node.js backend patterns and best practices."
-
-[[skills]]
-provider_skill_id = "sickn33/antigravity-awesome-skills/nodejs-best-practices"
-local_skill_id = "nodejs-best-practices"
-title = "Node.js Best Practices"
-summary = "Follow Node.js development best practices."
-
 # --- Nuxt ---
 
 [[skills]]
@@ -827,12 +815,6 @@ title = "Turborepo"
 summary = "Manage monorepos with Turborepo build system."
 
 # --- TypeScript ---
-
-[[skills]]
-provider_skill_id = "wshobson/agents/typescript-advanced-types"
-local_skill_id = "typescript-advanced-types"
-title = "TypeScript Advanced Types"
-summary = "Use advanced TypeScript type patterns and utilities."
 
 # --- Vercel AI SDK ---
 
@@ -1159,12 +1141,6 @@ provider_skill_id = "storybookjs/react-native"
 local_skill_id = "storybook-rn"
 title = "Storybook"
 summary = "Official Storybook skills for component development and testing."
-
-[[skills]]
-provider_skill_id = "biomejs/biome"
-local_skill_id = "biome-linter"
-title = "Biome Linter"
-summary = "Official Biome skills for linting, formatting, and ESLint migration."
 
 [[skills]]
 provider_skill_id = "mongodb/agent-skills"
@@ -1519,7 +1495,7 @@ config_files = ["eslint.config.js", "eslint.config.mjs", "eslint.config.cjs", ".
 [[technologies]]
 id = "biome"
 name = "Biome"
-skills = ["biomejs/biome"]
+skills = ["dallay/agents-skills/best-practices"]
 min_confidence = "medium"
 
 [technologies.detect]
@@ -1757,7 +1733,7 @@ config_files = ["components.json"]
 [[technologies]]
 id = "typescript"
 name = "TypeScript"
-skills = ["wshobson/agents/typescript-advanced-types"]
+skills = ["dallay/agents-skills/best-practices"]
 min_confidence = "medium"
 
 [technologies.detect]
@@ -2053,7 +2029,7 @@ packages = ["gsap"]
 [[technologies]]
 id = "node"
 name = "Node.js"
-skills = ["wshobson/agents/nodejs-backend-patterns", "sickn33/antigravity-awesome-skills/nodejs-best-practices"]
+skills = ["dallay/agents-skills/best-practices"]
 min_confidence = "medium"
 
 [technologies.detect]

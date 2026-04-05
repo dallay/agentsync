@@ -1,11 +1,11 @@
 # Specification: Skill Lifecycle
 
-**Type**: RETROSPEC  
-**Date**: 2026-04-01  
-**Status**: RETROSPEC  
+**Type**: RETROSPEC (updated with forward specs REQ-020–REQ-022)  
+**Date**: 2026-04-05  
+**Status**: ACTIVE  
 **Source of Truth**: `src/skills/install.rs`, `src/skills/uninstall.rs`, `src/skills/update.rs`,
 `src/skills/manifest.rs`, `src/skills/registry.rs`, `src/skills/provider.rs`,
-`src/skills/transaction.rs`, `src/commands/skill.rs`
+`src/skills/transaction.rs`, `src/commands/skill.rs`, `src/commands/skill_fmt.rs`
 
 ## Purpose
 
@@ -722,43 +722,76 @@ For tar.gz archives, the system MUST reject entries whose paths contain:
 
 ---
 
-### REQ-015: CLI Output Format
+### REQ-015: CLI Human Output Format
 
 The CLI MUST support two output modes: human-readable (default) and JSON (`--json`).
 
-#### Install Success
+The CLI MUST render human-readable output for `install`, `update`, and `uninstall` commands using
+colored status lines with Unicode symbols and TTY-aware color gating.
 
-- Human: `"Installed {skill_id}"`
+#### Success output
+
+On success, the CLI MUST print a single status line in the format:
+
+```
+{symbol} {verb} {skill_id}
+```
+
+| Command     | Symbol | Verb          |
+|-------------|--------|---------------|
+| `install`   | `✔`    | `installed`   |
+| `update`    | `✔`    | `updated`     |
+| `uninstall` | `✔`    | `uninstalled` |
+
+When color is enabled, the status line MUST be rendered green and bold.
+When color is disabled, the status line MUST be rendered as plain text with the Unicode symbol
+preserved (no ANSI escape codes).
+
+#### Error output
+
+On error, the CLI MUST print two lines:
+
+1. A failure status line: `✗ failed {skill_id}: {error_message}`
+2. A hint line: `Hint: {remediation_message}`
+
+When color is enabled, the failure status line MUST be rendered red and bold.
+When color is disabled, both lines MUST be rendered as plain text with the Unicode symbol preserved.
+
+The hint line MUST NOT be colored.
+
+#### JSON output unchanged
+
+JSON output (`--json`) MUST remain byte-identical to current behavior for all commands. No symbols,
+no color, same schema, same field names, same serialization.
+
+#### Install Success (JSON)
+
 - JSON:
   `{"id": "{skill_id}", "name": ..., "description": ..., "version": ..., "files": [...], "manifest_hash": ..., "installed_at": ..., "status": "installed"}`
 
-#### Install Error
+#### Install Error (JSON)
 
-- Human: error log with hint message
 - JSON: `{"error": "{message}", "code": "install_error", "remediation": "{hint}"}`
 
-#### Uninstall Success
+#### Uninstall Success (JSON)
 
-- Human: `"Uninstalled {skill_id}"`
 - JSON: `{"id": "{skill_id}", "status": "uninstalled"}`
 
-#### Uninstall Error (Not Found)
+#### Uninstall Error — Not Found (JSON)
 
-- Human: `"Hint: Skill '{skill_id}' is not installed. Use 'list' to see installed skills."`
 - JSON:
   `{"error": "{message}", "code": "skill_not_found", "remediation": "Try 'list' to verify installed skills"}`
 
-#### Uninstall Error (Validation)
+#### Uninstall Error — Validation (JSON)
 
 - JSON:
   `{"error": "{message}", "code": "validation_error", "remediation": "Ensure the skill ID is valid..."}`
 
-#### Update Success
+#### Update Success (JSON)
 
-- Human: `"Updated {skill_id}"`
 - JSON: `{"id": "{skill_id}", ..., "status": "updated"}`
 
-#### Update Error
+#### Update Error (JSON)
 
 - JSON: `{"error": "{message}", "code": "update_error", "remediation": "{hint}"}`
 
@@ -784,6 +817,68 @@ The CLI MUST support two output modes: human-readable (default) and JSON (`--jso
 - GIVEN an attempt to uninstall a non-existent skill
 - WHEN `--json` flag is set
 - THEN the output MUST include `"code": "skill_not_found"`
+
+#### Scenario: SC-015d — Install success in TTY with color
+
+- GIVEN stdout is a TTY
+- AND `NO_COLOR` is not set
+- AND `CLICOLOR` is not `0`
+- AND `TERM` is not `dumb`
+- WHEN `agentsync skill install my-skill` succeeds
+- THEN stdout MUST contain `✔ installed my-skill`
+- AND the output MUST include ANSI green+bold escape codes around the status text
+
+#### Scenario: SC-015e — Install success in non-TTY (piped)
+
+- GIVEN stdout is NOT a TTY (e.g., piped to a file or another process)
+- WHEN `agentsync skill install my-skill` succeeds
+- THEN stdout MUST contain `✔ installed my-skill`
+- AND the output MUST NOT contain any ANSI escape codes
+
+#### Scenario: SC-015f — Update success in TTY with color
+
+- GIVEN stdout is a TTY with color enabled
+- WHEN `agentsync skill update my-skill` succeeds
+- THEN stdout MUST contain `✔ updated my-skill`
+- AND the output MUST include ANSI green+bold escape codes
+
+#### Scenario: SC-015g — Uninstall success in TTY with color
+
+- GIVEN stdout is a TTY with color enabled
+- WHEN `agentsync skill uninstall my-skill` succeeds
+- THEN stdout MUST contain `✔ uninstalled my-skill`
+- AND the output MUST include ANSI green+bold escape codes
+
+#### Scenario: SC-015h — Install error in TTY with color
+
+- GIVEN stdout is a TTY with color enabled
+- WHEN `agentsync skill install bad-skill` fails with error message `"source not found"`
+- THEN stdout MUST contain `✗ failed bad-skill: source not found`
+- AND the failure line MUST include ANSI red+bold escape codes
+- AND stdout MUST contain a second line starting with `Hint:`
+
+#### Scenario: SC-015i — Install error in non-TTY
+
+- GIVEN stdout is NOT a TTY
+- WHEN `agentsync skill install bad-skill` fails
+- THEN stdout MUST contain `✗ failed bad-skill:` followed by the error message
+- AND stdout MUST contain `Hint:` on a subsequent line
+- AND the output MUST NOT contain any ANSI escape codes
+
+#### Scenario: SC-015j — Uninstall not-found error in TTY
+
+- GIVEN stdout is a TTY with color enabled
+- AND skill `missing-skill` is not installed
+- WHEN `agentsync skill uninstall missing-skill` is invoked
+- THEN stdout MUST contain `✗ failed missing-skill:` followed by the not-found message
+- AND stdout MUST contain `Hint:` with remediation mentioning `list`
+
+#### Scenario: SC-015k — JSON output unchanged after refactor
+
+- GIVEN `--json` flag is set
+- WHEN any of `install`, `update`, or `uninstall` succeeds or fails
+- THEN the JSON output MUST match the existing schema exactly (fields, types, values)
+- AND the output MUST NOT contain Unicode symbols or ANSI escape codes
 
 ---
 
@@ -873,6 +968,186 @@ the system MUST reject the update. Re-running update with the same version will 
 
 ---
 
+### REQ-020: TTY-Aware Color Gating
+
+All human-mode output paths for `install`, `update`, and `uninstall` commands MUST determine
+whether to use color using the same detection logic as `suggest --install`.
+
+The color gating algorithm MUST evaluate the following inputs in order:
+
+1. If `--json` is set, output mode is JSON — no color, no symbols.
+2. Otherwise, detect color eligibility:
+   - `stdout.is_terminal()` MUST return `true`
+   - `NO_COLOR` environment variable MUST NOT be set to a non-empty value
+   - `CLICOLOR` environment variable MUST NOT be set to `"0"`
+   - `TERM` environment variable MUST NOT be `"dumb"` (case-insensitive)
+3. Color is enabled only if ALL four conditions in step 2 are satisfied.
+
+When color is disabled, Unicode symbols (`✔`, `✗`) MUST still be printed. Only ANSI escape
+sequences MUST be suppressed.
+
+The detection function MUST be reusable across all skill commands — it SHALL NOT be duplicated
+per command.
+
+#### Scenario: SC-020a — NO_COLOR suppresses color
+
+- GIVEN `NO_COLOR=1` is set in the environment
+- AND stdout is a TTY
+- WHEN `agentsync skill install my-skill` succeeds
+- THEN stdout MUST contain `✔ installed my-skill`
+- AND the output MUST NOT contain ANSI escape codes
+
+#### Scenario: SC-020b — CLICOLOR=0 suppresses color
+
+- GIVEN `CLICOLOR=0` is set in the environment
+- AND stdout is a TTY
+- WHEN `agentsync skill update my-skill` succeeds
+- THEN stdout MUST contain `✔ updated my-skill`
+- AND the output MUST NOT contain ANSI escape codes
+
+#### Scenario: SC-020c — TERM=dumb suppresses color
+
+- GIVEN `TERM=dumb` is set in the environment
+- AND stdout is a TTY
+- WHEN `agentsync skill uninstall my-skill` succeeds
+- THEN stdout MUST contain `✔ uninstalled my-skill`
+- AND the output MUST NOT contain ANSI escape codes
+
+#### Scenario: SC-020d — Color enabled when all conditions met
+
+- GIVEN `NO_COLOR` is not set
+- AND `CLICOLOR` is not set
+- AND `TERM=xterm-256color`
+- AND stdout is a TTY
+- WHEN `agentsync skill install my-skill` succeeds
+- THEN stdout MUST contain ANSI green+bold escape codes in the status line
+
+#### Scenario: SC-020e — Non-TTY always suppresses color
+
+- GIVEN stdout is NOT a TTY (piped)
+- AND `NO_COLOR` is not set, `CLICOLOR` is not set, `TERM=xterm-256color`
+- WHEN `agentsync skill install my-skill` succeeds
+- THEN stdout MUST contain `✔ installed my-skill`
+- AND the output MUST NOT contain ANSI escape codes
+
+---
+
+### REQ-021: Shared Formatting Abstractions
+
+The colored status-line formatting logic MUST be extracted into command-agnostic types reusable
+across all skill subcommands.
+
+The shared module (`src/commands/skill_fmt.rs`) MUST provide:
+
+1. **`LabelKind`** — an enum with variants: `Info`, `Warning`, `Success`, `Failure`.
+2. **`HumanFormatter`** — a struct parameterized by `use_color: bool` that provides:
+   - `format_label(symbol, label, kind) -> String` — returns the symbol+label with ANSI color
+     when `use_color` is true, or plain text when false.
+   - `format_heading(heading) -> String` — returns the heading bold when `use_color` is true,
+     or plain text when false.
+3. **`OutputMode`** — an enum with variants: `Json`, `Human { use_color: bool }`. This is the
+   simplified mode for single-operation commands (no `HumanLive` variant needed).
+4. **`detect_output_mode(json, stdout_is_tty, no_color, clicolor, term) -> OutputMode`** — the
+   reusable detection function.
+
+The `suggest --install` flow MUST be refactored to use these shared types. The existing
+`SuggestInstallHumanFormatter` and `SuggestInstallLabelKind` types MUST be removed and all
+references MUST point to the shared types.
+
+The `SuggestInstallOutputMode` MAY retain its `HumanLive` variant as a local extension that wraps
+the shared `OutputMode`, since spinners are specific to the suggest-install flow.
+
+No `SuggestInstall*`-prefixed types SHOULD remain for functionality that is shared across commands.
+
+> **Design note**: The spec originally proposed names `StatusLabelKind` and `SkillHumanFormatter`.
+> During design, these were shortened to `LabelKind` and `HumanFormatter` because the module path
+> (`commands::skill_fmt`) already provides sufficient namespace context. The implementation uses
+> the shorter names.
+
+#### Scenario: SC-021a — Formatter produces colored output when use_color is true
+
+- GIVEN a `HumanFormatter` with `use_color = true`
+- WHEN `format_label("✔", "installed", LabelKind::Success)` is called
+- THEN the result MUST contain ANSI green+bold escape codes wrapping `✔ installed`
+
+#### Scenario: SC-021b — Formatter produces plain output when use_color is false
+
+- GIVEN a `HumanFormatter` with `use_color = false`
+- WHEN `format_label("✔", "installed", LabelKind::Success)` is called
+- THEN the result MUST be exactly `✔ installed` with no ANSI escape codes
+
+#### Scenario: SC-021c — Formatter applies correct color per kind
+
+- GIVEN a `HumanFormatter` with `use_color = true`
+- WHEN `format_label` is called with each `LabelKind` variant
+- THEN `Info` MUST produce cyan+bold, `Warning` MUST produce yellow+bold, `Success` MUST produce
+  green+bold, `Failure` MUST produce red+bold
+
+#### Scenario: SC-021d — detect_output_mode returns Json when json flag is true
+
+- GIVEN `json = true`
+- WHEN `detect_output_mode(true, true, None, None, Some("xterm"))` is called
+- THEN the result MUST be `OutputMode::Json`
+
+#### Scenario: SC-021e — detect_output_mode returns Human with color for normal TTY
+
+- GIVEN `json = false`, stdout is TTY, no env overrides
+- WHEN `detect_output_mode(false, true, None, None, Some("xterm-256color"))` is called
+- THEN the result MUST be `OutputMode::Human { use_color: true }`
+
+#### Scenario: SC-021f — detect_output_mode returns Human without color for non-TTY
+
+- GIVEN `json = false`, stdout is NOT a TTY
+- WHEN `detect_output_mode(false, false, None, None, Some("xterm-256color"))` is called
+- THEN the result MUST be `OutputMode::Human { use_color: false }`
+
+#### Scenario: SC-021g — suggest --install still works identically after refactor
+
+- GIVEN the suggest-install flow uses the shared `HumanFormatter` and `LabelKind`
+- WHEN `agentsync skill suggest --install` is invoked
+- THEN the visual output MUST be identical to the pre-refactor behavior
+- AND all existing suggest-install tests MUST pass without modification
+
+---
+
+### REQ-022: Hint Line Formatting Consistency
+
+Error output for `install`, `update`, and `uninstall` commands MUST use a consistent two-line
+format for human-mode errors.
+
+Line 1 MUST be a failure status line rendered via the shared formatter:
+`{formatted ✗ failed} {skill_id}: {error_message}`
+
+Line 2 MUST be a plain-text hint line: `Hint: {remediation_message}`
+
+The hint line MUST NOT be colored. The remediation message MUST be produced by the existing
+`remediation_for_error()` function (or command-specific remediation logic for uninstall).
+
+The `tracing::error!()` call for structured logging MUST be preserved — it is not part of user
+output but is emitted to stderr for diagnostic purposes.
+
+#### Scenario: SC-022a — Error output has two lines
+
+- GIVEN a human-mode error from any skill command
+- WHEN the error is rendered
+- THEN stdout MUST contain exactly two relevant lines:
+  1. A line matching `✗ failed {skill_id}: {message}`
+  2. A line matching `Hint: {remediation}`
+
+#### Scenario: SC-022b — Hint line is never colored
+
+- GIVEN stdout is a TTY with color enabled
+- WHEN a skill command fails
+- THEN the `Hint:` line MUST NOT contain ANSI escape codes
+
+#### Scenario: SC-022c — Uninstall not-found uses specific remediation
+
+- GIVEN skill `missing` is not installed
+- WHEN `agentsync skill uninstall missing` fails in human mode
+- THEN the hint line MUST contain text about using `list` to verify installed skills
+
+---
+
 ## Non-Functional Requirements
 
 ### NF-1: Security — Path Traversal Prevention
@@ -930,6 +1205,20 @@ creation.
     fragments
 14. GitHub URL conversion handles simple repos, tree/blob URLs, and already-archive URLs
 15. All existing tests pass (no regressions)
+16. Human output for `install`, `update`, `uninstall` uses `✔`/`✗` symbols with green/red bold
+    coloring when TTY+color conditions are met, plain text otherwise (REQ-015, REQ-020)
+17. `detect_output_mode()` correctly evaluates `--json`, TTY, `NO_COLOR`, `CLICOLOR`, `TERM=dumb`
+    and returns the appropriate `OutputMode` variant (REQ-020)
+18. `LabelKind`, `HumanFormatter`, `OutputMode`, and `detect_output_mode` are shared across all
+    skill commands; no `SuggestInstall*`-prefixed shared types remain (REQ-021)
+19. Error output uses two-line format: colored failure line + plain `Hint:` line (REQ-022)
+20. `suggest --install` output is visually identical after refactor to shared types (REQ-021)
+16. Human output for `install`, `update`, `uninstall` uses colored status lines with `✔`/`✗` symbols
+17. TTY-aware color gating respects `NO_COLOR`, `CLICOLOR=0`, `TERM=dumb`, and non-TTY stdout
+18. Shared `LabelKind`, `HumanFormatter`, `OutputMode`, and `detect_output_mode` are used across
+    all skill commands including `suggest --install`
+19. Error output uses consistent two-line format (failure status + plain `Hint:` line)
+20. JSON output remains byte-identical after refactor
 
 ---
 
@@ -951,8 +1240,11 @@ creation.
 | REQ-012     | `src/commands/skill.rs` — `resolve_source()`, `try_convert_github_url()`                                                     | `src/commands/skill.rs` inline tests: `github_url_converter_*` (8 tests)                                                                                                                                                 |
 | REQ-013     | `src/skills/transaction.rs` — `with_rollback()`                                                                              | `tests/unit/transaction.rs`: `rollback_on_failure_deletes_dir`, `no_rollback_on_success`                                                                                                                                 |
 | REQ-014     | `src/skills/install.rs` — zip/tar extraction with path checks                                                                | `tests/integration/skill_install.rs`: `integration_skill_install_invalid_manifest_rollback` (partial)                                                                                                                    |
-| REQ-015     | `src/commands/skill.rs` — `run_install()`, `run_uninstall()`, `run_update()` JSON branches                                   | `tests/contracts/test_install_output.rs`: `install_json_contract`, `install_json_error_contract`                                                                                                                         |
+| REQ-015     | `src/commands/skill.rs` — `run_install()`, `run_uninstall()`, `run_update()`; `src/commands/skill_fmt.rs` — `HumanFormatter`  | `tests/contracts/test_install_output.rs`: `install_json_contract`, `install_json_error_contract`; `src/commands/skill_fmt.rs` tests: `install_success_human_output_*`, `update_success_human_output_*`, `uninstall_success_human_output_*`, `install_error_human_output_*`, `uninstall_error_human_output_*` |
 | REQ-016     | `src/commands/skill.rs` — `remediation_for_error()`                                                                          | Implicit via contract tests                                                                                                                                                                                              |
 | REQ-017     | `src/commands/skill.rs` — `run_install()`, `run_uninstall()`, `run_update()` target root setup                               | Implicit via integration tests                                                                                                                                                                                           |
 | REQ-018     | `src/commands/skill.rs` — `run_skill(SkillCommand::List, ...)`                                                               | `src/commands/skill.rs` inline test: `run_skill_list_returns_error`                                                                                                                                                      |
 | REQ-019     | Multiple: `install_from_dir()` backup logic, `uninstall_skill()` NotFound, `update_skill_async()` version check              | Various tests above                                                                                                                                                                                                      |
+| REQ-020     | `src/commands/skill_fmt.rs` — `detect_output_mode()`, `output_mode()`                                                        | `src/commands/skill_fmt.rs` tests: `detect_output_mode_no_color_env`, `detect_output_mode_no_color_any_nonempty_value`, `detect_output_mode_clicolor_zero`, `detect_output_mode_dumb_term`, `detect_output_mode_tty_with_color`, `detect_output_mode_no_tty_no_color` |
+| REQ-021     | `src/commands/skill_fmt.rs` — `LabelKind`, `HumanFormatter`, `OutputMode`, `detect_output_mode`; `src/commands/skill.rs` — suggest-install refactored to use shared types | `src/commands/skill_fmt.rs` tests: `format_label_success_colored`, `format_label_success_plain`, `format_label_each_kind_uses_distinct_color`, `detect_output_mode_json_takes_priority`, `detect_output_mode_json_ignores_env_overrides`; `src/commands/skill.rs` tests: `suggest_install_output_mode_*` (6), `suggest_install_completion_summary_*` (2) |
+| REQ-022     | `src/commands/skill.rs` — error paths in `run_install()`, `run_uninstall()`, `run_update()`; `src/commands/skill_fmt.rs` — `HumanFormatter` | `src/commands/skill_fmt.rs` tests: `install_error_human_output_pattern`, `uninstall_error_human_output_pattern`, `uninstall_error_colored_has_ansi_on_failure_line_only` |

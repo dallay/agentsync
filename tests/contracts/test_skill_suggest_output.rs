@@ -211,6 +211,69 @@ fn skill_suggest_install_all_json_contract_extends_suggest_shape() {
 }
 
 #[test]
+fn skill_suggest_install_all_json_contract_has_no_progress_preamble() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+    let source_root = root.join("skill-sources");
+
+    fs::write(root.join("Cargo.toml"), "[package]\nname='demo'\n").unwrap();
+    fs::create_dir_all(source_root.join("rust-async-patterns")).unwrap();
+    fs::write(
+        source_root.join("rust-async-patterns").join("SKILL.md"),
+        "---\nname: rust-async-patterns\nversion: 1.0.0\n---\n# Rust Async Patterns\n",
+    )
+    .unwrap();
+
+    let output = Command::new(agentsync_bin())
+        .current_dir(root)
+        .env("AGENTSYNC_TEST_SKILL_SOURCE_DIR", &source_root)
+        .args(["skill", "suggest", "--install", "--all", "--json"])
+        .output()
+        .expect("failed to run agentsync skill suggest --install --all --json");
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let trimmed = stdout.trim();
+    assert!(
+        trimmed.starts_with('{') && trimmed.ends_with('}'),
+        "{stdout}"
+    );
+    assert!(!trimmed.contains("Installing "), "{stdout}");
+    assert!(!trimmed.contains("installed "), "{stdout}");
+    assert!(
+        !trimmed.contains("Recommendation install summary"),
+        "{stdout}"
+    );
+    assert!(!trimmed.contains("Already installed:"), "{stdout}");
+    assert!(!trimmed.contains("Failed:"), "{stdout}");
+    assert!(!trimmed.contains("resolving "), "{stdout}");
+    assert!(!trimmed.contains("\r"), "{stdout:?}");
+    assert!(!trimmed.contains("⠋"), "{stdout}");
+    let value: serde_json::Value = serde_json::from_str(trimmed).unwrap();
+    assert_eq!(value["mode"], "install_all");
+    // Verify provider_skill_id is present in results
+    assert!(
+        value
+            .get("results")
+            .and_then(|r| r.as_array())
+            .map(|arr| !arr.is_empty())
+            .unwrap_or(false),
+        "results should not be empty"
+    );
+    let first_result = &value["results"][0];
+    assert!(
+        first_result.get("provider_skill_id").is_some(),
+        "provider_skill_id should be present in results: {:?}",
+        first_result
+    );
+}
+
+#[test]
 fn skill_suggest_install_without_tty_returns_structured_error() {
     let temp_dir = TempDir::new().unwrap();
     let root = temp_dir.path();
@@ -239,4 +302,33 @@ fn skill_suggest_install_without_tty_returns_structured_error() {
             .unwrap()
             .contains("--install --all")
     );
+}
+
+#[test]
+fn skill_suggest_install_json_error_contract_has_no_human_progress_lines() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+
+    fs::write(root.join("Cargo.toml"), "[package]\nname='demo'\n").unwrap();
+
+    let output = Command::new(agentsync_bin())
+        .current_dir(root)
+        .args(["skill", "suggest", "--install", "--json"])
+        .output()
+        .expect("failed to run agentsync skill suggest --install --json");
+
+    assert!(!output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let trimmed = stdout.trim();
+    assert!(
+        trimmed.starts_with('{') && trimmed.ends_with('}'),
+        "{stdout}"
+    );
+    assert!(!trimmed.contains("Installing "), "{stdout}");
+    assert!(!trimmed.contains("already installed"), "{stdout}");
+    assert!(!trimmed.contains("\u{1b}["), "{stdout}");
+
+    let value: serde_json::Value = serde_json::from_str(trimmed).unwrap();
+    assert_eq!(value["code"], "interactive_tty_required");
 }

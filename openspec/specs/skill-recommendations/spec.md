@@ -62,24 +62,70 @@ metadata rather than in hardcoded Rust recommendation tables.
 The embedded catalog MUST be loadable without network or provider access and MUST remain available
 as the baseline recommendation source for every suggestion flow.
 
-If the embedded metadata cannot be parsed or validated, the system MUST fail the
-recommendation-loading step explicitly rather than silently proceeding with an empty or partial
-fallback catalog.
+If the embedded metadata cannot be parsed, fails schema or integrity validation, or violates the
+external recommendation policy, the system MUST fail the recommendation-loading step explicitly
+rather than silently proceeding with an empty, partial, or policy-invalid fallback catalog.
 
 #### Scenario: Embedded metadata supplies the baseline catalog
 
 - GIVEN the checked-in embedded recommendation metadata is present and valid
+- AND the catalog satisfies schema, reference integrity, and external recommendation policy
 - AND no usable provider recommendation metadata is available
 - WHEN the user runs the suggestion flow
 - THEN the system MUST load recommendations from the embedded metadata
 - AND the resulting recommendations MUST be produced without provider access
 
-#### Scenario: Invalid embedded metadata fails explicitly
+#### Scenario: Policy-invalid embedded metadata fails explicitly
 
-- GIVEN the checked-in embedded recommendation metadata is malformed or fails schema validation
+- GIVEN the checked-in embedded recommendation metadata contains a disallowed external
+  recommendation
 - WHEN the system initializes recommendation loading
 - THEN the system MUST report an explicit recommendation catalog loading error
-- AND the system MUST NOT silently continue with an empty or truncated fallback catalog
+- AND the system MUST NOT silently continue with an empty, truncated, or policy-invalid fallback
+  catalog
+
+---
+
+### Requirement: Embedded Catalog External Recommendation Policy Compliance
+
+The embedded fallback recommendation catalog MUST allow externally sourced recommendation entries
+only when the referenced skill is an approved official technology skill.
+
+The embedded fallback recommendation catalog MUST NOT recommend third-party or community external
+skills directly from external sources.
+
+If maintainers want to recommend a third-party or community skill, that skill MUST first exist as a
+curated local skill under `dallay/agents-skills`. If no curated local replacement exists, the
+embedded catalog MUST omit that recommendation rather than keep the disallowed external reference.
+
+When policy cleanup removes a disallowed external skill from a technology mapping, every affected
+technology entry MUST remain valid after cleanup and MUST NOT retain dangling references to removed
+skills.
+
+#### Scenario: Approved official external recommendation remains valid
+
+- GIVEN the embedded catalog contains a technology recommendation that references an approved
+  official external skill
+- WHEN the system validates and loads the embedded catalog
+- THEN the catalog MUST accept that recommendation
+- AND the affected technology mapping MUST remain available for recommendation generation
+
+#### Scenario: Third-party external recommendation is rejected
+
+- GIVEN the embedded catalog contains a technology recommendation that references a third-party or
+  community external skill
+- AND no curated replacement exists under `dallay/agents-skills`
+- WHEN the system validates the embedded catalog
+- THEN the system MUST fail catalog loading explicitly
+- AND the invalid recommendation MUST NOT be used for suggestion generation
+
+#### Scenario: Cleanup preserves valid technology mappings
+
+- GIVEN the embedded catalog previously referenced disallowed external skills for `node`,
+  `typescript`, or `biome`
+- WHEN those disallowed skills are removed without a policy-compliant local replacement
+- THEN every affected technology entry MUST still pass catalog validation
+- AND the cleaned catalog MUST contain no references to removed or unknown skills
 
 ---
 
@@ -483,6 +529,104 @@ require new top-level JSON fields.
 
 ---
 
+### Requirement: Terminal-Aware Recommendation Install Presentation
+
+Human-readable recommendation install output for `agentsync skill suggest --install` and
+`agentsync skill suggest --install --all` MUST adapt to the execution environment.
+
+When stdout is a terminal and `--json` is not enabled, the system MAY use a lightweight
+spinner/live-activity presentation while recommendation-driven install work is in progress.
+
+Any TTY live presentation MUST remain text-explicit enough that humans can understand what work is
+being performed without relying on animation alone.
+
+When stdout is not a terminal, terminal capabilities are unavailable, or the environment is
+otherwise non-interactive, the system MUST emit readable, stable, line-oriented output whose meaning
+does not depend on cursor movement, spinner animation, or other terminal control sequences.
+
+#### Scenario: TTY human output may use live activity during recommendation installs
+
+- GIVEN recommendation-driven install output is running in a terminal
+- AND the user did not request `--json`
+- WHEN the system reports in-progress install activity for `agentsync skill suggest --install` or
+  `agentsync skill suggest --install --all`
+- THEN the output MAY use a lightweight spinner or live activity presentation while work is running
+- AND the text shown to the user MUST still identify the active install state in human-readable
+  terms
+
+#### Scenario: Non-TTY output stays stable and line-oriented
+
+- GIVEN recommendation-driven install output is running without a TTY
+- AND the user did not request `--json`
+- WHEN the system reports per-skill install activity
+- THEN each update MUST be emitted as stable readable lines in order
+- AND the output MUST NOT rely on cursor movement, spinner-only frames, or similar terminal control
+  behavior to communicate install state
+
+---
+
+### Requirement: Recommendation Install Final Human Summary Clarity
+
+After a human-readable recommendation-driven install flow completes, the system MUST emit a final
+summary that is easier to scan visually than plain prose while still stating outcomes explicitly.
+
+The final human summary MUST explicitly report counts for:
+
+- installed skills,
+- already-installed skills, and
+- failed skills.
+
+The summary MAY use layout, icons, color, or emphasis to improve scanability in human mode, but the
+meaning of each count MUST remain understandable from the text itself.
+
+This requirement applies to both `agentsync skill suggest --install` and
+`agentsync skill suggest --install --all` in human-readable mode only.
+
+#### Scenario: Human summary shows explicit outcome counts after mixed results
+
+- GIVEN a human-readable recommendation-driven install run completes
+- AND the run includes at least one installed skill, one already-installed skill, and one failed
+  skill
+- WHEN the final summary is printed
+- THEN the summary MUST explicitly show the installed count
+- AND the summary MUST explicitly show the already-installed count
+- AND the summary MUST explicitly show the failed count
+- AND any visual styling MUST NOT be the only way those outcomes are communicated
+
+#### Scenario: JSON output contract remains unchanged despite visual human summary
+
+- GIVEN a repository with recommended skills
+- WHEN the user runs a recommendation-driven install flow with `--json`
+- THEN stdout MUST remain valid JSON for the existing recommendation-install response contract
+- AND the command MUST NOT emit the human visual summary or any other human-only progress output
+
+---
+
+### Requirement: Recommendation Install JSON Output Contract Stability
+
+When the user requests `--json` for a recommendation-driven install flow, the system MUST preserve
+the existing JSON output contract, field names, field meanings, and overall response shape.
+
+JSON mode MUST NOT interleave human-oriented progress lines, colored text, spinner frames, or other
+non-JSON output while work is happening.
+
+#### Scenario: Install-all JSON output remains final structured JSON only
+
+- GIVEN a repository with recommended skills
+- WHEN the user runs `agentsync skill suggest --install --all --json`
+- THEN stdout MUST remain valid JSON for the existing recommendation-install response contract
+- AND the command MUST NOT emit human progress lines before or between JSON content
+
+#### Scenario: Guided install JSON output suppresses live human progress rendering
+
+- GIVEN the command is running in an interactive terminal
+- AND the user requests `--json`
+- WHEN the user completes the guided recommendation selection flow
+- THEN the install execution output MUST remain restricted to the existing JSON contract
+- AND any human-readable live progress presentation MUST be suppressed
+
+---
+
 ### Requirement: Guided Recommendation Install
 
 The phase 2 guided installation flow MUST allow the user to review and choose from the repository's
@@ -492,17 +636,33 @@ In an interactive terminal, the guided installation flow MUST present only recom
 choices and MUST allow the user to install a selected subset of not-yet-installed recommended
 skills.
 
+After selection is complete and before final summary output, the human-readable guided install flow
+MUST emit clear per-skill status updates while each selected recommendation is being processed.
+
+Per-skill updates MUST make it clear when a selected skill is being processed, skipped because it is
+already installed, installed successfully, or failed.
+
 If no interactive terminal is available and the user has not provided an explicit non-interactive
 install choice, the guided installation flow MUST fail without installing anything and MUST instruct
 the user to use a supported non-interactive path.
 
-#### Scenario: Interactive guided install installs a selected subset
+#### Scenario: Interactive guided install reports live progress for selected skills
 
 - GIVEN a repository with three recommended skills that are not installed
 - AND the command is running in an interactive terminal
 - WHEN the user chooses two of the three recommended skills in the guided install flow
 - THEN exactly those two selected skills MUST be installed
-- AND the unselected recommended skill MUST remain uninstalled
+- AND the human-readable output MUST emit per-skill progress updates for those selected skills before
+  the final summary is printed
+
+#### Scenario: Guided install reports immediate skip for already installed selection
+
+- GIVEN a repository with a recommended skill that is already installed
+- AND the command is running in an interactive terminal
+- WHEN the user includes that skill in the guided install selection
+- THEN the system MUST NOT reinstall that skill
+- AND the human-readable output MUST explicitly report that skill as skipped while the install run is
+  in progress
 
 #### Scenario: Non-interactive guided install without explicit choice is rejected
 
@@ -521,16 +681,20 @@ The phase 2 install-all flow MUST install every recommended skill that is not al
 The install-all flow MUST be explicit and MUST NOT be the default behavior of the read-only
 suggestion command.
 
+During human-readable execution, the install-all flow MUST emit clear per-skill status updates while
+work is happening so the user can see progress before completion.
+
 If zero installable recommendations exist, the install-all flow MUST complete without error and MUST
 NOT modify installed state.
 
-#### Scenario: Install-all installs every pending recommendation
+#### Scenario: Install-all reports progress across pending recommendations
 
 - GIVEN a repository with four recommended skills
 - AND one of those skills is already installed
 - WHEN the user invokes the explicit install-all recommendation flow
 - THEN the three not-yet-installed recommended skills MUST be installed
 - AND the already installed skill MUST be skipped
+- AND the human-readable output MUST report each processed skill's status before the final summary
 
 #### Scenario: Install-all is a no-op when nothing is installable
 
@@ -539,6 +703,7 @@ NOT modify installed state.
 - THEN the command MUST complete successfully
 - AND no additional installation work SHALL occur
 - AND installed state MUST remain unchanged
+- AND the output MUST clearly indicate that there was nothing installable to do
 
 ---
 
@@ -552,6 +717,10 @@ store, or a separate success/error contract for installation execution.
 
 When recommendation-driven installation succeeds, installed skills MUST be observable through the
 same installed-skill registry/state used by direct skill installation.
+
+When one or more recommendation-driven installs fail in a multi-skill run, the human-readable output
+MUST keep each failed skill visible with its failure status and MUST still emit the overall summary
+for the completed run.
 
 #### Scenario: Guided install persists through the existing installed-state system
 
@@ -568,6 +737,15 @@ same installed-skill registry/state used by direct skill installation.
 - THEN the recommendation-driven flow MUST report the installation failure
 - AND the failure semantics MUST match the existing skill installation behavior for that same
   failure
+
+#### Scenario: Mixed install-all results keep failures visible and summary intact
+
+- GIVEN a repository with multiple recommended skills selected for install-all
+- AND one skill succeeds while another fails during installation
+- WHEN the install-all run completes
+- THEN the human-readable output MUST show the failed skill with a failure status and error context
+- AND the human-readable output MUST still show the successful skill outcomes
+- AND the final overall summary MUST remain visible after those per-skill results
 
 ---
 
