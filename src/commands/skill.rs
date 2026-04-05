@@ -410,7 +410,7 @@ fn render_suggest_install_completion_summary(
         formatter.format_label("✗", "Failed", LabelKind::Failure)
     ));
 
-    if response.selected_skill_ids.is_empty() {
+    if response.mode == SuggestInstallMode::Interactive && response.selected_skill_ids.is_empty() {
         lines.push("  Note: nothing selected.".to_string());
     } else if installed == 0 && failed == 0 {
         lines.push("  Note: nothing installable to do.".to_string());
@@ -430,6 +430,23 @@ fn render_suggest_install_completion_summary(
     }
 
     lines.join("\n")
+}
+
+fn render_skill_success_json(
+    skill_id: &str,
+    skill: Option<&registry::SkillEntry>,
+    status: &str,
+) -> serde_json::Value {
+    serde_json::json!({
+        "id": skill_id,
+        "name": skill.and_then(|skill| skill.name.clone()),
+        "description": skill.and_then(|skill| skill.description.clone()),
+        "version": skill.and_then(|skill| skill.version.clone()),
+        "files": skill.and_then(|skill| skill.files.clone()),
+        "manifest_hash": skill.and_then(|skill| skill.manifest_hash.clone()),
+        "installed_at": skill.and_then(|skill| skill.installed_at.clone()),
+        "status": status
+    })
 }
 
 #[derive(Subcommand, Debug)]
@@ -535,32 +552,14 @@ pub fn run_update(args: SkillUpdateArgs, project_root: PathBuf) -> Result<()> {
                         .ok()
                         .and_then(|reg| reg.skills.as_ref())
                         .and_then(|s| s.get(skill_id));
-
-                    if let Some(skill) = entry {
-                        let output = serde_json::json!({
-                            "id": skill_id,
-                            "name": skill.name,
-                            "description": skill.description,
-                            "version": skill.version,
-                            "files": skill.files,
-                            "manifest_hash": skill.manifest_hash,
-                            "installed_at": skill.installed_at,
-                            "status": "updated"
-                        });
-                        println!("{}", serde_json::to_string(&output)?);
-                    } else {
-                        if let Err(ref e) = reg_res {
-                            tracing::warn!(
-                                ?e,
-                                "Failed to read registry after update, falling back to minimal response"
-                            );
-                        }
-                        let output = serde_json::json!({
-                            "id": skill_id,
-                            "status": "updated"
-                        });
-                        println!("{}", serde_json::to_string(&output)?);
+                    if let Err(ref e) = reg_res {
+                        tracing::warn!(
+                            ?e,
+                            "Failed to read registry after update, falling back to schema-stable response"
+                        );
                     }
+                    let output = render_skill_success_json(skill_id, entry, "updated");
+                    println!("{}", serde_json::to_string(&output)?);
                 }
                 OutputMode::Human { use_color } => {
                     let fmt = HumanFormatter::new(use_color);
@@ -855,32 +854,14 @@ pub fn run_install(args: SkillInstallArgs, project_root: PathBuf) -> Result<()> 
                         .ok()
                         .and_then(|reg| reg.skills.as_ref())
                         .and_then(|s| s.get(&args.skill_id));
-
-                    if let Some(skill) = entry {
-                        let output = serde_json::json!({
-                            "id": &args.skill_id,
-                            "name": skill.name,
-                            "description": skill.description,
-                            "version": skill.version,
-                            "files": skill.files,
-                            "manifest_hash": skill.manifest_hash,
-                            "installed_at": skill.installed_at,
-                            "status": "installed"
-                        });
-                        println!("{}", serde_json::to_string(&output)?);
-                    } else {
-                        if let Err(ref e) = reg_res {
-                            tracing::warn!(
-                                ?e,
-                                "Failed to read registry after install, falling back to minimal response"
-                            );
-                        }
-                        let output = serde_json::json!({
-                            "id": &args.skill_id,
-                            "status": "installed"
-                        });
-                        println!("{}", serde_json::to_string(&output)?);
+                    if let Err(ref e) = reg_res {
+                        tracing::warn!(
+                            ?e,
+                            "Failed to read registry after install, falling back to schema-stable response"
+                        );
                     }
+                    let output = render_skill_success_json(&args.skill_id, entry, "installed");
+                    println!("{}", serde_json::to_string(&output)?);
                 }
                 OutputMode::Human { use_color } => {
                     let fmt = HumanFormatter::new(use_color);
@@ -1518,6 +1499,32 @@ mod tests {
             summary.contains("Note: nothing installable to do."),
             "{summary}"
         );
+    }
+
+    #[test]
+    fn suggest_install_completion_summary_reports_nothing_installable_for_install_all_with_no_selection()
+     {
+        let response = SuggestInstallJsonResponse {
+            suggest: agentsync::skills::suggest::SuggestJsonResponse {
+                detections: Vec::new(),
+                recommendations: Vec::new(),
+                summary: agentsync::skills::suggest::SuggestSummary {
+                    detected_count: 0,
+                    recommended_count: 0,
+                    installable_count: 0,
+                },
+            },
+            mode: SuggestInstallMode::InstallAll,
+            selected_skill_ids: Vec::new(),
+            results: Vec::new(),
+        };
+
+        let summary = render_suggest_install_completion_summary(&response, false);
+        assert!(
+            summary.contains("Note: nothing installable to do."),
+            "{summary}"
+        );
+        assert!(!summary.contains("Note: nothing selected."), "{summary}");
     }
 
     #[derive(Clone, Default)]

@@ -14,14 +14,17 @@ export AGENTSYNC_TEST_SKILL_SOURCE_DIR="$SKILL_SOURCE_ROOT"
 
 log_step "Running guided install in a pseudo-TTY"
 TRANSCRIPT_FILE="$REPO_ROOT/guided-install.transcript"
+CLEAN_TRANSCRIPT_FILE="$REPO_ROOT/guided-install.clean.transcript"
 run_with_tty "\n" "cd '$REPO_ROOT' && agentsync skill suggest --install" > "$TRANSCRIPT_FILE"
 
-assert_file_contains "$TRANSCRIPT_FILE" "Installing 13 selected recommended skills..."
-assert_file_contains "$TRANSCRIPT_FILE" "installed accessibility"
-assert_file_contains "$TRANSCRIPT_FILE" "Recommendation install summary"
-assert_file_contains "$TRANSCRIPT_FILE" "Installed: 13"
-assert_file_contains "$TRANSCRIPT_FILE" "Already installed: 0"
-assert_file_contains "$TRANSCRIPT_FILE" "Failed: 0"
+perl -pe 's/\e\[[0-9;]*[mK]//g' "$TRANSCRIPT_FILE" | tr -d '\r' > "$CLEAN_TRANSCRIPT_FILE"
+
+assert_file_contains "$CLEAN_TRANSCRIPT_FILE" "Installing 13 selected recommended skills..."
+assert_file_contains "$CLEAN_TRANSCRIPT_FILE" "installed accessibility"
+assert_file_contains "$CLEAN_TRANSCRIPT_FILE" "Recommendation install summary"
+assert_file_contains "$CLEAN_TRANSCRIPT_FILE" "Installed: 13"
+assert_file_contains "$CLEAN_TRANSCRIPT_FILE" "Already installed: 0"
+assert_file_contains "$CLEAN_TRANSCRIPT_FILE" "Failed: 0"
 
 cd "$REPO_ROOT"
 for skill_id in \
