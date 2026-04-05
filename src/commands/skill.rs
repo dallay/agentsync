@@ -1554,4 +1554,128 @@ mod tests {
         );
         assert!(output.ends_with('\n'), "{output:?}");
     }
+
+    // Tests for output mode detection
+    #[test]
+    fn detect_suggest_install_output_mode_json_when_json_flag_true() {
+        // Even with TTY, JSON should be preferred when json=true
+        let mode = detect_suggest_install_output_mode(true, true, None, None, None);
+        assert!(matches!(mode, SuggestInstallOutputMode::Json));
+    }
+
+    #[test]
+    fn detect_suggest_install_output_mode_human_live_when_tty() {
+        // With TTY and no json, should be HumanLive
+        let mode = detect_suggest_install_output_mode(false, true, None, None, None);
+        assert!(matches!(
+            mode,
+            SuggestInstallOutputMode::HumanLive { use_color: true }
+        ));
+    }
+
+    #[test]
+    fn detect_suggest_install_output_mode_human_line_when_no_tty() {
+        // Without TTY, should be HumanLine
+        let mode = detect_suggest_install_output_mode(false, false, None, None, None);
+        assert!(matches!(
+            mode,
+            SuggestInstallOutputMode::HumanLine { use_color: false }
+        ));
+    }
+
+    #[test]
+    fn detect_suggest_install_output_mode_human_line_when_dumb_term() {
+        // With "dumb" term, should be HumanLine (not live)
+        let mode = detect_suggest_install_output_mode(false, true, None, None, Some("dumb"));
+        assert!(matches!(
+            mode,
+            SuggestInstallOutputMode::HumanLine { use_color: false }
+        ));
+    }
+
+    #[test]
+    fn detect_suggest_install_output_mode_no_color_with_no_color_env() {
+        // NO_COLOR=1 should disable color even with TTY
+        let mode = detect_suggest_install_output_mode(false, true, Some("1"), None, None);
+        assert!(matches!(
+            mode,
+            SuggestInstallOutputMode::HumanLive { use_color: false }
+        ));
+    }
+
+    #[test]
+    fn detect_suggest_install_output_mode_no_color_with_clicolor_zero() {
+        // CLICOLOR=0 should disable color
+        let mode = detect_suggest_install_output_mode(false, true, None, Some("0"), None);
+        assert!(matches!(
+            mode,
+            SuggestInstallOutputMode::HumanLive { use_color: false }
+        ));
+    }
+
+    #[test]
+    fn detect_suggest_install_output_mode_color_with_clicolor_nonzero() {
+        // CLICOLOR non-zero enables color
+        let mode = detect_suggest_install_output_mode(false, true, None, Some("1"), None);
+        assert!(matches!(
+            mode,
+            SuggestInstallOutputMode::HumanLive { use_color: true }
+        ));
+    }
+
+    // Tests for skill_id validation
+    #[test]
+    fn validate_skill_id_rejects_dotdot() {
+        let result = validate_skill_id("..");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn validate_skill_id_rejects_dot() {
+        let result = validate_skill_id(".");
+        assert!(result.is_err());
+    }
+
+    // Tests for remediation_for_error
+    #[test]
+    fn remediation_for_error_manifest() {
+        let msg = "failed to parse manifest";
+        let remediation = remediation_for_error(msg);
+        assert!(remediation.contains("manifest"));
+    }
+
+    #[test]
+    fn remediation_for_error_network() {
+        let msg = "network error: connection refused";
+        let remediation = remediation_for_error(msg);
+        assert!(remediation.contains("network"));
+    }
+
+    #[test]
+    fn remediation_for_error_download() {
+        let msg = "download failed";
+        let remediation = remediation_for_error(msg);
+        assert!(remediation.contains("network"));
+    }
+
+    #[test]
+    fn remediation_for_error_archive() {
+        let msg = "invalid archive format";
+        let remediation = remediation_for_error(msg);
+        assert!(remediation.contains("archive"));
+    }
+
+    #[test]
+    fn remediation_for_error_permission() {
+        let msg = "permission denied";
+        let remediation = remediation_for_error(msg);
+        assert!(remediation.contains("permission"));
+    }
+
+    #[test]
+    fn remediation_for_error_fallback() {
+        let msg = "some unknown error";
+        let remediation = remediation_for_error(msg);
+        assert!(remediation.contains("above error"));
+    }
 }
