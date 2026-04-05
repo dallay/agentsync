@@ -165,15 +165,15 @@ impl Linker {
             anyhow::bail!("Destination path must be relative: {}", dest_path);
         }
 
-        let components: Vec<_> = path.components().collect();
-
         // SECURITY: Reject empty destinations like "" or "." that do not identify a concrete file.
-        if !components.iter().any(|c| matches!(c, Component::Normal(_))) {
+        // Optimization: iterate directly to avoid unnecessary Vec allocation.
+        if !path.components().any(|c| matches!(c, Component::Normal(_))) {
             anyhow::bail!("Destination path must not be empty: {}", dest_path);
         }
 
         // SECURITY: Reject traversal, root, and drive-prefixed components.
-        if components.iter().any(|c| {
+        // Optimization: iterate directly to avoid unnecessary Vec allocation.
+        if path.components().any(|c| {
             matches!(
                 c,
                 Component::ParentDir | Component::RootDir | Component::Prefix(_)
@@ -845,11 +845,15 @@ impl Linker {
                 Err(_) => continue,
             };
 
-            let rel_str = rel_path
-                .components()
-                .map(|component| component.as_os_str().to_string_lossy().into_owned())
-                .collect::<Vec<_>>()
-                .join("/");
+            // Performance: generating a platform-agnostic relative path for glob matching.
+            // On Unix, this is zero-allocation (Cow::Borrowed).
+            // On Windows, it performs exactly one allocation for the backslash replacement.
+            let rel_os_str = rel_path.to_string_lossy();
+            let rel_str = if std::path::MAIN_SEPARATOR == '/' {
+                rel_os_str
+            } else {
+                std::borrow::Cow::Owned(rel_os_str.replace(std::path::MAIN_SEPARATOR, "/"))
+            };
 
             if rel_str.is_empty() {
                 continue;
