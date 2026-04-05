@@ -17,7 +17,8 @@ TRANSCRIPT_FILE="$REPO_ROOT/guided-install.transcript"
 CLEAN_TRANSCRIPT_FILE="$REPO_ROOT/guided-install.clean.transcript"
 run_with_tty "\n" "cd '$REPO_ROOT' && agentsync skill suggest --install" > "$TRANSCRIPT_FILE"
 
-perl -pe 's/\e\[[0-9;]*[mK]//g' "$TRANSCRIPT_FILE" | tr -d '\r' > "$CLEAN_TRANSCRIPT_FILE"
+# Normalize: strip ANSI codes and carriage returns
+sed -e 's/\x1B\[[0-9;]*[mK]//g' -e 's/\r//g' "$TRANSCRIPT_FILE" > "$CLEAN_TRANSCRIPT_FILE"
 
 assert_file_contains "$CLEAN_TRANSCRIPT_FILE" "Installing 13 selected recommended skills..."
 assert_file_contains "$CLEAN_TRANSCRIPT_FILE" "installed accessibility"
