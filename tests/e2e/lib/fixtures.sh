@@ -83,7 +83,6 @@ prepare_default_skill_sources() {
         seo \
         skill-creator \
         sql-optimization-patterns \
-        typescript-advanced-types \
         web-quality-audit \
         webapp-testing
 }

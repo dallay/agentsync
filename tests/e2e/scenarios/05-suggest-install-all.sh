@@ -15,12 +15,16 @@ export AGENTSYNC_TEST_SKILL_SOURCE_DIR="$SKILL_SOURCE_ROOT"
 cd "$REPO_ROOT"
 
 log_step "Running non-interactive install-all flow"
-agentsync skill suggest --install --all --json > install-all.json
-assert_json_expr "install-all.json" '.results | any(.skill_id == "rust-async-patterns" and .status == "installed")'
-assert_json_expr "install-all.json" '.results | any(.skill_id == "docker-expert" and .status == "installed")'
+agentsync skill suggest --install --all > install-all.txt
+assert_file_contains "install-all.txt" "Installing 13 recommended skills..."
+assert_file_contains "install-all.txt" "installed rust-async-patterns"
+assert_file_contains "install-all.txt" "installed docker-expert"
+assert_file_contains "install-all.txt" "Completed suggest install: 13 installed, 0 already installed, 0 failed."
 
 log_step "Re-running install-all to confirm already-installed behavior"
-agentsync skill suggest --install --all --json > install-all-repeat.json
-assert_json_expr "install-all-repeat.json" '.results | length > 0 and all(.status == "already_installed")'
+agentsync skill suggest --install --all > install-all-repeat.txt
+assert_file_contains "install-all-repeat.txt" "already installed rust-async-patterns"
+assert_file_contains "install-all-repeat.txt" "already installed docker-expert"
+assert_file_contains "install-all-repeat.txt" "Completed suggest install: nothing installable to do (13 already installed)."
 
 echo "✅ suggest install-all scenario passed"

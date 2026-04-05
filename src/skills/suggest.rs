@@ -211,6 +211,44 @@ pub enum SuggestInstallStatus {
     Failed,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SuggestInstallPhase {
+    Resolve,
+    Install,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SuggestInstallProgressEvent {
+    Resolving {
+        skill_id: String,
+    },
+    Installing {
+        skill_id: String,
+    },
+    SkippedAlreadyInstalled {
+        skill_id: String,
+    },
+    Installed {
+        skill_id: String,
+    },
+    Failed {
+        skill_id: String,
+        phase: SuggestInstallPhase,
+        message: String,
+    },
+}
+
+pub trait SuggestInstallProgressReporter {
+    fn on_event(&mut self, event: SuggestInstallProgressEvent);
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+struct NoopSuggestInstallProgressReporter;
+
+impl SuggestInstallProgressReporter for NoopSuggestInstallProgressReporter {
+    fn on_event(&mut self, _event: SuggestInstallProgressEvent) {}
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SuggestInstallResult {
     pub skill_id: String,
@@ -303,18 +341,33 @@ impl SuggestionService {
         response: &SuggestResponse,
         provider: &dyn Provider,
     ) -> Result<SuggestInstallJsonResponse> {
+        let mut reporter = NoopSuggestInstallProgressReporter;
+        self.install_all_with_reporter(project_root, response, provider, &mut reporter)
+    }
+
+    pub fn install_all_with_reporter<R>(
+        &self,
+        project_root: &Path,
+        response: &SuggestResponse,
+        provider: &dyn Provider,
+        reporter: &mut R,
+    ) -> Result<SuggestInstallJsonResponse>
+    where
+        R: SuggestInstallProgressReporter,
+    {
         let selected_skill_ids = response
             .recommendations
             .iter()
             .map(|recommendation| recommendation.skill_id.clone())
             .collect::<Vec<_>>();
 
-        self.install_selected_with(
+        self.install_selected_with_reporter(
             project_root,
             response,
             provider,
             SuggestInstallMode::InstallAll,
             &selected_skill_ids,
+            reporter,
             |skill_id, source, target_root| {
                 blocking_fetch_and_install_skill(skill_id, source, target_root)
                     .map_err(|error| anyhow!(error))
@@ -329,10 +382,37 @@ impl SuggestionService {
         provider: &dyn Provider,
         mode: SuggestInstallMode,
         selected_skill_ids: &[String],
+        install_fn: F,
+    ) -> Result<SuggestInstallJsonResponse>
+    where
+        F: FnMut(&str, &str, &Path) -> Result<()>,
+    {
+        let mut reporter = NoopSuggestInstallProgressReporter;
+        self.install_selected_with_reporter(
+            project_root,
+            response,
+            provider,
+            mode,
+            selected_skill_ids,
+            &mut reporter,
+            install_fn,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn install_selected_with_reporter<F, R>(
+        &self,
+        project_root: &Path,
+        response: &SuggestResponse,
+        provider: &dyn Provider,
+        mode: SuggestInstallMode,
+        selected_skill_ids: &[String],
+        reporter: &mut R,
         mut install_fn: F,
     ) -> Result<SuggestInstallJsonResponse>
     where
         F: FnMut(&str, &str, &Path) -> Result<()>,
+        R: SuggestInstallProgressReporter,
     {
         let selected_skill_ids = dedupe_preserve_order(selected_skill_ids);
         let recommendation_map = response
@@ -362,6 +442,9 @@ impl SuggestionService {
                 .get(&recommendation.skill_id)
                 .is_some_and(|state| state.installed)
             {
+                reporter.on_event(SuggestInstallProgressEvent::SkippedAlreadyInstalled {
+                    skill_id: recommendation.skill_id.clone(),
+                });
                 results.push(SuggestInstallResult {
                     skill_id: recommendation.skill_id.clone(),
                     status: SuggestInstallStatus::AlreadyInstalled,
@@ -370,37 +453,64 @@ impl SuggestionService {
                 continue;
             }
 
+            reporter.on_event(SuggestInstallProgressEvent::Resolving {
+                skill_id: recommendation.skill_id.clone(),
+            });
             match provider.resolve(&recommendation.provider_skill_id) {
-                Ok(resolved) => match install_fn(
-                    &recommendation.skill_id,
-                    &resolved.download_url,
-                    &target_root,
-                ) {
-                    Ok(()) => {
-                        installed_state.insert(
-                            recommendation.skill_id.clone(),
-                            InstalledSkillState {
-                                installed: true,
-                                version: None,
-                            },
-                        );
-                        results.push(SuggestInstallResult {
-                            skill_id: recommendation.skill_id.clone(),
-                            status: SuggestInstallStatus::Installed,
-                            error_message: None,
-                        });
+                Ok(resolved) => {
+                    reporter.on_event(SuggestInstallProgressEvent::Installing {
+                        skill_id: recommendation.skill_id.clone(),
+                    });
+                    match install_fn(
+                        &recommendation.skill_id,
+                        &resolved.download_url,
+                        &target_root,
+                    ) {
+                        Ok(()) => {
+                            installed_state.insert(
+                                recommendation.skill_id.clone(),
+                                InstalledSkillState {
+                                    installed: true,
+                                    version: None,
+                                },
+                            );
+                            reporter.on_event(SuggestInstallProgressEvent::Installed {
+                                skill_id: recommendation.skill_id.clone(),
+                            });
+                            results.push(SuggestInstallResult {
+                                skill_id: recommendation.skill_id.clone(),
+                                status: SuggestInstallStatus::Installed,
+                                error_message: None,
+                            });
+                        }
+                        Err(error) => {
+                            let message = error.to_string();
+                            reporter.on_event(SuggestInstallProgressEvent::Failed {
+                                skill_id: recommendation.skill_id.clone(),
+                                phase: SuggestInstallPhase::Install,
+                                message: message.clone(),
+                            });
+                            results.push(SuggestInstallResult {
+                                skill_id: recommendation.skill_id.clone(),
+                                status: SuggestInstallStatus::Failed,
+                                error_message: Some(message),
+                            });
+                        }
                     }
-                    Err(error) => results.push(SuggestInstallResult {
+                }
+                Err(error) => {
+                    let message = error.to_string();
+                    reporter.on_event(SuggestInstallProgressEvent::Failed {
+                        skill_id: recommendation.skill_id.clone(),
+                        phase: SuggestInstallPhase::Resolve,
+                        message: message.clone(),
+                    });
+                    results.push(SuggestInstallResult {
                         skill_id: recommendation.skill_id.clone(),
                         status: SuggestInstallStatus::Failed,
-                        error_message: Some(error.to_string()),
-                    }),
-                },
-                Err(error) => results.push(SuggestInstallResult {
-                    skill_id: recommendation.skill_id.clone(),
-                    status: SuggestInstallStatus::Failed,
-                    error_message: Some(error.to_string()),
-                }),
+                        error_message: Some(message),
+                    });
+                }
             }
         }
 

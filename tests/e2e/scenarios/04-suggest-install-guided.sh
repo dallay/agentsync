@@ -13,7 +13,13 @@ prepare_default_skill_sources "$SKILL_SOURCE_ROOT"
 export AGENTSYNC_TEST_SKILL_SOURCE_DIR="$SKILL_SOURCE_ROOT"
 
 log_step "Running guided install in a pseudo-TTY"
-run_with_tty "\n" "cd '$REPO_ROOT' && agentsync skill suggest --install"
+TRANSCRIPT_FILE="$REPO_ROOT/guided-install.transcript"
+run_with_tty "\n" "cd '$REPO_ROOT' && agentsync skill suggest --install | tee '$TRANSCRIPT_FILE'"
+
+assert_file_contains "$TRANSCRIPT_FILE" "Installing 13 selected recommended skills..."
+assert_file_contains "$TRANSCRIPT_FILE" "resolving accessibility"
+assert_file_contains "$TRANSCRIPT_FILE" "installed accessibility"
+assert_file_contains "$TRANSCRIPT_FILE" "Completed suggest install: 13 installed, 0 already installed, 0 failed."
 
 cd "$REPO_ROOT"
 for skill_id in \
@@ -25,11 +31,11 @@ for skill_id in \
     frontend-design \
     github-actions \
     makefile \
+    nothing-design \
     performance \
     pinned-tag \
     rust-async-patterns \
-    seo \
-    typescript-advanced-types; do
+    seo; do
     assert_file_exists ".agents/skills/${skill_id}/SKILL.md"
 done
 
