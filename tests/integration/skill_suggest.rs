@@ -277,6 +277,79 @@ fn skill_suggest_install_all_surfaces_direct_install_failure_semantics() {
 }
 
 #[test]
+fn skill_suggest_install_all_human_output_is_line_oriented_and_readable_without_tty() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+
+    fs::write(root.join("Cargo.toml"), "[package]\nname='demo'\n").unwrap();
+    fs::write(root.join("Dockerfile"), "FROM scratch\n").unwrap();
+    fs::write(root.join("Makefile"), "all:\n\t@true\n").unwrap();
+
+    let source_root = root.join("skill-sources");
+    create_skill_source(&source_root, "docker-expert");
+    create_skill_source(&source_root, "makefile");
+    fs::create_dir_all(source_root.join("rust-async-patterns")).unwrap();
+
+    let skills_dir = root.join(".agents/skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+    fs::write(
+        skills_dir.join("registry.json"),
+        serde_json::to_string_pretty(&serde_json::json!({
+            "schemaVersion": 1,
+            "last_updated": "2026-03-30T00:00:00Z",
+            "skills": {
+                "docker-expert": {
+                    "name": "docker-expert",
+                    "version": "1.2.3"
+                }
+            }
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let output = Command::new(agentsync_bin())
+        .current_dir(root)
+        .env("AGENTSYNC_TEST_SKILL_SOURCE_DIR", &source_root)
+        .args(["skill", "suggest", "--install", "--all"])
+        .output()
+        .expect("failed to run agentsync skill suggest --install --all");
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Installing 3 recommended skills..."),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("failed rust-async-patterns during install:"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("already installed docker-expert"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("installed makefile"), "{stdout}");
+    assert!(
+        stdout.contains("Recommendation install summary"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("Installed: 1"), "{stdout}");
+    assert!(stdout.contains("Already installed: 1"), "{stdout}");
+    assert!(stdout.contains("Failed: 1"), "{stdout}");
+    assert!(stdout.contains("Failure details:"), "{stdout}");
+    assert!(stdout.contains("rust-async-patterns:"), "{stdout}");
+    assert!(!stdout.contains("\u{1b}["), "{stdout}");
+    assert!(!stdout.contains('\r'), "{stdout:?}");
+    assert!(!stdout.contains("⠋"), "{stdout}");
+}
+
+#[test]
 fn suggestion_service_preserves_local_install_lookup_with_provider_overlay() {
     let temp_dir = TempDir::new().unwrap();
     let root = temp_dir.path();
@@ -365,6 +438,9 @@ impl Provider for CanonicalOverlayProvider {
                 local_skill_id: "custom-rust".to_string(),
                 title: "Custom Rust".to_string(),
                 summary: "Custom Rust guidance".to_string(),
+                archive_subpath: None,
+                legacy_local_skill_ids: Vec::new(),
+                install_source: None,
             }],
             technologies: vec![ProviderCatalogTechnology {
                 id: "rust".to_string(),

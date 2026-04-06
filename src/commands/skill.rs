@@ -1,13 +1,454 @@
-use agentsync::skills::provider::{Provider, SkillsShProvider};
+use crate::commands::skill_fmt::{self, HumanFormatter, LabelKind, OutputMode};
+use agentsync::skills::catalog::EmbeddedSkillCatalog;
+use agentsync::skills::provider::{Provider, SkillsShProvider, resolve_catalog_install_source};
 use agentsync::skills::registry;
-use agentsync::skills::suggest::{SuggestInstallMode, SuggestionService};
+use agentsync::skills::suggest::{
+    SuggestInstallJsonResponse, SuggestInstallMode, SuggestInstallPhase,
+    SuggestInstallProgressEvent, SuggestInstallProgressReporter, SuggestInstallStatus,
+    SuggestionService,
+};
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
 use dialoguer::{MultiSelect, theme::ColorfulTheme};
-use std::io::IsTerminal;
+use std::io::{IsTerminal, Write};
 use std::path::PathBuf;
 use std::path::{Component, Path};
+use std::sync::mpsc::{self, RecvTimeoutError, Sender};
+use std::thread::{self, JoinHandle};
+use std::time::Duration;
 use tracing::error;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SuggestInstallOutputMode {
+    Json,
+    HumanLine { use_color: bool },
+    HumanLive { use_color: bool },
+}
+
+fn detect_suggest_install_output_mode(
+    json: bool,
+    stdout_is_tty: bool,
+    no_color: Option<&str>,
+    clicolor: Option<&str>,
+    term: Option<&str>,
+) -> SuggestInstallOutputMode {
+    let base = skill_fmt::detect_output_mode(json, stdout_is_tty, no_color, clicolor, term);
+    match base {
+        OutputMode::Json => SuggestInstallOutputMode::Json,
+        OutputMode::Human { use_color } => {
+            let term_is_dumb = term.is_some_and(|v| v.eq_ignore_ascii_case("dumb"));
+            if stdout_is_tty && !term_is_dumb {
+                SuggestInstallOutputMode::HumanLive { use_color }
+            } else {
+                SuggestInstallOutputMode::HumanLine { use_color }
+            }
+        }
+    }
+}
+
+fn suggest_install_output_mode(json: bool) -> SuggestInstallOutputMode {
+    detect_suggest_install_output_mode(
+        json,
+        std::io::stdout().is_terminal(),
+        std::env::var("NO_COLOR").ok().as_deref(),
+        std::env::var("CLICOLOR").ok().as_deref(),
+        std::env::var("TERM").ok().as_deref(),
+    )
+}
+
+struct SuggestInstallLineReporter {
+    formatter: HumanFormatter,
+}
+
+impl SuggestInstallLineReporter {
+    fn new(use_color: bool) -> Self {
+        Self {
+            formatter: HumanFormatter::new(use_color),
+        }
+    }
+
+    fn print_status(&self, symbol: &str, label: &str, kind: LabelKind, body: &str) {
+        println!(
+            "{} {body}",
+            self.formatter.format_label(symbol, label, kind)
+        );
+    }
+}
+
+impl SuggestInstallProgressReporter for SuggestInstallLineReporter {
+    fn on_event(&mut self, event: SuggestInstallProgressEvent) {
+        match event {
+            SuggestInstallProgressEvent::Resolving { skill_id } => {
+                self.print_status("…", "resolving", LabelKind::Info, &skill_id);
+            }
+            SuggestInstallProgressEvent::Installing { skill_id } => {
+                self.print_status("↓", "installing", LabelKind::Info, &skill_id);
+            }
+            SuggestInstallProgressEvent::SkippedAlreadyInstalled { skill_id } => {
+                self.print_status("○", "already installed", LabelKind::Warning, &skill_id);
+            }
+            SuggestInstallProgressEvent::Installed { skill_id } => {
+                self.print_status("✔", "installed", LabelKind::Success, &skill_id);
+            }
+            SuggestInstallProgressEvent::Failed {
+                skill_id,
+                phase,
+                message,
+            } => {
+                let phase_label = match phase {
+                    SuggestInstallPhase::Resolve => "resolve",
+                    SuggestInstallPhase::Install => "install",
+                };
+                self.print_status(
+                    "✗",
+                    "failed",
+                    LabelKind::Failure,
+                    &format!("{skill_id} during {phase_label}: {message}"),
+                );
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SuggestInstallActivityKind {
+    Resolving,
+    Installing,
+}
+
+impl SuggestInstallActivityKind {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Resolving => "resolving",
+            Self::Installing => "installing",
+        }
+    }
+}
+
+trait SuggestInstallLiveWriter: Send {
+    fn write_str(&mut self, text: &str);
+    fn flush(&mut self);
+}
+
+struct StdoutSuggestInstallLiveWriter;
+
+impl SuggestInstallLiveWriter for StdoutSuggestInstallLiveWriter {
+    fn write_str(&mut self, text: &str) {
+        let _ = std::io::stdout().write_all(text.as_bytes());
+    }
+
+    fn flush(&mut self) {
+        let _ = std::io::stdout().flush();
+    }
+}
+
+#[derive(Debug)]
+enum SuggestInstallLiveCommand {
+    Activity {
+        kind: SuggestInstallActivityKind,
+        skill_id: String,
+    },
+    TerminalLine(String),
+    Stop,
+}
+
+struct SuggestInstallLiveReporter {
+    formatter: HumanFormatter,
+    tx: Sender<SuggestInstallLiveCommand>,
+    worker: Option<JoinHandle<()>>,
+}
+
+impl SuggestInstallLiveReporter {
+    const DEFAULT_TICK_INTERVAL: Duration = Duration::from_millis(80);
+
+    fn new(use_color: bool) -> Self {
+        Self::with_writer(
+            use_color,
+            Box::new(StdoutSuggestInstallLiveWriter),
+            Self::DEFAULT_TICK_INTERVAL,
+        )
+    }
+
+    fn with_writer(
+        use_color: bool,
+        writer: Box<dyn SuggestInstallLiveWriter>,
+        tick_interval: Duration,
+    ) -> Self {
+        let formatter = HumanFormatter::new(use_color);
+        let (tx, rx) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            run_suggest_install_live_worker(rx, writer, formatter, tick_interval);
+        });
+
+        Self {
+            formatter,
+            tx,
+            worker: Some(worker),
+        }
+    }
+
+    fn finalize(&mut self) {
+        if let Some(worker) = self.worker.take() {
+            let _ = self.tx.send(SuggestInstallLiveCommand::Stop);
+            let _ = worker.join();
+        }
+    }
+}
+
+impl Drop for SuggestInstallLiveReporter {
+    fn drop(&mut self) {
+        self.finalize();
+    }
+}
+
+impl SuggestInstallProgressReporter for SuggestInstallLiveReporter {
+    fn on_event(&mut self, event: SuggestInstallProgressEvent) {
+        let command = match event {
+            SuggestInstallProgressEvent::Resolving { skill_id } => {
+                SuggestInstallLiveCommand::Activity {
+                    kind: SuggestInstallActivityKind::Resolving,
+                    skill_id,
+                }
+            }
+            SuggestInstallProgressEvent::Installing { skill_id } => {
+                SuggestInstallLiveCommand::Activity {
+                    kind: SuggestInstallActivityKind::Installing,
+                    skill_id,
+                }
+            }
+            SuggestInstallProgressEvent::SkippedAlreadyInstalled { skill_id } => {
+                SuggestInstallLiveCommand::TerminalLine(render_suggest_install_status_line(
+                    self.formatter,
+                    "○",
+                    "already installed",
+                    LabelKind::Warning,
+                    &skill_id,
+                ))
+            }
+            SuggestInstallProgressEvent::Installed { skill_id } => {
+                SuggestInstallLiveCommand::TerminalLine(render_suggest_install_status_line(
+                    self.formatter,
+                    "✔",
+                    "installed",
+                    LabelKind::Success,
+                    &skill_id,
+                ))
+            }
+            SuggestInstallProgressEvent::Failed {
+                skill_id,
+                phase,
+                message,
+            } => {
+                let phase_label = match phase {
+                    SuggestInstallPhase::Resolve => "resolve",
+                    SuggestInstallPhase::Install => "install",
+                };
+                SuggestInstallLiveCommand::TerminalLine(render_suggest_install_status_line(
+                    self.formatter,
+                    "✗",
+                    "failed",
+                    LabelKind::Failure,
+                    &format!("{skill_id} during {phase_label}: {message}"),
+                ))
+            }
+        };
+
+        let _ = self.tx.send(command);
+    }
+}
+
+fn render_suggest_install_status_line(
+    formatter: HumanFormatter,
+    symbol: &str,
+    label: &str,
+    kind: LabelKind,
+    body: &str,
+) -> String {
+    format!("{} {body}", formatter.format_label(symbol, label, kind))
+}
+
+fn render_suggest_install_activity_line(
+    formatter: HumanFormatter,
+    frame: &str,
+    kind: SuggestInstallActivityKind,
+    skill_id: &str,
+) -> String {
+    render_suggest_install_status_line(formatter, frame, kind.label(), LabelKind::Info, skill_id)
+}
+
+fn render_live_line(writer: &mut dyn SuggestInstallLiveWriter, line: &str, last_width: &mut usize) {
+    let width = line.chars().count();
+    let padding = " ".repeat(last_width.saturating_sub(width));
+    writer.write_str("\r");
+    writer.write_str(line);
+    if !padding.is_empty() {
+        writer.write_str(&padding);
+    }
+    writer.flush();
+    *last_width = width;
+}
+
+fn clear_live_line(writer: &mut dyn SuggestInstallLiveWriter, last_width: &mut usize) {
+    if *last_width == 0 {
+        return;
+    }
+
+    writer.write_str("\r");
+    writer.write_str(&" ".repeat(*last_width));
+    writer.write_str("\r");
+    writer.flush();
+    *last_width = 0;
+}
+
+fn run_suggest_install_live_worker(
+    rx: mpsc::Receiver<SuggestInstallLiveCommand>,
+    mut writer: Box<dyn SuggestInstallLiveWriter>,
+    formatter: HumanFormatter,
+    tick_interval: Duration,
+) {
+    const SPINNER_FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+    let mut active: Option<(SuggestInstallActivityKind, String)> = None;
+    let mut frame_index = 0usize;
+    let mut last_width = 0usize;
+
+    loop {
+        match rx.recv_timeout(tick_interval) {
+            Ok(SuggestInstallLiveCommand::Activity { kind, skill_id }) => {
+                active = Some((kind, skill_id));
+                frame_index = 0;
+                if let Some((active_kind, active_skill_id)) = active.as_ref() {
+                    let line = render_suggest_install_activity_line(
+                        formatter,
+                        SPINNER_FRAMES[frame_index],
+                        *active_kind,
+                        active_skill_id,
+                    );
+                    render_live_line(&mut *writer, &line, &mut last_width);
+                    frame_index = (frame_index + 1) % SPINNER_FRAMES.len();
+                }
+            }
+            Ok(SuggestInstallLiveCommand::TerminalLine(line)) => {
+                clear_live_line(&mut *writer, &mut last_width);
+                writer.write_str(&line);
+                writer.write_str("\n");
+                writer.flush();
+                active = None;
+            }
+            Ok(SuggestInstallLiveCommand::Stop) => {
+                if active.is_some() {
+                    clear_live_line(&mut *writer, &mut last_width);
+                    writer.write_str("\n");
+                    writer.flush();
+                }
+                break;
+            }
+            Err(RecvTimeoutError::Timeout) => {
+                if let Some((kind, skill_id)) = active.as_ref() {
+                    let line = render_suggest_install_activity_line(
+                        formatter,
+                        SPINNER_FRAMES[frame_index],
+                        *kind,
+                        skill_id,
+                    );
+                    render_live_line(&mut *writer, &line, &mut last_width);
+                    frame_index = (frame_index + 1) % SPINNER_FRAMES.len();
+                }
+            }
+            Err(RecvTimeoutError::Disconnected) => break,
+        }
+    }
+}
+
+fn print_suggest_install_batch_start(mode: SuggestInstallMode, selected_count: usize) {
+    let noun = if selected_count == 1 {
+        "skill"
+    } else {
+        "skills"
+    };
+    match mode {
+        SuggestInstallMode::Interactive => {
+            println!("Installing {selected_count} selected recommended {noun}...");
+        }
+        SuggestInstallMode::InstallAll => {
+            println!("Installing {selected_count} recommended {noun}...");
+        }
+    }
+}
+
+fn render_suggest_install_completion_summary(
+    response: &SuggestInstallJsonResponse,
+    use_color: bool,
+) -> String {
+    let formatter = HumanFormatter::new(use_color);
+    let installed = response
+        .results
+        .iter()
+        .filter(|result| result.status == SuggestInstallStatus::Installed)
+        .count();
+    let skipped = response
+        .results
+        .iter()
+        .filter(|result| result.status == SuggestInstallStatus::AlreadyInstalled)
+        .count();
+    let failed = response
+        .results
+        .iter()
+        .filter(|result| result.status == SuggestInstallStatus::Failed)
+        .count();
+
+    let mut lines = vec![formatter.format_heading("Recommendation install summary")];
+    lines.push(format!(
+        "  {}: {installed}",
+        formatter.format_label("✔", "Installed", LabelKind::Success)
+    ));
+    lines.push(format!(
+        "  {}: {skipped}",
+        formatter.format_label("○", "Already installed", LabelKind::Warning)
+    ));
+    lines.push(format!(
+        "  {}: {failed}",
+        formatter.format_label("✗", "Failed", LabelKind::Failure)
+    ));
+
+    if response.mode == SuggestInstallMode::Interactive && response.selected_skill_ids.is_empty() {
+        lines.push("  Note: nothing selected.".to_string());
+    } else if installed == 0 && failed == 0 {
+        lines.push("  Note: nothing installable to do.".to_string());
+    }
+
+    let failures = response
+        .results
+        .iter()
+        .filter(|result| result.status == SuggestInstallStatus::Failed)
+        .collect::<Vec<_>>();
+    if !failures.is_empty() {
+        lines.push("  Failure details:".to_string());
+        for failure in failures {
+            let message = failure.error_message.as_deref().unwrap_or("unknown error");
+            lines.push(format!("    - {}: {}", failure.skill_id, message));
+        }
+    }
+
+    lines.join("\n")
+}
+
+fn render_skill_success_json(
+    skill_id: &str,
+    skill: Option<&registry::SkillEntry>,
+    status: &str,
+) -> serde_json::Value {
+    serde_json::json!({
+        "id": skill_id,
+        "name": skill.and_then(|skill| skill.name.clone()),
+        "description": skill.and_then(|skill| skill.description.clone()),
+        "version": skill.and_then(|skill| skill.version.clone()),
+        "files": skill.and_then(|skill| skill.files.clone()),
+        "manifest_hash": skill.and_then(|skill| skill.manifest_hash.clone()),
+        "installed_at": skill.and_then(|skill| skill.installed_at.clone()),
+        "status": status
+    })
+}
 
 #[derive(Subcommand, Debug)]
 pub enum SkillCommand {
@@ -97,47 +538,37 @@ pub fn run_update(args: SkillUpdateArgs, project_root: PathBuf) -> Result<()> {
             update_source_path,
         ))
     };
+    let mode = skill_fmt::output_mode(args.json);
     match result {
         Ok(()) => {
-            if args.json {
-                let registry_path = project_root
-                    .join(".agents")
-                    .join("skills")
-                    .join("registry.json");
-                let reg_res = registry::read_registry(&registry_path);
-                let entry = reg_res
-                    .as_ref()
-                    .ok()
-                    .and_then(|reg| reg.skills.as_ref())
-                    .and_then(|s| s.get(skill_id));
-
-                if let Some(skill) = entry {
-                    let output = serde_json::json!({
-                        "id": skill_id,
-                        "name": skill.name,
-                        "description": skill.description,
-                        "version": skill.version,
-                        "files": skill.files,
-                        "manifest_hash": skill.manifest_hash,
-                        "installed_at": skill.installed_at,
-                        "status": "updated"
-                    });
-                    println!("{}", serde_json::to_string(&output)?);
-                } else {
+            match mode {
+                OutputMode::Json => {
+                    let registry_path = project_root
+                        .join(".agents")
+                        .join("skills")
+                        .join("registry.json");
+                    let reg_res = registry::read_registry(&registry_path);
+                    let entry = reg_res
+                        .as_ref()
+                        .ok()
+                        .and_then(|reg| reg.skills.as_ref())
+                        .and_then(|s| s.get(skill_id));
                     if let Err(ref e) = reg_res {
                         tracing::warn!(
                             ?e,
-                            "Failed to read registry after update, falling back to minimal response"
+                            "Failed to read registry after update, falling back to schema-stable response"
                         );
                     }
-                    let output = serde_json::json!({
-                        "id": skill_id,
-                        "status": "updated"
-                    });
+                    let output = render_skill_success_json(skill_id, entry, "updated");
                     println!("{}", serde_json::to_string(&output)?);
                 }
-            } else {
-                println!("Updated {}", skill_id);
+                OutputMode::Human { use_color } => {
+                    let fmt = HumanFormatter::new(use_color);
+                    println!(
+                        "{} {skill_id}",
+                        fmt.format_label("✔", "updated", LabelKind::Success)
+                    );
+                }
             }
             Ok(())
         }
@@ -146,18 +577,26 @@ pub fn run_update(args: SkillUpdateArgs, project_root: PathBuf) -> Result<()> {
             let code = "update_error";
             let remediation = remediation_for_error(&err_string);
 
-            if args.json {
-                let output = serde_json::json!({
-                    "error": err_string,
-                    "code": code,
-                    "remediation": remediation
-                });
-                println!("{}", serde_json::to_string(&output)?);
-                Err(e.into())
-            } else {
-                error!(%code, %err_string, "Update failed");
-                println!("Hint: {}", remediation);
-                Err(e.into())
+            match mode {
+                OutputMode::Json => {
+                    let output = serde_json::json!({
+                        "error": err_string,
+                        "code": code,
+                        "remediation": remediation
+                    });
+                    println!("{}", serde_json::to_string(&output)?);
+                    Err(e.into())
+                }
+                OutputMode::Human { use_color } => {
+                    let fmt = HumanFormatter::new(use_color);
+                    error!(%code, %err_string, "Update failed");
+                    println!(
+                        "{} {skill_id}: {err_string}",
+                        fmt.format_label("✗", "failed", LabelKind::Failure)
+                    );
+                    println!("Hint: {}", remediation);
+                    Err(e.into())
+                }
             }
         }
     }
@@ -180,6 +619,7 @@ pub fn run_suggest(args: SkillSuggestArgs, project_root: PathBuf) -> Result<()> 
     let service = SuggestionService;
     let result = (|| -> Result<()> {
         let response = service.suggest(&project_root)?;
+        let output_mode = suggest_install_output_mode(args.json);
 
         if !args.install {
             if args.json {
@@ -190,34 +630,110 @@ pub fn run_suggest(args: SkillSuggestArgs, project_root: PathBuf) -> Result<()> 
             return Ok(());
         }
 
-        let install_response = if args.all {
-            let provider = SuggestInstallProvider::default();
-            service.install_all_with(&project_root, &response, &provider)
-        } else {
-            ensure_interactive_install_supported()?;
-            let selected_skill_ids = prompt_for_recommended_skills(&response)?;
-            let provider = SuggestInstallProvider::default();
-            service.install_selected_with(
-                &project_root,
-                &response,
-                &provider,
-                SuggestInstallMode::Interactive,
-                &selected_skill_ids,
-                |skill_id, source, target_root| {
-                    agentsync::skills::install::blocking_fetch_and_install_skill(
-                        skill_id,
-                        source,
-                        target_root,
+        let provider = SuggestInstallProvider::default();
+        let install_response = match output_mode {
+            SuggestInstallOutputMode::Json => {
+                if args.all {
+                    service.install_all_with(&project_root, &response, &provider)
+                } else {
+                    ensure_interactive_install_supported()?;
+                    let selected_skill_ids = prompt_for_recommended_skills(&response)?;
+                    service.install_selected_with(
+                        &project_root,
+                        &response,
+                        &provider,
+                        SuggestInstallMode::Interactive,
+                        &selected_skill_ids,
+                        |skill_id, source, target_root| {
+                            agentsync::skills::install::blocking_fetch_and_install_skill(
+                                skill_id,
+                                source,
+                                target_root,
+                            )
+                            .map_err(|error| anyhow::anyhow!(error))
+                        },
                     )
-                    .map_err(|error| anyhow::anyhow!(error))
-                },
-            )
+                }
+            }
+            SuggestInstallOutputMode::HumanLine { use_color }
+            | SuggestInstallOutputMode::HumanLive { use_color } => {
+                let (mode, selected_skill_ids) = if args.all {
+                    (
+                        SuggestInstallMode::InstallAll,
+                        response
+                            .recommendations
+                            .iter()
+                            .map(|recommendation| recommendation.skill_id.clone())
+                            .collect::<Vec<_>>(),
+                    )
+                } else {
+                    ensure_interactive_install_supported()?;
+                    (
+                        SuggestInstallMode::Interactive,
+                        prompt_for_recommended_skills(&response)?,
+                    )
+                };
+
+                print_suggest_install_batch_start(mode, selected_skill_ids.len());
+                match output_mode {
+                    SuggestInstallOutputMode::HumanLine { .. } => {
+                        let mut reporter = SuggestInstallLineReporter::new(use_color);
+                        service.install_selected_with_reporter(
+                            &project_root,
+                            &response,
+                            &provider,
+                            mode,
+                            &selected_skill_ids,
+                            &mut reporter,
+                            |skill_id, source, target_root| {
+                                agentsync::skills::install::blocking_fetch_and_install_skill(
+                                    skill_id,
+                                    source,
+                                    target_root,
+                                )
+                                .map_err(|error| anyhow::anyhow!(error))
+                            },
+                        )
+                    }
+                    SuggestInstallOutputMode::HumanLive { .. } => {
+                        let mut reporter = SuggestInstallLiveReporter::new(use_color);
+                        let result = service.install_selected_with_reporter(
+                            &project_root,
+                            &response,
+                            &provider,
+                            mode,
+                            &selected_skill_ids,
+                            &mut reporter,
+                            |skill_id, source, target_root| {
+                                agentsync::skills::install::blocking_fetch_and_install_skill(
+                                    skill_id,
+                                    source,
+                                    target_root,
+                                )
+                                .map_err(|error| anyhow::anyhow!(error))
+                            },
+                        );
+                        reporter.finalize();
+                        result
+                    }
+                    SuggestInstallOutputMode::Json => unreachable!(),
+                }
+            }
         }?;
 
-        if args.json {
-            println!("{}", serde_json::to_string(&install_response)?);
-        } else {
-            println!("{}", install_response.render_human());
+        match output_mode {
+            SuggestInstallOutputMode::Json => {
+                // In JSON mode, include failure information in the output but don't fail the command
+                // since the response contains detailed results that consumers can inspect
+                println!("{}", serde_json::to_string(&install_response)?);
+            }
+            SuggestInstallOutputMode::HumanLine { use_color }
+            | SuggestInstallOutputMode::HumanLive { use_color } => {
+                println!(
+                    "{}",
+                    render_suggest_install_completion_summary(&install_response, use_color)
+                );
+            }
         }
 
         Ok(())
@@ -324,47 +840,37 @@ pub fn run_install(args: SkillInstallArgs, project_root: PathBuf) -> Result<()> 
         &source,
         &target_root,
     );
+    let mode = skill_fmt::output_mode(args.json);
     match result {
         Ok(()) => {
-            if args.json {
-                let registry_path = project_root
-                    .join(".agents")
-                    .join("skills")
-                    .join("registry.json");
-                let reg_res = registry::read_registry(&registry_path);
-                let entry = reg_res
-                    .as_ref()
-                    .ok()
-                    .and_then(|reg| reg.skills.as_ref())
-                    .and_then(|s| s.get(&args.skill_id));
-
-                if let Some(skill) = entry {
-                    let output = serde_json::json!({
-                        "id": &args.skill_id,
-                        "name": skill.name,
-                        "description": skill.description,
-                        "version": skill.version,
-                        "files": skill.files,
-                        "manifest_hash": skill.manifest_hash,
-                        "installed_at": skill.installed_at,
-                        "status": "installed"
-                    });
-                    println!("{}", serde_json::to_string(&output)?);
-                } else {
+            match mode {
+                OutputMode::Json => {
+                    let registry_path = project_root
+                        .join(".agents")
+                        .join("skills")
+                        .join("registry.json");
+                    let reg_res = registry::read_registry(&registry_path);
+                    let entry = reg_res
+                        .as_ref()
+                        .ok()
+                        .and_then(|reg| reg.skills.as_ref())
+                        .and_then(|s| s.get(&args.skill_id));
                     if let Err(ref e) = reg_res {
                         tracing::warn!(
                             ?e,
-                            "Failed to read registry after install, falling back to minimal response"
+                            "Failed to read registry after install, falling back to schema-stable response"
                         );
                     }
-                    let output = serde_json::json!({
-                        "id": &args.skill_id,
-                        "status": "installed"
-                    });
+                    let output = render_skill_success_json(&args.skill_id, entry, "installed");
                     println!("{}", serde_json::to_string(&output)?);
                 }
-            } else {
-                println!("Installed {}", args.skill_id);
+                OutputMode::Human { use_color } => {
+                    let fmt = HumanFormatter::new(use_color);
+                    println!(
+                        "{} {skill_id}",
+                        fmt.format_label("✔", "installed", LabelKind::Success)
+                    );
+                }
             }
             Ok(())
         }
@@ -376,18 +882,26 @@ pub fn run_install(args: SkillInstallArgs, project_root: PathBuf) -> Result<()> 
             code = "install_error";
             remediation = remediation_for_error(&err_string);
 
-            if args.json {
-                let output = serde_json::json!({
-                    "error": err_string,
-                    "code": code,
-                    "remediation": remediation
-                });
-                println!("{}", serde_json::to_string(&output)?);
-                Err(e)
-            } else {
-                error!(%code, %err_string, "Install failed");
-                println!("Hint: {}", remediation);
-                Err(e)
+            match mode {
+                OutputMode::Json => {
+                    let output = serde_json::json!({
+                        "error": err_string,
+                        "code": code,
+                        "remediation": remediation
+                    });
+                    println!("{}", serde_json::to_string(&output)?);
+                    Err(e)
+                }
+                OutputMode::Human { use_color } => {
+                    let fmt = HumanFormatter::new(use_color);
+                    error!(%code, %err_string, "Install failed");
+                    println!(
+                        "{} {skill_id}: {err_string}",
+                        fmt.format_label("✗", "failed", LabelKind::Failure)
+                    );
+                    println!("Hint: {}", remediation);
+                    Err(e)
+                }
             }
         }
     }
@@ -411,6 +925,23 @@ impl Provider for SuggestInstallProvider {
     }
 
     fn resolve(&self, id: &str) -> Result<agentsync::skills::provider::SkillInstallInfo> {
+        let catalog = EmbeddedSkillCatalog::default();
+        if let Some(definition) = catalog.get_skill_definition(id) {
+            let download_url = resolve_catalog_install_source(
+                &catalog,
+                &self.fallback,
+                &definition.provider_skill_id,
+                &definition.local_skill_id,
+                None,
+            )?;
+
+            return Ok(agentsync::skills::provider::SkillInstallInfo {
+                download_url: download_url.clone(),
+                // Informational only today: install pipeline infers behavior from the source string.
+                format: infer_install_source_format(&download_url),
+            });
+        }
+
         if let Ok(source_root) = std::env::var("AGENTSYNC_TEST_SKILL_SOURCE_DIR") {
             // or a simple local name. Use the full ID to find the local source directory.
             let source_path = PathBuf::from(source_root).join(id);
@@ -442,25 +973,34 @@ pub fn run_uninstall(args: SkillUninstallArgs, project_root: PathBuf) -> Result<
 
     let result = agentsync::skills::uninstall::uninstall_skill(skill_id, &target_root);
 
+    let mode = skill_fmt::output_mode(args.json);
     match result {
         Ok(()) => {
-            if args.json {
-                let output = serde_json::json!({
-                    "id": skill_id,
-                    "status": "uninstalled"
-                });
-                println!("{}", serde_json::to_string(&output)?);
-            } else {
-                println!("Uninstalled {}", skill_id);
+            match mode {
+                OutputMode::Json => {
+                    let output = serde_json::json!({
+                        "id": skill_id,
+                        "status": "uninstalled"
+                    });
+                    println!("{}", serde_json::to_string(&output)?);
+                }
+                OutputMode::Human { use_color } => {
+                    let fmt = HumanFormatter::new(use_color);
+                    println!(
+                        "{} {skill_id}",
+                        fmt.format_label("✔", "uninstalled", LabelKind::Success)
+                    );
+                }
             }
             Ok(())
         }
         Err(e) => {
             let err_string = e.to_string();
-            let (code, remediation) = match e {
-                agentsync::skills::uninstall::SkillUninstallError::NotFound(_) => {
-                    ("skill_not_found", "Try 'list' to verify installed skills")
-                }
+            let (code, remediation) = match &e {
+                agentsync::skills::uninstall::SkillUninstallError::NotFound(_) => (
+                    "skill_not_found",
+                    "Skill is not installed. Check .agents/skills/ directory for installed skills.",
+                ),
                 agentsync::skills::uninstall::SkillUninstallError::Validation(_) => (
                     "validation_error",
                     "Ensure the skill ID is valid (no special characters, not '.' or '..')",
@@ -471,28 +1011,26 @@ pub fn run_uninstall(args: SkillUninstallArgs, project_root: PathBuf) -> Result<
                 ),
             };
 
-            if args.json {
-                let output = serde_json::json!({
-                    "error": err_string,
-                    "code": code,
-                    "remediation": remediation
-                });
-                println!("{}", serde_json::to_string(&output)?);
-                Err(anyhow::anyhow!(e))
-            } else {
-                error!(%code, %err_string, "Uninstall failed");
-                match e {
-                    agentsync::skills::uninstall::SkillUninstallError::NotFound(_) => {
-                        println!(
-                            "Hint: Skill '{}' is not installed. Use 'list' to see installed skills.",
-                            skill_id
-                        );
-                    }
-                    _ => {
-                        println!("Hint: Ensure you have proper permissions to remove files.");
-                    }
+            match mode {
+                OutputMode::Json => {
+                    let output = serde_json::json!({
+                        "error": err_string,
+                        "code": code,
+                        "remediation": remediation
+                    });
+                    println!("{}", serde_json::to_string(&output)?);
+                    Err(anyhow::anyhow!(e))
                 }
-                Err(anyhow::anyhow!(e))
+                OutputMode::Human { use_color } => {
+                    let fmt = HumanFormatter::new(use_color);
+                    error!(%code, %err_string, "Uninstall failed");
+                    println!(
+                        "{} {skill_id}: {err_string}",
+                        fmt.format_label("✗", "failed", LabelKind::Failure)
+                    );
+                    println!("Hint: {}", remediation);
+                    Err(anyhow::anyhow!(e))
+                }
             }
         }
     }
@@ -510,6 +1048,27 @@ fn resolve_source(skill_id: &str, source_arg: Option<String>) -> Result<String> 
 
     // If it doesn't look like a URL or a path, try to resolve via skills.sh
     if !skill_id.contains("://") && !skill_id.starts_with('/') && !skill_id.starts_with('.') {
+        let catalog = EmbeddedSkillCatalog::default();
+        if let Some(definition) = catalog.get_skill_definition_by_local_id(skill_id) {
+            let provider = SkillsShProvider;
+            return resolve_catalog_install_source(
+                &catalog,
+                &provider,
+                &definition.provider_skill_id,
+                &definition.local_skill_id,
+                None,
+            )
+            .map_err(|e| {
+                tracing::warn!(skill_id = %skill_id, provider_skill_id = %definition.provider_skill_id, ?e, "Failed to resolve catalog skill via skills provider");
+                anyhow::anyhow!(
+                    "failed to resolve skill '{}' via provider '{}': {}",
+                    skill_id,
+                    definition.provider_skill_id,
+                    e
+                )
+            });
+        }
+
         let provider = SkillsShProvider;
         match provider.resolve(skill_id) {
             Ok(info) => Ok(info.download_url),
@@ -525,6 +1084,22 @@ fn resolve_source(skill_id: &str, source_arg: Option<String>) -> Result<String> 
     } else {
         Ok(skill_id.to_string())
     }
+}
+
+fn infer_install_source_format(source: &str) -> String {
+    if source.starts_with("http://") || source.starts_with("https://") {
+        if source.ends_with(".tar.gz") || source.ends_with(".tgz") {
+            return "tar.gz".to_string();
+        }
+
+        if source.ends_with(".zip") {
+            return "zip".to_string();
+        }
+
+        return "url".to_string();
+    }
+
+    "dir".to_string()
 }
 
 /// Attempts to convert a GitHub URL to a downloadable ZIP URL.
@@ -693,7 +1268,7 @@ fn validate_skill_id(skill_id: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    // PathBuf no longer used in tests
+    use std::sync::{Arc, Mutex};
 
     #[test]
     fn validate_skill_id_accepts_simple_names() {
@@ -822,5 +1397,352 @@ mod tests {
         let result =
             try_convert_github_url("https://github.com/owner/repo/archive/HEAD.zip#subpath");
         assert_eq!(result, None);
+    }
+
+    #[test]
+    fn suggest_install_output_mode_prefers_json() {
+        assert_eq!(
+            detect_suggest_install_output_mode(true, true, None, None, Some("xterm-256color")),
+            SuggestInstallOutputMode::Json
+        );
+    }
+
+    #[test]
+    fn suggest_install_output_mode_falls_back_to_human_line_without_tty() {
+        assert_eq!(
+            detect_suggest_install_output_mode(false, false, None, None, Some("xterm-256color")),
+            SuggestInstallOutputMode::HumanLine { use_color: false }
+        );
+    }
+
+    #[test]
+    fn suggest_install_output_mode_selects_human_live_for_tty_by_default() {
+        assert_eq!(
+            detect_suggest_install_output_mode(false, true, None, None, Some("xterm-256color")),
+            SuggestInstallOutputMode::HumanLive { use_color: true }
+        );
+    }
+
+    #[test]
+    fn suggest_install_output_mode_honors_no_color() {
+        assert_eq!(
+            detect_suggest_install_output_mode(
+                false,
+                true,
+                Some("1"),
+                None,
+                Some("xterm-256color")
+            ),
+            SuggestInstallOutputMode::HumanLive { use_color: false }
+        );
+    }
+
+    #[test]
+    fn suggest_install_output_mode_honors_clicolor_zero() {
+        assert_eq!(
+            detect_suggest_install_output_mode(
+                false,
+                true,
+                None,
+                Some("0"),
+                Some("xterm-256color")
+            ),
+            SuggestInstallOutputMode::HumanLive { use_color: false }
+        );
+    }
+
+    #[test]
+    fn suggest_install_output_mode_falls_back_to_human_line_for_dumb_term() {
+        assert_eq!(
+            detect_suggest_install_output_mode(false, true, None, None, Some("dumb")),
+            SuggestInstallOutputMode::HumanLine { use_color: false }
+        );
+    }
+
+    #[test]
+    fn suggest_install_completion_summary_reports_explicit_counts_for_mixed_results() {
+        let response = SuggestInstallJsonResponse {
+            suggest: agentsync::skills::suggest::SuggestJsonResponse {
+                detections: Vec::new(),
+                recommendations: Vec::new(),
+                summary: agentsync::skills::suggest::SuggestSummary {
+                    detected_count: 0,
+                    recommended_count: 3,
+                    installable_count: 3,
+                },
+            },
+            mode: SuggestInstallMode::InstallAll,
+            selected_skill_ids: vec!["a".to_string(), "b".to_string(), "c".to_string()],
+            results: vec![
+                agentsync::skills::suggest::SuggestInstallResult {
+                    skill_id: "a".to_string(),
+                    provider_skill_id: "dallay/test-a".to_string(),
+                    status: SuggestInstallStatus::Installed,
+                    error_message: None,
+                },
+                agentsync::skills::suggest::SuggestInstallResult {
+                    skill_id: "b".to_string(),
+                    provider_skill_id: "dallay/test-b".to_string(),
+                    status: SuggestInstallStatus::AlreadyInstalled,
+                    error_message: None,
+                },
+                agentsync::skills::suggest::SuggestInstallResult {
+                    skill_id: "c".to_string(),
+                    provider_skill_id: "dallay/test-c".to_string(),
+                    status: SuggestInstallStatus::Failed,
+                    error_message: Some("simulated install failure".to_string()),
+                },
+            ],
+        };
+
+        let summary = render_suggest_install_completion_summary(&response, false);
+        assert!(
+            summary.contains("Recommendation install summary"),
+            "{summary}"
+        );
+        assert!(summary.contains("Installed: 1"), "{summary}");
+        assert!(summary.contains("Already installed: 1"), "{summary}");
+        assert!(summary.contains("Failed: 1"), "{summary}");
+        assert!(summary.contains("Failure details:"), "{summary}");
+        assert!(
+            summary.contains("- c: simulated install failure"),
+            "{summary}"
+        );
+    }
+
+    #[test]
+    fn suggest_install_completion_summary_reports_nothing_installable_with_explicit_counts() {
+        let response = SuggestInstallJsonResponse {
+            suggest: agentsync::skills::suggest::SuggestJsonResponse {
+                detections: Vec::new(),
+                recommendations: Vec::new(),
+                summary: agentsync::skills::suggest::SuggestSummary {
+                    detected_count: 0,
+                    recommended_count: 2,
+                    installable_count: 0,
+                },
+            },
+            mode: SuggestInstallMode::InstallAll,
+            selected_skill_ids: vec!["a".to_string(), "b".to_string()],
+            results: vec![
+                agentsync::skills::suggest::SuggestInstallResult {
+                    skill_id: "a".to_string(),
+                    provider_skill_id: "dallay/test-a".to_string(),
+                    status: SuggestInstallStatus::AlreadyInstalled,
+                    error_message: None,
+                },
+                agentsync::skills::suggest::SuggestInstallResult {
+                    skill_id: "b".to_string(),
+                    provider_skill_id: "dallay/test-b".to_string(),
+                    status: SuggestInstallStatus::AlreadyInstalled,
+                    error_message: None,
+                },
+            ],
+        };
+
+        let summary = render_suggest_install_completion_summary(&response, false);
+        assert!(
+            summary.contains("Recommendation install summary"),
+            "{summary}"
+        );
+        assert!(summary.contains("Installed: 0"), "{summary}");
+        assert!(summary.contains("Already installed: 2"), "{summary}");
+        assert!(summary.contains("Failed: 0"), "{summary}");
+        assert!(
+            summary.contains("Note: nothing installable to do."),
+            "{summary}"
+        );
+    }
+
+    #[test]
+    fn suggest_install_completion_summary_reports_nothing_installable_for_install_all_with_no_selection()
+     {
+        let response = SuggestInstallJsonResponse {
+            suggest: agentsync::skills::suggest::SuggestJsonResponse {
+                detections: Vec::new(),
+                recommendations: Vec::new(),
+                summary: agentsync::skills::suggest::SuggestSummary {
+                    detected_count: 0,
+                    recommended_count: 0,
+                    installable_count: 0,
+                },
+            },
+            mode: SuggestInstallMode::InstallAll,
+            selected_skill_ids: Vec::new(),
+            results: Vec::new(),
+        };
+
+        let summary = render_suggest_install_completion_summary(&response, false);
+        assert!(
+            summary.contains("Note: nothing installable to do."),
+            "{summary}"
+        );
+        assert!(!summary.contains("Note: nothing selected."), "{summary}");
+    }
+
+    #[derive(Clone, Default)]
+    struct RecordingLiveWriter {
+        output: Arc<Mutex<String>>,
+    }
+
+    impl RecordingLiveWriter {
+        fn snapshot(&self) -> String {
+            self.output.lock().unwrap().clone()
+        }
+    }
+
+    impl SuggestInstallLiveWriter for RecordingLiveWriter {
+        fn write_str(&mut self, text: &str) {
+            self.output.lock().unwrap().push_str(text);
+        }
+
+        fn flush(&mut self) {}
+    }
+
+    #[test]
+    fn suggest_install_live_reporter_finalize_cleans_up_partial_spinner_frame() {
+        let writer = RecordingLiveWriter::default();
+        let mut reporter = SuggestInstallLiveReporter::with_writer(
+            false,
+            Box::new(writer.clone()),
+            Duration::from_millis(10),
+        );
+
+        reporter.on_event(SuggestInstallProgressEvent::Resolving {
+            skill_id: "rust-async-patterns".to_string(),
+        });
+        std::thread::sleep(Duration::from_millis(25));
+        reporter.finalize();
+
+        let output = writer.snapshot();
+        assert!(
+            output.contains("resolving rust-async-patterns"),
+            "{output:?}"
+        );
+        assert!(output.ends_with('\n'), "{output:?}");
+    }
+
+    // Tests for output mode detection
+    #[test]
+    fn detect_suggest_install_output_mode_json_when_json_flag_true() {
+        // Even with TTY, JSON should be preferred when json=true
+        let mode = detect_suggest_install_output_mode(true, true, None, None, None);
+        assert!(matches!(mode, SuggestInstallOutputMode::Json));
+    }
+
+    #[test]
+    fn detect_suggest_install_output_mode_human_live_when_tty() {
+        // With TTY and no json, should be HumanLive
+        let mode = detect_suggest_install_output_mode(false, true, None, None, None);
+        assert!(matches!(
+            mode,
+            SuggestInstallOutputMode::HumanLive { use_color: true }
+        ));
+    }
+
+    #[test]
+    fn detect_suggest_install_output_mode_human_line_when_no_tty() {
+        // Without TTY, should be HumanLine
+        let mode = detect_suggest_install_output_mode(false, false, None, None, None);
+        assert!(matches!(
+            mode,
+            SuggestInstallOutputMode::HumanLine { use_color: false }
+        ));
+    }
+
+    #[test]
+    fn detect_suggest_install_output_mode_human_line_when_dumb_term() {
+        // With "dumb" term, should be HumanLine (not live)
+        let mode = detect_suggest_install_output_mode(false, true, None, None, Some("dumb"));
+        assert!(matches!(
+            mode,
+            SuggestInstallOutputMode::HumanLine { use_color: false }
+        ));
+    }
+
+    #[test]
+    fn detect_suggest_install_output_mode_no_color_with_no_color_env() {
+        // NO_COLOR=1 should disable color even with TTY
+        let mode = detect_suggest_install_output_mode(false, true, Some("1"), None, None);
+        assert!(matches!(
+            mode,
+            SuggestInstallOutputMode::HumanLive { use_color: false }
+        ));
+    }
+
+    #[test]
+    fn detect_suggest_install_output_mode_no_color_with_clicolor_zero() {
+        // CLICOLOR=0 should disable color
+        let mode = detect_suggest_install_output_mode(false, true, None, Some("0"), None);
+        assert!(matches!(
+            mode,
+            SuggestInstallOutputMode::HumanLive { use_color: false }
+        ));
+    }
+
+    #[test]
+    fn detect_suggest_install_output_mode_color_with_clicolor_nonzero() {
+        // CLICOLOR non-zero enables color
+        let mode = detect_suggest_install_output_mode(false, true, None, Some("1"), None);
+        assert!(matches!(
+            mode,
+            SuggestInstallOutputMode::HumanLive { use_color: true }
+        ));
+    }
+
+    // Tests for skill_id validation
+    #[test]
+    fn validate_skill_id_rejects_dotdot() {
+        let result = validate_skill_id("..");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn validate_skill_id_rejects_dot() {
+        let result = validate_skill_id(".");
+        assert!(result.is_err());
+    }
+
+    // Tests for remediation_for_error
+    #[test]
+    fn remediation_for_error_manifest() {
+        let msg = "failed to parse manifest";
+        let remediation = remediation_for_error(msg);
+        assert!(remediation.contains("manifest"));
+    }
+
+    #[test]
+    fn remediation_for_error_network() {
+        let msg = "network error: connection refused";
+        let remediation = remediation_for_error(msg);
+        assert!(remediation.contains("network"));
+    }
+
+    #[test]
+    fn remediation_for_error_download() {
+        let msg = "download failed";
+        let remediation = remediation_for_error(msg);
+        assert!(remediation.contains("network"));
+    }
+
+    #[test]
+    fn remediation_for_error_archive() {
+        let msg = "invalid archive format";
+        let remediation = remediation_for_error(msg);
+        assert!(remediation.contains("archive"));
+    }
+
+    #[test]
+    fn remediation_for_error_permission() {
+        let msg = "permission denied";
+        let remediation = remediation_for_error(msg);
+        assert!(remediation.contains("permission"));
+    }
+
+    #[test]
+    fn remediation_for_error_fallback() {
+        let msg = "some unknown error";
+        let remediation = remediation_for_error(msg);
+        assert!(remediation.contains("above error"));
     }
 }

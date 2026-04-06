@@ -1,0 +1,11 @@
+change: skill-install-live-spinner
+current_phase: verify
+completed:
+  - propose
+  - spec
+  - design
+  - tasks
+  - apply
+  - verify
+next: archive
+updated: 2026-04-05T00:00:00Z

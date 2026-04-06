@@ -155,36 +155,35 @@ provider_skill_id = "angular/skills/angular-developer"
 local_skill_id = "angular-developer"
 title = "Angular Developer"
 summary = "Build Angular applications following official best practices and patterns."
+install_source = "https://github.com/angular/skills/archive/HEAD.zip#angular-developer"
 
 [[skills]]
 provider_skill_id = "angular/angular/reference-core"
 local_skill_id = "angular-reference-core"
 title = "Angular Core Reference"
 summary = "Reference guide for Angular core APIs and architecture."
+install_source = "https://github.com/angular/angular/archive/HEAD.zip#.agent/skills/reference-core"
 
 [[skills]]
 provider_skill_id = "angular/angular/reference-signal-forms"
 local_skill_id = "angular-reference-signal-forms"
 title = "Angular Signal Forms Reference"
 summary = "Reference guide for Angular signal-based forms."
+install_source = "https://github.com/angular/angular/archive/HEAD.zip#.agent/skills/reference-signal-forms"
 
 [[skills]]
 provider_skill_id = "angular/angular/reference-compiler-cli"
 local_skill_id = "angular-reference-compiler-cli"
 title = "Angular Compiler CLI Reference"
 summary = "Reference guide for the Angular compiler CLI."
+install_source = "https://github.com/angular/angular/archive/HEAD.zip#.agent/skills/reference-compiler-cli"
 
 [[skills]]
 provider_skill_id = "angular/angular/adev-writing-guide"
 local_skill_id = "angular-adev-writing-guide"
 title = "Angular Dev Writing Guide"
 summary = "Writing guide for Angular documentation contributions."
-
-[[skills]]
-provider_skill_id = "angular/angular/PR Review"
-local_skill_id = "angular-pr-review"
-title = "Angular PR Review"
-summary = "Guidelines for reviewing Angular pull requests."
+install_source = "https://github.com/angular/angular/archive/HEAD.zip#.agent/skills/adev-writing-guide"
 
 # --- Astro (external) ---
 
@@ -201,24 +200,21 @@ provider_skill_id = "microsoft/github-copilot-for-azure/azure-deploy"
 local_skill_id = "azure-deploy"
 title = "Azure Deploy"
 summary = "Deploy applications to Azure cloud services."
+install_source = "https://github.com/microsoft/github-copilot-for-azure/archive/HEAD.zip#plugin/skills/azure-deploy"
 
 [[skills]]
 provider_skill_id = "microsoft/github-copilot-for-azure/azure-ai"
 local_skill_id = "azure-ai"
 title = "Azure AI"
 summary = "Build AI solutions with Azure AI services."
-
-[[skills]]
-provider_skill_id = "microsoft/github-copilot-for-azure/azure-cost-optimization"
-local_skill_id = "azure-cost-optimization"
-title = "Azure Cost Optimization"
-summary = "Optimize Azure resource costs and spending."
+install_source = "https://github.com/microsoft/github-copilot-for-azure/archive/HEAD.zip#plugin/skills/azure-ai"
 
 [[skills]]
 provider_skill_id = "microsoft/github-copilot-for-azure/azure-diagnostics"
 local_skill_id = "azure-diagnostics"
 title = "Azure Diagnostics"
 summary = "Diagnose and troubleshoot Azure resource issues."
+install_source = "https://github.com/microsoft/github-copilot-for-azure/archive/HEAD.zip#plugin/skills/azure-diagnostics"
 
 # --- Better Auth ---
 
@@ -227,24 +223,28 @@ provider_skill_id = "better-auth/skills/better-auth-best-practices"
 local_skill_id = "better-auth-best-practices"
 title = "Better Auth Best Practices"
 summary = "Implement authentication with Better Auth following best practices."
+install_source = "https://github.com/better-auth/skills/archive/HEAD.zip#better-auth/best-practices"
 
 [[skills]]
 provider_skill_id = "better-auth/skills/email-and-password-best-practices"
 local_skill_id = "better-auth-email-password"
 title = "Better Auth Email & Password"
 summary = "Implement email and password authentication with Better Auth."
+install_source = "https://github.com/better-auth/skills/archive/HEAD.zip#better-auth/emailAndPassword"
 
 [[skills]]
 provider_skill_id = "better-auth/skills/organization-best-practices"
 local_skill_id = "better-auth-organization"
 title = "Better Auth Organizations"
 summary = "Implement organization management with Better Auth."
+install_source = "https://github.com/better-auth/skills/archive/HEAD.zip#better-auth/organization"
 
 [[skills]]
 provider_skill_id = "better-auth/skills/two-factor-authentication-best-practices"
 local_skill_id = "better-auth-two-factor"
 title = "Better Auth Two-Factor"
 summary = "Implement two-factor authentication with Better Auth."
+install_source = "https://github.com/better-auth/skills/archive/HEAD.zip#better-auth/twoFactor"
 
 # --- Clerk ---
 
@@ -259,36 +259,42 @@ provider_skill_id = "clerk/skills/clerk-setup"
 local_skill_id = "clerk-setup"
 title = "Clerk Setup"
 summary = "Set up and configure Clerk authentication."
+install_source = "https://github.com/clerk/skills/archive/HEAD.zip#skills/setup"
 
 [[skills]]
 provider_skill_id = "clerk/skills/clerk-custom-ui"
 local_skill_id = "clerk-custom-ui"
 title = "Clerk Custom UI"
 summary = "Build custom authentication UI with Clerk components."
+install_source = "https://github.com/clerk/skills/archive/HEAD.zip#skills/custom-ui"
 
 [[skills]]
 provider_skill_id = "clerk/skills/clerk-nextjs-patterns"
 local_skill_id = "clerk-nextjs-patterns"
 title = "Clerk Next.js Patterns"
 summary = "Implement Clerk authentication patterns in Next.js apps."
+install_source = "https://github.com/clerk/skills/archive/HEAD.zip#skills/nextjs-patterns"
 
 [[skills]]
 provider_skill_id = "clerk/skills/clerk-orgs"
 local_skill_id = "clerk-orgs"
 title = "Clerk Organizations"
 summary = "Implement organization management with Clerk."
+install_source = "https://github.com/clerk/skills/archive/HEAD.zip#skills/orgs"
 
 [[skills]]
 provider_skill_id = "clerk/skills/clerk-webhooks"
 local_skill_id = "clerk-webhooks"
 title = "Clerk Webhooks"
 summary = "Handle Clerk webhooks for event-driven authentication flows."
+install_source = "https://github.com/clerk/skills/archive/HEAD.zip#skills/webhooks"
 
 [[skills]]
 provider_skill_id = "clerk/skills/clerk-testing"
 local_skill_id = "clerk-testing"
 title = "Clerk Testing"
 summary = "Test Clerk authentication integrations."
+install_source = "https://github.com/clerk/skills/archive/HEAD.zip#skills/testing"
 
 # --- Cloudflare ---
 
@@ -321,6 +327,7 @@ provider_skill_id = "openai/skills/cloudflare-deploy"
 local_skill_id = "openai-cloudflare-deploy"
 title = "Cloudflare Deploy (OpenAI)"
 summary = "Deploy applications to Cloudflare Workers."
+install_source = "https://github.com/openai/skills/archive/HEAD.zip#skills/.curated/cloudflare-deploy"
 
 [[skills]]
 provider_skill_id = "cloudflare/skills/durable-objects"
@@ -389,14 +396,9 @@ provider_skill_id = "mindrally/skills/deno-typescript"
 local_skill_id = "deno-typescript"
 title = "Deno TypeScript"
 summary = "Write TypeScript applications for the Deno runtime."
+install_source = "https://github.com/mindrally/skills/archive/HEAD.zip#deno-typescript"
 
 # --- Drizzle ---
-
-[[skills]]
-provider_skill_id = "bobmatnyc/claude-mpm-skills/drizzle-orm"
-local_skill_id = "drizzle-orm"
-title = "Drizzle ORM"
-summary = "Use Drizzle ORM for type-safe database access."
 
 # --- ElevenLabs ---
 
@@ -405,12 +407,14 @@ provider_skill_id = "inferen-sh/skills/elevenlabs-tts"
 local_skill_id = "elevenlabs-tts"
 title = "ElevenLabs TTS"
 summary = "Integrate ElevenLabs text-to-speech APIs."
+install_source = "https://github.com/inferen-sh/skills/archive/HEAD.zip#tools/audio/elevenlabs-tts"
 
 [[skills]]
 provider_skill_id = "inferen-sh/skills/elevenlabs-music"
 local_skill_id = "elevenlabs-music"
 title = "ElevenLabs Music"
 summary = "Generate music with ElevenLabs AI."
+install_source = "https://github.com/inferen-sh/skills/archive/HEAD.zip#tools/audio/elevenlabs-music"
 
 # --- Expo ---
 
@@ -419,54 +423,63 @@ provider_skill_id = "expo/skills/building-native-ui"
 local_skill_id = "expo-building-native-ui"
 title = "Expo Building Native UI"
 summary = "Build native UI components with Expo."
+install_source = "https://github.com/expo/skills/archive/HEAD.zip#plugins/expo/skills/building-native-ui"
 
 [[skills]]
 provider_skill_id = "expo/skills/native-data-fetching"
 local_skill_id = "expo-native-data-fetching"
 title = "Expo Native Data Fetching"
 summary = "Implement data fetching in Expo apps."
+install_source = "https://github.com/expo/skills/archive/HEAD.zip#plugins/expo/skills/native-data-fetching"
 
 [[skills]]
 provider_skill_id = "expo/skills/upgrading-expo"
 local_skill_id = "expo-upgrading"
 title = "Expo Upgrading"
 summary = "Upgrade Expo SDK versions safely."
+install_source = "https://github.com/expo/skills/archive/HEAD.zip#plugins/expo/skills/upgrading-expo"
 
 [[skills]]
 provider_skill_id = "expo/skills/expo-tailwind-setup"
 local_skill_id = "expo-tailwind-setup"
 title = "Expo Tailwind Setup"
 summary = "Set up Tailwind CSS in Expo projects."
+install_source = "https://github.com/expo/skills/archive/HEAD.zip#plugins/expo/skills/expo-tailwind-setup"
 
 [[skills]]
 provider_skill_id = "expo/skills/expo-dev-client"
 local_skill_id = "expo-dev-client"
 title = "Expo Dev Client"
 summary = "Configure and use Expo development client."
+install_source = "https://github.com/expo/skills/archive/HEAD.zip#plugins/expo/skills/expo-dev-client"
 
 [[skills]]
 provider_skill_id = "expo/skills/expo-deployment"
 local_skill_id = "expo-deployment"
 title = "Expo Deployment"
 summary = "Deploy Expo applications to app stores."
+install_source = "https://github.com/expo/skills/archive/HEAD.zip#plugins/expo/skills/expo-deployment"
 
 [[skills]]
 provider_skill_id = "expo/skills/expo-cicd-workflows"
 local_skill_id = "expo-cicd-workflows"
 title = "Expo CI/CD Workflows"
 summary = "Set up CI/CD pipelines for Expo projects."
+install_source = "https://github.com/expo/skills/archive/HEAD.zip#plugins/expo/skills/expo-cicd-workflows"
 
 [[skills]]
 provider_skill_id = "expo/skills/expo-api-routes"
 local_skill_id = "expo-api-routes"
 title = "Expo API Routes"
 summary = "Build API routes in Expo applications."
+install_source = "https://github.com/expo/skills/archive/HEAD.zip#plugins/expo/skills/expo-api-routes"
 
 [[skills]]
 provider_skill_id = "expo/skills/use-dom"
 local_skill_id = "expo-use-dom"
 title = "Expo use-dom"
 summary = "Use DOM components in Expo applications."
+install_source = "https://github.com/expo/skills/archive/HEAD.zip#plugins/expo/skills/use-dom"
 
 # --- GSAP ---
 
@@ -525,6 +538,7 @@ provider_skill_id = "yusukebe/hono-skill/hono"
 local_skill_id = "hono"
 title = "Hono"
 summary = "Build fast web applications with the Hono framework."
+install_source = "https://github.com/yusukebe/hono-skill/archive/HEAD.zip#skills/hono"
 
 # --- Java ---
 
@@ -533,12 +547,14 @@ provider_skill_id = "github/awesome-copilot/java-docs"
 local_skill_id = "java-docs"
 title = "Java Documentation"
 summary = "Write and maintain Java documentation."
+install_source = "https://github.com/github/awesome-copilot/archive/HEAD.zip#skills/java-docs"
 
 [[skills]]
 provider_skill_id = "affaan-m/everything-claude-code/java-coding-standards"
 local_skill_id = "java-coding-standards"
 title = "Java Coding Standards"
 summary = "Follow Java coding standards and conventions."
+install_source = "https://github.com/affaan-m/everything-claude-code/archive/HEAD.zip#skills/java-coding-standards"
 
 # --- Spring Boot ---
 
@@ -547,6 +563,7 @@ provider_skill_id = "github/awesome-copilot/java-springboot"
 local_skill_id = "java-springboot"
 title = "Java Spring Boot"
 summary = "Build Spring Boot applications following best practices."
+install_source = "https://github.com/github/awesome-copilot/archive/HEAD.zip#skills/java-springboot"
 
 # --- Android ---
 
@@ -619,6 +636,7 @@ provider_skill_id = "kadajett/agent-nestjs-skills/nestjs-best-practices"
 local_skill_id = "nestjs-best-practices"
 title = "NestJS Best Practices"
 summary = "Build NestJS applications following best practices."
+install_source = "https://github.com/kadajett/agent-nestjs-skills/archive/HEAD.zip"
 
 # --- Neon ---
 
@@ -650,18 +668,6 @@ summary = "Upgrade Next.js versions safely."
 
 # --- Node.js ---
 
-[[skills]]
-provider_skill_id = "wshobson/agents/nodejs-backend-patterns"
-local_skill_id = "nodejs-backend-patterns"
-title = "Node.js Backend Patterns"
-summary = "Implement Node.js backend patterns and best practices."
-
-[[skills]]
-provider_skill_id = "sickn33/antigravity-awesome-skills/nodejs-best-practices"
-local_skill_id = "nodejs-best-practices"
-title = "Node.js Best Practices"
-summary = "Follow Node.js development best practices."
-
 # --- Nuxt ---
 
 [[skills]]
@@ -677,6 +683,7 @@ provider_skill_id = "delexw/claude-code-misc/oxlint"
 local_skill_id = "oxlint"
 title = "OxLint"
 summary = "Configure and use OxLint for fast JavaScript/TypeScript linting."
+install_source = "https://github.com/delexw/claude-code-misc/archive/HEAD.zip#skills/oxlint"
 
 # --- Pinia ---
 
@@ -693,6 +700,7 @@ provider_skill_id = "currents-dev/playwright-best-practices-skill/playwright-bes
 local_skill_id = "playwright-best-practices"
 title = "Playwright Best Practices"
 summary = "Write reliable end-to-end tests with Playwright."
+archive_subpath = ""
 
 # --- Prisma ---
 
@@ -701,24 +709,28 @@ provider_skill_id = "prisma/skills/prisma-database-setup"
 local_skill_id = "prisma-database-setup"
 title = "Prisma Database Setup"
 summary = "Set up databases with Prisma ORM."
+install_source = "https://github.com/prisma/skills/archive/HEAD.zip#prisma-database-setup"
 
 [[skills]]
 provider_skill_id = "prisma/skills/prisma-client-api"
 local_skill_id = "prisma-client-api"
 title = "Prisma Client API"
 summary = "Use the Prisma Client API for type-safe database queries."
+install_source = "https://github.com/prisma/skills/archive/HEAD.zip#prisma-client-api"
 
 [[skills]]
 provider_skill_id = "prisma/skills/prisma-cli"
 local_skill_id = "prisma-cli"
 title = "Prisma CLI"
 summary = "Use the Prisma CLI for database management."
+install_source = "https://github.com/prisma/skills/archive/HEAD.zip#prisma-cli"
 
 [[skills]]
 provider_skill_id = "prisma/skills/prisma-postgres"
 local_skill_id = "prisma-postgres"
 title = "Prisma Postgres"
 summary = "Use Prisma with PostgreSQL databases."
+install_source = "https://github.com/prisma/skills/archive/HEAD.zip#prisma-postgres"
 
 # --- React ---
 
@@ -727,12 +739,14 @@ provider_skill_id = "vercel-labs/agent-skills/vercel-react-best-practices"
 local_skill_id = "vercel-react-best-practices"
 title = "React Best Practices"
 summary = "Build React applications following Vercel best practices."
+install_source = "https://github.com/vercel-labs/agent-skills/archive/HEAD.zip#skills/react-best-practices"
 
 [[skills]]
 provider_skill_id = "vercel-labs/agent-skills/vercel-composition-patterns"
 local_skill_id = "vercel-composition-patterns"
 title = "React Composition Patterns"
 summary = "Use React composition patterns for scalable architectures."
+install_source = "https://github.com/vercel-labs/agent-skills/archive/HEAD.zip#skills/composition-patterns"
 
 # --- React Native ---
 
@@ -741,6 +755,7 @@ provider_skill_id = "sleekdotdesign/agent-skills/sleek-design-mobile-apps"
 local_skill_id = "sleek-design-mobile-apps"
 title = "Sleek Design Mobile Apps"
 summary = "Design and build polished React Native mobile applications."
+install_source = "https://github.com/sleekdotdesign/agent-skills/archive/HEAD.zip#skills/design-mobile-apps"
 
 # --- Remotion ---
 
@@ -749,28 +764,9 @@ provider_skill_id = "remotion-dev/skills/remotion-best-practices"
 local_skill_id = "remotion-best-practices"
 title = "Remotion Best Practices"
 summary = "Create programmatic videos with Remotion following best practices."
+install_source = "https://github.com/remotion-dev/skills/archive/HEAD.zip#skills/remotion"
 
 # --- shadcn/ui ---
-
-[[skills]]
-provider_skill_id = "shadcn/ui/shadcn"
-local_skill_id = "shadcn"
-title = "shadcn/ui"
-summary = "Build UIs with shadcn/ui components."
-
-# --- Stripe ---
-
-[[skills]]
-provider_skill_id = "stripe/ai/stripe-best-practices"
-local_skill_id = "stripe-best-practices"
-title = "Stripe Best Practices"
-summary = "Integrate Stripe payments following best practices."
-
-[[skills]]
-provider_skill_id = "stripe/ai/upgrade-stripe"
-local_skill_id = "stripe-upgrade"
-title = "Stripe Upgrade"
-summary = "Upgrade Stripe SDK versions safely."
 
 # --- Supabase ---
 
@@ -787,12 +783,14 @@ provider_skill_id = "ejirocodes/agent-skills/svelte5-best-practices"
 local_skill_id = "svelte5-best-practices"
 title = "Svelte 5 Best Practices"
 summary = "Build Svelte 5 applications following best practices."
+install_source = "https://github.com/ejirocodes/agent-skills/archive/HEAD.zip#svelte/skills/svelte5-best-practices"
 
 [[skills]]
 provider_skill_id = "sveltejs/ai-tools/svelte-code-writer"
 local_skill_id = "svelte-code-writer"
 title = "Svelte Code Writer"
 summary = "Generate Svelte code with AI-assisted tooling."
+install_source = "https://github.com/sveltejs/ai-tools/archive/HEAD.zip#packages/opencode/skills/svelte-code-writer"
 
 # --- SwiftUI ---
 
@@ -804,43 +802,20 @@ summary = "Build SwiftUI applications with expert-level patterns."
 
 # --- Tailwind CSS ---
 
-[[skills]]
-provider_skill_id = "giuseppe-trisciuoglio/developer-kit/tailwind-css-patterns"
-local_skill_id = "tailwind-css-patterns"
-title = "Tailwind CSS Patterns"
-summary = "Use Tailwind CSS utility patterns for efficient styling."
-
 # --- Tauri ---
 
 [[skills]]
-provider_skill_id = "nodnarbnitram/claude-code-extensions/tauri-v2"
+provider_skill_id = "delexw/claude-code-misc/tauri-v2"
 local_skill_id = "tauri-v2"
 title = "Tauri v2"
 summary = "Build desktop applications with Tauri v2."
+install_source = "https://github.com/delexw/claude-code-misc/archive/HEAD.zip#skills/tauri-v2"
 
 # --- Turborepo ---
 
-[[skills]]
-provider_skill_id = "vercel/turborepo/turborepo"
-local_skill_id = "turborepo"
-title = "Turborepo"
-summary = "Manage monorepos with Turborepo build system."
-
 # --- TypeScript ---
 
-[[skills]]
-provider_skill_id = "wshobson/agents/typescript-advanced-types"
-local_skill_id = "typescript-advanced-types"
-title = "TypeScript Advanced Types"
-summary = "Use advanced TypeScript type patterns and utilities."
-
 # --- Vercel AI SDK ---
-
-[[skills]]
-provider_skill_id = "vercel/ai/ai-sdk"
-local_skill_id = "vercel-ai-sdk"
-title = "Vercel AI SDK"
-summary = "Build AI-powered features with the Vercel AI SDK."
 
 # --- Vercel Deploy ---
 
@@ -882,9 +857,10 @@ summary = "Debug Vue applications effectively."
 
 [[skills]]
 provider_skill_id = "antfu/skills/vue"
-local_skill_id = "antfu-vue"
+local_skill_id = "vue"
 title = "Vue (antfu)"
 summary = "Build Vue applications with antfu's patterns and tooling."
+legacy_local_skill_ids = ["antfu-vue"]
 
 [[skills]]
 provider_skill_id = "antfu/skills/vue-best-practices"
@@ -949,18 +925,7 @@ provider_skill_id = "secondsky/claude-skills/tailwind-v4-shadcn"
 local_skill_id = "tailwind-v4-shadcn"
 title = "Tailwind v4 + shadcn/ui"
 summary = "Use Tailwind CSS v4 with shadcn/ui components."
-
-[[skills]]
-provider_skill_id = "cloudflare/vinext/migrate-to-vinext"
-local_skill_id = "cloudflare-migrate-to-vinext"
-title = "Cloudflare Vite Migration"
-summary = "Migrate to Cloudflare's Vite-based deployment."
-
-[[skills]]
-provider_skill_id = "aj-geddes/useful-ai-prompts/nodejs-express-server"
-local_skill_id = "nodejs-express-server"
-title = "Node.js Express Server"
-summary = "Build Express.js server applications."
+install_source = "https://github.com/secondsky/claude-skills/archive/HEAD.zip#plugins/tailwind-v4-shadcn/skills/tailwind-v4-shadcn"
 
 [[skills]]
 provider_skill_id = "apollographql/skills/graphql-schema"
@@ -985,12 +950,7 @@ provider_skill_id = "github/awesome-copilot/openapi-to-application-code"
 local_skill_id = "openapi-to-application-code"
 title = "OpenAPI to Application Code"
 summary = "Generate application code from OpenAPI/Swagger specifications."
-
-[[skills]]
-provider_skill_id = "dotnet/skills"
-local_skill_id = "dotnet-skills"
-title = "C# / .NET Development"
-summary = "Official .NET skills for C#, EF Core, ASP.NET, and more."
+install_source = "https://github.com/github/awesome-copilot/archive/HEAD.zip#skills/openapi-to-application-code"
 
 [[skills]]
 provider_skill_id = "dallay/agents-skills/go-development"
@@ -1035,12 +995,6 @@ title = "Ruby on Rails"
 summary = "Rails conventions, ActiveRecord, migrations, testing with RSpec."
 
 [[skills]]
-provider_skill_id = "laravel/boost"
-local_skill_id = "laravel-boost"
-title = "Laravel Development"
-summary = "Official Laravel skills for Livewire, Flux UI, and best practices."
-
-[[skills]]
 provider_skill_id = "dallay/agents-skills/jest-testing"
 local_skill_id = "jest-testing"
 title = "Jest Testing"
@@ -1071,30 +1025,6 @@ title = "Helm Charts"
 summary = "Helm chart development, templates, values, hooks, and best practices."
 
 [[skills]]
-provider_skill_id = "awslabs/agent-plugins"
-local_skill_id = "aws-agent-plugins"
-title = "AWS Development"
-summary = "Official AWS Labs skills for Lambda, CDK, and cloud services."
-
-[[skills]]
-provider_skill_id = "googlecloudplatform/devrel-demos"
-local_skill_id = "gcp-devrel"
-title = "Google Cloud Platform"
-summary = "Official GCP skills for Cloud Run, agent architecture, and more."
-
-[[skills]]
-provider_skill_id = "hashicorp/agent-skills"
-local_skill_id = "hashicorp-terraform"
-title = "Terraform"
-summary = "Official HashiCorp Terraform skills for IaC, modules, testing, and providers."
-
-[[skills]]
-provider_skill_id = "pulumi/agent-skills"
-local_skill_id = "pulumi-iac"
-title = "Pulumi IaC"
-summary = "Official Pulumi skills for infrastructure as code across cloud providers."
-
-[[skills]]
 provider_skill_id = "dallay/agents-skills/solidjs-development"
 local_skill_id = "solidjs-development"
 title = "Solid.js Development"
@@ -1111,18 +1041,6 @@ provider_skill_id = "dallay/agents-skills/swift-ios-development"
 local_skill_id = "swift-ios-development"
 title = "Swift/iOS Development"
 summary = "Swift and iOS patterns, UIKit, SwiftUI, async/await, testing."
-
-[[skills]]
-provider_skill_id = "remix-run/agent-skills"
-local_skill_id = "remix-agent-skills"
-title = "Remix/React Router"
-summary = "Official Remix skills for React Router framework, declarative, and data modes."
-
-[[skills]]
-provider_skill_id = "flutter/skills"
-local_skill_id = "flutter-skills"
-title = "Flutter Development"
-summary = "Official Flutter skills for layouts, state, animation, testing, and more."
 
 [[skills]]
 provider_skill_id = "dallay/agents-skills/eslint-config"
@@ -1147,60 +1065,6 @@ provider_skill_id = "dallay/agents-skills/tensorflow-ml"
 local_skill_id = "tensorflow-ml"
 title = "TensorFlow ML"
 summary = "TensorFlow/Keras model building, training, data pipelines, transfer learning."
-
-[[skills]]
-provider_skill_id = "nrwl/nx-ai-agents-config"
-local_skill_id = "nx-workspace"
-title = "Nx Workspace"
-summary = "Official Nx skills for monorepo workspace management and CI."
-
-[[skills]]
-provider_skill_id = "storybookjs/react-native"
-local_skill_id = "storybook-rn"
-title = "Storybook"
-summary = "Official Storybook skills for component development and testing."
-
-[[skills]]
-provider_skill_id = "biomejs/biome"
-local_skill_id = "biome-linter"
-title = "Biome Linter"
-summary = "Official Biome skills for linting, formatting, and ESLint migration."
-
-[[skills]]
-provider_skill_id = "mongodb/agent-skills"
-local_skill_id = "mongodb-skills"
-title = "MongoDB Development"
-summary = "Official MongoDB skills for schema design, connections, and queries."
-
-[[skills]]
-provider_skill_id = "redis/agent-skills"
-local_skill_id = "redis-skills"
-title = "Redis Development"
-summary = "Official Redis skills for caching, data structures, and best practices."
-
-[[skills]]
-provider_skill_id = "langchain-ai/langchain-skills"
-local_skill_id = "langchain-skills"
-title = "LangChain"
-summary = "Official LangChain skills for AI agents, orchestration, and LangSmith."
-
-[[skills]]
-provider_skill_id = "openai/skills"
-local_skill_id = "openai-skills"
-title = "OpenAI SDK"
-summary = "Official OpenAI skills for API usage, assistants, and tools."
-
-[[skills]]
-provider_skill_id = "pytorch/pytorch"
-local_skill_id = "pytorch-skills"
-title = "PyTorch"
-summary = "Official PyTorch skills for ML development, PR review, and triaging."
-
-[[skills]]
-provider_skill_id = "huggingface/skills"
-local_skill_id = "huggingface-skills"
-title = "Hugging Face"
-summary = "Official Hugging Face skills for transformers, model training, and publishing."
 
 # =============================================================================
 # Technologies
@@ -1267,16 +1131,6 @@ config_files = ["composer.json", "composer.lock"]
 file_extensions = [".php"]
 
 [[technologies]]
-id = "dotnet"
-name = "C# / .NET"
-skills = ["dotnet/skills"]
-min_confidence = "medium"
-
-[technologies.detect]
-config_files = ["global.json"]
-file_extensions = [".cs", ".csproj", ".sln"]
-
-[[technologies]]
 id = "elixir"
 name = "Elixir"
 skills = ["dallay/agents-skills/elixir-development"]
@@ -1318,29 +1172,6 @@ config_files = ["Gemfile", "config/routes.rb", "Rakefile"]
 files = ["Gemfile"]
 patterns = ["rails"]
 
-[[technologies]]
-id = "laravel"
-name = "Laravel"
-skills = ["laravel/boost"]
-min_confidence = "medium"
-
-[technologies.detect]
-config_files = ["artisan"]
-
-[technologies.detect.config_file_content]
-files = ["composer.json"]
-patterns = ["laravel/framework"]
-
-[[technologies]]
-id = "aspnet"
-name = "ASP.NET"
-skills = ["dotnet/skills"]
-min_confidence = "medium"
-
-[technologies.detect.config_file_content]
-files = ["*.csproj"]
-patterns = ["Microsoft\\.AspNetCore"]
-
 # --- Testing frameworks ---
 
 [[technologies]]
@@ -1375,36 +1206,6 @@ packages = ["@testing-library/react", "@testing-library/vue", "@testing-library/
 # --- Cloud/Infra ---
 
 [[technologies]]
-id = "aws"
-name = "AWS"
-skills = ["awslabs/agent-plugins"]
-min_confidence = "medium"
-
-[technologies.detect]
-package_patterns = ["^@aws-sdk/", "^aws-"]
-config_files = ["samconfig.toml", "cdk.json", "serverless.yml", "template.yaml"]
-
-[[technologies]]
-id = "gcp"
-name = "Google Cloud Platform"
-skills = ["googlecloudplatform/devrel-demos"]
-min_confidence = "medium"
-
-[technologies.detect]
-package_patterns = ["^@google-cloud/"]
-config_files = ["app.yaml"]
-
-[[technologies]]
-id = "terraform"
-name = "Terraform"
-skills = ["hashicorp/agent-skills"]
-min_confidence = "medium"
-
-[technologies.detect]
-config_files = ["terraform.tfvars", ".terraform.lock.hcl"]
-file_extensions = [".tf"]
-
-[[technologies]]
 id = "kubernetes"
 name = "Kubernetes"
 skills = ["dallay/agents-skills/kubernetes-orchestration"]
@@ -1422,16 +1223,6 @@ min_confidence = "medium"
 [technologies.detect]
 config_files = ["Chart.yaml"]
 
-[[technologies]]
-id = "pulumi"
-name = "Pulumi"
-skills = ["pulumi/agent-skills"]
-min_confidence = "medium"
-
-[technologies.detect]
-packages = ["@pulumi/pulumi", "@pulumi/aws", "@pulumi/azure", "@pulumi/gcp"]
-config_files = ["Pulumi.yaml"]
-
 # --- Additional frontend/mobile ---
 
 [[technologies]]
@@ -1445,15 +1236,6 @@ packages = ["solid-js"]
 config_files = ["solid-start.config.ts", "solid-start.config.js"]
 
 [[technologies]]
-id = "remix"
-name = "Remix"
-skills = ["dallay/agents-skills/nothing-design", "remix-run/agent-skills"]
-min_confidence = "medium"
-
-[technologies.detect]
-packages = ["@remix-run/react", "@remix-run/node", "@remix-run/cloudflare"]
-
-[[technologies]]
 id = "qwik"
 name = "Qwik"
 skills = ["dallay/agents-skills/nothing-design", "dallay/agents-skills/qwik-development"]
@@ -1461,19 +1243,6 @@ min_confidence = "medium"
 
 [technologies.detect]
 packages = ["@builder.io/qwik"]
-
-[[technologies]]
-id = "flutter"
-name = "Flutter"
-skills = ["flutter/skills"]
-min_confidence = "medium"
-
-[technologies.detect]
-config_files = ["pubspec.yaml"]
-
-[technologies.detect.config_file_content]
-files = ["pubspec.yaml"]
-patterns = ["flutter"]
 
 [[technologies]]
 id = "swift_ios"
@@ -1485,26 +1254,6 @@ min_confidence = "medium"
 file_extensions = [".swift"]
 
 # --- Dev tooling ---
-
-[[technologies]]
-id = "nx"
-name = "Nx"
-skills = ["nrwl/nx-ai-agents-config"]
-min_confidence = "medium"
-
-[technologies.detect]
-packages = ["nx", "@nx/workspace"]
-config_files = ["nx.json"]
-
-[[technologies]]
-id = "storybook"
-name = "Storybook"
-skills = ["storybookjs/react-native"]
-min_confidence = "medium"
-
-[technologies.detect]
-packages = ["storybook", "@storybook/react", "@storybook/vue3", "@storybook/angular"]
-config_files = [".storybook/"]
 
 [[technologies]]
 id = "eslint"
@@ -1519,7 +1268,7 @@ config_files = ["eslint.config.js", "eslint.config.mjs", "eslint.config.cjs", ".
 [[technologies]]
 id = "biome"
 name = "Biome"
-skills = ["biomejs/biome"]
+skills = ["dallay/agents-skills/best-practices"]
 min_confidence = "medium"
 
 [technologies.detect]
@@ -1539,24 +1288,6 @@ config_files = [".prettierrc", ".prettierrc.json", ".prettierrc.yml", ".prettier
 # --- Databases ---
 
 [[technologies]]
-id = "mongodb"
-name = "MongoDB"
-skills = ["mongodb/agent-skills"]
-min_confidence = "medium"
-
-[technologies.detect]
-packages = ["mongoose", "mongodb"]
-
-[[technologies]]
-id = "redis"
-name = "Redis"
-skills = ["redis/agent-skills"]
-min_confidence = "medium"
-
-[technologies.detect]
-packages = ["redis", "ioredis", "@redis/client", "@upstash/redis"]
-
-[[technologies]]
 id = "postgresql"
 name = "PostgreSQL"
 skills = ["dallay/agents-skills/postgresql-development"]
@@ -1568,24 +1299,6 @@ packages = ["pg", "postgres", "@vercel/postgres"]
 # --- AI/ML ---
 
 [[technologies]]
-id = "langchain"
-name = "LangChain"
-skills = ["langchain-ai/langchain-skills"]
-min_confidence = "medium"
-
-[technologies.detect]
-packages = ["langchain", "@langchain/core", "@langchain/openai", "@langchain/anthropic"]
-
-[[technologies]]
-id = "openai_sdk"
-name = "OpenAI SDK"
-skills = ["openai/skills"]
-min_confidence = "medium"
-
-[technologies.detect]
-packages = ["openai"]
-
-[[technologies]]
 id = "tensorflow"
 name = "TensorFlow"
 skills = ["dallay/agents-skills/tensorflow-ml"]
@@ -1593,24 +1306,6 @@ min_confidence = "medium"
 
 [technologies.detect]
 packages = ["@tensorflow/tfjs", "@tensorflow/tfjs-node"]
-
-[[technologies]]
-id = "pytorch"
-name = "PyTorch"
-skills = ["pytorch/pytorch"]
-min_confidence = "medium"
-
-[technologies.detect]
-file_extensions = [".pth"]
-
-[[technologies]]
-id = "huggingface"
-name = "Hugging Face"
-skills = ["huggingface/skills"]
-min_confidence = "medium"
-
-[technologies.detect]
-packages = ["@huggingface/inference", "@huggingface/hub"]
 
 [[technologies]]
 id = "astro"
@@ -1727,7 +1422,6 @@ skills = [
   "angular/angular/reference-signal-forms",
   "angular/angular/reference-compiler-cli",
   "angular/angular/adev-writing-guide",
-  "angular/angular/PR Review",
 ]
 min_confidence = "medium"
 
@@ -1736,28 +1430,9 @@ packages = ["@angular/core"]
 config_files = ["angular.json"]
 
 [[technologies]]
-id = "tailwind"
-name = "Tailwind CSS"
-skills = ["giuseppe-trisciuoglio/developer-kit/tailwind-css-patterns"]
-min_confidence = "medium"
-
-[technologies.detect]
-packages = ["tailwindcss", "@tailwindcss/vite"]
-config_files = ["tailwind.config.js", "tailwind.config.ts", "tailwind.config.cjs"]
-
-[[technologies]]
-id = "shadcn"
-name = "shadcn/ui"
-skills = ["shadcn/ui/shadcn"]
-min_confidence = "medium"
-
-[technologies.detect]
-config_files = ["components.json"]
-
-[[technologies]]
 id = "typescript"
 name = "TypeScript"
-skills = ["wshobson/agents/typescript-advanced-types"]
+skills = ["dallay/agents-skills/best-practices"]
 min_confidence = "medium"
 
 [technologies.detect]
@@ -1905,16 +1580,6 @@ min_confidence = "medium"
 packages = ["better-auth"]
 
 [[technologies]]
-id = "turborepo"
-name = "Turborepo"
-skills = ["vercel/turborepo/turborepo"]
-min_confidence = "medium"
-
-[technologies.detect]
-packages = ["turbo"]
-config_files = ["turbo.json"]
-
-[[technologies]]
 id = "vite"
 name = "Vite"
 skills = ["dallay/agents-skills/nothing-design", "antfu/skills/vite"]
@@ -1930,22 +1595,12 @@ name = "Azure"
 skills = [
   "microsoft/github-copilot-for-azure/azure-deploy",
   "microsoft/github-copilot-for-azure/azure-ai",
-  "microsoft/github-copilot-for-azure/azure-cost-optimization",
   "microsoft/github-copilot-for-azure/azure-diagnostics",
 ]
 min_confidence = "medium"
 
 [technologies.detect]
 package_patterns = ["^@azure/"]
-
-[[technologies]]
-id = "vercel_ai"
-name = "Vercel AI SDK"
-skills = ["vercel/ai/ai-sdk"]
-min_confidence = "medium"
-
-[technologies.detect]
-packages = ["ai", "@ai-sdk/openai", "@ai-sdk/anthropic", "@ai-sdk/google"]
 
 [[technologies]]
 id = "elevenlabs"
@@ -2053,7 +1708,7 @@ packages = ["gsap"]
 [[technologies]]
 id = "node"
 name = "Node.js"
-skills = ["wshobson/agents/nodejs-backend-patterns", "sickn33/antigravity-awesome-skills/nodejs-best-practices"]
+skills = ["dallay/agents-skills/best-practices"]
 min_confidence = "medium"
 
 [technologies.detect]
@@ -2139,15 +1794,6 @@ min_confidence = "medium"
 packages = ["prisma", "@prisma/client"]
 
 [[technologies]]
-id = "stripe"
-name = "Stripe"
-skills = ["stripe/ai/stripe-best-practices", "stripe/ai/upgrade-stripe"]
-min_confidence = "medium"
-
-[technologies.detect]
-packages = ["stripe", "@stripe/stripe-js", "@stripe/react-stripe-js"]
-
-[[technologies]]
 id = "hono"
 name = "Hono"
 skills = ["yusukebe/hono-skill/hono"]
@@ -2167,15 +1813,6 @@ packages = ["vitest"]
 config_files = ["vitest.config.ts", "vitest.config.js", "vitest.config.mts"]
 
 [[technologies]]
-id = "drizzle"
-name = "Drizzle"
-skills = ["bobmatnyc/claude-mpm-skills/drizzle-orm"]
-min_confidence = "medium"
-
-[technologies.detect]
-packages = ["drizzle-orm", "drizzle-kit"]
-
-[[technologies]]
 id = "nestjs"
 name = "NestJS"
 skills = ["kadajett/agent-nestjs-skills/nestjs-best-practices"]
@@ -2187,7 +1824,7 @@ packages = ["@nestjs/core"]
 [[technologies]]
 id = "tauri"
 name = "Tauri"
-skills = ["nodnarbnitram/claude-code-extensions/tauri-v2"]
+skills = ["delexw/claude-code-misc/tauri-v2"]
 min_confidence = "medium"
 
 [technologies.detect]
@@ -2302,13 +1939,6 @@ skills = ["expo/skills/building-native-ui", "sleekdotdesign/agent-skills/sleek-d
 enabled = true
 
 [[combos]]
-id = "nextjs-vercel-ai"
-name = "Next.js + Vercel AI SDK"
-requires = ["nextjs", "vercel_ai"]
-skills = ["vercel/ai/ai-sdk", "vercel-labs/next-skills/next-best-practices"]
-enabled = true
-
-[[combos]]
 id = "nextjs-playwright"
 name = "Next.js + Playwright"
 requires = ["nextjs", "playwright"]
@@ -2316,38 +1946,10 @@ skills = ["currents-dev/playwright-best-practices-skill/playwright-best-practice
 enabled = true
 
 [[combos]]
-id = "react-shadcn"
-name = "React + shadcn/ui"
-requires = ["react", "shadcn"]
-skills = ["shadcn/ui/shadcn", "vercel-labs/agent-skills/vercel-react-best-practices"]
-enabled = true
-
-[[combos]]
-id = "tailwind-shadcn"
-name = "Tailwind CSS + shadcn/ui"
-requires = ["tailwind", "shadcn"]
-skills = ["secondsky/claude-skills/tailwind-v4-shadcn"]
-enabled = true
-
-[[combos]]
 id = "gsap-react"
 name = "GSAP + React"
 requires = ["gsap", "react"]
 skills = ["greensock/gsap-skills/gsap-react"]
-enabled = true
-
-[[combos]]
-id = "cloudflare-vite"
-name = "Cloudflare + Vite"
-requires = ["cloudflare", "vite"]
-skills = ["cloudflare/vinext/migrate-to-vinext"]
-enabled = true
-
-[[combos]]
-id = "node-express"
-name = "Node.js + Express"
-requires = ["node", "express"]
-skills = ["aj-geddes/useful-ai-prompts/nodejs-express-server"]
 enabled = true
 
 [[combos]]

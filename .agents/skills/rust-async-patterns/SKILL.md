@@ -1,6 +1,12 @@
 ---
 name: rust-async-patterns
-description: Master Rust async programming with Tokio, async traits, error handling, and concurrent patterns. Use when building async Rust applications, implementing concurrent systems, or debugging async code.
+description: >-
+  Master Rust async programming with Tokio, async traits, error handling, and concurrent
+  patterns. Use when the task involves `async Rust`, `Tokio patterns`, `Rust concurrent
+  programming`, `async traits`, or `Rust futures and streams`.
+license: MIT
+metadata:
+  version: "1.0.0"
 ---
 
 # Rust Async Patterns
@@ -471,50 +477,9 @@ impl Drop for PooledConnection<'_> {
 }
 ```
 
-## Debugging Tips
+---
 
-```rust
-// Enable tokio-console for runtime debugging
-// Cargo.toml: tokio = { features = ["tracing"] }
-// Run: RUSTFLAGS="--cfg tokio_unstable" cargo run
-// Then: tokio-console
+## Additional References
 
-// Instrument async functions
-use tracing::instrument;
-
-#[instrument(skip(pool))]
-async fn fetch_user(pool: &PgPool, id: &str) -> Result<User> {
-    tracing::debug!("Fetching user");
-    // ...
-}
-
-// Track task spawning
-let span = tracing::info_span!("worker", id = %worker_id);
-tokio::spawn( async move {
-// Enters span when polled
-}.instrument(span));
-```
-
-## Best Practices
-
-### Do's
-
-- **Use `tokio::select!`** - For racing futures
-- **Prefer channels** - Over shared state when possible
-- **Use `JoinSet`** - For managing multiple tasks
-- **Instrument with tracing** - For debugging async code
-- **Handle cancellation** - Check `CancellationToken`
-
-### Don'ts
-
-- **Don't block** - Never use `std::thread::sleep` in async
-- **Don't hold locks across awaits** - Causes deadlocks
-- **Don't spawn unboundedly** - Use semaphores for limits
-- **Don't ignore errors** - Propagate with `?` or log
-- **Don't forget Send bounds** - For spawned futures
-
-## Resources
-
-- [Tokio Tutorial](https://tokio.rs/tokio/tutorial)
-- [Async Book](https://rust-lang.github.io/async-book/)
-- [Tokio Console](https://github.com/tokio-rs/console)
+- Read [references/REFERENCE.md](references/REFERENCE.md) when you need async debugging tips,
+  condensed do and don't guidance, or external Rust async resources.

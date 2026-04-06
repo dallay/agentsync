@@ -1,0 +1,11 @@
+change: external-skill-catalog-policy-cleanup
+current_phase: verify
+completed:
+  - propose
+  - spec
+  - design
+  - tasks
+  - apply
+  - verify
+next: archive
+updated: 2026-04-04T00:00:00Z

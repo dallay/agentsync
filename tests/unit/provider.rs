@@ -58,6 +58,36 @@ fn resolve_deterministic_non_skills_repo_omits_skills_prefix() {
 }
 
 #[test]
+fn resolve_deterministic_repo_suffix_skills_adds_skills_prefix() {
+    let provider = SkillsShProvider;
+
+    let info = provider
+        .resolve("krutikJain/android-agent-skills/android-kotlin-core")
+        .unwrap();
+
+    assert_eq!(
+        info.download_url,
+        "https://github.com/krutikJain/android-agent-skills/archive/HEAD.zip#skills/android-kotlin-core"
+    );
+    assert_eq!(info.format, "zip");
+}
+
+#[test]
+fn resolve_deterministic_embedded_catalog_can_omit_fragment_for_repo_root_skill() {
+    let provider = SkillsShProvider;
+
+    let info = provider
+        .resolve("currents-dev/playwright-best-practices-skill/playwright-best-practices")
+        .unwrap();
+
+    assert_eq!(
+        info.download_url,
+        "https://github.com/currents-dev/playwright-best-practices-skill/archive/HEAD.zip"
+    );
+    assert_eq!(info.format, "zip");
+}
+
+#[test]
 fn resolve_deterministic_skills_repo_adds_skills_prefix() {
     let provider = SkillsShProvider;
 

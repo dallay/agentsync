@@ -98,6 +98,112 @@ skills = []
 }
 
 #[test]
+fn embedded_catalog_allows_approved_official_external_recommendations() {
+    let catalog = parse_embedded_catalog(
+        r#"
+version = "v1"
+
+[[skills]]
+provider_skill_id = "angular/angular/reference-core"
+local_skill_id = "angular-reference-core"
+title = "Angular Core Reference"
+summary = "Official Angular core reference guidance."
+
+[[technologies]]
+id = "angular"
+name = "Angular"
+skills = ["angular/angular/reference-core"]
+"#,
+    )
+    .unwrap();
+
+    let angular = catalog
+        .get_technology(&TechnologyId::new("angular"))
+        .unwrap();
+    assert_eq!(angular.skills, vec!["angular/angular/reference-core"]);
+}
+
+#[test]
+fn embedded_catalog_rejects_disallowed_external_recommendations() {
+    let error = parse_embedded_catalog(
+        r#"
+version = "v1"
+
+[[skills]]
+provider_skill_id = "wshobson/agents/nodejs-backend-patterns"
+local_skill_id = "nodejs-backend-patterns"
+title = "Node.js Backend Patterns"
+summary = "Third-party Node.js backend guidance."
+
+[[technologies]]
+id = "node"
+name = "Node.js"
+skills = ["wshobson/agents/nodejs-backend-patterns"]
+"#,
+    )
+    .unwrap_err();
+
+    let message = error.to_string();
+    assert!(message.contains("policy validation failed"));
+}
+
+#[test]
+fn embedded_catalog_policy_cleanup_removes_disallowed_entries_and_keeps_valid_mappings() {
+    let catalog = EmbeddedSkillCatalog::default();
+    let removed_provider_skill_ids = [
+        "biomejs/biome",
+        "sickn33/antigravity-awesome-skills/nodejs-best-practices",
+        "wshobson/agents/nodejs-backend-patterns",
+        "wshobson/agents/typescript-advanced-types",
+    ];
+    let removed_local_skill_ids = [
+        "biome-linter",
+        "nodejs-backend-patterns",
+        "nodejs-best-practices",
+        "typescript-advanced-types",
+    ];
+
+    for provider_skill_id in removed_provider_skill_ids {
+        assert!(catalog.get_skill_definition(provider_skill_id).is_none());
+    }
+
+    for local_skill_id in removed_local_skill_ids {
+        assert!(catalog.get_skill(local_skill_id).is_none());
+    }
+
+    let node = catalog.get_technology(&TechnologyId::new("node")).unwrap();
+    assert_eq!(
+        node.skills,
+        vec!["dallay/agents-skills/best-practices".to_string()]
+    );
+
+    let typescript = catalog
+        .get_technology(&TechnologyId::new("typescript"))
+        .unwrap();
+    assert_eq!(
+        typescript.skills,
+        vec!["dallay/agents-skills/best-practices".to_string()]
+    );
+
+    let biome = catalog.get_technology(&TechnologyId::new("biome")).unwrap();
+    assert_eq!(
+        biome.skills,
+        vec!["dallay/agents-skills/best-practices".to_string()]
+    );
+
+    let all_references = catalog
+        .technologies()
+        .flat_map(|(_, technology)| technology.skills.iter())
+        .chain(catalog.combos().flat_map(|combo| combo.skills.iter()))
+        .cloned()
+        .collect::<Vec<_>>();
+
+    for provider_skill_id in removed_provider_skill_ids {
+        assert!(!all_references.contains(&provider_skill_id.to_string()));
+    }
+}
+
+#[test]
 fn merges_duplicate_skill_recommendations_across_multiple_technologies() {
     let catalog = EmbeddedSkillCatalog::default();
     let detections = vec![
@@ -529,6 +635,9 @@ fn provider_skill(provider_skill_id: &str, local_skill_id: &str) -> ProviderCata
         local_skill_id: local_skill_id.to_string(),
         title: local_skill_id.to_string(),
         summary: format!("Summary for {local_skill_id}"),
+        archive_subpath: None,
+        legacy_local_skill_ids: Vec::new(),
+        install_source: None,
     }
 }
 
@@ -748,32 +857,32 @@ impl Provider for NoMatchCatalogProvider {
 fn combo_triggers_when_all_required_technologies_detected() {
     let catalog = EmbeddedSkillCatalog::default();
 
-    // react-shadcn combo requires both "react" and "shadcn"
+    // nextjs-clerk combo requires both "nextjs" and "clerk"
     let detections = vec![
         detection(
-            TechnologyId::new("react"),
+            TechnologyId::new("nextjs"),
             DetectionConfidence::High,
             "package.json",
         ),
         detection(
-            TechnologyId::new("shadcn"),
+            TechnologyId::new("clerk"),
             DetectionConfidence::High,
-            "components.json",
+            "package.json",
         ),
     ];
 
     let recommendations = recommend_skills(&catalog, &detections);
 
-    // The react-shadcn combo should inject its skills into recommendations.
+    // The nextjs-clerk combo should inject its skills into recommendations.
     // At minimum, the combo's reason should appear.
     let has_combo_reason = recommendations.iter().any(|r| {
         r.reasons
             .iter()
-            .any(|reason| reason.contains("React + shadcn/ui"))
+            .any(|reason| reason.contains("Next.js + Clerk"))
     });
     assert!(
         has_combo_reason,
-        "should have a combo-based recommendation mentioning 'React + shadcn/ui', got reasons: {:?}",
+        "should have a combo-based recommendation mentioning 'Next.js + Clerk', got reasons: {:?}",
         recommendations
             .iter()
             .flat_map(|r| r.reasons.iter())
@@ -785,9 +894,9 @@ fn combo_triggers_when_all_required_technologies_detected() {
 fn combo_does_not_trigger_with_partial_requirements() {
     let catalog = EmbeddedSkillCatalog::default();
 
-    // Only "react" detected, no "shadcn" — the react-shadcn combo should NOT trigger
+    // Only "nextjs" detected, no "clerk" — the nextjs-clerk combo should NOT trigger
     let detections = vec![detection(
-        TechnologyId::new("react"),
+        TechnologyId::new("nextjs"),
         DetectionConfidence::High,
         "package.json",
     )];
@@ -797,7 +906,7 @@ fn combo_does_not_trigger_with_partial_requirements() {
     let has_combo_reason = recommendations.iter().any(|r| {
         r.reasons
             .iter()
-            .any(|reason| reason.contains("React + shadcn/ui"))
+            .any(|reason| reason.contains("Next.js + Clerk"))
     });
     assert!(
         !has_combo_reason,
@@ -834,8 +943,8 @@ fn expanded_catalog_has_minimum_expected_counts() {
         "expected at least 40 technologies, got {technology_count}"
     );
     assert!(
-        combo_count >= 10,
-        "expected at least 10 combos, got {combo_count}"
+        combo_count >= 7,
+        "expected at least 7 combos, got {combo_count}"
     );
 }
 
