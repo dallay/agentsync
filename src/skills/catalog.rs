@@ -857,6 +857,7 @@ fn normalize_skill_definition(raw_skill: &RawCatalogSkill) -> Result<CatalogSkil
     let title = require_non_empty("title", &raw_skill.title)?;
     let summary = require_non_empty("summary", &raw_skill.summary)?;
     validate_local_skill_id(local_skill_id)?;
+    validate_provider_skill_id(provider_skill_id)?;
 
     Ok(CatalogSkillDefinition {
         provider_skill_id: provider_skill_id.to_string(),
@@ -1030,6 +1031,48 @@ fn validate_local_skill_id(skill_id: &str) -> Result<()> {
 
     if component_count != 1 {
         bail!("local skill id must be a single path-safe segment");
+    }
+
+    Ok(())
+}
+
+fn validate_provider_skill_id(provider_skill_id: &str) -> Result<()> {
+    // Reject leading/trailing slashes or backslashes
+    if provider_skill_id.starts_with('/')
+        || provider_skill_id.starts_with('\\')
+        || provider_skill_id.ends_with('/')
+        || provider_skill_id.ends_with('\\')
+    {
+        bail!("provider_skill_id must not start or end with a slash");
+    }
+
+    // Split on '/' and require at least two components
+    let components: Vec<&str> = provider_skill_id.split('/').collect();
+    if components.len() < 2 {
+        bail!(
+            "provider_skill_id must follow the 'owner/repo/skill' pattern (at least two segments)"
+        );
+    }
+
+    // Validate each component
+    for component in &components {
+        // Reject empty strings
+        if component.is_empty() {
+            bail!("provider_skill_id must not have empty segments");
+        }
+        // Reject "." or ".."
+        if *component == "." || *component == ".." {
+            bail!("provider_skill_id segments must not be '.' or '..'");
+        }
+        // Restrict to safe characters: alphanumeric, dot, underscore, hyphen
+        if !component
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '.' || c == '_' || c == '-')
+        {
+            bail!(
+                "provider_skill_id segments can only contain alphanumeric characters, dots, underscores, or hyphens"
+            );
+        }
     }
 
     Ok(())
