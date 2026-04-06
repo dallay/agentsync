@@ -1,5 +1,6 @@
 use anyhow::Result;
 use serde::Deserialize;
+use std::path::{Path, PathBuf};
 
 use crate::skills::catalog::EmbeddedSkillCatalog;
 
@@ -89,6 +90,8 @@ struct SearchSkill {
 
 pub struct SkillsShProvider;
 
+pub const DALLAY_AGENTS_SKILLS_PREFIX: &str = "dallay/agents-skills/";
+
 /// Well-known repo names where skills live in a `skills/` subdirectory.
 const SKILLS_REPO_NAMES: &[&str] = &["skills", "agent-skills", "agentic-skills", "agents-skills"];
 
@@ -98,6 +101,52 @@ fn repo_uses_skills_subdirectory(repo: &str) -> bool {
         || repo.ends_with("-agent-skills")
         || repo.ends_with("-agentic-skills")
         || repo.ends_with("-agents-skills")
+}
+
+fn local_catalog_skill_source_dir(
+    local_skill_id: &str,
+    project_root: Option<&Path>,
+) -> Option<PathBuf> {
+    if let Ok(path) = std::env::var("AGENTSYNC_TEST_SKILL_SOURCE_DIR") {
+        let candidate = PathBuf::from(path).join(local_skill_id);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+
+    if let Ok(path) = std::env::var("AGENTSYNC_LOCAL_SKILLS_REPO") {
+        return Some(PathBuf::from(path).join("skills").join(local_skill_id));
+    }
+
+    project_root
+        .and_then(Path::parent)
+        .map(|parent| {
+            parent
+                .join("agents-skills")
+                .join("skills")
+                .join(local_skill_id)
+        })
+        .filter(|path| path.exists())
+}
+
+pub fn resolve_catalog_install_source(
+    catalog: &EmbeddedSkillCatalog,
+    provider: &dyn Provider,
+    provider_skill_id: &str,
+    local_skill_id: &str,
+    project_root: Option<&Path>,
+) -> Result<String> {
+    if let Some(install_source) = catalog.get_install_source(provider_skill_id) {
+        return Ok(install_source.to_string());
+    }
+
+    if provider_skill_id.starts_with(DALLAY_AGENTS_SKILLS_PREFIX)
+        && let Some(path) = local_catalog_skill_source_dir(local_skill_id, project_root)
+    {
+        return Ok(path.to_string_lossy().into_owned());
+    }
+
+    Ok(provider.resolve(provider_skill_id)?.download_url)
 }
 
 impl SkillsShProvider {

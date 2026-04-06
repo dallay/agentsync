@@ -1,6 +1,6 @@
 use crate::commands::skill_fmt::{self, HumanFormatter, LabelKind, OutputMode};
 use agentsync::skills::catalog::EmbeddedSkillCatalog;
-use agentsync::skills::provider::{Provider, SkillsShProvider};
+use agentsync::skills::provider::{Provider, SkillsShProvider, resolve_catalog_install_source};
 use agentsync::skills::registry;
 use agentsync::skills::suggest::{
     SuggestInstallJsonResponse, SuggestInstallMode, SuggestInstallPhase,
@@ -926,10 +926,19 @@ impl Provider for SuggestInstallProvider {
 
     fn resolve(&self, id: &str) -> Result<agentsync::skills::provider::SkillInstallInfo> {
         let catalog = EmbeddedSkillCatalog::default();
-        if let Some(install_source) = catalog.get_install_source(id) {
+        if let Some(definition) = catalog.get_skill_definition(id) {
+            let download_url = resolve_catalog_install_source(
+                &catalog,
+                &self.fallback,
+                &definition.provider_skill_id,
+                &definition.local_skill_id,
+                None,
+            )?;
+
             return Ok(agentsync::skills::provider::SkillInstallInfo {
-                download_url: install_source.to_string(),
-                format: infer_install_source_format(install_source),
+                download_url: download_url.clone(),
+                // Informational only today: install pipeline infers behavior from the source string.
+                format: infer_install_source_format(&download_url),
             });
         }
 
@@ -1043,23 +1052,23 @@ fn resolve_source(skill_id: &str, source_arg: Option<String>) -> Result<String> 
     if !skill_id.contains("://") && !skill_id.starts_with('/') && !skill_id.starts_with('.') {
         let catalog = EmbeddedSkillCatalog::default();
         if let Some(definition) = catalog.get_skill_definition_by_local_id(skill_id) {
-            if let Some(install_source) = definition.install_source.as_deref() {
-                return Ok(install_source.to_string());
-            }
-
             let provider = SkillsShProvider;
-            return provider
-                .resolve(&definition.provider_skill_id)
-                .map(|info| info.download_url)
-                .map_err(|e| {
-                    tracing::warn!(skill_id = %skill_id, provider_skill_id = %definition.provider_skill_id, ?e, "Failed to resolve catalog skill via skills provider");
-                    anyhow::anyhow!(
-                        "failed to resolve skill '{}' via provider '{}': {}",
-                        skill_id,
-                        definition.provider_skill_id,
-                        e
-                    )
-                });
+            return resolve_catalog_install_source(
+                &catalog,
+                &provider,
+                &definition.provider_skill_id,
+                &definition.local_skill_id,
+                None,
+            )
+            .map_err(|e| {
+                tracing::warn!(skill_id = %skill_id, provider_skill_id = %definition.provider_skill_id, ?e, "Failed to resolve catalog skill via skills provider");
+                anyhow::anyhow!(
+                    "failed to resolve skill '{}' via provider '{}': {}",
+                    skill_id,
+                    definition.provider_skill_id,
+                    e
+                )
+            });
         }
 
         let provider = SkillsShProvider;
@@ -1085,7 +1094,11 @@ fn infer_install_source_format(source: &str) -> String {
             return "tar.gz".to_string();
         }
 
-        return "zip".to_string();
+        if source.ends_with(".zip") {
+            return "zip".to_string();
+        }
+
+        return "url".to_string();
     }
 
     "dir".to_string()
