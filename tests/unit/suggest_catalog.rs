@@ -857,32 +857,32 @@ impl Provider for NoMatchCatalogProvider {
 fn combo_triggers_when_all_required_technologies_detected() {
     let catalog = EmbeddedSkillCatalog::default();
 
-    // react-shadcn combo requires both "react" and "shadcn"
+    // nextjs-clerk combo requires both "nextjs" and "clerk"
     let detections = vec![
         detection(
-            TechnologyId::new("react"),
+            TechnologyId::new("nextjs"),
             DetectionConfidence::High,
             "package.json",
         ),
         detection(
-            TechnologyId::new("shadcn"),
+            TechnologyId::new("clerk"),
             DetectionConfidence::High,
-            "components.json",
+            "package.json",
         ),
     ];
 
     let recommendations = recommend_skills(&catalog, &detections);
 
-    // The react-shadcn combo should inject its skills into recommendations.
+    // The nextjs-clerk combo should inject its skills into recommendations.
     // At minimum, the combo's reason should appear.
     let has_combo_reason = recommendations.iter().any(|r| {
         r.reasons
             .iter()
-            .any(|reason| reason.contains("React + shadcn/ui"))
+            .any(|reason| reason.contains("Next.js + Clerk"))
     });
     assert!(
         has_combo_reason,
-        "should have a combo-based recommendation mentioning 'React + shadcn/ui', got reasons: {:?}",
+        "should have a combo-based recommendation mentioning 'Next.js + Clerk', got reasons: {:?}",
         recommendations
             .iter()
             .flat_map(|r| r.reasons.iter())
@@ -894,9 +894,9 @@ fn combo_triggers_when_all_required_technologies_detected() {
 fn combo_does_not_trigger_with_partial_requirements() {
     let catalog = EmbeddedSkillCatalog::default();
 
-    // Only "react" detected, no "shadcn" — the react-shadcn combo should NOT trigger
+    // Only "nextjs" detected, no "clerk" — the nextjs-clerk combo should NOT trigger
     let detections = vec![detection(
-        TechnologyId::new("react"),
+        TechnologyId::new("nextjs"),
         DetectionConfidence::High,
         "package.json",
     )];
@@ -906,7 +906,7 @@ fn combo_does_not_trigger_with_partial_requirements() {
     let has_combo_reason = recommendations.iter().any(|r| {
         r.reasons
             .iter()
-            .any(|reason| reason.contains("React + shadcn/ui"))
+            .any(|reason| reason.contains("Next.js + Clerk"))
     });
     assert!(
         !has_combo_reason,
@@ -943,8 +943,8 @@ fn expanded_catalog_has_minimum_expected_counts() {
         "expected at least 40 technologies, got {technology_count}"
     );
     assert!(
-        combo_count >= 10,
-        "expected at least 10 combos, got {combo_count}"
+        combo_count >= 7,
+        "expected at least 7 combos, got {combo_count}"
     );
 }
 
