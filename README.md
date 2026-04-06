@@ -62,8 +62,13 @@ resolved, installed, and registered correctly.
 - Local run:
 
 ```bash
+git clone https://github.com/dallay/agents-skills ../agents-skills
+export AGENTSYNC_LOCAL_SKILLS_REPO="$(pwd)/../agents-skills"
 RUN_E2E=1 cargo test --test test_catalog_integration -- --ignored --nocapture
 ```
+
+If you already keep `agents-skills` as a sibling checkout next to this repository, you can skip the
+environment variable and let the test auto-discover that sibling path instead.
 
 This check is intentionally separate from normal CI because it depends on external networks and
 third-party skill repositories.

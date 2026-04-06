@@ -117,7 +117,7 @@ const APPROVED_EMBEDDED_EXTERNAL_SKILL_IDS: &[&str] = &[
     "mindrally/skills/deno-typescript",
     "mongodb/agent-skills",
     "neondatabase/agent-skills/neon-postgres",
-    "nodnarbnitram/claude-code-extensions/tauri-v2",
+    "delexw/claude-code-misc/tauri-v2",
     "nrwl/nx-ai-agents-config",
     "openai/skills",
     "openai/skills/cloudflare-deploy",
@@ -202,6 +202,7 @@ pub struct ResolvedSkillCatalog {
     source_name: String,
     metadata_version: String,
     skill_definitions: BTreeMap<String, CatalogSkillDefinition>,
+    local_to_provider: BTreeMap<String, String>,
     local_skills: BTreeMap<String, CatalogSkillMetadata>,
     technologies: BTreeMap<TechnologyId, CatalogTechnologyEntry>,
     combos: BTreeMap<String, CatalogComboEntry>,
@@ -238,9 +239,9 @@ impl ResolvedSkillCatalog {
         &self,
         skill_id: &str,
     ) -> Option<&CatalogSkillDefinition> {
-        self.skill_definitions
-            .values()
-            .find(|definition| definition.local_skill_id == skill_id)
+        self.local_to_provider
+            .get(skill_id)
+            .and_then(|provider_skill_id| self.skill_definitions.get(provider_skill_id))
     }
 
     pub fn get_technology(&self, technology: &TechnologyId) -> Option<&CatalogTechnologyEntry> {
@@ -625,6 +626,7 @@ fn normalize_catalog(
         source_name: source_name.to_string(),
         metadata_version: metadata_version.to_string(),
         skill_definitions,
+        local_to_provider: BTreeMap::new(),
         local_skills: BTreeMap::new(),
         technologies,
         combos,
@@ -960,6 +962,7 @@ fn normalize_skill_references(
 
 fn rebuild_local_skill_index(catalog: &mut ResolvedSkillCatalog) -> Result<()> {
     let mut local_skills = BTreeMap::new();
+    let mut local_to_provider = BTreeMap::new();
 
     for definition in catalog.skill_definitions.values() {
         if local_skills.contains_key(&definition.local_skill_id) {
@@ -978,8 +981,14 @@ fn rebuild_local_skill_index(catalog: &mut ResolvedSkillCatalog) -> Result<()> {
                 summary: definition.summary.clone(),
             },
         );
+
+        local_to_provider.insert(
+            definition.local_skill_id.clone(),
+            definition.provider_skill_id.clone(),
+        );
     }
 
+    catalog.local_to_provider = local_to_provider;
     catalog.local_skills = local_skills;
     Ok(())
 }

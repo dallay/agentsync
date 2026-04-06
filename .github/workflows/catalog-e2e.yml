@@ -50,4 +50,10 @@ jobs:
         env:
           AGENTSYNC_LOCAL_SKILLS_REPO: ${{ github.workspace }}/vendor/agents-skills
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: cargo test --test test_catalog_integration -- --ignored --nocapture
+        run: |
+          if [ ! -d "$AGENTSYNC_LOCAL_SKILLS_REPO" ]; then
+            echo "Expected vendored skills repository at '$AGENTSYNC_LOCAL_SKILLS_REPO', but the directory does not exist."
+            exit 1
+          fi
+
+          cargo test --test test_catalog_integration -- --ignored --nocapture

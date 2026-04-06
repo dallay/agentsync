@@ -805,7 +805,7 @@ summary = "Build SwiftUI applications with expert-level patterns."
 # --- Tauri ---
 
 [[skills]]
-provider_skill_id = "nodnarbnitram/claude-code-extensions/tauri-v2"
+provider_skill_id = "delexw/claude-code-misc/tauri-v2"
 local_skill_id = "tauri-v2"
 title = "Tauri v2"
 summary = "Build desktop applications with Tauri v2."
@@ -1824,7 +1824,7 @@ packages = ["@nestjs/core"]
 [[technologies]]
 id = "tauri"
 name = "Tauri"
-skills = ["nodnarbnitram/claude-code-extensions/tauri-v2"]
+skills = ["delexw/claude-code-misc/tauri-v2"]
 min_confidence = "medium"
 
 [technologies.detect]

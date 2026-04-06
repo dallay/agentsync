@@ -6,40 +6,15 @@
 
 use agentsync::skills::catalog::EmbeddedSkillCatalog;
 use agentsync::skills::install::blocking_fetch_and_install_skill;
-use agentsync::skills::provider::{Provider, SkillsShProvider};
+use agentsync::skills::provider::{SkillsShProvider, resolve_catalog_install_source};
 use agentsync::skills::registry::read_registry;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::thread;
 use std::time::Duration;
 use tempfile::TempDir;
 
-const DALLAY_SKILLS_PREFIX: &str = "dallay/agents-skills/";
-
 fn project_root() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR"))
-}
-
-fn local_skill_source_dir(local_skill_id: &str) -> PathBuf {
-    if let Ok(path) = std::env::var("AGENTSYNC_LOCAL_SKILLS_REPO") {
-        return PathBuf::from(path).join("skills").join(local_skill_id);
-    }
-
-    let sibling_repo = project_root().parent().map(|parent| {
-        parent
-            .join("agents-skills")
-            .join("skills")
-            .join(local_skill_id)
-    });
-    if let Some(path) = sibling_repo
-        && path.exists()
-    {
-        return path;
-    }
-
-    project_root()
-        .join(".agents")
-        .join("skills")
-        .join(local_skill_id)
 }
 
 fn resolve_install_source(
@@ -48,23 +23,22 @@ fn resolve_install_source(
     local_skill_id: &str,
 ) -> anyhow::Result<String> {
     let catalog = EmbeddedSkillCatalog::default();
-    if let Some(install_source) = catalog.get_install_source(provider_skill_id) {
-        return Ok(install_source.to_string());
-    }
-
-    if provider_skill_id.starts_with(DALLAY_SKILLS_PREFIX) {
-        return Ok(local_skill_source_dir(local_skill_id)
-            .to_string_lossy()
-            .into_owned());
-    }
-
-    Ok(provider.resolve(provider_skill_id)?.download_url)
+    resolve_catalog_install_source(
+        &catalog,
+        provider,
+        provider_skill_id,
+        local_skill_id,
+        Some(project_root()),
+    )
 }
 
 fn install_with_retry(skill_id: &str, source: &str, target_root: &Path) -> anyhow::Result<()> {
     match blocking_fetch_and_install_skill(skill_id, source, target_root) {
         Ok(()) => Ok(()),
         Err(first_error) => {
+            eprintln!(
+                "Initial install attempt failed for {skill_id} from {source}: {first_error}. Retrying once..."
+            );
             thread::sleep(Duration::from_secs(2));
             blocking_fetch_and_install_skill(skill_id, source, target_root).map_err(
                 |second_error| {
