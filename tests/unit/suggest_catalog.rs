@@ -435,7 +435,11 @@ skills = ["dallay/agents-skills/rust-async-patterns"]
         version: "2026.03".to_string(),
         schema_version: "v1".to_string(),
         skills: vec![],
-        technologies: vec![provider_technology("make", "Make", &["dallay/agents-skills/makefile"])],
+        technologies: vec![provider_technology(
+            "make",
+            "Make",
+            &["dallay/agents-skills/makefile"],
+        )],
         combos: vec![],
     };
 

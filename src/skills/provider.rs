@@ -104,20 +104,30 @@ fn repo_uses_skills_subdirectory(repo: &str) -> bool {
 }
 
 fn local_catalog_skill_source_dir(
+    provider_skill_id: &str,
     local_skill_id: &str,
     project_root: Option<&Path>,
 ) -> Option<PathBuf> {
+    // Try AGENTSYNC_TEST_SKILL_SOURCE_DIR with provider_skill_id (full path like "dallay/agents-skills/rust-async-patterns")
     if let Ok(path) = std::env::var("AGENTSYNC_TEST_SKILL_SOURCE_DIR") {
-        let candidate = PathBuf::from(path).join(local_skill_id);
+        // First try the full provider_skill_id path (e.g., "dallay/agents-skills/rust-async-patterns")
+        let candidate = PathBuf::from(path.clone()).join(provider_skill_id);
         if candidate.exists() {
             return Some(candidate);
         }
+        // Fall back to local_skill_id only (e.g., "rust-async-patterns")
+        let fallback = PathBuf::from(path).join(local_skill_id);
+        if fallback.exists() {
+            return Some(fallback);
+        }
     }
 
+    // Try AGENTSYNC_LOCAL_SKILLS_REPO/skills/local_skill_id
     if let Ok(path) = std::env::var("AGENTSYNC_LOCAL_SKILLS_REPO") {
         return Some(PathBuf::from(path).join("skills").join(local_skill_id));
     }
 
+    // Try project_parent/agents-skills/skills/local_skill_id
     project_root
         .and_then(Path::parent)
         .map(|parent| {
@@ -141,7 +151,8 @@ pub fn resolve_catalog_install_source(
     }
 
     if provider_skill_id.starts_with(DALLAY_AGENTS_SKILLS_PREFIX)
-        && let Some(path) = local_catalog_skill_source_dir(local_skill_id, project_root)
+        && let Some(path) =
+            local_catalog_skill_source_dir(provider_skill_id, local_skill_id, project_root)
     {
         return Ok(path.to_string_lossy().into_owned());
     }

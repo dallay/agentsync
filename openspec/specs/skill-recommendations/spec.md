@@ -497,7 +497,8 @@ require new top-level JSON fields.
   ],
   "recommendations": [
     {
-      "skill_id": "string",
+      "skill_id": "makefile",
+      "provider_skill_id": "dallay/agents-skills/makefile",
       "matched_technologies": ["string"],
       "reasons": ["string"],
       "installed": true
@@ -872,7 +873,8 @@ The `provider_skill_id` field is additive; existing JSON fields (`skill_id`,
 - GIVEN a JSON consumer that reads `skill_id`, `matched_technologies`, `reasons`, and `installed`
 - WHEN the system adds the `provider_skill_id` field to the recommendation JSON
 - THEN the existing fields MUST NOT change name, type, or semantics
-- AND the new `provider_skill_id` field MUST be additive only (i.e., allowed but not required and must not break consumers)
+- AND producers MUST emit `provider_skill_id` in serialized JSON
+- AND existing consumers MAY ignore the `provider_skill_id` field without breaking
 
 ---
 
