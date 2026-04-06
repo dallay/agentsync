@@ -13,8 +13,150 @@ const EMBEDDED_CATALOG_METADATA: &str = include_str!("catalog.v1.toml");
 const EMBEDDED_SOURCE_NAME: &str = "embedded";
 const EMBEDDED_METADATA_VERSION: &str = "v1";
 const SUPPORTED_SCHEMA_VERSION: &str = "v1";
+const LOCAL_EMBEDDED_SKILL_PREFIX: &str = "dallay/agents-skills/";
 const DEFAULT_REASON_TEMPLATE: &str =
     "Recommended because {technology} was detected from {evidence}.";
+const APPROVED_EMBEDDED_EXTERNAL_SKILL_IDS: &[&str] = &[
+    "Kotlin/kotlin-agent-skills/kotlin-tooling-agp9-migration",
+    "Kotlin/kotlin-agent-skills/kotlin-tooling-cocoapods-spm-migration",
+    "addyosmani/web-quality-skills/accessibility",
+    "addyosmani/web-quality-skills/seo",
+    "affaan-m/everything-claude-code/java-coding-standards",
+    "aj-geddes/useful-ai-prompts/nodejs-express-server",
+    "angular/angular/PR Review",
+    "angular/angular/adev-writing-guide",
+    "angular/angular/reference-compiler-cli",
+    "angular/angular/reference-core",
+    "angular/angular/reference-signal-forms",
+    "angular/skills/angular-developer",
+    "antfu/skills/nuxt",
+    "antfu/skills/vite",
+    "antfu/skills/vitest",
+    "antfu/skills/vue",
+    "antfu/skills/vue-best-practices",
+    "anthropics/skills/frontend-design",
+    "apollographql/skills/graphql-schema",
+    "astrolicious/agent-skills/astro",
+    "avdlee/swiftui-agent-skill/swiftui-expert-skill",
+    "awslabs/agent-plugins",
+    "better-auth/skills/better-auth-best-practices",
+    "better-auth/skills/email-and-password-best-practices",
+    "better-auth/skills/organization-best-practices",
+    "better-auth/skills/two-factor-authentication-best-practices",
+    "bobmatnyc/claude-mpm-skills/drizzle-orm",
+    "clerk/skills/clerk",
+    "clerk/skills/clerk-custom-ui",
+    "clerk/skills/clerk-nextjs-patterns",
+    "clerk/skills/clerk-orgs",
+    "clerk/skills/clerk-setup",
+    "clerk/skills/clerk-testing",
+    "clerk/skills/clerk-webhooks",
+    "cloudflare/skills/agents-sdk",
+    "cloudflare/skills/building-ai-agent-on-cloudflare",
+    "cloudflare/skills/building-mcp-server-on-cloudflare",
+    "cloudflare/skills/cloudflare",
+    "cloudflare/skills/durable-objects",
+    "cloudflare/skills/sandbox-sdk",
+    "cloudflare/skills/web-perf",
+    "cloudflare/skills/workers-best-practices",
+    "cloudflare/skills/wrangler",
+    "cloudflare/vinext/migrate-to-vinext",
+    "currents-dev/playwright-best-practices-skill/playwright-best-practices",
+    "delexw/claude-code-misc/oxlint",
+    "denoland/skills/deno-deploy",
+    "denoland/skills/deno-expert",
+    "denoland/skills/deno-frontend",
+    "denoland/skills/deno-guidance",
+    "denoland/skills/deno-sandbox",
+    "dotnet/skills",
+    "ejirocodes/agent-skills/svelte5-best-practices",
+    "expo/skills/building-native-ui",
+    "expo/skills/expo-api-routes",
+    "expo/skills/expo-cicd-workflows",
+    "expo/skills/expo-deployment",
+    "expo/skills/expo-dev-client",
+    "expo/skills/expo-tailwind-setup",
+    "expo/skills/native-data-fetching",
+    "expo/skills/upgrading-expo",
+    "expo/skills/use-dom",
+    "flutter/skills",
+    "github/awesome-copilot/java-docs",
+    "github/awesome-copilot/java-springboot",
+    "github/awesome-copilot/openapi-to-application-code",
+    "giuseppe-trisciuoglio/developer-kit/tailwind-css-patterns",
+    "googlecloudplatform/devrel-demos",
+    "greensock/gsap-skills/gsap-core",
+    "greensock/gsap-skills/gsap-frameworks",
+    "greensock/gsap-skills/gsap-performance",
+    "greensock/gsap-skills/gsap-plugins",
+    "greensock/gsap-skills/gsap-react",
+    "greensock/gsap-skills/gsap-scrolltrigger",
+    "greensock/gsap-skills/gsap-timeline",
+    "greensock/gsap-skills/gsap-utils",
+    "hashicorp/agent-skills",
+    "huggingface/skills",
+    "hyf0/vue-skills/vue-best-practices",
+    "hyf0/vue-skills/vue-debug-guides",
+    "inferen-sh/skills/elevenlabs-music",
+    "inferen-sh/skills/elevenlabs-tts",
+    "kadajett/agent-nestjs-skills/nestjs-best-practices",
+    "krutikJain/android-agent-skills/android-architecture-clean",
+    "krutikJain/android-agent-skills/android-compose-foundations",
+    "krutikJain/android-agent-skills/android-coroutines-flow",
+    "krutikJain/android-agent-skills/android-di-hilt",
+    "krutikJain/android-agent-skills/android-gradle-build-logic",
+    "krutikJain/android-agent-skills/android-kotlin-core",
+    "krutikJain/android-agent-skills/android-networking-retrofit-okhttp",
+    "krutikJain/android-agent-skills/android-testing-unit",
+    "langchain-ai/langchain-skills",
+    "laravel/boost",
+    "microsoft/github-copilot-for-azure/azure-ai",
+    "microsoft/github-copilot-for-azure/azure-cost-optimization",
+    "microsoft/github-copilot-for-azure/azure-deploy",
+    "microsoft/github-copilot-for-azure/azure-diagnostics",
+    "mindrally/skills/deno-typescript",
+    "mongodb/agent-skills",
+    "neondatabase/agent-skills/neon-postgres",
+    "delexw/claude-code-misc/tauri-v2",
+    "nrwl/nx-ai-agents-config",
+    "openai/skills",
+    "openai/skills/cloudflare-deploy",
+    "prisma/skills/prisma-cli",
+    "prisma/skills/prisma-client-api",
+    "prisma/skills/prisma-database-setup",
+    "prisma/skills/prisma-postgres",
+    "pulumi/agent-skills",
+    "pytorch/pytorch",
+    "redis/agent-skills",
+    "remix-run/agent-skills",
+    "remotion-dev/skills/remotion-best-practices",
+    "secondsky/claude-skills/tailwind-v4-shadcn",
+    "shadcn/ui/shadcn",
+    "sleekdotdesign/agent-skills/sleek-design-mobile-apps",
+    "storybookjs/react-native",
+    "stripe/ai/stripe-best-practices",
+    "stripe/ai/upgrade-stripe",
+    "supabase/agent-skills/supabase-postgres-best-practices",
+    "sveltejs/ai-tools/svelte-code-writer",
+    "vercel-labs/agent-skills/deploy-to-vercel",
+    "vercel-labs/agent-skills/vercel-composition-patterns",
+    "vercel-labs/agent-skills/vercel-react-best-practices",
+    "vercel-labs/next-skills/next-best-practices",
+    "vercel-labs/next-skills/next-cache-components",
+    "vercel-labs/next-skills/next-upgrade",
+    "vercel/ai/ai-sdk",
+    "vercel/turborepo/turborepo",
+    "vuejs-ai/skills/vue-pinia-best-practices",
+    "wordpress/agent-skills/wordpress-router",
+    "wordpress/agent-skills/wp-block-development",
+    "wordpress/agent-skills/wp-block-themes",
+    "wordpress/agent-skills/wp-performance",
+    "wordpress/agent-skills/wp-plugin-development",
+    "wordpress/agent-skills/wp-project-triage",
+    "wordpress/agent-skills/wp-rest-api",
+    "wordpress/agent-skills/wp-wpcli-and-ops",
+    "yusukebe/hono-skill/hono",
+];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CatalogSkillMetadata {
@@ -30,6 +172,9 @@ pub struct CatalogSkillDefinition {
     pub local_skill_id: String,
     pub title: String,
     pub summary: String,
+    pub archive_subpath: Option<String>,
+    pub legacy_local_skill_ids: Vec<String>,
+    pub install_source: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -57,6 +202,7 @@ pub struct ResolvedSkillCatalog {
     source_name: String,
     metadata_version: String,
     skill_definitions: BTreeMap<String, CatalogSkillDefinition>,
+    local_to_provider: BTreeMap<String, String>,
     local_skills: BTreeMap<String, CatalogSkillMetadata>,
     technologies: BTreeMap<TechnologyId, CatalogTechnologyEntry>,
     combos: BTreeMap<String, CatalogComboEntry>,
@@ -77,6 +223,25 @@ impl ResolvedSkillCatalog {
 
     pub fn get_skill_definition(&self, provider_skill_id: &str) -> Option<&CatalogSkillDefinition> {
         self.skill_definitions.get(provider_skill_id)
+    }
+
+    pub fn get_archive_subpath(&self, provider_skill_id: &str) -> Option<&str> {
+        self.get_skill_definition(provider_skill_id)
+            .and_then(|definition| definition.archive_subpath.as_deref())
+    }
+
+    pub fn get_install_source(&self, provider_skill_id: &str) -> Option<&str> {
+        self.get_skill_definition(provider_skill_id)
+            .and_then(|definition| definition.install_source.as_deref())
+    }
+
+    pub fn get_skill_definition_by_local_id(
+        &self,
+        skill_id: &str,
+    ) -> Option<&CatalogSkillDefinition> {
+        self.local_to_provider
+            .get(skill_id)
+            .and_then(|provider_skill_id| self.skill_definitions.get(provider_skill_id))
     }
 
     pub fn get_technology(&self, technology: &TechnologyId) -> Option<&CatalogTechnologyEntry> {
@@ -146,6 +311,12 @@ struct RawCatalogSkill {
     local_skill_id: String,
     title: String,
     summary: String,
+    #[serde(default)]
+    archive_subpath: Option<String>,
+    #[serde(default)]
+    legacy_local_skill_ids: Vec<String>,
+    #[serde(default)]
+    install_source: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -185,6 +356,9 @@ impl From<ProviderCatalogMetadata> for RawCatalogDocument {
                     local_skill_id: skill.local_skill_id,
                     title: skill.title,
                     summary: skill.summary,
+                    archive_subpath: skill.archive_subpath,
+                    legacy_local_skill_ids: skill.legacy_local_skill_ids,
+                    install_source: skill.install_source,
                 })
                 .collect(),
             technologies: metadata
@@ -221,16 +395,28 @@ enum ValidationMode {
     Lenient,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EmbeddedRecommendationSource {
+    LocalCurated,
+    ApprovedExternal,
+    DisallowedExternal,
+}
+
 pub fn parse_embedded_catalog(metadata: &str) -> Result<ResolvedSkillCatalog> {
     let document = toml::from_str::<RawCatalogDocument>(metadata)
         .context("failed to parse embedded recommendation catalog metadata")?;
 
-    normalize_catalog(
+    let catalog = normalize_catalog(
         EMBEDDED_SOURCE_NAME,
         EMBEDDED_METADATA_VERSION,
         document,
         ValidationMode::Strict,
-    )
+    )?;
+
+    validate_embedded_external_recommendation_policy(&catalog)
+        .context("embedded recommendation catalog policy validation failed")?;
+
+    Ok(catalog)
 }
 
 pub fn parse_catalog(
@@ -304,7 +490,10 @@ pub fn recommend_skills(
 
             let suggestion = suggestions
                 .entry(definition.local_skill_id.clone())
-                .or_insert_with(|| SkillSuggestion::new(&metadata, catalog));
+                .or_insert_with(|| {
+                    SkillSuggestion::new(&metadata, catalog)
+                        .with_legacy_local_skill_ids(&definition.legacy_local_skill_ids)
+                });
 
             suggestion.add_match(detection, &entry.reason_template);
         }
@@ -341,7 +530,10 @@ pub fn recommend_skills(
 
             let suggestion = suggestions
                 .entry(definition.local_skill_id.clone())
-                .or_insert_with(|| SkillSuggestion::new(&metadata, catalog));
+                .or_insert_with(|| {
+                    SkillSuggestion::new(&metadata, catalog)
+                        .with_legacy_local_skill_ids(&definition.legacy_local_skill_ids)
+                });
 
             let reason = combo
                 .reason_template
@@ -434,12 +626,59 @@ fn normalize_catalog(
         source_name: source_name.to_string(),
         metadata_version: metadata_version.to_string(),
         skill_definitions,
+        local_to_provider: BTreeMap::new(),
         local_skills: BTreeMap::new(),
         technologies,
         combos,
     };
     rebuild_local_skill_index(&mut catalog)?;
     Ok(catalog)
+}
+
+fn validate_embedded_external_recommendation_policy(catalog: &ResolvedSkillCatalog) -> Result<()> {
+    for (technology_id, technology) in &catalog.technologies {
+        for provider_skill_id in &technology.skills {
+            validate_embedded_recommendation_reference(
+                provider_skill_id,
+                &format!("technology '{}'", technology_id.as_ref()),
+            )?;
+        }
+    }
+
+    for combo in catalog.combos.values() {
+        for provider_skill_id in &combo.skills {
+            validate_embedded_recommendation_reference(
+                provider_skill_id,
+                &format!("combo '{}'", combo.id),
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_embedded_recommendation_reference(provider_skill_id: &str, owner: &str) -> Result<()> {
+    if classify_embedded_recommendation_source(provider_skill_id)
+        == EmbeddedRecommendationSource::DisallowedExternal
+    {
+        bail!("{owner} references disallowed external recommendation '{provider_skill_id}'");
+    }
+
+    Ok(())
+}
+
+fn classify_embedded_recommendation_source(
+    provider_skill_id: &str,
+) -> EmbeddedRecommendationSource {
+    if provider_skill_id.starts_with(LOCAL_EMBEDDED_SKILL_PREFIX) {
+        return EmbeddedRecommendationSource::LocalCurated;
+    }
+
+    if APPROVED_EMBEDDED_EXTERNAL_SKILL_IDS.contains(&provider_skill_id) {
+        return EmbeddedRecommendationSource::ApprovedExternal;
+    }
+
+    EmbeddedRecommendationSource::DisallowedExternal
 }
 
 fn validate_schema_version(version: &str) -> Result<()> {
@@ -624,6 +863,9 @@ fn normalize_skill_definition(raw_skill: &RawCatalogSkill) -> Result<CatalogSkil
         local_skill_id: local_skill_id.to_string(),
         title: title.to_string(),
         summary: summary.to_string(),
+        archive_subpath: raw_skill.archive_subpath.clone(),
+        legacy_local_skill_ids: raw_skill.legacy_local_skill_ids.clone(),
+        install_source: raw_skill.install_source.clone(),
     })
 }
 
@@ -720,6 +962,7 @@ fn normalize_skill_references(
 
 fn rebuild_local_skill_index(catalog: &mut ResolvedSkillCatalog) -> Result<()> {
     let mut local_skills = BTreeMap::new();
+    let mut local_to_provider = BTreeMap::new();
 
     for definition in catalog.skill_definitions.values() {
         if local_skills.contains_key(&definition.local_skill_id) {
@@ -738,8 +981,14 @@ fn rebuild_local_skill_index(catalog: &mut ResolvedSkillCatalog) -> Result<()> {
                 summary: definition.summary.clone(),
             },
         );
+
+        local_to_provider.insert(
+            definition.local_skill_id.clone(),
+            definition.provider_skill_id.clone(),
+        );
     }
 
+    catalog.local_to_provider = local_to_provider;
     catalog.local_skills = local_skills;
     Ok(())
 }

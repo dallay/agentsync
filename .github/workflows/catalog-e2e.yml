@@ -1,0 +1,59 @@
+name: Catalog E2E
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 8 * * 1"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  RUN_E2E: 1
+
+jobs:
+  catalog-installation:
+    name: Verify catalog skill installation
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Checkout dallay skills repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          repository: dallay/agents-skills
+          path: vendor/agents-skills
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-catalog-e2e-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-catalog-e2e-
+            ${{ runner.os }}-cargo-test-
+
+      - name: Run catalog installation E2E
+        env:
+          AGENTSYNC_LOCAL_SKILLS_REPO: ${{ github.workspace }}/vendor/agents-skills
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ ! -d "$AGENTSYNC_LOCAL_SKILLS_REPO" ]; then
+            echo "Expected vendored skills repository at '$AGENTSYNC_LOCAL_SKILLS_REPO', but the directory does not exist."
+            exit 1
+          fi
+
+          cargo test --test test_catalog_integration -- --ignored --nocapture

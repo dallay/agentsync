@@ -1,6 +1,7 @@
 use agentsync::skills::provider::{Provider, SkillInstallInfo};
 use agentsync::skills::suggest::{
-    DetectionConfidence, DetectionEvidence, SuggestInstallMode, SuggestInstallStatus,
+    DetectionConfidence, DetectionEvidence, SuggestInstallMode, SuggestInstallPhase,
+    SuggestInstallProgressEvent, SuggestInstallProgressReporter, SuggestInstallStatus,
     SuggestionService, TechnologyDetection, TechnologyId,
 };
 use anyhow::Result;
@@ -200,6 +201,103 @@ fn install_flow_rechecks_registry_before_installing() {
 }
 
 #[test]
+fn suggest_marks_canonical_vue_skill_as_installed_when_legacy_alias_exists() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+    fs::write(
+        root.join("package.json"),
+        r#"{"dependencies":{"vue":"^3.4.0"}}"#,
+    )
+    .unwrap();
+
+    let skills_dir = root.join(".agents/skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+    fs::write(
+        skills_dir.join("registry.json"),
+        serde_json::to_string_pretty(&serde_json::json!({
+            "schemaVersion": 1,
+            "last_updated": "2026-04-06T00:00:00Z",
+            "skills": {
+                "antfu-vue": {
+                    "name": "antfu-vue",
+                    "version": "1.0.0"
+                }
+            }
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let response = SuggestionService
+        .suggest(root)
+        .expect("vue recommendation should be generated");
+
+    let vue = response
+        .recommendations
+        .iter()
+        .find(|recommendation| recommendation.provider_skill_id == "antfu/skills/vue")
+        .expect("antfu vue recommendation should exist");
+
+    assert_eq!(vue.skill_id, "vue");
+    assert!(vue.installed);
+    assert_eq!(vue.installed_version.as_deref(), Some("1.0.0"));
+}
+
+#[test]
+fn install_flow_skips_canonical_vue_when_legacy_alias_is_installed() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+    fs::write(
+        root.join("package.json"),
+        r#"{"dependencies":{"vue":"^3.4.0"}}"#,
+    )
+    .unwrap();
+
+    let skills_dir = root.join(".agents/skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+    fs::write(
+        skills_dir.join("registry.json"),
+        serde_json::to_string_pretty(&serde_json::json!({
+            "schemaVersion": 1,
+            "last_updated": "2026-04-06T00:00:00Z",
+            "skills": {
+                "antfu-vue": {
+                    "name": "antfu-vue",
+                    "version": "1.0.0"
+                }
+            }
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let provider = LocalSkillProvider::new(root, &[("antfu/skills/vue", "vue")]);
+    let response = SuggestionService
+        .suggest(root)
+        .expect("vue recommendation should be generated");
+
+    let install_response = SuggestionService
+        .install_selected_with(
+            root,
+            &response,
+            &provider,
+            SuggestInstallMode::InstallAll,
+            &["vue".to_string()],
+            |_skill_id, _source, _target_root| {
+                panic!("canonical vue install should be skipped when legacy alias exists")
+            },
+        )
+        .unwrap();
+
+    assert_eq!(install_response.results.len(), 1);
+    assert_eq!(install_response.results[0].skill_id, "vue");
+    assert_eq!(
+        install_response.results[0].status,
+        SuggestInstallStatus::AlreadyInstalled
+    );
+}
+
+#[test]
 fn install_flow_records_failures_and_continues() {
     let temp_dir = TempDir::new().unwrap();
     let root = temp_dir.path();
@@ -277,6 +375,209 @@ fn install_flow_records_failures_and_continues() {
     assert!(root.join(".agents/skills/makefile").exists());
 }
 
+#[test]
+fn install_flow_emits_progress_events_in_success_order() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+    fs::write(root.join("Cargo.toml"), "[package]\nname='demo'\n").unwrap();
+
+    let provider = LocalSkillProvider::new(
+        root,
+        &[(
+            "dallay/agents-skills/rust-async-patterns",
+            "rust-async-patterns",
+        )],
+    );
+    let service = SuggestionService;
+    let response = service
+        .suggest_with(root, &StaticDetector::rust_only(), Some(&provider))
+        .unwrap();
+    let mut reporter = RecordingReporter::default();
+
+    let install_response = service
+        .install_selected_with_reporter(
+            root,
+            &response,
+            &provider,
+            SuggestInstallMode::Interactive,
+            &["rust-async-patterns".to_string()],
+            &mut reporter,
+            |skill_id, source, target_root| {
+                agentsync::skills::install::blocking_fetch_and_install_skill(
+                    skill_id,
+                    source,
+                    target_root,
+                )
+                .map_err(|error| anyhow::anyhow!(error))
+            },
+        )
+        .unwrap();
+
+    assert_eq!(install_response.results.len(), 1);
+    assert_eq!(
+        reporter.events,
+        vec![
+            SuggestInstallProgressEvent::Resolving {
+                skill_id: "rust-async-patterns".to_string(),
+            },
+            SuggestInstallProgressEvent::Installing {
+                skill_id: "rust-async-patterns".to_string(),
+            },
+            SuggestInstallProgressEvent::Installed {
+                skill_id: "rust-async-patterns".to_string(),
+            },
+        ]
+    );
+}
+
+#[test]
+fn install_flow_emits_skip_event_after_registry_recheck() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+    fs::write(root.join("Cargo.toml"), "[package]\nname='demo'\n").unwrap();
+
+    let provider = LocalSkillProvider::new(
+        root,
+        &[(
+            "dallay/agents-skills/rust-async-patterns",
+            "rust-async-patterns",
+        )],
+    );
+    let service = SuggestionService;
+    let response = service
+        .suggest_with(root, &StaticDetector::rust_only(), Some(&provider))
+        .unwrap();
+
+    let skills_dir = root.join(".agents/skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+    fs::write(
+        skills_dir.join("registry.json"),
+        serde_json::to_string_pretty(&serde_json::json!({
+            "schemaVersion": 1,
+            "last_updated": "2026-03-31T00:00:00Z",
+            "skills": {
+                "rust-async-patterns": {
+                    "name": "rust-async-patterns",
+                    "version": "9.9.9"
+                }
+            }
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let mut reporter = RecordingReporter::default();
+    service
+        .install_selected_with_reporter(
+            root,
+            &response,
+            &provider,
+            SuggestInstallMode::InstallAll,
+            &["rust-async-patterns".to_string()],
+            &mut reporter,
+            |_skill_id, _source, _target_root| {
+                panic!("install should be skipped after registry recheck")
+            },
+        )
+        .unwrap();
+
+    assert_eq!(
+        reporter.events,
+        vec![SuggestInstallProgressEvent::SkippedAlreadyInstalled {
+            skill_id: "rust-async-patterns".to_string(),
+        }]
+    );
+}
+
+#[test]
+fn install_flow_emits_resolve_failure_event() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+    fs::write(root.join("Cargo.toml"), "[package]\nname='demo'\n").unwrap();
+
+    let provider = PartiallyFailingProvider::new(root);
+    let service = SuggestionService;
+    let response = service
+        .suggest_with(root, &StaticDetector::rust_only(), Some(&provider))
+        .unwrap();
+    let mut reporter = RecordingReporter::default();
+
+    service
+        .install_selected_with_reporter(
+            root,
+            &response,
+            &provider,
+            SuggestInstallMode::InstallAll,
+            &["rust-async-patterns".to_string()],
+            &mut reporter,
+            |_skill_id, _source, _target_root| Ok(()),
+        )
+        .unwrap();
+
+    assert_eq!(
+        reporter.events,
+        vec![
+            SuggestInstallProgressEvent::Resolving {
+                skill_id: "rust-async-patterns".to_string(),
+            },
+            SuggestInstallProgressEvent::Failed {
+                skill_id: "rust-async-patterns".to_string(),
+                phase: SuggestInstallPhase::Resolve,
+                message: "simulated resolve failure for rust-async-patterns".to_string(),
+            },
+        ]
+    );
+}
+
+#[test]
+fn install_flow_emits_install_failure_event() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+    fs::write(root.join("Cargo.toml"), "[package]\nname='demo'\n").unwrap();
+    fs::write(root.join("Dockerfile"), "FROM scratch\n").unwrap();
+
+    let provider = LocalSkillProvider::new(
+        root,
+        &[("dallay/agents-skills/docker-expert", "docker-expert")],
+    );
+    let service = SuggestionService;
+    let response = service
+        .suggest_with(root, &StaticDetector::rust_and_docker(), Some(&provider))
+        .unwrap();
+    let mut reporter = RecordingReporter::default();
+
+    service
+        .install_selected_with_reporter(
+            root,
+            &response,
+            &provider,
+            SuggestInstallMode::InstallAll,
+            &["docker-expert".to_string()],
+            &mut reporter,
+            |_skill_id, _source, _target_root| {
+                anyhow::bail!("simulated install failure for docker-expert")
+            },
+        )
+        .unwrap();
+
+    assert_eq!(
+        reporter.events,
+        vec![
+            SuggestInstallProgressEvent::Resolving {
+                skill_id: "docker-expert".to_string(),
+            },
+            SuggestInstallProgressEvent::Installing {
+                skill_id: "docker-expert".to_string(),
+            },
+            SuggestInstallProgressEvent::Failed {
+                skill_id: "docker-expert".to_string(),
+                phase: SuggestInstallPhase::Install,
+                message: "simulated install failure for docker-expert".to_string(),
+            },
+        ]
+    );
+}
+
 struct StaticDetector {
     detections: Vec<TechnologyDetection>,
 }
@@ -335,6 +636,17 @@ impl StaticDetector {
 impl agentsync::skills::detect::RepoDetector for StaticDetector {
     fn detect(&self, _project_root: &Path) -> Result<Vec<TechnologyDetection>> {
         Ok(self.detections.clone())
+    }
+}
+
+#[derive(Default)]
+struct RecordingReporter {
+    events: Vec<SuggestInstallProgressEvent>,
+}
+
+impl SuggestInstallProgressReporter for RecordingReporter {
+    fn on_event(&mut self, event: SuggestInstallProgressEvent) {
+        self.events.push(event);
     }
 }
 

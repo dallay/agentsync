@@ -13,7 +13,19 @@ prepare_default_skill_sources "$SKILL_SOURCE_ROOT"
 export AGENTSYNC_TEST_SKILL_SOURCE_DIR="$SKILL_SOURCE_ROOT"
 
 log_step "Running guided install in a pseudo-TTY"
-run_with_tty "\n" "cd '$REPO_ROOT' && agentsync skill suggest --install"
+TRANSCRIPT_FILE="$REPO_ROOT/guided-install.transcript"
+CLEAN_TRANSCRIPT_FILE="$REPO_ROOT/guided-install.clean.transcript"
+run_with_tty "\n" "cd '$REPO_ROOT' && agentsync skill suggest --install" > "$TRANSCRIPT_FILE"
+
+# Normalize: strip ANSI codes and carriage returns
+sed -e 's/\x1B\[[0-9;]*[mK]//g' -e 's/\r//g' "$TRANSCRIPT_FILE" > "$CLEAN_TRANSCRIPT_FILE"
+
+assert_file_contains "$CLEAN_TRANSCRIPT_FILE" "Installing 13 selected recommended skills..."
+assert_file_contains "$CLEAN_TRANSCRIPT_FILE" "installed accessibility"
+assert_file_contains "$CLEAN_TRANSCRIPT_FILE" "Recommendation install summary"
+assert_file_contains "$CLEAN_TRANSCRIPT_FILE" "Installed: 13"
+assert_file_contains "$CLEAN_TRANSCRIPT_FILE" "Already installed: 0"
+assert_file_contains "$CLEAN_TRANSCRIPT_FILE" "Failed: 0"
 
 cd "$REPO_ROOT"
 for skill_id in \
@@ -25,11 +37,11 @@ for skill_id in \
     frontend-design \
     github-actions \
     makefile \
+    nothing-design \
     performance \
     pinned-tag \
     rust-async-patterns \
-    seo \
-    typescript-advanced-types; do
+    seo; do
     assert_file_exists ".agents/skills/${skill_id}/SKILL.md"
 done
 

@@ -1,0 +1,60 @@
+# Ignore Git
+.git
+.gitignore
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+
+# Build artifacts
+build/
+dist/
+out/
+target/
+*.class
+*.o
+*.so
+
+# Dependencies
+node_modules/
+vendor/
+.gradle/
+__pycache__/
+*.pyc
+
+# Logs
+*.log
+logs/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Test files
+test/
+tests/
+*.test.js
+*_test.go
+
+# Documentation
+README.md
+LICENSE
+docs/
+
+# Docker
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+Jenkinsfile
+
+# Misc
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
