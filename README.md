@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/dallay/agentsync/actions/workflows/ci.yml/badge.svg)](https://github.com/dallay/agentsync/actions/workflows/ci.yml)
 [![Release](https://github.com/dallay/agentsync/actions/workflows/release.yml/badge.svg)](https://github.com/dallay/agentsync/actions/workflows/release.yml)
+[![Catalog E2E](https://github.com/dallay/agentsync/actions/workflows/catalog-e2e.yml/badge.svg)](https://github.com/dallay/agentsync/actions/workflows/catalog-e2e.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub release](https://img.shields.io/github/v/release/dallay/agentsync)](https://github.com/dallay/agentsync/releases)
 [![Codecov](https://codecov.io/gh/dallay/agentsync/graph/badge.svg)](https://codecov.io/gh/dallay/agentsync)
@@ -49,6 +50,23 @@ locations.
 - 🚀 **CI-friendly** - Gracefully skips when binary unavailable
 - ⚡ **Fast** - Single static binary, no runtime dependencies
 - 🧩 **Curated skills** - Install from the [dallay/agents-skills](https://github.com/dallay/agents-skills) collection or external providers
+
+### Catalog validation
+
+AgentSync ships a full catalog installation E2E check that validates every skill entry can still be
+resolved, installed, and registered correctly.
+
+- GitHub Actions workflow: `Catalog E2E`
+- Manual run: Actions → **Catalog E2E** → **Run workflow**
+- Scheduled run: every Monday at 08:00 UTC
+- Local run:
+
+```bash
+RUN_E2E=1 cargo test --test test_catalog_integration -- --ignored --nocapture
+```
+
+This check is intentionally separate from normal CI because it depends on external networks and
+third-party skill repositories.
 
 ## Installation
 

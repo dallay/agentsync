@@ -172,6 +172,9 @@ pub struct CatalogSkillDefinition {
     pub local_skill_id: String,
     pub title: String,
     pub summary: String,
+    pub archive_subpath: Option<String>,
+    pub legacy_local_skill_ids: Vec<String>,
+    pub install_source: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -219,6 +222,25 @@ impl ResolvedSkillCatalog {
 
     pub fn get_skill_definition(&self, provider_skill_id: &str) -> Option<&CatalogSkillDefinition> {
         self.skill_definitions.get(provider_skill_id)
+    }
+
+    pub fn get_archive_subpath(&self, provider_skill_id: &str) -> Option<&str> {
+        self.get_skill_definition(provider_skill_id)
+            .and_then(|definition| definition.archive_subpath.as_deref())
+    }
+
+    pub fn get_install_source(&self, provider_skill_id: &str) -> Option<&str> {
+        self.get_skill_definition(provider_skill_id)
+            .and_then(|definition| definition.install_source.as_deref())
+    }
+
+    pub fn get_skill_definition_by_local_id(
+        &self,
+        skill_id: &str,
+    ) -> Option<&CatalogSkillDefinition> {
+        self.skill_definitions
+            .values()
+            .find(|definition| definition.local_skill_id == skill_id)
     }
 
     pub fn get_technology(&self, technology: &TechnologyId) -> Option<&CatalogTechnologyEntry> {
@@ -288,6 +310,12 @@ struct RawCatalogSkill {
     local_skill_id: String,
     title: String,
     summary: String,
+    #[serde(default)]
+    archive_subpath: Option<String>,
+    #[serde(default)]
+    legacy_local_skill_ids: Vec<String>,
+    #[serde(default)]
+    install_source: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -327,6 +355,9 @@ impl From<ProviderCatalogMetadata> for RawCatalogDocument {
                     local_skill_id: skill.local_skill_id,
                     title: skill.title,
                     summary: skill.summary,
+                    archive_subpath: skill.archive_subpath,
+                    legacy_local_skill_ids: skill.legacy_local_skill_ids,
+                    install_source: skill.install_source,
                 })
                 .collect(),
             technologies: metadata
@@ -458,7 +489,10 @@ pub fn recommend_skills(
 
             let suggestion = suggestions
                 .entry(definition.local_skill_id.clone())
-                .or_insert_with(|| SkillSuggestion::new(&metadata, catalog));
+                .or_insert_with(|| {
+                    SkillSuggestion::new(&metadata, catalog)
+                        .with_legacy_local_skill_ids(&definition.legacy_local_skill_ids)
+                });
 
             suggestion.add_match(detection, &entry.reason_template);
         }
@@ -495,7 +529,10 @@ pub fn recommend_skills(
 
             let suggestion = suggestions
                 .entry(definition.local_skill_id.clone())
-                .or_insert_with(|| SkillSuggestion::new(&metadata, catalog));
+                .or_insert_with(|| {
+                    SkillSuggestion::new(&metadata, catalog)
+                        .with_legacy_local_skill_ids(&definition.legacy_local_skill_ids)
+                });
 
             let reason = combo
                 .reason_template
@@ -824,6 +861,9 @@ fn normalize_skill_definition(raw_skill: &RawCatalogSkill) -> Result<CatalogSkil
         local_skill_id: local_skill_id.to_string(),
         title: title.to_string(),
         summary: summary.to_string(),
+        archive_subpath: raw_skill.archive_subpath.clone(),
+        legacy_local_skill_ids: raw_skill.legacy_local_skill_ids.clone(),
+        install_source: raw_skill.install_source.clone(),
     })
 }
 

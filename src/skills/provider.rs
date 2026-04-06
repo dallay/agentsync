@@ -1,6 +1,8 @@
 use anyhow::Result;
 use serde::Deserialize;
 
+use crate::skills::catalog::EmbeddedSkillCatalog;
+
 /// Provider trait for resolving skills
 pub trait Provider {
     fn manifest(&self) -> Result<String>;
@@ -41,6 +43,12 @@ pub struct ProviderCatalogSkill {
     pub local_skill_id: String,
     pub title: String,
     pub summary: String,
+    #[serde(default)]
+    pub archive_subpath: Option<String>,
+    #[serde(default)]
+    pub legacy_local_skill_ids: Vec<String>,
+    #[serde(default)]
+    pub install_source: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -84,6 +92,14 @@ pub struct SkillsShProvider;
 /// Well-known repo names where skills live in a `skills/` subdirectory.
 const SKILLS_REPO_NAMES: &[&str] = &["skills", "agent-skills", "agentic-skills", "agents-skills"];
 
+fn repo_uses_skills_subdirectory(repo: &str) -> bool {
+    SKILLS_REPO_NAMES.contains(&repo)
+        || repo.ends_with("-skills")
+        || repo.ends_with("-agent-skills")
+        || repo.ends_with("-agentic-skills")
+        || repo.ends_with("-agents-skills")
+}
+
 impl SkillsShProvider {
     /// Resolve a catalog-style `owner/repo/skill-name` ID deterministically by
     /// constructing the GitHub download URL directly — no network call needed.
@@ -105,16 +121,23 @@ impl SkillsShProvider {
             anyhow::bail!("invalid skill id (empty component): {}", id);
         }
 
-        // Construct the subpath fragment for the archive unpacker.
-        // For repos named "skills", "agent-skills", etc., the skill typically
-        // lives under a `skills/` directory inside the repo.
-        let subpath = if SKILLS_REPO_NAMES.contains(&repo) {
-            format!("skills/{}", skill_name)
-        } else {
-            skill_name.to_string()
-        };
+        let embedded_catalog = EmbeddedSkillCatalog::default();
+        let subpath = embedded_catalog
+            .get_archive_subpath(id)
+            .map(str::to_string)
+            .unwrap_or_else(|| {
+                if repo_uses_skills_subdirectory(repo) {
+                    format!("skills/{skill_name}")
+                } else {
+                    skill_name.to_string()
+                }
+            });
 
-        let final_url = format!("https://github.com/{owner}/{repo}/archive/HEAD.zip#{subpath}");
+        let mut final_url = format!("https://github.com/{owner}/{repo}/archive/HEAD.zip");
+        if !subpath.is_empty() {
+            final_url.push('#');
+            final_url.push_str(&subpath);
+        }
 
         Ok(SkillInstallInfo {
             download_url: final_url,
@@ -158,7 +181,7 @@ impl SkillsShProvider {
         // If the repo name is a well-known skills repo, prefix 'skills/'
         let final_subpath = if !subpath.is_empty() && !subpath.starts_with("skills/") {
             let repo_name = skill.source.split('/').next_back().unwrap_or("");
-            if SKILLS_REPO_NAMES.contains(&repo_name) {
+            if repo_uses_skills_subdirectory(repo_name) {
                 format!("skills/{}", subpath)
             } else {
                 subpath

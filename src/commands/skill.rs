@@ -1,4 +1,5 @@
 use crate::commands::skill_fmt::{self, HumanFormatter, LabelKind, OutputMode};
+use agentsync::skills::catalog::EmbeddedSkillCatalog;
 use agentsync::skills::provider::{Provider, SkillsShProvider};
 use agentsync::skills::registry;
 use agentsync::skills::suggest::{
@@ -924,6 +925,14 @@ impl Provider for SuggestInstallProvider {
     }
 
     fn resolve(&self, id: &str) -> Result<agentsync::skills::provider::SkillInstallInfo> {
+        let catalog = EmbeddedSkillCatalog::default();
+        if let Some(install_source) = catalog.get_install_source(id) {
+            return Ok(agentsync::skills::provider::SkillInstallInfo {
+                download_url: install_source.to_string(),
+                format: infer_install_source_format(install_source),
+            });
+        }
+
         if let Ok(source_root) = std::env::var("AGENTSYNC_TEST_SKILL_SOURCE_DIR") {
             // The id may be a qualified provider_skill_id (e.g., "dallay/agents-skills/foo")
             // or a simple local name. Extract the last segment to find the local source directory.
@@ -1032,6 +1041,27 @@ fn resolve_source(skill_id: &str, source_arg: Option<String>) -> Result<String> 
 
     // If it doesn't look like a URL or a path, try to resolve via skills.sh
     if !skill_id.contains("://") && !skill_id.starts_with('/') && !skill_id.starts_with('.') {
+        let catalog = EmbeddedSkillCatalog::default();
+        if let Some(definition) = catalog.get_skill_definition_by_local_id(skill_id) {
+            if let Some(install_source) = definition.install_source.as_deref() {
+                return Ok(install_source.to_string());
+            }
+
+            let provider = SkillsShProvider;
+            return provider
+                .resolve(&definition.provider_skill_id)
+                .map(|info| info.download_url)
+                .map_err(|e| {
+                    tracing::warn!(skill_id = %skill_id, provider_skill_id = %definition.provider_skill_id, ?e, "Failed to resolve catalog skill via skills provider");
+                    anyhow::anyhow!(
+                        "failed to resolve skill '{}' via provider '{}': {}",
+                        skill_id,
+                        definition.provider_skill_id,
+                        e
+                    )
+                });
+        }
+
         let provider = SkillsShProvider;
         match provider.resolve(skill_id) {
             Ok(info) => Ok(info.download_url),
@@ -1047,6 +1077,18 @@ fn resolve_source(skill_id: &str, source_arg: Option<String>) -> Result<String> 
     } else {
         Ok(skill_id.to_string())
     }
+}
+
+fn infer_install_source_format(source: &str) -> String {
+    if source.starts_with("http://") || source.starts_with("https://") {
+        if source.ends_with(".tar.gz") || source.ends_with(".tgz") {
+            return "tar.gz".to_string();
+        }
+
+        return "zip".to_string();
+    }
+
+    "dir".to_string()
 }
 
 /// Attempts to convert a GitHub URL to a downloadable ZIP URL.
