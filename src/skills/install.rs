@@ -279,6 +279,8 @@ pub async fn fetch_and_unpack_to_tempdir(url: &str) -> Result<TempDir, SkillInst
         tmpfile.flush().await.map_err(SkillInstallError::Io)?;
         // Re-open and read into memory for legacy unpacking logic where needed
         let data = std::fs::read(tmp.path().join("download.tmp")).map_err(SkillInstallError::Io)?;
+        // Cleanup download temp file to avoid including it in the skill
+        let _ = std::fs::remove_file(tmp.path().join("download.tmp"));
         (data, ext)
     };
     // Unpack archive type into the tempdir
