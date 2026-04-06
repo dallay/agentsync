@@ -1,6 +1,7 @@
 # AgentSync
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this
+repository.
 
 ## What Is AgentSync
 
@@ -14,12 +15,14 @@ links. Root `AGENTS.md` symlinks here.
 `skill`.
 
 **Core flow (apply):**
+
 1. `config.rs` — parse `agentsync.toml` (from project root or `.agents/`) into typed config
 2. `linker.rs` — core engine: resolve sources, create/update/remove symlinks per agent+target
 3. `mcp.rs` — generate MCP server configs in agent-specific formats (JSON/TOML)
 4. `gitignore.rs` — update `.gitignore` managed section with marker-delimited blocks
 
 **Four sync types** (set per target in config):
+
 - `symlink` — single file/dir symlink
 - `symlink-contents` — symlink each item inside a source directory
 - `nested-glob` — recursively match files, create symlinks using destination template placeholders
@@ -27,6 +30,7 @@ links. Root `AGENTS.md` symlinks here.
 - `module-map` — map source files to specific module directories with convention filenames
 
 **Key modules:**
+
 - `src/skills/` — skill management: install, uninstall, update, suggest, detect from external
   providers
 - `src/commands/` — subcommand implementations (doctor, skill, status)

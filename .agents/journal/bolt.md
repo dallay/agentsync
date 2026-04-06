@@ -107,6 +107,12 @@ integrated into automated hooks.
 
 ## 2026-04-10 - Caching NestedGlob Discovery Results
 
-**Learning:** When multiple AI agents use the same `NestedGlob` configuration (e.g., searching for `**/AGENTS.md` in the project root), the `Linker` was performing a full recursive directory walk for every single agent. In a monorepo with 15,000 files and 5 agents, this redundant activity accounted for most of the execution time. Implementing a `glob_cache` in the `Linker` struct reduced execution time by ~90% (from 2.0s to 0.2s).
+**Learning:** When multiple AI agents use the same `NestedGlob` configuration (e.g., searching for
+`**/AGENTS.md` in the project root), the `Linker` was performing a full recursive directory walk for
+every single agent. In a monorepo with 15,000 files and 5 agents, this redundant activity accounted
+for most of the execution time. Implementing a `glob_cache` in the `Linker` struct reduced execution
+time by ~90% (from 2.0s to 0.2s).
 
-**Action:** Identify expensive discovery or search operations that are likely to be repeated across different agents or targets. Use a lightweight in-memory cache, keyed by the search parameters, to reuse results within the same sync run.
+**Action:** Identify expensive discovery or search operations that are likely to be repeated across
+different agents or targets. Use a lightweight in-memory cache, keyed by the search parameters, to
+reuse results within the same sync run.

@@ -55,22 +55,24 @@ For `init`, `apply`, and `clean`, use the path/config flags those commands actua
 
 ### 4. Use the correct command by intent
 
-| Intent | Command |
-|---|---|
-| Inspect managed symlink state | `agentsync status [--json]` |
-| Diagnose setup problems | `agentsync doctor [--project-root <path>]` |
-| Initialize config in a repo | `agentsync init [-p <path>]` |
-| Sync configuration into target agent files | `agentsync apply [-p <path>] [-c <config>] [--dry-run]` |
-| Remove AgentSync-created symlinks | `agentsync clean [-p <path>] [-c <config>] [--dry-run]` |
-| Recommend skills from repo context | `agentsync skill suggest [--json]` |
-| Install one known skill | `agentsync skill install <skill-id> [--source <source>] [--json]` |
-| Update one installed skill | `agentsync skill update <skill-id> [--source <source>] [--json]` |
-| Remove one installed skill | `agentsync skill uninstall <skill-id> [--json]` |
+| Intent                                     | Command                                                           |
+|--------------------------------------------|-------------------------------------------------------------------|
+| Inspect managed symlink state              | `agentsync status [--json]`                                       |
+| Diagnose setup problems                    | `agentsync doctor [--project-root <path>]`                        |
+| Initialize config in a repo                | `agentsync init [-p <path>]`                                      |
+| Sync configuration into target agent files | `agentsync apply [-p <path>] [-c <config>] [--dry-run]`           |
+| Remove AgentSync-created symlinks          | `agentsync clean [-p <path>] [-c <config>] [--dry-run]`           |
+| Recommend skills from repo context         | `agentsync skill suggest [--json]`                                |
+| Install one known skill                    | `agentsync skill install <skill-id> [--source <source>] [--json]` |
+| Update one installed skill                 | `agentsync skill update <skill-id> [--source <source>] [--json]`  |
+| Remove one installed skill                 | `agentsync skill uninstall <skill-id> [--json]`                   |
 
 ### 5. Important limitation: do not rely on `skill list`
 
-`agentsync skill list` appears in CLI help, but in the current implementation it is not implemented and
-returns an error. For installed-skill workflows, use the skill registry or other verified project state
+`agentsync skill list` appears in CLI help, but in the current implementation it is not implemented
+and
+returns an error. For installed-skill workflows, use the skill registry or other verified project
+state
 instead of depending on `skill list`.
 
 ### 6. Recommendation/install flow for agents
@@ -80,8 +82,8 @@ When the goal is “find good skills for this repo”, use this pattern:
 1. Run `agentsync skill suggest --json`
 2. Inspect `detections`, `recommendations`, and `summary`
 3. If the user wants installation:
-   - Interactive terminal available: `agentsync skill suggest --install`
-   - Non-interactive automation: `agentsync skill suggest --install --all --json`
+    - Interactive terminal available: `agentsync skill suggest --install`
+    - Non-interactive automation: `agentsync skill suggest --install --all --json`
 
 Do not invent recommendation ids. Use the returned `skill_id` values exactly.
 
@@ -106,10 +108,10 @@ When using AgentSync on behalf of a user, follow this sequence:
 3. **Preview when risky**: use `--dry-run` for `apply`/`clean` when the user wants safety first
 4. **Execute the narrowest command** that solves the task
 5. **Report concretely**:
-   - command run
-   - project root used
-   - key result fields or summary
-   - next action if follow-up is needed
+    - command run
+    - project root used
+    - key result fields or summary
+    - next action if follow-up is needed
 
 ## Commands
 

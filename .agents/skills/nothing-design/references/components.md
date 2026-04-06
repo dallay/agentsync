@@ -10,14 +10,15 @@
 
 ## 2. BUTTONS
 
-| Variant | Background | Border | Text | Radius |
-|---------|-----------|--------|------|--------|
-| Primary | `--text-display` (#FFF) | none | `--black` | 999px (pill) |
-| Secondary | transparent | `1px solid --border-visible` | `--text-primary` | 999px |
-| Ghost | transparent | none | `--text-secondary` | 0 |
-| Destructive | transparent | `1px solid --accent` | `--accent` | 999px |
+| Variant     | Background              | Border                       | Text               | Radius       |
+|-------------|-------------------------|------------------------------|--------------------|--------------|
+| Primary     | `--text-display` (#FFF) | none                         | `--black`          | 999px (pill) |
+| Secondary   | transparent             | `1px solid --border-visible` | `--text-primary`   | 999px        |
+| Ghost       | transparent             | none                         | `--text-secondary` | 0            |
+| Destructive | transparent             | `1px solid --accent`         | `--accent`         | 999px        |
 
-All buttons: `Space Mono`, 13px, ALL CAPS, letter-spacing 0.06em, padding 12px 24px. Min height 44px.
+All buttons: `Space Mono`, 13px, ALL CAPS, letter-spacing 0.06em, padding 12px 24px. Min height
+44px.
 
 ---
 
@@ -36,9 +37,11 @@ All buttons: `Space Mono`, 13px, ALL CAPS, letter-spacing 0.06em, padding 12px 2
 - Left: label (Space Mono caps, `--text-secondary`). Right: value (`--text-primary`)
 - Never alternating row backgrounds. Use dividers.
 
-**Stat rows:** Label left (Space Mono, ALL CAPS, `--text-secondary`), value right (color = status color), unit adjacent in `--label` size. Trend arrow same color as value.
+**Stat rows:** Label left (Space Mono, ALL CAPS, `--text-secondary`), value right (color = status
+color), unit adjacent in `--label` size. Trend arrow same color as value.
 
-**Hierarchical rows:** Sub-items indented 16–24px, same divider treatment. No tree lines or expand/collapse — indentation IS the hierarchy.
+**Hierarchical rows:** Sub-items indented 16–24px, same divider treatment. No tree lines or
+expand/collapse — indentation IS the hierarchy.
 
 ---
 
@@ -54,7 +57,8 @@ All buttons: `Space Mono`, 13px, ALL CAPS, letter-spacing 0.06em, padding 12px 2
 ## 6. NAVIGATION
 
 - Bottom bar mobile, horizontal text bar desktop
-- Labels: Space Mono, ALL CAPS. Active: `--text-display` + dot/underline. Inactive: `--text-disabled`
+- Labels: Space Mono, ALL CAPS. Active: `--text-display` + dot/underline. Inactive:
+  `--text-disabled`
 - Bracket `[ HOME ]  GALLERY  INFO` or pipe `HOME | GALLERY | INFO`
 - **Back button:** Circular 40–44px, `--surface` bg, thin chevron `<`, top-left 16px from edges
 
@@ -95,16 +99,18 @@ All buttons: `Space Mono`, 13px, ALL CAPS, letter-spacing 0.06em, padding 12px 2
 
 The signature data visualization. Discrete blocks — mechanical, instrument-like.
 
-**Anatomy:** Label + value above, full-width bar of discrete rectangular segments with 2px gaps below.
+**Anatomy:** Label + value above, full-width bar of discrete rectangular segments with 2px gaps
+below.
 
-**Segments:** Square-ended blocks, no border-radius. Filled = solid status color. Empty = `--border` (dark) / `#E0E0E0` (light).
+**Segments:** Square-ended blocks, no border-radius. Filled = solid status color. Empty =
+`--border` (dark) / `#E0E0E0` (light).
 
-| State | Fill | When |
-|-------|------|------|
-| Neutral | `--text-display` | Within normal range |
-| Over limit | `--accent` | Exceeds target |
-| Good | `--success` | Healthy range |
-| Moderate | `--warning` | Caution zone |
+| State      | Fill             | When                |
+|------------|------------------|---------------------|
+| Neutral    | `--text-display` | Within normal range |
+| Over limit | `--accent`       | Exceeds target      |
+| Good       | `--success`      | Healthy range       |
+| Moderate   | `--warning`      | Caution zone        |
 
 **Overflow:** Filled segments continue past "full" mark in status color (typically red).
 
@@ -122,7 +128,9 @@ Always pair with numeric readout. Bar = proportion, number = precision.
 - **Category differentiation:** Opacity → pattern → line style → color (last resort).
 - Always show numeric value alongside any visual.
 
-**Charts:** Line 1.5–2px `--text-display`, average dashed 1px `--text-secondary`. Axis labels: Space Mono, `--caption`. Grid: `--border`, horizontal only. No area fill, no legend boxes — label lines directly.
+**Charts:** Line 1.5–2px `--text-display`, average dashed 1px `--text-secondary`. Axis labels: Space
+Mono, `--caption`. Grid: `--border`, horizontal only. No area fill, no legend boxes — label lines
+directly.
 
 ---
 
@@ -138,16 +146,24 @@ Always pair with numeric readout. Bar = proportion, number = precision.
 
 No shadows. Layering through background contrast and borders.
 
-- **Modals:** Backdrop `rgba(0,0,0,0.8)`, dialog `--surface` + `1px solid --border-visible` + 16px radius, centered max 480px. Close: `[ X ]` top-right ghost button.
-- **Bottom sheets:** `--surface`, 2px handle bar centered, 16px top radius, drag-to-dismiss. Full-page sheets: title centered + dismiss button right, sections with `--text-secondary` headings.
-- **Dropdowns:** `--surface-raised`, `1px solid --border-visible` 8px radius, 44px items. Selected: left 2px accent bar. No shadow.
-- **Toasts:** None. Use inline status text: `[SAVED]`, `[ERROR: ...]`. Space Mono, `--caption`, near trigger.
+- **Modals:** Backdrop `rgba(0,0,0,0.8)`, dialog `--surface` + `1px solid --border-visible` + 16px
+  radius, centered max 480px. Close: `[ X ]` top-right ghost button.
+- **Bottom sheets:** `--surface`, 2px handle bar centered, 16px top radius, drag-to-dismiss.
+  Full-page sheets: title centered + dismiss button right, sections with `--text-secondary`
+  headings.
+- **Dropdowns:** `--surface-raised`, `1px solid --border-visible` 8px radius, 44px items. Selected:
+  left 2px accent bar. No shadow.
+- **Toasts:** None. Use inline status text: `[SAVED]`, `[ERROR: ...]`. Space Mono, `--caption`, near
+  trigger.
 
 ---
 
 ## 15. STATE PATTERNS
 
-- **Error:** Input border → `--accent` + message below. Form-level: summary box `1px solid --accent`. Inline: `[ERROR]` prefix. Never red backgrounds or alert banners.
-- **Empty:** Centered, 96px+ padding. Headline `--text-secondary`, 1 sentence description `--text-disabled`. Optional dot-matrix illustration. No mascots.
-- **Loading:** Segmented spinner (hardware-style), or segmented bar + percentage. No skeletons — use `[LOADING]` bracket text.
+- **Error:** Input border → `--accent` + message below. Form-level: summary box
+  `1px solid --accent`. Inline: `[ERROR]` prefix. Never red backgrounds or alert banners.
+- **Empty:** Centered, 96px+ padding. Headline `--text-secondary`, 1 sentence description
+  `--text-disabled`. Optional dot-matrix illustration. No mascots.
+- **Loading:** Segmented spinner (hardware-style), or segmented bar + percentage. No skeletons — use
+  `[LOADING]` bracket text.
 - **Disabled:** Opacity 0.4 or `--text-disabled`. Borders fade to `--border`.
