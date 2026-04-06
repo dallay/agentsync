@@ -201,6 +201,103 @@ fn install_flow_rechecks_registry_before_installing() {
 }
 
 #[test]
+fn suggest_marks_canonical_vue_skill_as_installed_when_legacy_alias_exists() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+    fs::write(
+        root.join("package.json"),
+        r#"{"dependencies":{"vue":"^3.4.0"}}"#,
+    )
+    .unwrap();
+
+    let skills_dir = root.join(".agents/skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+    fs::write(
+        skills_dir.join("registry.json"),
+        serde_json::to_string_pretty(&serde_json::json!({
+            "schemaVersion": 1,
+            "last_updated": "2026-04-06T00:00:00Z",
+            "skills": {
+                "antfu-vue": {
+                    "name": "antfu-vue",
+                    "version": "1.0.0"
+                }
+            }
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let response = SuggestionService
+        .suggest(root)
+        .expect("vue recommendation should be generated");
+
+    let vue = response
+        .recommendations
+        .iter()
+        .find(|recommendation| recommendation.provider_skill_id == "antfu/skills/vue")
+        .expect("antfu vue recommendation should exist");
+
+    assert_eq!(vue.skill_id, "vue");
+    assert!(vue.installed);
+    assert_eq!(vue.installed_version.as_deref(), Some("1.0.0"));
+}
+
+#[test]
+fn install_flow_skips_canonical_vue_when_legacy_alias_is_installed() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+    fs::write(
+        root.join("package.json"),
+        r#"{"dependencies":{"vue":"^3.4.0"}}"#,
+    )
+    .unwrap();
+
+    let skills_dir = root.join(".agents/skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+    fs::write(
+        skills_dir.join("registry.json"),
+        serde_json::to_string_pretty(&serde_json::json!({
+            "schemaVersion": 1,
+            "last_updated": "2026-04-06T00:00:00Z",
+            "skills": {
+                "antfu-vue": {
+                    "name": "antfu-vue",
+                    "version": "1.0.0"
+                }
+            }
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let provider = LocalSkillProvider::new(root, &[("antfu/skills/vue", "vue")]);
+    let response = SuggestionService
+        .suggest(root)
+        .expect("vue recommendation should be generated");
+
+    let install_response = SuggestionService
+        .install_selected_with(
+            root,
+            &response,
+            &provider,
+            SuggestInstallMode::InstallAll,
+            &["vue".to_string()],
+            |_skill_id, _source, _target_root| {
+                panic!("canonical vue install should be skipped when legacy alias exists")
+            },
+        )
+        .unwrap();
+
+    assert_eq!(install_response.results.len(), 1);
+    assert_eq!(install_response.results[0].skill_id, "vue");
+    assert_eq!(
+        install_response.results[0].status,
+        SuggestInstallStatus::AlreadyInstalled
+    );
+}
+
+#[test]
 fn install_flow_records_failures_and_continues() {
     let temp_dir = TempDir::new().unwrap();
     let root = temp_dir.path();

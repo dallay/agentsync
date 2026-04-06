@@ -94,6 +94,7 @@ pub struct SkillSuggestion {
     pub provider_skill_id: String,
     pub title: String,
     pub summary: String,
+    legacy_local_skill_ids: Vec<String>,
     pub reasons: Vec<String>,
     pub matched_technologies: Vec<TechnologyId>,
     pub installed: bool,
@@ -108,6 +109,7 @@ impl SkillSuggestion {
             provider_skill_id: metadata.provider_skill_id.clone(),
             title: metadata.title.clone(),
             summary: metadata.summary.clone(),
+            legacy_local_skill_ids: Vec::new(),
             reasons: Vec::new(),
             matched_technologies: Vec::new(),
             installed: false,
@@ -148,6 +150,11 @@ impl SkillSuggestion {
         let _ = combo_name;
     }
 
+    pub(crate) fn with_legacy_local_skill_ids(mut self, legacy_local_skill_ids: &[String]) -> Self {
+        self.legacy_local_skill_ids = legacy_local_skill_ids.to_vec();
+        self
+    }
+
     pub fn annotate_installed_state(&mut self, installed_skill: Option<&InstalledSkillState>) {
         if let Some(installed_skill) = installed_skill {
             self.installed = installed_skill.installed;
@@ -157,6 +164,20 @@ impl SkillSuggestion {
             self.installed_version = None;
         }
     }
+}
+
+fn installed_state_for_recommendation<'a>(
+    installed_skill_states: &'a BTreeMap<String, InstalledSkillState>,
+    recommendation: &SkillSuggestion,
+) -> Option<&'a InstalledSkillState> {
+    std::iter::once(recommendation.skill_id.as_str())
+        .chain(
+            recommendation
+                .legacy_local_skill_ids
+                .iter()
+                .map(std::string::String::as_str),
+        )
+        .find_map(|skill_id| installed_skill_states.get(skill_id))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -307,8 +328,10 @@ impl SuggestionService {
 
         let mut recommendations = recommend_skills(catalog, &detections);
         for recommendation in &mut recommendations {
-            recommendation
-                .annotate_installed_state(installed_skill_states.get(&recommendation.skill_id));
+            recommendation.annotate_installed_state(installed_state_for_recommendation(
+                &installed_skill_states,
+                recommendation,
+            ));
         }
 
         let summary = SuggestSummary {
@@ -442,8 +465,7 @@ impl SuggestionService {
                 .get(skill_id.as_str())
                 .expect("skill_id should be in recommendation_map - this is a bug");
 
-            if installed_state
-                .get(&recommendation.skill_id)
+            if installed_state_for_recommendation(&installed_state, recommendation)
                 .is_some_and(|state| state.installed)
             {
                 reporter.on_event(SuggestInstallProgressEvent::SkippedAlreadyInstalled {

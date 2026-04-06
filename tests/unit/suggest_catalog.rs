@@ -635,6 +635,9 @@ fn provider_skill(provider_skill_id: &str, local_skill_id: &str) -> ProviderCata
         local_skill_id: local_skill_id.to_string(),
         title: local_skill_id.to_string(),
         summary: format!("Summary for {local_skill_id}"),
+        archive_subpath: None,
+        legacy_local_skill_ids: Vec::new(),
+        install_source: None,
     }
 }
 

@@ -438,6 +438,9 @@ impl Provider for CanonicalOverlayProvider {
                 local_skill_id: "custom-rust".to_string(),
                 title: "Custom Rust".to_string(),
                 summary: "Custom Rust guidance".to_string(),
+                archive_subpath: None,
+                legacy_local_skill_ids: Vec::new(),
+                install_source: None,
             }],
             technologies: vec![ProviderCatalogTechnology {
                 id: "rust".to_string(),
