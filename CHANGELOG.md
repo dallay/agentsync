@@ -27,6 +27,24 @@
 * **deps:** update docker/login-action action to v4.1.0 ([#295](https://github.com/dallay/agentsync/issues/295)) ([4fb81a5](https://github.com/dallay/agentsync/commit/4fb81a58ee3412fc85d045b5b662cca25017ca79))
 * **deps:** update rust crate zip to v8.5.0 ([#285](https://github.com/dallay/agentsync/issues/285)) ([56b5cef](https://github.com/dallay/agentsync/commit/56b5cef976b16aab53b55ea16cc0183f93b10274))
 
+## [1.42.1](https://github.com/dallay/agentsync/compare/v1.42.0...v1.42.1) (2026-04-06)
+
+
+### Bug Fixes
+
+* harden catalog skill installation validation ([9ebd5ac](https://github.com/dallay/agentsync/commit/9ebd5ac1148d4331da81a40b61cfcd5f08918b74))
+* tighten catalog install source resolution ([97f5f71](https://github.com/dallay/agentsync/commit/97f5f71ea69836977827905dc316b04e8a447032))
+
+
+### Tests
+
+* update catalog combo expectations ([be6932d](https://github.com/dallay/agentsync/commit/be6932d19c9fe37d84fe6d22aa44ae540b1ef3ba))
+
+
+### Chores
+
+* **deps:** lock file maintenance ([#321](https://github.com/dallay/agentsync/issues/321)) ([f10842d](https://github.com/dallay/agentsync/commit/f10842dfbbec27c80ee8464a19c1019dc0a6789d))
+
 ## [1.42.0](https://github.com/dallay/agentsync/compare/v1.41.0...v1.42.0) (2026-04-05)
 
 
