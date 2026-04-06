@@ -33,24 +33,9 @@ importers:
         specifier: ^6.0.0
         version: 6.0.2
     optionalDependencies:
-      '@dallay/agentsync-darwin-arm64':
-        specifier: 1.37.0
-        version: 1.37.0
       '@dallay/agentsync-darwin-x64':
-        specifier: 1.37.0
-        version: 1.37.0
-      '@dallay/agentsync-linux-arm64':
-        specifier: 1.37.0
-        version: 1.37.0
-      '@dallay/agentsync-linux-x64':
-        specifier: 1.37.0
-        version: 1.37.0
-      '@dallay/agentsync-windows-arm64':
-        specifier: 1.37.0
-        version: 1.37.0
-      '@dallay/agentsync-windows-x64':
-        specifier: 1.37.0
-        version: 1.37.0
+        specifier: 1.40.1
+        version: 1.40.1
 
   website/docs:
     dependencies:
@@ -216,6 +201,13 @@ packages:
 
   '@dallay/agentsync-darwin-x64@1.37.0':
     resolution: {integrity: sha512-2BO3Rop4gRMH51LatNBnYkT74oRfg+8uzm65nZ6hMrOAvh7d6JzR8sO+5ctbZMt/rs44LZsmzvODWwrZ+968AA==}
+    engines: {node: '>=18'}
+    cpu: [x64]
+    os: [darwin]
+    hasBin: true
+
+  '@dallay/agentsync-darwin-x64@1.40.1':
+    resolution: {integrity: sha512-fUlc437tQIroedBGWglAz+wuintwMcIUM4RiDeXLsxBWd8yMt9jbgtu13El/I6xC63Ka6r/xdHV/AOQzHQizzQ==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [darwin]
@@ -2276,6 +2268,9 @@ snapshots:
     optional: true
 
   '@dallay/agentsync-darwin-x64@1.37.0':
+    optional: true
+
+  '@dallay/agentsync-darwin-x64@1.40.1':
     optional: true
 
   '@dallay/agentsync-linux-arm64@1.37.0':

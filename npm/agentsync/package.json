@@ -49,7 +49,7 @@
 	},
 	"optionalDependencies": {
 		"@dallay/agentsync-darwin-arm64": "1.42.0",
-		"@dallay/agentsync-darwin-x64": "1.42.0",
+		"@dallay/agentsync-darwin-x64": "1.40.1",
 		"@dallay/agentsync-linux-arm64": "1.42.0",
 		"@dallay/agentsync-linux-x64": "1.42.0",
 		"@dallay/agentsync-windows-arm64": "1.42.0",
