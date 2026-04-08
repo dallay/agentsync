@@ -943,6 +943,20 @@ fn server_to_opencode_json(config: &McpServerConfig) -> Value {
 // Helper Functions
 // =============================================================================
 
+/// Restrict file permissions to owner-only (read/write) on Unix systems.
+/// This is used to protect MCP configuration files that may contain credentials.
+#[cfg(unix)]
+fn set_restricted_permissions(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o600))
+}
+
+/// No-op on non-Unix systems.
+#[cfg(not(unix))]
+fn set_restricted_permissions(_path: &Path) -> std::io::Result<()> {
+    Ok(())
+}
+
 /// Convert McpServerConfig to JSON Value.
 /// Efficiently converts the config using Serde, leveraging BTreeMap for order.
 fn server_to_json(config: &McpServerConfig) -> Value {
@@ -1172,9 +1186,15 @@ impl McpGenerator {
                 result.created += 1;
             }
         } else {
+            // SECURITY: Ensure the generated file has restrictive permissions before or after writing
+            // as it may contain sensitive credentials in `env` or `headers`.
             fs::write(&config_path, &content).with_context(|| {
                 format!("Failed to write MCP config: {}", config_path.display())
             })?;
+
+            if let Err(e) = set_restricted_permissions(&config_path) {
+                tracing::warn!(error = %e, path = %config_path.display(), "Failed to set restricted permissions on MCP config");
+            }
 
             if was_existing {
                 println!(
@@ -2481,5 +2501,27 @@ command = "remove-cmd"
         assert_eq!(result2.skipped, 1);
         assert_eq!(result2.created, 0);
         assert_eq!(result2.updated, 0);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_generator_sets_restricted_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let temp_dir = TempDir::new().unwrap();
+        let servers = BTreeMap::from([("filesystem".to_string(), create_test_server())]);
+
+        let generator = McpGenerator::new(servers, McpMergeStrategy::Overwrite);
+        let agents = vec![McpAgent::ClaudeCode];
+
+        generator
+            .generate_all(temp_dir.path(), &agents, false)
+            .unwrap();
+
+        let config_path = temp_dir.path().join(".mcp.json");
+        let metadata = fs::metadata(config_path).unwrap();
+        let mode = metadata.permissions().mode();
+
+        // Check if permissions are 0o600 (owner read/write only)
+        assert_eq!(mode & 0o777, 0o600);
     }
 }
