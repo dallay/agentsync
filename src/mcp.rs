@@ -957,7 +957,14 @@ fn set_restricted_permissions(path: &Path) -> std::io::Result<()> {
 fn set_restricted_permissions(path: &Path) -> std::io::Result<()> {
     use std::process::Command;
 
-    let username = std::env::var("USERNAME").unwrap_or_else(|_| "Users".to_string());
+    // SECURITY: Fail-closed if we cannot determine the current user.
+    // Do not fall back to "Users" group which would grant overly broad access.
+    let username = std::env::var("USERNAME").map_err(|e| {
+        std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("Cannot determine current username for ACL restriction: {}", e),
+        )
+    })?;
 
     // Use icacls to:
     // /inheritance:r - Remove all inherited ACEs
@@ -1227,8 +1234,23 @@ impl McpGenerator {
             self.write_atomic_secure(&config_path, &content)?;
 
             // Repair step for pre-existing files or if atomic write didn't set permissions (non-unix)
+            // SECURITY: On Windows, fail hard if we cannot set restricted permissions to avoid
+            // leaving sensitive MCP configs world-readable. On Unix, the atomic write already
+            // set 0600 permissions, so this is just a repair step.
             if let Err(e) = set_restricted_permissions(&config_path) {
-                tracing::warn!(error = %e, path = %config_path.display(), "Failed to set restricted permissions on MCP config");
+                #[cfg(windows)]
+                {
+                    return Err(e).with_context(|| {
+                        format!(
+                            "Failed to set restricted permissions on MCP config: {}",
+                            config_path.display()
+                        )
+                    });
+                }
+                #[cfg(not(windows))]
+                {
+                    tracing::warn!(error = %e, path = %config_path.display(), "Failed to set restricted permissions on MCP config");
+                }
             }
 
             if was_existing {
