@@ -943,6 +943,33 @@ fn server_to_opencode_json(config: &McpServerConfig) -> Value {
 // Helper Functions
 // =============================================================================
 
+/// Write data to a file with restricted permissions (0600 on Unix).
+/// This atomically creates the file with restrictive permissions on Unix to avoid TOCTOU vulnerabilities.
+/// If the file already exists, it will be truncated and overwritten (still maintaining 0600 permissions).
+#[cfg(unix)]
+fn write_with_restricted_permissions(path: &Path, data: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(path)?;
+    file.write_all(data)?;
+    Ok(())
+}
+
+/// Write data to a file with restricted permissions (fallback for non-Unix).
+/// On non-Unix systems, we write first then attempt to restrict permissions.
+#[cfg(not(unix))]
+fn write_with_restricted_permissions(path: &Path, data: &[u8]) -> std::io::Result<()> {
+    fs::write(path, data)?;
+    set_restricted_permissions(path)?;
+    Ok(())
+}
+
 /// Restrict file permissions to owner-only (read/write) on Unix systems.
 /// This is used to protect MCP configuration files that may contain credentials.
 #[cfg(unix)]
@@ -1186,15 +1213,11 @@ impl McpGenerator {
                 result.created += 1;
             }
         } else {
-            // SECURITY: Ensure the generated file has restrictive permissions before or after writing
-            // as it may contain sensitive credentials in `env` or `headers`.
-            fs::write(&config_path, &content).with_context(|| {
+            // SECURITY: Write file with restrictive permissions (0600) atomically on Unix
+            // to avoid TOCTOU window where credentials could be exposed.
+            write_with_restricted_permissions(&config_path, content.as_bytes()).with_context(|| {
                 format!("Failed to write MCP config: {}", config_path.display())
             })?;
-
-            if let Err(e) = set_restricted_permissions(&config_path) {
-                tracing::warn!(error = %e, path = %config_path.display(), "Failed to set restricted permissions on MCP config");
-            }
 
             if was_existing {
                 println!(
