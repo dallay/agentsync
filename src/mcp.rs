@@ -943,6 +943,51 @@ fn server_to_opencode_json(config: &McpServerConfig) -> Value {
 // Helper Functions
 // =============================================================================
 
+/// Restrict file permissions to owner-only (read/write) on Unix systems.
+/// This is used to protect MCP configuration files that may contain credentials.
+/// This function explicitly enforces permissions on existing files.
+#[cfg(unix)]
+fn set_restricted_permissions(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o600))
+}
+
+/// Restrict file permissions on Windows using icacls.
+/// Removes inheritance and all access except for the current user (Full Control).
+#[cfg(windows)]
+fn set_restricted_permissions(path: &Path) -> std::io::Result<()> {
+    use std::process::Command;
+
+    let username = std::env::var("USERNAME").unwrap_or_else(|_| "Users".to_string());
+
+    // Use icacls to:
+    // /inheritance:r - Remove all inherited ACEs
+    // /grant:r <user>:F - Grant current user full access
+    // /remove:g *S-1-1-0 - Remove "Everyone" group access explicitly
+    let status = Command::new("icacls")
+        .arg(path)
+        .arg("/inheritance:r")
+        .arg("/grant:r")
+        .arg(format!("{}:F", username))
+        .arg("/remove:g")
+        .arg("*S-1-1-0")
+        .status()?;
+
+    if !status.success() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("icacls failed with status: {}", status),
+        ));
+    }
+    Ok(())
+}
+
+/// No-op on other systems.
+#[cfg(not(any(unix, windows)))]
+fn set_restricted_permissions(_path: &Path) -> std::io::Result<()> {
+    Ok(())
+}
+
 /// Convert McpServerConfig to JSON Value.
 /// Efficiently converts the config using Serde, leveraging BTreeMap for order.
 fn server_to_json(config: &McpServerConfig) -> Value {
@@ -1149,6 +1194,10 @@ impl McpGenerator {
             };
 
             if is_identical {
+                // SECURITY: Even if content is identical, ensure permissions are correct (remediation).
+                if !dry_run && let Err(e) = set_restricted_permissions(&config_path) {
+                    tracing::warn!(error = %e, path = %config_path.display(), "Failed to remediate restricted permissions on existing MCP config");
+                }
                 result.skipped += 1;
                 return Ok(result);
             }
@@ -1172,8 +1221,16 @@ impl McpGenerator {
                 result.created += 1;
             }
         } else {
-            fs::write(&config_path, &content).with_context(|| {
-                format!("Failed to write MCP config: {}", config_path.display())
+            // SECURITY: Perform atomic write with restricted permissions to avoid a race condition
+            // where sensitive data is world-readable between creation and chmod.
+            self.write_atomic_secure(&config_path, &content)?;
+
+            // Repair step for pre-existing files or if atomic write didn't set permissions (non-unix)
+            set_restricted_permissions(&config_path).with_context(|| {
+                format!(
+                    "Failed to set restricted permissions on MCP config: {}",
+                    config_path.display()
+                )
             })?;
 
             if was_existing {
@@ -1246,6 +1303,39 @@ impl McpGenerator {
             .filter(|(_, config)| !config.disabled)
             .map(|(name, config)| (name.as_str(), config))
             .collect()
+    }
+
+    /// SECURITY: Atomically write file with restricted permissions (0o600 on Unix)
+    /// to avoid a race where sensitive data is world-readable.
+    fn write_atomic_secure(&self, path: &Path, content: &str) -> Result<()> {
+        let parent = path
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("Invalid config path"))?;
+        let mut temp_file = tempfile::NamedTempFile::new_in(parent)
+            .context("Failed to create temporary file for atomic write")?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(temp_file.path())?.permissions();
+            perms.set_mode(0o600);
+            fs::set_permissions(temp_file.path(), perms)?;
+        }
+
+        use std::io::Write;
+        temp_file
+            .write_all(content.as_bytes())
+            .context("Failed to write to temporary file")?;
+        temp_file
+            .as_file()
+            .sync_all()
+            .context("Failed to sync temporary file")?;
+
+        temp_file
+            .persist(path)
+            .map_err(|e| anyhow::anyhow!("Failed to atomically rename temporary file: {}", e))?;
+
+        Ok(())
     }
 
     /// Get the list of agents that should receive MCP configs based on config
@@ -2481,5 +2571,63 @@ command = "remove-cmd"
         assert_eq!(result2.skipped, 1);
         assert_eq!(result2.created, 0);
         assert_eq!(result2.updated, 0);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_generator_sets_restricted_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let temp_dir = TempDir::new().unwrap();
+        let servers = BTreeMap::from([("filesystem".to_string(), create_test_server())]);
+
+        let generator = McpGenerator::new(servers, McpMergeStrategy::Overwrite);
+        let agents = vec![McpAgent::ClaudeCode];
+
+        generator
+            .generate_all(temp_dir.path(), &agents, false)
+            .unwrap();
+
+        let config_path = temp_dir.path().join(".mcp.json");
+        let metadata = fs::metadata(config_path).unwrap();
+        let mode = metadata.permissions().mode();
+
+        // Check if permissions are 0o600 (owner read/write only)
+        assert_eq!(mode & 0o777, 0o600);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_generator_fixes_permissive_existing_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join(".mcp.json");
+
+        let server = create_test_server();
+        let servers = BTreeMap::from([("filesystem".to_string(), server.clone())]);
+        let generator = McpGenerator::new(servers, McpMergeStrategy::Overwrite);
+        let agents = vec![McpAgent::ClaudeCode];
+
+        // 1. Pre-create file with permissive permissions (0o644) and matching content
+        let enabled_refs: BTreeMap<&str, &McpServerConfig> =
+            BTreeMap::from([("filesystem", &server)]);
+        let content = McpAgent::ClaudeCode
+            .formatter()
+            .format_to_string(&enabled_refs)
+            .unwrap();
+
+        fs::write(&config_path, &content).unwrap();
+        fs::set_permissions(&config_path, fs::Permissions::from_mode(0o644)).unwrap();
+
+        let initial_metadata = fs::metadata(&config_path).unwrap();
+        assert_eq!(initial_metadata.permissions().mode() & 0o777, 0o644);
+
+        // 2. Run generator with same content
+        generator
+            .generate_all(temp_dir.path(), &agents, false)
+            .unwrap();
+
+        // 3. Verify permissions were corrected to 0o600 even if content matched
+        let final_metadata = fs::metadata(&config_path).unwrap();
+        assert_eq!(final_metadata.permissions().mode() & 0o777, 0o600);
     }
 }
