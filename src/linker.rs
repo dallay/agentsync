@@ -816,6 +816,11 @@ impl Linker {
     where
         F: FnMut(&Path, &Path) -> Result<()>,
     {
+        // Optimization: Pre-split patterns once to avoid redundant allocations in the walk loop.
+        let split_pattern: Vec<&str> = glob_pattern.split('/').collect();
+        let split_excludes: Vec<Vec<&str>> =
+            excludes.iter().map(|e| e.split('/').collect()).collect();
+
         let mut it = WalkDir::new(search_root).follow_links(false).into_iter();
 
         while let Some(entry) = it.next() {
@@ -859,10 +864,15 @@ impl Linker {
                 continue;
             }
 
-            if let Some(matched_exclude) = excludes
+            // Performance: Split the relative path once per file to avoid repeated allocations
+            // in every exclusion and pattern match call.
+            let rel_parts: Vec<&str> = rel_str.split('/').collect();
+
+            if let Some(idx) = split_excludes
                 .iter()
-                .find(|exclude| matches_path_glob(&rel_str, exclude))
+                .position(|exclude_parts| path_glob_match(&rel_parts, exclude_parts))
             {
+                let matched_exclude = &excludes[idx];
                 if options.verbose {
                     println!(
                         "  {} Excluded by '{}': {}",
@@ -882,7 +892,7 @@ impl Linker {
                 continue;
             }
 
-            if !matches_path_glob(&rel_str, glob_pattern) {
+            if !path_glob_match(&rel_parts, &split_pattern) {
                 continue;
             }
 
@@ -1389,45 +1399,52 @@ fn matches_pattern(name: &str, pattern: &str) -> bool {
 ///
 /// The `path` argument must use `/` as the path separator.  Use
 /// [`matches_pattern`] for single-segment (filename-only) matching.
+#[cfg(test)]
 fn matches_path_glob(path: &str, pattern: &str) -> bool {
     let path_parts: Vec<&str> = path.split('/').collect();
     let pattern_parts: Vec<&str> = pattern.split('/').collect();
     path_glob_match(&path_parts, &pattern_parts)
 }
 
-/// Recursive helper for [`matches_path_glob`].
+/// Helper for [`matches_path_glob`].
+/// This implementation uses a backtracking algorithm which is more performant than the previous
+/// recursive one, especially for patterns with '**' since it avoids stack overhead.
+/// It provides O(N*M) complexity in typical cases.
 fn path_glob_match(path: &[&str], pattern: &[&str]) -> bool {
-    match (path, pattern) {
-        // Both exhausted – success.
-        ([], []) => true,
-        // Pattern exhausted but path still has segments – no match.
-        (_, []) => false,
-        // Leading `**` in pattern.
-        ([_, ..], ["**", rest_pat @ ..]) => {
-            // `**` can match zero segments …
-            if path_glob_match(path, rest_pat) {
-                return true;
+    let mut path_idx = 0;
+    let mut pat_idx = 0;
+    let mut backtrack_path_idx = None;
+    let mut backtrack_pat_idx = None;
+
+    while path_idx < path.len() {
+        if pat_idx < pattern.len() && pattern[pat_idx] == "**" {
+            // ** matches zero or more segments
+            backtrack_pat_idx = Some(pat_idx);
+            backtrack_path_idx = Some(path_idx);
+            pat_idx += 1;
+        } else if pat_idx < pattern.len() && matches_pattern(path[path_idx], pattern[pat_idx]) {
+            path_idx += 1;
+            pat_idx += 1;
+        } else if let Some(b_pat_idx) = backtrack_pat_idx {
+            // Backtrack: last ** matches one more segment
+            let b_path_idx = backtrack_path_idx.expect("backtrack_path_idx set with pat_idx") + 1;
+            if b_path_idx > path.len() {
+                return false;
             }
-            // … or one or more segments.
-            for i in 1..=path.len() {
-                if path_glob_match(&path[i..], rest_pat) {
-                    return true;
-                }
-            }
-            false
+            backtrack_path_idx = Some(b_path_idx);
+            path_idx = b_path_idx;
+            pat_idx = b_pat_idx + 1;
+        } else {
+            return false;
         }
-        // `**` at end of pattern matches all remaining path segments.
-        (_, ["**"]) => true,
-        // Pattern starts with `**` but path is empty – matches only if the
-        // rest of the pattern also matches empty path.
-        ([], ["**", rest_pat @ ..]) => path_glob_match(&[], rest_pat),
-        // Normal segment: match the head segment with `matches_pattern` and
-        // recurse on the tails.
-        ([path_head, path_rest @ ..], [pat_head, pat_rest @ ..]) => {
-            matches_pattern(path_head, pat_head) && path_glob_match(path_rest, pat_rest)
-        }
-        _ => false,
     }
+
+    // Check if remaining pattern segments are all "**"
+    while pat_idx < pattern.len() && pattern[pat_idx] == "**" {
+        pat_idx += 1;
+    }
+
+    pat_idx == pattern.len()
 }
 
 fn backup_path_for_destination(dest: &Path) -> PathBuf {
