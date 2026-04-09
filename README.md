@@ -20,8 +20,61 @@
 
 A fast, portable CLI tool for synchronizing AI agent configurations and MCP servers across multiple
 AI coding assistants using symbolic links.
+![synchro.webp | 256](website/docs/src/assets/synchro.webp)
 
-![synchro.webp](website/docs/src/assets/synchro.webp)
+**How AgentSync works at a glance:** many AI tools expect different config locations, so AgentSync turns `.agents/` into one source of truth and syncs it everywhere.
+
+```mermaid
+flowchart LR
+    subgraph Problem[Problem: fragmented AI tool setup]
+        Claude[Claude Code]
+        Gemini[Gemini CLI]
+        Cursor[Cursor]
+        Copilot[GitHub Copilot]
+        Codex[OpenAI Codex]
+        OpenCode[OpenCode]
+    end
+
+    Chaos[Scattered config files<br/>Duplication and drift]
+    Source[.agents/<br/>Single source of truth]
+    Sync[AgentSync<br/>Rust CLI + npm wrapper]
+    Output[Symlinks + MCP config<br/>for each assistant]
+    Result[Update once<br/>Sync everywhere]
+
+    Claude --> Chaos
+    Gemini --> Chaos
+    Cursor --> Chaos
+    Copilot --> Chaos
+    Codex --> Chaos
+    OpenCode --> Chaos
+
+    Chaos -->|replace with| Source
+    Source --> Sync
+    Sync --> Output
+    Output --> Result
+
+    classDef tools fill:#fff7ed,stroke:#f97316,color:#7c2d12,stroke-width:1px;
+    classDef pain fill:#fef2f2,stroke:#ef4444,color:#7f1d1d,stroke-width:1px;
+    classDef core fill:#eff6ff,stroke:#2563eb,color:#1e3a8a,stroke-width:1px;
+    classDef success fill:#ecfdf5,stroke:#22c55e,color:#14532d,stroke-width:1px;
+
+    class Claude,Gemini,Cursor,Copilot,Codex,OpenCode tools;
+    class Chaos pain;
+    class Source,Sync,Output core;
+    class Result success;
+```
+
+### Typical workflow
+
+```mermaid
+flowchart LR
+    Init[agentsync init<br/>Create or migrate config] --> Apply[agentsync apply<br/>Create or refresh symlinks]
+    Apply --> Status[agentsync status<br/>Inspect sync state]
+    Status --> Skill[agentsync skill ...<br/>Manage installed skills]
+
+    classDef action fill:#f8fafc,stroke:#475569,color:#0f172a,stroke-width:1px;
+    class Init,Apply,Status,Skill action;
+```
 
 ## Why AgentSync?
 
@@ -218,15 +271,15 @@ The wizard will scan for existing files, let you select which to migrate, and se
 
 ---
 
-2. **Edit the configuration** to match your needs (see [Configuration](#configuration))
+1. **Edit the configuration** to match your needs (see [Configuration](#configuration))
 
-3. **Apply the configuration**:
+2. **Apply the configuration**:
 
 ```bash
 agentsync apply
 ```
 
-4. **Add to your project setup** (e.g., `package.json`):
+1. **Add to your project setup** (e.g., `package.json`):
 
 ```json
 {
@@ -238,11 +291,11 @@ agentsync apply
 
 ### Team workflow note
 
-AgentSync defaults to managed `.gitignore` mode (`[gitignore].enabled = true`), which is the recommended starting point for most teams. If your team intentionally wants to commit AgentSync-managed destinations instead, treat `[gitignore].enabled = false` as an explicit opt-out workflow. See the canonical guide: https://dallay.github.io/agentsync/guides/gitignore-team-workflows/
+AgentSync defaults to managed `.gitignore` mode (`[gitignore].enabled = true`), which is the recommended starting point for most teams. If your team intentionally wants to commit AgentSync-managed destinations instead, treat `[gitignore].enabled = false` as an explicit opt-out workflow. See the canonical guide: <https://dallay.github.io/agentsync/guides/gitignore-team-workflows/>
 
-If you run AgentSync from Windows and need native symlink prerequisites, WSL guidance, or recovery steps, use the dedicated setup guide: https://dallay.github.io/agentsync/guides/windows-symlink-setup/
+If you run AgentSync from Windows and need native symlink prerequisites, WSL guidance, or recovery steps, use the dedicated setup guide: <https://dallay.github.io/agentsync/guides/windows-symlink-setup/>
 
-If your team wants `agentsync apply` to run after branch switches, merges, or rebases, use the Git hook automation guide for Lefthook, Husky, simple-git-hooks, and native hook examples: https://dallay.github.io/agentsync/guides/git-hook-automation/
+If your team wants `agentsync apply` to run after branch switches, merges, or rebases, use the Git hook automation guide for Lefthook, Husky, simple-git-hooks, and native hook examples: <https://dallay.github.io/agentsync/guides/git-hook-automation/>
 
 ## Usage
 
@@ -462,7 +515,6 @@ AgentSync would create:
 - `clients/agent-runtime/CLAUDE.md` → symlink to `clients/agent-runtime/AGENTS.md`
 - `modules/core-kmp/CLAUDE.md` → symlink to `modules/core-kmp/AGENTS.md`
 
-
 ## Project Structure
 
 ```
@@ -579,13 +631,13 @@ This project is a monorepo containing a Rust core and a JavaScript/TypeScript wr
 
 ### Setup
 
-1.  **Install JavaScript dependencies:**
+1. **Install JavaScript dependencies:**
 
     ```bash
     pnpm install
     ```
 
-2.  **Build the Rust binary:**
+2. **Build the Rust binary:**
 
     ```bash
     cargo build
@@ -595,31 +647,31 @@ This project is a monorepo containing a Rust core and a JavaScript/TypeScript wr
 
 This project uses a `Makefile` to orchestrate common tasks.
 
--   **Run Rust tests:**
+- **Run Rust tests:**
 
     ```bash
     make rust-test
     ```
 
--   **Run JavaScript tests:**
+- **Run JavaScript tests:**
 
     ```bash
     make js-test
     ```
 
--   **Build all components:**
+- **Build all components:**
 
     ```bash
     make all
     ```
 
--   **Run full verification (lint + build + test):**
+- **Run full verification (lint + build + test):**
 
     ```bash
     make verify-all
     ```
 
--   **Lint the code:**
+- **Lint the code:**
 
     ```bash
     # Rust
@@ -628,7 +680,7 @@ This project uses a `Makefile` to orchestrate common tasks.
     pnpm run biome:check
     ```
 
--   **Format the code:**
+- **Format the code:**
 
     ```bash
     make fmt
@@ -662,7 +714,7 @@ Ensure you have the latest stable Rust toolchain installed. You can update with 
 
 ### Symlink creation fails on Windows
 
-Use the dedicated Windows setup guide for native prerequisites, WSL positioning, verification, and recovery steps: https://dallay.github.io/agentsync/guides/windows-symlink-setup/
+Use the dedicated Windows setup guide for native prerequisites, WSL positioning, verification, and recovery steps: <https://dallay.github.io/agentsync/guides/windows-symlink-setup/>
 
 ## Inspiration
 
