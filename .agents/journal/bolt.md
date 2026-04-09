@@ -116,3 +116,7 @@ time by ~90% (from 2.0s to 0.2s).
 **Action:** Identify expensive discovery or search operations that are likely to be repeated across
 different agents or targets. Use a lightweight in-memory cache, keyed by the search parameters, to
 reuse results within the same sync run.
+
+## 2026-04-09 - Iterative Path Glob Matching and Allocation Reduction
+**Learning:** The recursive `path_glob_match` implementation was a potential performance bottleneck and stack risk. By switching to an iterative backtracking algorithm and pre-splitting glob patterns outside the file-walk loop, we eliminated redundant heap allocations and improved algorithmic efficiency from potential exponential to $O(N \cdot M)$.
+**Action:** Always pre-split static patterns or strings used for matching before entering a high-frequency loop (like directory traversal). Prefer iterative backtracking over recursion for glob-style pattern matching to ensure safety and predictable performance.
