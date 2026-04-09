@@ -21,7 +21,7 @@ dependencies = [
 
 [[package]]
 name = "agentsync"
-version = "1.42.3"
+version = "1.42.4"
 dependencies = [
  "anyhow",
  "bytes",
