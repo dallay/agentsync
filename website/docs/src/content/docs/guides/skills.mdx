@@ -108,7 +108,7 @@ AgentSync exposes skill management via `agentsync skill` subcommands.
 
 `agentsync skill suggest` is repository-aware, but still conservative:
 
-- it detects a small, explicit set of repository technologies from local files only
+- it detects repository technologies from local files using a data-driven catalog engine
 - it maps those detections to AgentSync's curated recommendations
 - it reports already-installed skills instead of hiding them
 - it stays read-only unless you explicitly opt into install mode
@@ -117,7 +117,7 @@ AgentSync exposes skill management via `agentsync skill` subcommands.
 
 The default `suggest` flow is read-only. It:
 
-1. scans the current repository for supported technology markers
+1. scans the current repository for technology markers defined in the catalog
 2. reports the detected technologies and their confidence
 3. looks up recommended skills from AgentSync's catalog
 4. marks whether each recommendation is already installed in `.agents/skills/registry.json`
@@ -126,17 +126,28 @@ This is intentionally **opinionated and curated by AgentSync**. It is not a gene
 
 ### Supported repository technology detection (current scope)
 
-Current detection is implemented in Rust and limited to these technologies and markers:
+AgentSync supports detection for **70+ technologies**. Detection rules are defined in the catalog and include config file existence, package dependencies, and file extensions.
 
-| Technology id | Human label | Current local markers |
+A representative set of supported technologies and markers includes:
+
+| Technology id | Human label | Representative local markers |
 |---|---|---|
 | `rust` | Rust | `Cargo.toml` |
 | `node_typescript` | Node/TypeScript | `package.json`, `tsconfig.json` |
-| `astro` | Astro | `astro.config.*` |
-| `github_actions` | GitHub Actions | `.github/workflows/*.yml`, `.github/workflows/*.yaml` |
-| `docker` | Docker | `Dockerfile*`, `compose.yml`, `compose.yaml`, `docker-compose*.yml`, `docker-compose*.yaml` |
-| `make` | Make | `Makefile`, `GNUmakefile` |
+| `astro` | Astro | `astro.config.*`, `package.json` (astro) |
+| `react` | React | `package.json` (react, react-dom) |
+| `nextjs` | Next.js | `next.config.*`, `package.json` (next) |
+| `vue` | Vue | `package.json` (vue) |
+| `svelte` | Svelte | `svelte.config.js`, `package.json` (svelte) |
 | `python` | Python | `pyproject.toml`, `uv.lock`, `poetry.lock`, `requirements*.txt` |
+| `github_actions` | GitHub Actions | `.github/workflows/*.yml`, `.github/workflows/*.yaml` |
+| `docker` | Docker | `Dockerfile*`, `compose.yml`, `docker-compose*.yml` |
+| `postgresql` | PostgreSQL | `package.json` (pg, postgres, @vercel/postgres) |
+| `eslint` | ESLint | `eslint.config.*`, `.eslintrc.*` |
+| `prettier` | Prettier | `.prettierrc.*`, `prettier.config.*` |
+| `vitest` | Vitest | `vitest.config.*`, `package.json` (vitest) |
+| `playwright` | Playwright | `playwright.config.*`, `package.json` (playwright) |
+| `make` | Make | `Makefile`, `GNUmakefile` |
 
 Notes:
 
@@ -144,7 +155,7 @@ Notes:
 - Root-level canonical markers yield `high` confidence.
 - Nested markers generally yield `medium` confidence.
 - Markers under test/example-style paths yield `low` confidence.
-- AgentSync ignores common generated/vendor directories like `.git`, `.agents`, `node_modules`, `target`, `dist`, and `build` while scanning.
+- AgentSync ignores common generated/vendor directories like `.git`, `.agents`, `node_modules`, `target`, `dist`, `build`, `.astro`, `.next`, `.turbo`, and `.pnpm-store` while scanning.
 
 Recommendation metadata now comes from a hybrid catalog model:
 
