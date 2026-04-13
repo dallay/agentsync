@@ -27,6 +27,24 @@
 * **deps:** update docker/login-action action to v4.1.0 ([#295](https://github.com/dallay/agentsync/issues/295)) ([4fb81a5](https://github.com/dallay/agentsync/commit/4fb81a58ee3412fc85d045b5b662cca25017ca79))
 * **deps:** update rust crate zip to v8.5.0 ([#285](https://github.com/dallay/agentsync/issues/285)) ([56b5cef](https://github.com/dallay/agentsync/commit/56b5cef976b16aab53b55ea16cc0183f93b10274))
 
+## [1.42.5](https://github.com/dallay/agentsync/compare/v1.42.4...v1.42.5) (2026-04-13)
+
+
+### Bug Fixes
+
+* **status:** align symlink-contents status semantics ([#344](https://github.com/dallay/agentsync/issues/344)) ([6008b93](https://github.com/dallay/agentsync/commit/6008b93cff6ef9e2d94acb4f23ec050a4e4cd055))
+
+
+### Performance
+
+* optimize path glob matching and reduce allocations ([#333](https://github.com/dallay/agentsync/issues/333)) ([fc5545d](https://github.com/dallay/agentsync/commit/fc5545d54bd4eeb58d743721a284c1ccae76c178))
+
+
+### Chores
+
+* 🛠 add package-lock.json for dependency management ([d6452bc](https://github.com/dallay/agentsync/commit/d6452bcf3664e767f192c09ad96f31b871e3c0c1))
+* **deps:** update devdependencies ([#336](https://github.com/dallay/agentsync/issues/336)) ([a04a17a](https://github.com/dallay/agentsync/commit/a04a17ae55ea41d010b8749c39d97f0b0976aa42))
+
 ## [1.42.4](https://github.com/dallay/agentsync/compare/v1.42.3...v1.42.4) (2026-04-09)
 
 
