@@ -33,6 +33,34 @@ mod tests {
         )
     }
 
+    fn skills_target_config(destination: &str, sync_type: &str) -> String {
+        format!(
+            r#"
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.skills]
+            source = "skills"
+            destination = "{destination}"
+            type = "{sync_type}"
+        "#
+        )
+    }
+
+    fn single_symlink_config(source: &str, destination: &str) -> String {
+        format!(
+            r#"
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.main]
+            source = "{source}"
+            destination = "{destination}"
+            type = "symlink"
+        "#
+        )
+    }
+
     #[test]
     fn test_missing_entry_is_problematic() {
         let e = StatusEntry {
@@ -223,15 +251,7 @@ mod tests {
         fs::create_dir_all(temp_dir.path().join(".claude")).unwrap();
         unix_fs::symlink("../.agents/skills", temp_dir.path().join(".claude/skills")).unwrap();
 
-        let config = r#"
-            [agents.claude]
-            enabled = true
-
-            [agents.claude.targets.skills]
-            source = "skills"
-            destination = ".claude/skills"
-            type = "symlink-contents"
-        "#;
+        let config = &skills_target_config(".claude/skills", "symlink-contents");
 
         let (linker, config_path) = load_linker(&temp_dir, config);
         let entries = collect_status_entries(&linker, &config_path).unwrap();
@@ -257,15 +277,7 @@ mod tests {
         fs::create_dir_all(temp_dir.path().join(".claude")).unwrap();
         unix_fs::symlink("../.agents/skills", temp_dir.path().join(".claude/skills")).unwrap();
 
-        let config = r#"
-            [agents.claude]
-            enabled = true
-
-            [agents.claude.targets.skills]
-            source = "skills"
-            destination = ".claude/skills"
-            type = "symlink"
-        "#;
+        let config = &skills_target_config(".claude/skills", "symlink");
 
         let (linker, config_path) = load_linker(&temp_dir, config);
         let hints = collect_status_hints(&linker, &config_path);
@@ -423,6 +435,127 @@ mod tests {
         assert!(rendered[0].contains("Drift:"));
         assert!(rendered[0].contains("review.md points to"));
         assert!(rendered[0].contains("wrong.md"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_symlink_missing_destination_is_rendered_as_missing() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::create_dir_all(temp_dir.path().join(".agents/claude")).unwrap();
+        fs::write(temp_dir.path().join(".agents/claude/CLAUDE.md"), "# Claude").unwrap();
+
+        let (linker, config_path) = load_linker(
+            &temp_dir,
+            &single_symlink_config("claude/CLAUDE.md", ".claude/CLAUDE.md"),
+        );
+
+        let entries = collect_status_entries(&linker, &config_path).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert!(entry_is_problematic(&entries[0]));
+        assert_eq!(
+            entries[0].issues[0].kind,
+            crate::commands::status::StatusIssueKind::MissingDestination
+        );
+
+        let rendered = render_status_entry(&entries[0]);
+        assert_eq!(
+            rendered,
+            vec![format!(
+                "{} Missing: {}",
+                "!",
+                temp_dir.path().join(".claude/CLAUDE.md").display()
+            )]
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_symlink_invalid_destination_type_is_rendered_as_non_symlink() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::create_dir_all(temp_dir.path().join(".agents/claude")).unwrap();
+        fs::write(temp_dir.path().join(".agents/claude/CLAUDE.md"), "# Claude").unwrap();
+        fs::create_dir_all(temp_dir.path().join(".claude")).unwrap();
+        fs::write(temp_dir.path().join(".claude/CLAUDE.md"), "not a symlink").unwrap();
+
+        let (linker, config_path) = load_linker(
+            &temp_dir,
+            &single_symlink_config("claude/CLAUDE.md", ".claude/CLAUDE.md"),
+        );
+
+        let entries = collect_status_entries(&linker, &config_path).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert!(entry_is_problematic(&entries[0]));
+        assert_eq!(
+            entries[0].issues[0].kind,
+            crate::commands::status::StatusIssueKind::InvalidDestinationType
+        );
+
+        let rendered = render_status_entry(&entries[0]);
+        assert_eq!(
+            rendered,
+            vec![format!(
+                "· Exists but not a symlink: {}",
+                temp_dir.path().join(".claude/CLAUDE.md").display()
+            )]
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_symlink_contents_missing_container_directory_is_rendered_as_drift() {
+        let temp_dir = TempDir::new().unwrap();
+        let source_dir = temp_dir.path().join(".agents/commands");
+        fs::create_dir_all(&source_dir).unwrap();
+        fs::write(source_dir.join("review.md"), "# Review").unwrap();
+
+        let (linker, config_path) = load_linker(
+            &temp_dir,
+            &commands_symlink_contents_config(".claude/commands"),
+        );
+
+        let entries = collect_status_entries(&linker, &config_path).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert!(entry_is_problematic(&entries[0]));
+        assert_eq!(
+            entries[0].issues[0].kind,
+            crate::commands::status::StatusIssueKind::MissingDestination
+        );
+
+        let rendered = render_status_entry(&entries[0]);
+        assert_eq!(rendered.len(), 1);
+        assert!(rendered[0].contains("missing managed container directory"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_symlink_contents_missing_source_directory_is_rendered_as_missing_source() {
+        let temp_dir = TempDir::new().unwrap();
+
+        let (linker, config_path) = load_linker(
+            &temp_dir,
+            &commands_symlink_contents_config(".claude/commands"),
+        );
+
+        let entries = collect_status_entries(&linker, &config_path).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert!(entry_is_problematic(&entries[0]));
+        assert_eq!(
+            entries[0].issues[0].kind,
+            crate::commands::status::StatusIssueKind::MissingExpectedSource
+        );
+
+        let rendered = render_status_entry(&entries[0]);
+        assert_eq!(rendered.len(), 1);
+        assert!(rendered[0].contains("Link points to missing source"));
+        assert!(
+            rendered[0].contains(
+                &temp_dir
+                    .path()
+                    .join(".claude/commands")
+                    .display()
+                    .to_string()
+            )
+        );
     }
 
     #[test]
