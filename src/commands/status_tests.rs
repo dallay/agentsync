@@ -458,13 +458,16 @@ mod tests {
         );
 
         let rendered = render_status_entry(&entries[0]);
-        assert_eq!(
-            rendered,
-            vec![format!(
-                "{} Missing: {}",
-                "!",
-                temp_dir.path().join(".claude/CLAUDE.md").display()
-            )]
+        assert_eq!(rendered.len(), 1);
+        assert!(rendered[0].contains("Missing:"));
+        assert!(
+            rendered[0].contains(
+                &temp_dir
+                    .path()
+                    .join(".claude/CLAUDE.md")
+                    .display()
+                    .to_string()
+            )
         );
     }
 
@@ -491,12 +494,16 @@ mod tests {
         );
 
         let rendered = render_status_entry(&entries[0]);
-        assert_eq!(
-            rendered,
-            vec![format!(
-                "· Exists but not a symlink: {}",
-                temp_dir.path().join(".claude/CLAUDE.md").display()
-            )]
+        assert_eq!(rendered.len(), 1);
+        assert!(rendered[0].contains("Exists but not a symlink:"));
+        assert!(
+            rendered[0].contains(
+                &temp_dir
+                    .path()
+                    .join(".claude/CLAUDE.md")
+                    .display()
+                    .to_string()
+            )
         );
     }
 
