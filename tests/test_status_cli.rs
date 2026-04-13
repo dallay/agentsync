@@ -64,6 +64,5 @@ fn test_status_human_output_shows_recognized_skills_mode_hint() {
         "{stdout}"
     );
     assert!(stdout.contains("symlink-contents"), "{stdout}");
-    assert!(stdout.contains("symlink"), "{stdout}");
     assert!(stdout.contains("Status: All good"), "{stdout}");
 }

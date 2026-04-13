@@ -553,7 +553,7 @@ mod tests {
 
         let rendered = render_status_entry(&entries[0]);
         assert_eq!(rendered.len(), 1);
-        assert!(rendered[0].contains("Link points to missing source"));
+        assert!(rendered[0].contains("Missing source container directory"));
         assert!(
             rendered[0].contains(
                 &temp_dir

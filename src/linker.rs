@@ -250,6 +250,11 @@ impl Linker {
                 continue;
             }
 
+            // Skip AGENTS.compact.md when compression is enabled to avoid false drift in status
+            if self.config.compress_agents_md && item_name == "AGENTS.compact.md" {
+                continue;
+            }
+
             let source_path = entry.path();
             if let Some(expected_source_path) = self.expected_source_path(&source_path, target) {
                 children.push(SymlinkContentsChildExpectation {

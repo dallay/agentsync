@@ -261,7 +261,7 @@ fn render_issue_line(entry: &StatusEntry, issue: &StatusIssue) -> String {
             _ => format!("{} Missing: {}", "!".yellow(), entry.destination),
         },
         StatusIssueKind::InvalidDestinationType => {
-            if entry.sync_type == "symlink-contents" {
+            if entry.sync_type.as_str() == "symlink-contents" {
                 format!(
                     "{} Drift: {} exists as {} but symlink-contents expects a directory container",
                     "✗".red(),
@@ -309,11 +309,21 @@ fn render_issue_line(entry: &StatusEntry, issue: &StatusIssue) -> String {
                 )
             }
         }
-        StatusIssueKind::MissingExpectedSource => format!(
-            "{} Link points to missing source: {}",
-            "!".yellow(),
-            issue.actual.as_deref().unwrap_or(&entry.destination)
-        ),
+        StatusIssueKind::MissingExpectedSource => {
+            if entry.sync_type.as_str() == "symlink-contents" {
+                format!(
+                    "{} Missing source container directory: {}",
+                    "!".yellow(),
+                    entry.destination
+                )
+            } else {
+                format!(
+                    "{} Link points to missing source: {}",
+                    "!".yellow(),
+                    issue.actual.as_deref().unwrap_or(&entry.destination)
+                )
+            }
+        }
     }
 }
 
