@@ -31,7 +31,7 @@ agentsync init [OPTIONS]
 
 **Wizard Mode**:
 When using the `--wizard` flag, AgentSync will guide you through the same initialization flow described in the Getting Started guide, and this section provides the detailed, step‑by‑step reference for that wizard:
-1. Scan your project for existing agent-related files — including instruction files (CLAUDE.md, .windsurfrules, OPENCODE.md, AMPCODE.md, etc.), skill directories (.claude/skills/, .cursor/skills/, .codex/skills/, .gemini/skills/, .opencode/skills/, .roo/skills/, .factory/skills/, .vibe/skills/, .agent/skills/), command directories (.claude/commands/, .gemini/commands/, .opencode/commands/), MCP configs (.cursor/mcp.json, .windsurf/mcp_config.json, .roo/mcp.json, etc.), and agent directories (.cursor/, .windsurf/, etc.)
+1. Scan your project for existing agent-related files — including instruction files (CLAUDE.md, .windsurfrules, OPENCODE.md, AMPCODE.md, etc.), skill directories (.claude/skills/, .cursor/skills/, .codex/skills/, .gemini/skills/, .opencode/skills/, .roo/skills/, .factory/skills/, .vibe/skills/, .agent/skills/), command directories (.claude/commands/, .gemini/commands/, .opencode/command/), MCP configs (.cursor/mcp.json, .windsurf/mcp_config.json, .roo/mcp.json, etc.), and agent directories (.cursor/, .windsurf/, etc.)
 2. Interactively prompt you to select which files to migrate
 3. For **instruction files**: Read their content and merge into `.agents/AGENTS.md`
 4. For **skill directories**: Copy contents into `.agents/skills/` (with collision detection — duplicates are skipped with a warning)
@@ -270,7 +270,7 @@ Shows help information for the CLI or a specific command.
 
 ### `status`
 
-Verify the status of symlinks managed by AgentSync and report drift.
+Verify the status of AgentSync-managed targets and report drift.
 
 ```bash
 agentsync status [--project-root <path>] [--json]
@@ -282,18 +282,27 @@ agentsync status [--project-root <path>] [--json]
 
 **Behavior**:
 - Iterates over all enabled agents and their targets from your `agentsync.toml`.
-- For each target it reports:
-  - `destination`: Path in the project where the symlink should exist
+- Validates each target according to its configured sync type.
+  - `symlink` checks the destination path itself as the managed symlink.
+  - `symlink-contents` checks the destination as a managed directory container plus the expected child symlinks inside it.
+- For each target it reports additive machine-readable fields such as:
+  - `destination`: Path in the project where the managed target lives
+  - `sync_type`: The configured sync mode for that target
+  - `destination_kind`: Whether the destination currently resolves to a symlink, directory, file, or is missing
   - `exists`: Whether the destination path exists
-  - `is_symlink`: Whether the destination is a symlink
+  - `is_symlink`: Whether the destination itself is a symlink
   - `points_to`: The symlink target (if any)
-  - `expected_source`: The resolved expected source path if the source exists
+  - `expected_source`: The resolved expected source path for single-link targets when the source exists
+  - `issues`: Structured drift reasons
+  - `managed_children`: Child-level detail for `symlink-contents` targets
 
 Human-friendly output uses colors and statuses:
 - `✔ OK` — symlink exists and points to the expected source
 - `✗ Incorrect link` — symlink exists but points somewhere else
 - `! Missing` — destination does not exist
 - `· Exists but not a symlink` — a regular file or directory exists at the destination
+
+For `symlink-contents`, success output identifies the destination as a managed container directory. A valid empty source such as `.agents/commands/` with zero eligible files is still reported as `OK`, and the destination directory is not treated as missing or "not a symlink" solely because it currently has `0 managed entries expected`.
 
 If a skills target is otherwise healthy but its configured mode disagrees with a recognized existing layout (for example `symlink-contents` configured while the destination is already the expected directory symlink), `status` keeps the entry as `OK` and prints a focused hint instead of treating it as broken.
 

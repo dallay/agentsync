@@ -1176,7 +1176,7 @@ fn render_agent_config_layout_section(facts: &AgentLayoutFacts) -> String {
             .collect::<Vec<_>>();
         lines.push(String::new());
         lines.push(format!(
-            "- Commands: `.agents/commands/` is the canonical commands directory, and `agentsync apply` populates command entries into {}.",
+            "- Commands: `.agents/commands/` is the canonical commands directory, `agentsync apply` populates command entries into {}, and `agentsync status` validates those destinations as managed container directories rather than requiring the destination path itself to be a symlink.",
             render_destination_list(&destinations)
         ));
     }
