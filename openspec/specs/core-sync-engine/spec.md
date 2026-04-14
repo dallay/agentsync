@@ -140,6 +140,9 @@ The destination directory MUST be created if it does not exist.
 
 Each symlink MUST use a relative path from the destination to the source item.
 
+An existing source directory with zero eligible child items MUST be treated as a valid source
+directory, not as a missing source.
+
 #### Scenario: SC-003a — Symlink-contents creates links for all items
 
 - GIVEN a config with `source = "skills"`, `destination = "output_skills"`,
@@ -166,9 +169,110 @@ Each symlink MUST use a relative path from the destination to the source item.
 - THEN `SyncResult.skipped` MUST be 1
 - AND no symlinks MUST be created
 
+#### Scenario: SC-003d — Empty existing source directory is a valid no-entry source
+
+- GIVEN a config with `source = "commands"`, `destination = ".claude/commands"`, and
+  `type = "symlink-contents"`
+- AND the source directory exists
+- AND the source directory contains zero eligible child items
+- WHEN `linker.sync()` is run
+- THEN the system MUST treat the target as having a valid source directory
+- AND the system MUST NOT treat the target as a missing-source case solely because no child entries
+  are present
+
 ---
 
-### REQ-004: Relative Symlink Path Resolution
+### REQ-004: Sync-Type-Aware Status Validation
+
+The `status` command MUST validate each target according to that target's configured `sync_type`.
+
+For targets with `type = "symlink"`, status MUST evaluate the destination path itself as the managed
+symlink target.
+
+For targets with `type = "symlink-contents"`, status MUST evaluate the destination path as a managed
+directory container and MUST evaluate the expected managed child entries inside that directory.
+
+For `symlink-contents`, status MUST derive the expected child-entry set from the eligible items in
+the configured source directory.
+
+If a `symlink-contents` source directory exists but has zero eligible child items, status MUST treat
+that target as valid solely with respect to child-entry presence and MUST NOT report the target as
+missing or "not a symlink" solely because the destination directory contains no managed child
+entries.
+
+#### Scenario: SC-004a — Status validates a symlink target as a single managed symlink
+
+- GIVEN a target configured with `type = "symlink"`
+- AND the destination path exists as a symlink to the expected source
+- WHEN `agentsync status` is run
+- THEN status MUST evaluate the destination path itself as the managed object
+- AND the target MUST be reported as in sync
+
+#### Scenario: SC-004b — Status validates a symlink-contents target as a directory container
+
+- GIVEN a target configured with `type = "symlink-contents"`
+- AND the source directory contains eligible child items `a.md` and `b.md`
+- AND the destination path exists as a real directory
+- AND the destination directory contains symlinks for `a.md` and `b.md` pointing to the expected
+  source items
+- WHEN `agentsync status` is run
+- THEN status MUST evaluate the destination as a managed directory container
+- AND the target MUST be reported as in sync
+
+#### Scenario: SC-004c — Empty symlink-contents source directory does not create false drift
+
+- GIVEN a target configured with `type = "symlink-contents"`
+- AND the source directory exists but contains zero eligible child items
+- AND the destination path exists as a real directory with no managed child entries
+- WHEN `agentsync status` is run
+- THEN status MUST NOT report the target as missing solely because no child entries exist
+- AND status MUST NOT report the destination directory as "not a symlink" solely because the target
+  uses `symlink-contents`
+
+#### Scenario: SC-004d — Status detects a missing expected child symlink
+
+- GIVEN a target configured with `type = "symlink-contents"`
+- AND the source directory contains eligible child items `a.md` and `b.md`
+- AND the destination directory contains a correct symlink for `a.md`
+- AND the destination directory lacks the expected child entry for `b.md`
+- WHEN `agentsync status` is run
+- THEN status MUST report the target as drifted
+- AND the reported drift MUST identify that an expected managed child entry is missing
+
+#### Scenario: SC-004e — Status detects a wrong child type inside a symlink-contents destination
+
+- GIVEN a target configured with `type = "symlink-contents"`
+- AND the source directory contains an eligible child item `a.md`
+- AND the destination path exists as a real directory
+- AND the destination child `a.md` exists as a regular file or directory instead of a symlink to the
+  expected source item
+- WHEN `agentsync status` is run
+- THEN status MUST report the target as drifted
+- AND the reported drift MUST identify that the managed child entry has the wrong type or target
+
+#### Scenario: SC-004f — Status detects a wrong child target inside a symlink-contents destination
+
+- GIVEN a target configured with `type = "symlink-contents"`
+- AND the source directory contains an eligible child item `a.md`
+- AND the destination path exists as a real directory
+- AND the destination child `a.md` exists as a symlink to an unexpected source item
+- WHEN `agentsync status` is run
+- THEN status MUST report the target as drifted
+- AND the reported drift MUST identify that the managed child entry points to the wrong target
+
+#### Scenario: SC-004g — Status detects an invalid destination type for symlink-contents
+
+- GIVEN a target configured with `type = "symlink-contents"`
+- AND the source directory exists
+- AND the destination path exists as a non-directory object
+- WHEN `agentsync status` is run
+- THEN status MUST report the target as drifted
+- AND the reported drift MUST identify that the destination type is invalid for a managed
+  `symlink-contents` container
+
+---
+
+### REQ-005: Relative Symlink Path Resolution
 
 The system MUST calculate symlink targets as relative paths from the destination's parent directory
 to the source file's canonical location.
@@ -180,14 +284,14 @@ the project root as a base.
 
 The system MUST cache canonicalized paths via `path_cache` to avoid redundant filesystem I/O.
 
-#### Scenario: SC-004a — Relative path for simple symlink
+#### Scenario: SC-005a — Relative path for simple symlink
 
 - GIVEN a source at `.agents/AGENTS.md` and destination at `TEST.md` (both in project root)
 - WHEN the symlink is created
 - THEN the symlink target MUST be a relative path (e.g., `.agents/AGENTS.md`)
 - AND the symlink MUST NOT use an absolute path
 
-#### Scenario: SC-004b — Relative path for nested destination
+#### Scenario: SC-005b — Relative path for nested destination
 
 - GIVEN a source at `.agents/AGENTS.md` and destination at `deep/nested/dir/TEST.md`
 - WHEN the symlink is created
@@ -196,7 +300,7 @@ The system MUST cache canonicalized paths via `path_cache` to avoid redundant fi
 
 ---
 
-### REQ-005: Parent Directory Creation
+### REQ-006: Parent Directory Creation
 
 The system MUST create parent directories for a destination path if they do not exist.
 
@@ -207,14 +311,14 @@ The system MUST cache which directories have been ensured via `ensured_dirs` to 
 In dry-run mode, the system MUST NOT create directories but SHOULD print a "Would create directory"
 message when verbose is enabled.
 
-#### Scenario: SC-005a — Creates intermediate directories
+#### Scenario: SC-006a — Creates intermediate directories
 
 - GIVEN a destination of `deep/nested/dir/TEST.md` where the directories do not exist
 - WHEN `linker.sync()` is run
 - THEN the directories `deep/nested/dir/` MUST be created
 - AND the symlink MUST be created inside the directory
 
-#### Scenario: SC-005b — Dry-run does not create directories
+#### Scenario: SC-006b — Dry-run does not create directories
 
 - GIVEN a destination requiring directory creation
 - WHEN `linker.sync()` is run with `dry_run = true`
@@ -222,7 +326,7 @@ message when verbose is enabled.
 
 ---
 
-### REQ-006: Destination Path Safety Validation
+### REQ-007: Destination Path Safety Validation
 
 The system MUST validate all destination paths before any filesystem mutation.
 
@@ -240,38 +344,38 @@ The system MUST re-validate the destination path immediately before each filesys
 (`revalidate_destination_path`) to guard against TOCTOU race conditions where symlink ancestors may
 be swapped between validation and mutation.
 
-#### Scenario: SC-006a — Rejects absolute path
+#### Scenario: SC-007a — Rejects absolute path
 
 - GIVEN a destination that is an absolute path (e.g., `/tmp/escape.md`)
 - WHEN the destination is validated
 - THEN the system MUST return an error
 
-#### Scenario: SC-006b — Rejects parent traversal
+#### Scenario: SC-007b — Rejects parent traversal
 
 - GIVEN a destination of `../escape.md`
 - WHEN the destination is validated
 - THEN the system MUST return an error
 
-#### Scenario: SC-006c — Rejects empty destination
+#### Scenario: SC-007c — Rejects empty destination
 
 - GIVEN a destination of `""` or `"."`
 - WHEN the destination is validated
 - THEN the system MUST return an error
 
-#### Scenario: SC-006d — Rejects symlink ancestor escape
+#### Scenario: SC-007d — Rejects symlink ancestor escape
 
 - GIVEN a symlink `escape-link` inside the project root that points outside the project
 - AND a destination of `escape-link/linked.md`
 - WHEN the destination is validated
 - THEN the system MUST return an error (canonicalization resolves the escape)
 
-#### Scenario: SC-006e — Accepts valid relative paths
+#### Scenario: SC-007e — Accepts valid relative paths
 
 - GIVEN a destination of `nested/output.md`
 - WHEN the destination is validated
 - THEN it MUST resolve to `<project_root>/nested/output.md`
 
-#### Scenario: SC-006f — Detects TOCTOU symlink swap
+#### Scenario: SC-007f — Detects TOCTOU symlink swap
 
 - GIVEN a symlink `dynamic-link` initially pointing to a safe directory inside the project
 - AND the destination `dynamic-link/linked.md` passes initial validation
@@ -280,7 +384,7 @@ be swapped between validation and mutation.
 
 ---
 
-### REQ-007: Idempotent Re-run (Skip Already Correct)
+### REQ-008: Idempotent Re-run (Skip Already Correct)
 
 When the destination is already a symlink pointing to the correct relative source path, the system
 MUST skip re-creation.
@@ -289,7 +393,7 @@ The system MUST increment `SyncResult.skipped` for skipped symlinks.
 
 In verbose mode, the system SHOULD print an "Already linked" message.
 
-#### Scenario: SC-007a — Second sync skips already-correct symlink
+#### Scenario: SC-008a — Second sync skips already-correct symlink
 
 - GIVEN a symlink target that already exists and points to the correct source
 - WHEN `linker.sync()` is run a second time
@@ -300,14 +404,14 @@ In verbose mode, the system SHOULD print an "Already linked" message.
 
 ---
 
-### REQ-008: Update Existing Symlink with Wrong Target
+### REQ-009: Update Existing Symlink with Wrong Target
 
 When the destination is a symlink but points to a different target than expected, the system MUST
 remove the old symlink and create a new one pointing to the correct source.
 
 The system MUST increment `SyncResult.updated`.
 
-#### Scenario: SC-008a — Updates symlink pointing to wrong source
+#### Scenario: SC-009a — Updates symlink pointing to wrong source
 
 - GIVEN an existing symlink at `TEST.md` pointing to `source1.md`
 - AND the config now specifies `source = "source2.md"`
@@ -318,7 +422,7 @@ The system MUST increment `SyncResult.updated`.
 
 ---
 
-### REQ-009: Backup Existing Non-Symlink Files
+### REQ-010: Backup Existing Non-Symlink Files
 
 When the destination exists as a regular file or directory (not a symlink), the system MUST back it
 up before replacing it with a symlink.
@@ -330,7 +434,7 @@ new one.
 
 The system MUST increment `SyncResult.updated`.
 
-#### Scenario: SC-009a — Backs up existing regular file
+#### Scenario: SC-010a — Backs up existing regular file
 
 - GIVEN a regular file at `output_skills` (not a symlink)
 - AND the config specifies `destination = "output_skills"` with `type = "symlink"`
@@ -339,7 +443,7 @@ The system MUST increment `SyncResult.updated`.
 - AND a symlink MUST be created at `output_skills`
 - AND `SyncResult.updated` MUST be >= 1
 
-#### Scenario: SC-009b — Replaces stale backup
+#### Scenario: SC-010b — Replaces stale backup
 
 - GIVEN both `output_skills` (a directory) and `output_skills.bak` (stale backup) exist
 - WHEN `linker.sync()` creates a new backup
@@ -348,7 +452,7 @@ The system MUST increment `SyncResult.updated`.
 
 ---
 
-### REQ-010: Missing Source Handling
+### REQ-011: Missing Source Handling
 
 When a source file does not exist, the system MUST skip the target without error.
 
@@ -356,7 +460,7 @@ The system MUST print a warning message indicating the missing source.
 
 The system MUST increment `SyncResult.skipped`.
 
-#### Scenario: SC-010a — Skips missing source file
+#### Scenario: SC-011a — Skips missing source file
 
 - GIVEN a config with `source = "NONEXISTENT.md"`
 - AND the source file does not exist
@@ -367,13 +471,13 @@ The system MUST increment `SyncResult.skipped`.
 
 ---
 
-### REQ-011: Disabled Agent Skipping
+### REQ-012: Disabled Agent Skipping
 
 When an agent has `enabled = false`, the system MUST skip all of its targets.
 
 In verbose mode, the system SHOULD print a "Skipping disabled agent" message.
 
-#### Scenario: SC-011a — Skips disabled agent
+#### Scenario: SC-012a — Skips disabled agent
 
 - GIVEN an agent with `enabled = false`
 - WHEN `linker.sync()` is run
@@ -382,7 +486,7 @@ In verbose mode, the system SHOULD print a "Skipping disabled agent" message.
 
 ---
 
-### REQ-012: Agent Filtering (CLI --agents)
+### REQ-013: Agent Filtering (CLI --agents)
 
 When `SyncOptions.agents` is set (from CLI `--agents`), the system MUST only process agents whose
 names match the filter.
@@ -395,7 +499,7 @@ Matching MUST use the `sync_filter_matches` function from `agent_ids`, which sup
 
 The CLI `--agents` filter MUST take priority over `default_agents` in config.
 
-#### Scenario: SC-012a — Filters to single agent
+#### Scenario: SC-013a — Filters to single agent
 
 - GIVEN agents `claude` and `copilot` both enabled
 - AND `SyncOptions.agents = Some(["claude"])`
@@ -403,21 +507,21 @@ The CLI `--agents` filter MUST take priority over `default_agents` in config.
 - THEN only `claude`'s symlinks MUST be created
 - AND `copilot`'s symlinks MUST NOT be created
 
-#### Scenario: SC-012b — Case-insensitive filter matching
+#### Scenario: SC-013b — Case-insensitive filter matching
 
 - GIVEN an agent named `"GitHub-Copilot"`
 - AND `SyncOptions.agents = Some(["copilot"])`
 - WHEN `linker.sync()` is run
 - THEN the agent MUST be processed (case-insensitive match)
 
-#### Scenario: SC-012c — Alias filter matching
+#### Scenario: SC-013c — Alias filter matching
 
 - GIVEN an agent named `"codex"`
 - AND `SyncOptions.agents = Some(["codex-cli"])`
 - WHEN `linker.sync()` is run
 - THEN the agent MUST be processed (alias resolution)
 
-#### Scenario: SC-012d — CLI --agents overrides default_agents
+#### Scenario: SC-013d — CLI --agents overrides default_agents
 
 - GIVEN `default_agents = ["claude"]` in config
 - AND `SyncOptions.agents = Some(["copilot"])`
@@ -427,7 +531,7 @@ The CLI `--agents` filter MUST take priority over `default_agents` in config.
 
 ---
 
-### REQ-013: Default Agents Config
+### REQ-014: Default Agents Config
 
 When `SyncOptions.agents` is `None` (no CLI filter) and `default_agents` is non-empty in the config,
 the system MUST only process agents matching the `default_agents` list.
@@ -437,7 +541,7 @@ The matching uses the same `sync_filter_matches` logic (case-insensitive, alias-
 When both `SyncOptions.agents` is `None` and `default_agents` is empty, the system MUST process all
 enabled agents.
 
-#### Scenario: SC-013a — Uses default_agents when no CLI filter
+#### Scenario: SC-014a — Uses default_agents when no CLI filter
 
 - GIVEN `default_agents = ["claude", "copilot"]` and agents `claude`, `copilot`, `cursor` all
   enabled
@@ -446,14 +550,14 @@ enabled agents.
 - THEN `claude` and `copilot` MUST be processed
 - AND `cursor` MUST NOT be processed
 
-#### Scenario: SC-013b — Default_agents case-insensitive with aliases
+#### Scenario: SC-014b — Default_agents case-insensitive with aliases
 
 - GIVEN `default_agents = ["CLAUDE", "COPILOT"]` and agents named `claude-code` and
   `GitHub-Copilot`
 - WHEN `linker.sync()` is run with no CLI filter
 - THEN both agents MUST be processed
 
-#### Scenario: SC-013c — All enabled agents when no default_agents and no CLI filter
+#### Scenario: SC-014c — All enabled agents when no default_agents and no CLI filter
 
 - GIVEN no `default_agents` in config and no CLI `--agents` filter
 - AND agents `claude` and `copilot` both enabled
@@ -462,7 +566,7 @@ enabled agents.
 
 ---
 
-### REQ-014: Dry-Run Mode
+### REQ-015: Dry-Run Mode
 
 When `SyncOptions.dry_run` is `true`, the system MUST NOT make any filesystem changes.
 
@@ -476,7 +580,7 @@ The system MUST print "Would backup and replace: ..." for non-symlink files that
 
 The system MUST still populate `SyncResult` counters accurately.
 
-#### Scenario: SC-014a — Dry-run creates no files
+#### Scenario: SC-015a — Dry-run creates no files
 
 - GIVEN a valid config with a symlink target
 - AND `SyncOptions.dry_run = true`
@@ -484,7 +588,7 @@ The system MUST still populate `SyncResult` counters accurately.
 - THEN no symlinks MUST exist on disk
 - AND no directories MUST be created
 
-#### Scenario: SC-014b — Dry-run reports accurate counts
+#### Scenario: SC-015b — Dry-run reports accurate counts
 
 - GIVEN a valid config that would create 1 symlink
 - AND `SyncOptions.dry_run = true`
@@ -493,7 +597,7 @@ The system MUST still populate `SyncResult` counters accurately.
 
 ---
 
-### REQ-015: Clean Operation (Symlink Type)
+### REQ-016: Clean Operation (Symlink Type)
 
 The `clean()` method MUST remove the destination symlink for `type = "symlink"` targets.
 
@@ -503,14 +607,14 @@ If the destination is not a symlink, the system MUST NOT remove it.
 
 The system MUST increment `SyncResult.removed` for each removed symlink.
 
-#### Scenario: SC-015a — Clean removes symlink target
+#### Scenario: SC-016a — Clean removes symlink target
 
 - GIVEN a synced symlink at `TEST.md`
 - WHEN `linker.clean()` is run
 - THEN the symlink MUST be removed
 - AND `SyncResult.removed` MUST be 1
 
-#### Scenario: SC-015b — Clean skips non-symlink files
+#### Scenario: SC-016b — Clean skips non-symlink files
 
 - GIVEN a regular file at a destination path (not a symlink)
 - WHEN `linker.clean()` is run
@@ -518,7 +622,7 @@ The system MUST increment `SyncResult.removed` for each removed symlink.
 
 ---
 
-### REQ-016: Clean Operation (Symlink-Contents Type)
+### REQ-017: Clean Operation (Symlink-Contents Type)
 
 The `clean()` method MUST iterate the destination directory and remove all symlinks inside it for
 `type = "symlink-contents"` targets.
@@ -528,7 +632,7 @@ The system MUST only remove entries that are symlinks (not regular files inside 
 After removing symlinks, the system SHOULD attempt to remove the destination directory if it is
 empty (best-effort, no error on failure).
 
-#### Scenario: SC-016a — Clean removes symlink-contents symlinks
+#### Scenario: SC-017a — Clean removes symlink-contents symlinks
 
 - GIVEN a synced `symlink-contents` target with 2 items linked inside `output_skills/`
 - WHEN `linker.clean()` is run
@@ -537,7 +641,7 @@ empty (best-effort, no error on failure).
 
 ---
 
-### REQ-017: Clean Dry-Run
+### REQ-018: Clean Dry-Run
 
 When `SyncOptions.dry_run` is `true`, the `clean()` method MUST NOT remove any symlinks.
 
@@ -545,7 +649,7 @@ The system MUST print "Would remove: ..." messages for each symlink that would b
 
 The system MUST still populate `SyncResult.removed` accurately.
 
-#### Scenario: SC-017a — Clean dry-run preserves symlinks
+#### Scenario: SC-018a — Clean dry-run preserves symlinks
 
 - GIVEN a synced symlink at `TEST.md`
 - AND `SyncOptions.dry_run = true`
@@ -555,7 +659,7 @@ The system MUST still populate `SyncResult.removed` accurately.
 
 ---
 
-### REQ-018: Apply with Prior Clean (--clean flag)
+### REQ-019: Apply with Prior Clean (--clean flag)
 
 When the `apply` command is invoked with `--clean`, the system MUST run `linker.clean()` before
 running `linker.sync()`.
@@ -565,7 +669,7 @@ The clean step MUST use the same `dry_run` and `verbose` options as the apply st
 The clean step MUST NOT pass an `agents` filter (it cleans all managed symlinks regardless of
 agent filtering).
 
-#### Scenario: SC-018a — Apply with --clean removes then recreates
+#### Scenario: SC-019a — Apply with --clean removes then recreates
 
 - GIVEN an existing synced state with symlinks
 - WHEN `agentsync apply --clean` is run
@@ -574,7 +678,7 @@ agent filtering).
 
 ---
 
-### REQ-019: Target Processing Error Handling
+### REQ-020: Target Processing Error Handling
 
 When processing a target fails (e.g., permission error, I/O error), the system MUST catch the error
 and increment `SyncResult.errors`.
@@ -583,7 +687,7 @@ The system MUST continue processing remaining targets for the same and other age
 
 The error MUST be logged via `tracing::error!`.
 
-#### Scenario: SC-019a — Error in one target does not block others
+#### Scenario: SC-020a — Error in one target does not block others
 
 - GIVEN a config with multiple targets, one of which has an invalid destination
 - WHEN `linker.sync()` is run
@@ -592,7 +696,7 @@ The error MUST be logged via `tracing::error!`.
 
 ---
 
-### REQ-020: Gitignore Entry Generation
+### REQ-021: Gitignore Entry Generation
 
 The system MUST generate gitignore entries for all enabled agents' target destinations.
 
@@ -608,19 +712,19 @@ Disabled agents MUST NOT contribute gitignore entries.
 
 The system MUST include a defensive pattern `.agents/skills/*.bak`.
 
-#### Scenario: SC-020a — Gitignore entries for symlink targets
+#### Scenario: SC-021a — Gitignore entries for symlink targets
 
 - GIVEN an enabled agent with `destination = "CLAUDE.md"` and `type = "symlink"`
 - WHEN `all_gitignore_entries()` is called
 - THEN the entries MUST include `/CLAUDE.md` and `/CLAUDE.md.bak`
 
-#### Scenario: SC-020b — Gitignore skips disabled agents
+#### Scenario: SC-021b — Gitignore skips disabled agents
 
 - GIVEN a disabled agent with targets
 - WHEN `all_gitignore_entries()` is called
 - THEN no entries from that agent's targets MUST appear
 
-#### Scenario: SC-020c — Gitignore deduplicates entries
+#### Scenario: SC-021c — Gitignore deduplicates entries
 
 - GIVEN two agents with identical destination paths
 - WHEN `all_gitignore_entries()` is called
@@ -628,7 +732,7 @@ The system MUST include a defensive pattern `.agents/skills/*.bak`.
 
 ---
 
-### REQ-021: Compress AGENTS.md
+### REQ-022: Compress AGENTS.md
 
 When `compress_agents_md = true` in config, the system MUST generate a compressed version of any
 source file named `AGENTS.md` before linking.
@@ -651,7 +755,7 @@ Compression MUST NOT apply to `nested-glob` or `module-map` sync types.
 The system MUST skip re-writing the compressed file if its content is unchanged (content-based
 caching).
 
-#### Scenario: SC-021a — Compression creates compact file and links to it
+#### Scenario: SC-022a — Compression creates compact file and links to it
 
 - GIVEN `compress_agents_md = true` and a source `AGENTS.md` with extra whitespace
 - WHEN `linker.sync()` is run
@@ -660,7 +764,7 @@ caching).
 - AND inline whitespace MUST be normalized
 - AND code block content MUST be preserved verbatim
 
-#### Scenario: SC-021b — Compression in symlink-contents
+#### Scenario: SC-022b — Compression in symlink-contents
 
 - GIVEN `compress_agents_md = true` and a `symlink-contents` target whose source directory contains
   `AGENTS.md` and `OTHER.md`
@@ -671,7 +775,7 @@ caching).
 
 ---
 
-### REQ-022: Cache Clearing Between Sync Runs
+### REQ-023: Cache Clearing Between Sync Runs
 
 The system MUST clear all internal caches (`path_cache`, `compression_cache`, `ensured_dirs`,
 `ensured_compressed`) at the start of each `sync()` call.
@@ -679,7 +783,7 @@ The system MUST clear all internal caches (`path_cache`, `compression_cache`, `e
 This ensures that filesystem changes between consecutive runs on the same `Linker` instance are
 reflected correctly.
 
-#### Scenario: SC-022a — Caches reset between runs
+#### Scenario: SC-023a — Caches reset between runs
 
 - GIVEN a `Linker` instance that has already run `sync()`
 - AND the source file is modified between runs
@@ -688,7 +792,7 @@ reflected correctly.
 
 ---
 
-### REQ-023: Cross-Platform Symlink Creation
+### REQ-024: Cross-Platform Symlink Creation
 
 On Unix systems, the system MUST use `std::os::unix::fs::symlink`.
 
@@ -698,7 +802,7 @@ and `std::os::windows::fs::symlink_file` for file sources.
 On Windows, the `remove_symlink` helper MUST use `fs::remove_dir` for directory symlinks (detected
 via `FileTypeExt::is_symlink_dir`) and `fs::remove_file` for file symlinks.
 
-#### Scenario: SC-023a — Unix symlink creation
+#### Scenario: SC-024a — Unix symlink creation
 
 - GIVEN a Unix platform
 - WHEN a symlink is created
@@ -706,7 +810,7 @@ via `FileTypeExt::is_symlink_dir`) and `fs::remove_file` for file symlinks.
 
 ---
 
-### REQ-024: Apply Command Integration
+### REQ-025: Apply Command Integration
 
 The `apply` command MUST:
 
@@ -717,7 +821,7 @@ The `apply` command MUST:
 
 The final output MUST print a summary with created, updated, skipped, and error counts.
 
-#### Scenario: SC-024a — Full apply flow
+#### Scenario: SC-025a — Full apply flow
 
 - GIVEN a valid config with enabled agents and gitignore enabled
 - WHEN `agentsync apply` is run
@@ -797,7 +901,7 @@ deterministic output across runs.
 | REQ-001     | `Linker::new()` (linker.rs:64-78)                                                                | `test_linker_new`, `test_linker_project_root_accessor`                                                                                                                                                 |
 | REQ-002     | `process_target` → `create_symlink` (linker.rs:291-295)                                          | `test_sync_creates_symlink`, `test_sync_symlink_directory_for_skills`                                                                                                                                  |
 | REQ-003     | `create_symlinks_for_contents` (linker.rs:563-613)                                               | `test_sync_symlink_contents`, `test_sync_symlink_contents_with_pattern`                                                                                                                                |
-| REQ-004     | `relative_path` (linker.rs:917-949)                                                              | Implicit in all symlink creation tests                                                                                                                                                                 |
+| REQ-004     | `collect_status_entries`, `validate_symlink_contents_entry` (status.rs)                                                              | Implicit in all symlink creation tests                                                                                                                                                                 |
 | REQ-005     | `ensure_directory` (linker.rs:369-390)                                                           | `test_sync_creates_parent_directories`                                                                                                                                                                 |
 | REQ-006     | `ensure_safe_destination` (linker.rs:137-167), `revalidate_destination_path` (linker.rs:170-173) | `test_ensure_safe_destination_*` (4 tests)                                                                                                                                                             |
 | REQ-007     | `create_symlink` already-linked branch (linker.rs:469-476)                                       | `test_sync_skips_already_correct_symlink`                                                                                                                                                              |

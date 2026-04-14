@@ -344,7 +344,7 @@ agentsync skill uninstall <skill-id>
 
 ### Status
 
-Verify the state of symlinks managed by AgentSync. Useful for local verification and CI.
+Verify the state of AgentSync-managed targets. Useful for local verification and CI.
 
 ```bash
 agentsync status [--project-root <path>] [--json]
@@ -352,6 +352,12 @@ agentsync status [--project-root <path>] [--json]
 
 - `--project-root <path>`: Optional. Path to the project root to locate the agentsync config.
 - `--json`: Output machine-readable JSON (pretty-printed).
+
+`status` is sync-type aware:
+
+- `symlink` targets are checked as one managed destination symlink.
+- `symlink-contents` targets are checked as destination directories whose managed child entries are the symlinks.
+- An existing empty `.agents/commands/` source directory is valid, so an empty destination like `.claude/commands/` is not reported as missing or "not a symlink" just because it currently has `0` managed entries.
 
 Exit codes: 0 = no problems, 1 = problems detected (CI-friendly)
 
@@ -388,7 +394,7 @@ destination = "CLAUDE.md"
 type = "symlink"
 
 [agents.claude.targets.commands]
-source = "command"
+source = "commands"
 destination = ".claude/commands"
 type = "symlink-contents"
 pattern = "*.agent.md"
@@ -459,7 +465,9 @@ When `merge_strategy = "merge"`:
 | `module-map`       | Map centrally-managed source files to module directories      |
 
 The `symlink-contents` type optionally supports a `pattern` field (glob pattern like `*.md`) to
-filter which items to link.
+filter which items to link. AgentSync treats the destination as a managed directory container, so
+`agentsync status` validates the child links inside that directory instead of expecting the
+directory itself to be a symlink.
 
 #### Nested Glob Target (`nested-glob`)
 
@@ -521,7 +529,7 @@ AgentSync would create:
 .agents/
 ├── agentsync.toml      # Configuration file (source of truth for MCP)
 ├── AGENTS.md           # Main agent instructions (single source)
-├── command/            # Agent commands
+├── commands/           # Canonical agent commands source
 │   ├── review.agent.md
 │   └── test.agent.md
 ├── skills/             # Shared knowledge/skills
@@ -540,15 +548,15 @@ project-root/
 ├── AGENTS.md           → .agents/AGENTS.md
 ├── .mcp.json           (Generated from agentsync.toml)
 ├── .claude/
-│   ├── commands/       → symlinks to .agents/command/*.agent.md
+│   ├── commands/       → managed directory with symlinks to .agents/commands/*.agent.md
 │   └── skills/         → symlinks to .agents/skills/*
 ├── .gemini/
 │   ├── settings.json   (Generated from agentsync.toml)
-│   ├── commands/       → symlinks to .agents/command/*.agent.md
+│   ├── commands/       → managed directory with symlinks to .agents/commands/*.agent.md
 │   └── skills/         → symlinks to .agents/skills/*
 └── .github/
     ├── copilot-instructions.md → .agents/AGENTS.md
-    └── agents/         → symlinks to .agents/command/*.agent.md
+    └── agents/         → symlinks to .agents/commands/*.agent.md
 ```
 
 ## CI/CD Integration
