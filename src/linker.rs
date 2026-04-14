@@ -1360,8 +1360,7 @@ fn compress_agents_md_content(input: &str) -> String {
         let is_fence = fence_delim_match.is_some();
 
         if is_fence {
-            let delim =
-                fence_delim_match.expect("fence_delim_match is Some when is_fence is true");
+            let delim = fence_delim_match.expect("fence_delim_match is Some when is_fence is true");
             if fence_delim.is_none() {
                 fence_delim = Some(delim);
             } else if fence_delim == Some(delim) {
