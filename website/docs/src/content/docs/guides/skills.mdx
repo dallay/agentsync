@@ -290,9 +290,9 @@ Example `skill suggest --install --all --json` response:
 }
 ```
 
-### Example: how future catalog additions such as Vue fit the model
+### Example: how future catalog additions fit the model
 
-Detection support for a new technology is still a Rust change first. For example, adding Vue in the future would typically require:
+Detection support for a new technology is still a Rust change first. For example, adding support for a new technology (say, `solidjs`) would typically require:
 
 1. adding a new Rust `TechnologyId` and detector markers
 2. adding a catalog skill definition and technology entry
@@ -302,18 +302,21 @@ A catalog entry could look like this:
 
 ```toml
 [[skills]]
-provider_skill_id = "antfu/skills/vue"
-local_skill_id = "vue"
-title = "Vue"
-summary = "Opinionated Vue workflow guidance."
+provider_skill_id = "example/skills/solidjs"
+local_skill_id = "solidjs"
+title = "SolidJS"
+summary = "Build reactive UIs with SolidJS patterns."
 
 [[technologies]]
-id = "vue"
-name = "Vue"
-skills = ["antfu/skills/vue", "frontend-design"]
+id = "solidjs"
+name = "SolidJS"
+skills = ["example/skills/solidjs"]
+
+[technologies.detect]
+packages = ["solid-js"]
 ```
 
-That TOML shape is already supported by the catalog model. But the repository would not start detecting Vue until the Rust detector also learned how to report `vue`.
+That TOML shape is already supported by the catalog model. But the repository would not start detecting the technology until the Rust detector also learned how to report its `id`.
 
 ## Skill sources: owned vs external
 
