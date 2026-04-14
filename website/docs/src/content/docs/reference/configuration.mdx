@@ -212,6 +212,8 @@ The matrix below documents common agent locations and whether AgentSync can hand
 | Aider | - | No native MCP formatter; `.aider.conf.yml`, `.aiderignore` ignores | Configurable |
 | Firebase Studio | - | No native MCP formatter; `.idx/airules.md`, `.idx/mcp.json` ignores | Configurable |
 | Open Hands | - | No native MCP formatter; `.openhands/microagents/` ignore | Configurable |
+
+**Note (Cursor rules filename):** `.cursor/rules/agentsync.mdc` is the documented example path used by AgentSync for Cursor rules. You may use a different `.mdc` filename/path if you configure it explicitly under your `[agents.<name>.targets.*]` entries.
 | Gemini CLI | `GEMINI.md` | `.gemini/settings.json` (native MCP, adds `"trust": true`) | Configurable; `.gemini/skills/` |
 | Junie | - | No native MCP formatter; `.junie/` ignore | Configurable |
 | AugmentCode | - | No native MCP formatter; `.augment/rules/` ignore | Configurable |
