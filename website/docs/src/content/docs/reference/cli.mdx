@@ -236,7 +236,7 @@ agentsync doctor [OPTIONS]
 ```
 
 **Options**:
-- `--project-root <PROJECT_ROOT>`: Project root (defaults to CWD).
+- `-p, --project-root <PROJECT_ROOT>`: Project root (defaults to CWD).
 
 **Diagnostics**:
 - Validates `agentsync.toml` existence and syntax.
@@ -277,7 +277,7 @@ agentsync status [--project-root <path>] [--json]
 ```
 
 **Flags**:
-- `--project-root <path>`: Optional. Path to the project root to locate the agentsync config. If omitted, the current working directory is used.
+- `-p, --project-root <path>`: Optional. Path to the project root to locate the agentsync config. If omitted, the current working directory is used.
 - `--json`: Output machine-readable JSON (pretty-printed) describing each managed target. Useful for CI.
 
 **Behavior**:
