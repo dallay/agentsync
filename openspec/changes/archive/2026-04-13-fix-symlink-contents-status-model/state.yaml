@@ -1,0 +1,14 @@
+change: fix-symlink-contents-status-model
+current_phase: archive
+completed:
+  - propose
+  - spec
+  - design
+  - tasks
+  - apply
+  - verify
+  - archive
+next: none
+updated: 2026-04-13T00:00:00Z
+verdict: PASS WITH WARNINGS
+archived: 2026-04-13

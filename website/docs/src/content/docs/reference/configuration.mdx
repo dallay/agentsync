@@ -178,6 +178,13 @@ AgentSync supports a canonical `.agents/commands/` directory for agent commands 
 
 The `init` command automatically creates `.agents/commands/` alongside `.agents/skills/`. The wizard detects existing command directories (`.claude/commands/`, `.gemini/commands/`, `.opencode/command/`) and offers to migrate them.
 
+Those destinations stay as real directories:
+
+- canonical source: `.agents/commands/`
+- destination examples: `.claude/commands/`, `.gemini/commands/`, `.opencode/command/`
+
+`agentsync status` validates those targets as managed directory containers. If `.agents/commands/` exists but currently has zero eligible entries, an empty destination directory is still valid and is reported as in sync with `0 managed entries expected`.
+
 ## Agent Compatibility Matrix
 
 AgentSync has two support levels:
@@ -233,7 +240,7 @@ The matrix below documents common agent locations and whether AgentSync can hand
 | Type | Description |
 | :--- | :--- |
 | `symlink` | Creates a direct symbolic link from `destination` to `source`. |
-| `symlink-contents` | Creates individual symbolic links for every file inside the `source` directory into the `destination` directory. |
+| `symlink-contents` | Creates individual symbolic links for every eligible file inside the `source` directory into the `destination` directory container. |
 | `nested-glob` | Recursively discovers files matching a `pattern` under `source` (relative to project root) and creates a symlink for each at the path produced by expanding the `destination` template. |
 | `module-map` | Maps centrally-managed source files to specific module directories, creating a symlink per mapping with convention-based filenames. |
 
@@ -244,11 +251,13 @@ When using `symlink-contents`, you can filter files using a glob pattern:
 
 ```toml
 [agents.claude.targets.commands]
-source = "command"
+source = "commands"
 destination = ".claude/commands"
 type = "symlink-contents"
 pattern = "*.agent.md"
 ```
+
+When this target is empty, `agentsync apply` leaves `.claude/commands/` as a valid empty directory and `agentsync status` does not treat that container as missing or "not a symlink" just because there are no managed child links yet.
 
 #### `nested-glob` targets
 The `nested-glob` type is designed for monorepos or projects with nested context files. It walks the `source` directory (which is relative to the **project root**, unlike other types) and creates a symlink for every file matching the `pattern`.
