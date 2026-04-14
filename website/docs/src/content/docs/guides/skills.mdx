@@ -91,7 +91,27 @@ Prompts and examples...
   - Examples: `weather-skill`, `my2-skill`, `a`.
   - Disallowed: uppercase letters, spaces, leading/trailing dashes, consecutive dashes (e.g., `bad--name`).
 
-- `version` is optional, but if present must be valid semver.
+- `version` is optional for installation, but **required** for the `skill update` command to work (must be valid semver).
+
+### Version requirement for updates
+
+When updating a skill with `agentsync skill update <SKILL_ID>`, the `SKILL.md` manifest **must** contain a valid `version` field in the frontmatter. Without it, the update will fail with the error "missing version in SKILL.md".
+
+Example with version:
+
+```md
+---
+name: my-skill
+version: 1.0.0
+description: A short description of this skill.
+---
+
+# Usage
+
+Prompts and examples...
+```
+
+If you don't intend to update a skill, the `version` field can be omitted from the manifest.
 
 If parsing fails, the CLI will return a validation error indicating the problem.
 

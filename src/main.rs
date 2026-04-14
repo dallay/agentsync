@@ -48,13 +48,13 @@ enum Commands {
         #[command(subcommand)]
         cmd: SkillCommand,
         /// Root of the project (defaults to CWD)
-        #[arg(long)]
+        #[arg(short, long)]
         project_root: Option<PathBuf>,
     },
     /// Run diagnostic and health check
     Doctor {
         /// Project root (defaults to CWD)
-        #[arg(long)]
+        #[arg(short, long)]
         project_root: Option<PathBuf>,
     },
     /// Show status of managed symlinks
@@ -62,7 +62,7 @@ enum Commands {
         #[command(flatten)]
         args: StatusArgs,
         /// Project root (defaults to CWD)
-        #[arg(long)]
+        #[arg(short, long)]
         project_root: Option<PathBuf>,
     },
     /// Initialize a new agentsync configuration in the current or specified directory.
