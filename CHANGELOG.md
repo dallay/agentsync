@@ -21,6 +21,18 @@
 * **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
 * **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
 
+## [1.42.7](https://github.com/dallay/agentsync/compare/v1.42.6...v1.42.7) (2026-04-14)
+
+
+### Bug Fixes
+
+* restore changelog chronological order, hoist invalidate_discovery_caches, clarify docs ([2afe5e2](https://github.com/dallay/agentsync/commit/2afe5e2ffcd6eb2335965efe3d3d4291c8d896de))
+
+
+### Styles
+
+* Combine expect call into single line ([9c640bd](https://github.com/dallay/agentsync/commit/9c640bd5943189ee216f81c174ae4e4c492c66ab))
+
 ## [1.38.0](https://github.com/dallay/agentsync/compare/v1.37.0...v1.38.0) (2026-04-03)
 
 
