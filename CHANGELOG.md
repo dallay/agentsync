@@ -1,3 +1,26 @@
+## [1.42.6](https://github.com/dallay/agentsync/compare/v1.42.5...v1.42.6) (2026-04-14)
+
+
+### Bug Fixes
+
+* unify -p flag across all commands and document skill update version requirement ([#348](https://github.com/dallay/agentsync/issues/348)) ([b1598c8](https://github.com/dallay/agentsync/commit/b1598c85c7fd3d5e652b2b221e4a9be743c3a4df))
+
+
+### Performance
+
+* optimize destination template expansion and improve cache consistency ([#343](https://github.com/dallay/agentsync/issues/343)) ([3f43ba9](https://github.com/dallay/agentsync/commit/3f43ba9858cbcfce44d1b73358535d8586458091))
+
+
+### Documentation
+
+* update skills guide to reflect catalog-driven detection engine ([#341](https://github.com/dallay/agentsync/issues/341)) ([698fe7f](https://github.com/dallay/agentsync/commit/698fe7fc5d56f886867e623d63e90e2aab353bc8))
+
+
+### Chores
+
+* **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
+* **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
+
 ## [1.38.0](https://github.com/dallay/agentsync/compare/v1.37.0...v1.38.0) (2026-04-03)
 
 
@@ -26,29 +49,6 @@
 * **deps:** update dependency @iconify/json to v2.2.458 ([#294](https://github.com/dallay/agentsync/issues/294)) ([0cc22fe](https://github.com/dallay/agentsync/commit/0cc22fe236db2ee9de30e7543d8da8152c70d3b0))
 * **deps:** update docker/login-action action to v4.1.0 ([#295](https://github.com/dallay/agentsync/issues/295)) ([4fb81a5](https://github.com/dallay/agentsync/commit/4fb81a58ee3412fc85d045b5b662cca25017ca79))
 * **deps:** update rust crate zip to v8.5.0 ([#285](https://github.com/dallay/agentsync/issues/285)) ([56b5cef](https://github.com/dallay/agentsync/commit/56b5cef976b16aab53b55ea16cc0183f93b10274))
-
-## [1.42.6](https://github.com/dallay/agentsync/compare/v1.42.5...v1.42.6) (2026-04-14)
-
-
-### Bug Fixes
-
-* unify -p flag across all commands and document skill update version requirement ([#348](https://github.com/dallay/agentsync/issues/348)) ([b1598c8](https://github.com/dallay/agentsync/commit/b1598c85c7fd3d5e652b2b221e4a9be743c3a4df))
-
-
-### Performance
-
-* optimize destination template expansion and improve cache consistency ([#343](https://github.com/dallay/agentsync/issues/343)) ([3f43ba9](https://github.com/dallay/agentsync/commit/3f43ba9858cbcfce44d1b73358535d8586458091))
-
-
-### Documentation
-
-* update skills guide to reflect catalog-driven detection engine ([#341](https://github.com/dallay/agentsync/issues/341)) ([698fe7f](https://github.com/dallay/agentsync/commit/698fe7fc5d56f886867e623d63e90e2aab353bc8))
-
-
-### Chores
-
-* **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
-* **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
 * **deps:** update cargo dependencies ([#340](https://github.com/dallay/agentsync/issues/340)) ([c20cb94](https://github.com/dallay/agentsync/commit/c20cb9438a39fd4bd0f95607607c04580a949f6d))
 * **deps:** update dependency @dallay/agentsync to v1.42.3 ([#338](https://github.com/dallay/agentsync/issues/338)) ([1ad6751](https://github.com/dallay/agentsync/commit/1ad6751d0a60da608641476fbb671505b758e68a))
 * **deps:** update dependency @iconify/json to v2.2.460 ([#337](https://github.com/dallay/agentsync/issues/337)) ([89071c0](https://github.com/dallay/agentsync/commit/89071c02de5251ec788612855a4ffcb242d1d39a))

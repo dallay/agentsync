@@ -619,7 +619,6 @@ impl Linker {
             #[cfg(unix)]
             std::os::unix::fs::symlink(&relative_source, dest)
                 .with_context(|| format!("Failed to create symlink: {}", dest.display()))?;
-            self.invalidate_discovery_caches();
 
             #[cfg(windows)]
             {
@@ -628,8 +627,9 @@ impl Linker {
                 } else {
                     std::os::windows::fs::symlink_file(&relative_source, dest)?;
                 }
-                self.invalidate_discovery_caches();
             }
+
+            self.invalidate_discovery_caches();
 
             println!(
                 "  {} Linked: {} -> {}",
@@ -1361,7 +1361,7 @@ fn compress_agents_md_content(input: &str) -> String {
 
         if is_fence {
             let delim =
-                fence_delim_match.expect("fence_delim_match should be set when is_fence is true");
+                fence_delim_match.expect("fence_delim_match is Some when is_fence is true");
             if fence_delim.is_none() {
                 fence_delim = Some(delim);
             } else if fence_delim == Some(delim) {
@@ -1508,7 +1508,9 @@ fn path_glob_match(path: &[&str], pattern: &[&str]) -> bool {
             pat_idx += 1;
         } else if let Some(b_pat_idx) = backtrack_pat_idx {
             // Backtrack: last ** matches one more segment
-            let b_path_idx = backtrack_path_idx.expect("backtrack_path_idx set with pat_idx") + 1;
+            let b_path_idx = backtrack_path_idx
+                .expect("Invariant violated: backtrack_path_idx should be Some when backtrack_pat_idx is Some")
+                + 1;
             if b_path_idx > path.len() {
                 return false;
             }
