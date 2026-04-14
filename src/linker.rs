@@ -50,6 +50,13 @@ struct ResolvedSource {
     exists: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SymlinkContentsChildExpectation {
+    pub name: String,
+    pub source_path: PathBuf,
+    pub expected_source_path: PathBuf,
+}
+
 /// Performs the synchronization of agent configurations
 pub struct Linker {
     config: Config,
@@ -216,6 +223,52 @@ impl Linker {
         } else {
             None
         }
+    }
+
+    /// Derive the child entries that a `symlink-contents` target manages.
+    pub fn symlink_contents_expected_children(
+        &self,
+        source_dir: &Path,
+        target: &TargetConfig,
+    ) -> Result<Option<Vec<SymlinkContentsChildExpectation>>> {
+        if !source_dir.exists() || !source_dir.is_dir() {
+            return Ok(None);
+        }
+
+        let mut children = Vec::new();
+
+        for entry in fs::read_dir(source_dir)
+            .with_context(|| format!("Failed to read source directory: {}", source_dir.display()))?
+        {
+            let entry = entry
+                .with_context(|| format!("Failed to read entry in: {}", source_dir.display()))?;
+            let file_name = entry.file_name();
+            let item_name = file_name.to_string_lossy().into_owned();
+
+            if let Some(pat) = target.pattern.as_deref()
+                && !matches_pattern(&item_name, pat)
+            {
+                continue;
+            }
+
+            // Skip AGENTS.compact.md when compression is enabled to avoid false drift in status
+            if self.config.compress_agents_md && item_name == "AGENTS.compact.md" {
+                continue;
+            }
+
+            let source_path = entry.path();
+            if let Some(expected_source_path) = self.expected_source_path(&source_path, target) {
+                children.push(SymlinkContentsChildExpectation {
+                    name: item_name,
+                    source_path,
+                    expected_source_path,
+                });
+            }
+        }
+
+        children.sort_by(|left, right| left.name.cmp(&right.name));
+
+        Ok(Some(children))
     }
 
     /// Perform the sync operation
