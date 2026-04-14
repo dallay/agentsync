@@ -107,6 +107,7 @@ impl Linker {
     /// nested-glob walks or destination safety checks in the same run.
     fn invalidate_discovery_caches(&self) {
         self.glob_cache.borrow_mut().clear();
+        self.path_cache.borrow_mut().clear();
         self.canonical_project_root.borrow_mut().take();
     }
 
@@ -707,19 +708,21 @@ impl Linker {
         template: &str,
         rel_path: &Path, // path of the discovered file relative to search root
     ) -> String {
+        // Optimization: use Cow<str> from to_string_lossy() to avoid heap allocations
+        // for valid UTF-8 paths.
         let file_name = rel_path
             .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
+            .map(|n| n.to_string_lossy())
             .unwrap_or_default();
 
         let stem = rel_path
             .file_stem()
-            .map(|s| s.to_string_lossy().into_owned())
+            .map(|s| s.to_string_lossy())
             .unwrap_or_default();
 
         let ext = rel_path
             .extension()
-            .map(|e| e.to_string_lossy().into_owned())
+            .map(|e| e.to_string_lossy())
             .unwrap_or_default();
 
         // Use "." for files directly inside the search root so that
@@ -728,16 +731,41 @@ impl Linker {
         let dir = rel_path
             .parent()
             .map(|p| {
-                let s = p.to_string_lossy().into_owned();
-                if s.is_empty() { ".".to_string() } else { s }
+                let s = p.to_string_lossy();
+                if s.is_empty() {
+                    std::borrow::Cow::Borrowed(".")
+                } else {
+                    s
+                }
             })
-            .unwrap_or_else(|| ".".to_string());
+            .unwrap_or(std::borrow::Cow::Borrowed("."));
 
-        template
-            .replace("{relative_path}", &dir)
-            .replace("{file_name}", &file_name)
-            .replace("{stem}", &stem)
-            .replace("{ext}", &ext)
+        // Performance Optimization: single-pass expansion with String::with_capacity
+        // to eliminate O(N) heap allocations from multiple .replace() calls.
+        let mut result = String::with_capacity(template.len() + dir.len() + file_name.len());
+        let mut remaining = template;
+
+        while let Some(start_idx) = remaining.find('{') {
+            result.push_str(&remaining[..start_idx]);
+            let after_brace = &remaining[start_idx..];
+
+            if let Some(end_idx) = after_brace.find('}') {
+                let placeholder = &after_brace[..end_idx + 1];
+                match placeholder {
+                    "{relative_path}" => result.push_str(&dir),
+                    "{file_name}" => result.push_str(&file_name),
+                    "{stem}" => result.push_str(&stem),
+                    "{ext}" => result.push_str(&ext),
+                    _ => result.push_str(placeholder),
+                }
+                remaining = &after_brace[end_idx + 1..];
+            } else {
+                result.push('{');
+                remaining = &after_brace[1..];
+            }
+        }
+        result.push_str(remaining);
+        result
     }
 
     /// Process a `NestedGlob` target: walk `search_root`, match files against
