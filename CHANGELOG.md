@@ -21,6 +21,15 @@
 * **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
 * **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
 
+## [1.42.8](https://github.com/dallay/agentsync/compare/v1.42.7...v1.42.8) (2026-04-15)
+
+
+### Bug Fixes
+
+* apply CodeRabbit auto-fixes ([233615a](https://github.com/dallay/agentsync/commit/233615a64e1b663c0d6e8706dc941064f5f2dec1))
+* **security:** prevent information disclosure via symlinks in skill installation ([aa860ab](https://github.com/dallay/agentsync/commit/aa860ab8599df8030d1e422cebdb0ff365cbf209))
+* **security:** prevent information disclosure via symlinks in skill installation ([365b644](https://github.com/dallay/agentsync/commit/365b644cd2e67cb2dc70294288a2a9744f8d974f))
+
 ## [1.42.7](https://github.com/dallay/agentsync/compare/v1.42.6...v1.42.7) (2026-04-14)
 
 
