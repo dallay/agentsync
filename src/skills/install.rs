@@ -39,6 +39,12 @@ fn copy_dir_recursively(
     for entry in std::fs::read_dir(src).map_err(SkillInstallError::Io)? {
         let entry = entry.map_err(SkillInstallError::Io)?;
         let file_type = entry.file_type().map_err(SkillInstallError::Io)?;
+
+        // SECURITY: Skip symbolic links to prevent following them outside the source directory.
+        if file_type.is_symlink() {
+            continue;
+        }
+
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
         if file_type.is_dir() {
