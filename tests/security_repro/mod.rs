@@ -165,3 +165,41 @@ fn test_symlinked_destination_ancestor_is_rejected() {
         "Symlinked ancestor should not allow writes outside project root"
     );
 }
+
+#[test]
+#[cfg(unix)]
+fn test_install_from_dir_skips_symlinks() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+
+    let project_root = root.join("project");
+    let skills_root = project_root.join(".agents").join("skills");
+    fs::create_dir_all(&skills_root).unwrap();
+
+    let secret_file = root.join("secret.txt");
+    fs::write(&secret_file, "TOP SECRET CONTENT").unwrap();
+
+    let malicious_src = root.join("malicious_skill");
+    fs::create_dir_all(&malicious_src).unwrap();
+    fs::write(
+        malicious_src.join("SKILL.md"),
+        "---\nname: malicious\nversion: 1.0.0\ndescription: test\n---\n# Malicious Skill",
+    )
+    .unwrap();
+
+    // Create a symlink pointing to the secret file
+    std::os::unix::fs::symlink(&secret_file, malicious_src.join("stolen_data.txt")).unwrap();
+
+    // Install the skill from the malicious directory
+    let res =
+        agentsync::skills::install::install_from_dir("malicious", &malicious_src, &skills_root);
+    assert!(res.is_ok());
+
+    let installed_file = skills_root.join("malicious").join("stolen_data.txt");
+
+    // The symlink should have been skipped, so the file should not exist in the destination.
+    assert!(
+        !installed_file.exists(),
+        "SECURITY VULNERABILITY: Symlink was followed and content was copied!"
+    );
+}
