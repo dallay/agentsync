@@ -23,6 +23,7 @@ explicit permission management is required.
 tool that are known to contain user-provided credentials or sensitive environment variables.
 
 ## 2025-05-17 - Information Disclosure via Symlink Following in Skill Installation
+
 **Vulnerability:** The `copy_dir_recursively` function used during local skill installation followed symbolic links. A malicious skill source could include a symlink to a sensitive file (e.g., `~/.ssh/id_rsa`), causing its content to be copied into the project.
 **Learning:** Rust's `std::fs::copy` follows symbolic links by default, copying the target's content rather than the link itself. Similarly, `DirEntry::metadata()` follows links, while `DirEntry::file_type()` does not.
 **Prevention:** Explicitly check `file_type.is_symlink()` and skip or handle symlinks appropriately when performing recursive copies of untrusted directory structures.
