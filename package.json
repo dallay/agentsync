@@ -31,5 +31,5 @@
 		"@dallay/agentsync": "catalog:",
 		"lefthook": "^2.1.4"
 	},
-	"version": "1.42.8"
+	"version": "1.42.9"
 }
