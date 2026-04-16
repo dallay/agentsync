@@ -35,6 +35,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
+      - name: Rebuild native modules
+        run: pnpm rebuild
+
       - name: Build site
         run: |
           cd website/docs
