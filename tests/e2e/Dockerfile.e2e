@@ -30,7 +30,7 @@ RUN if command -v apt-get >/dev/null; then \
     elif command -v apk >/dev/null; then \
         apk add --no-cache bash curl ca-certificates tree jq shadow util-linux; \
     elif command -v pacman >/dev/null; then \
-        pacman -Sy --noconfirm bash curl ca-certificates tree jq shadow util-linux && pacman -Scc --noconfirm; \
+        pacman -Syu --noconfirm bash curl ca-certificates tree jq shadow util-linux && pacman -Scc --noconfirm; \
     fi
 
 # Copy the binary from the selected builder stage
