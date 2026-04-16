@@ -123,7 +123,7 @@ reuse results within the same sync run.
 
 **Action:** Always pre-split static patterns or strings used for matching before entering a high-frequency loop (like directory traversal). Prefer iterative backtracking over recursion for glob-style pattern matching to ensure safety and predictable performance.
 
-## 2025-04-18 - Borrow Checker Limitations on Buffer Reuse
+## 2026-04-18 - Borrow Checker Limitations on Buffer Reuse
 
 **Learning:** Attempting to reuse a `Vec<&str>` buffer outside a loop to reduce allocations (e.g., in `for_each_nested_glob_match`) was blocked by the Rust borrow checker. Since the string slices (`&str`) pointed to strings created *inside* the loop (`rel_str`), they could not be stored in a collection that persists across loop iterations.
 
