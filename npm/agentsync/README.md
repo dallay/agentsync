@@ -1,7 +1,6 @@
 # @dallay/agentsync
 
 [![npm version](https://img.shields.io/npm/v/@dallay/agentsync.svg)](https://www.npmjs.com/package/@dallay/agentsync)  
-[![npm monthly downloads](https://img.shields.io/npm/dm/@dallay/agentsync)](https://www.npmjs.com/package/@dallay/agentsync)
 [![license](https://img.shields.io/npm/l/@dallay/agentsync.svg)](https://github.com/dallay/agentsync/blob/main/LICENSE)  
 [![repository](https://img.shields.io/badge/repo-dallay%2Fagentsync-blue)](https://github.com/dallay/agentsync)
 

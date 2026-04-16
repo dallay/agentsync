@@ -122,3 +122,9 @@ reuse results within the same sync run.
 **Learning:** The recursive `path_glob_match` implementation was a potential performance bottleneck and stack risk. By switching to an iterative backtracking algorithm and pre-splitting glob patterns outside the file-walk loop, we eliminated redundant heap allocations and improved algorithmic efficiency from potential exponential to $O(N \cdot M)$.
 
 **Action:** Always pre-split static patterns or strings used for matching before entering a high-frequency loop (like directory traversal). Prefer iterative backtracking over recursion for glob-style pattern matching to ensure safety and predictable performance.
+
+## 2025-04-18 - Borrow Checker Limitations on Buffer Reuse
+
+**Learning:** Attempting to reuse a `Vec<&str>` buffer outside a loop to reduce allocations (e.g., in `for_each_nested_glob_match`) was blocked by the Rust borrow checker. Since the string slices (`&str`) pointed to strings created *inside* the loop (`rel_str`), they could not be stored in a collection that persists across loop iterations.
+
+**Action:** When seeking to eliminate allocations in loops, be mindful of lifetimes. If the data being stored is owned by loop-local variables, buffer reuse requires either copying the data (which might defeat the purpose) or using `unsafe` code (which should be avoided). Focus on optimizations that don't involve cross-iteration storage of local references.
