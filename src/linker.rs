@@ -173,24 +173,24 @@ impl Linker {
             anyhow::bail!("Destination path must be relative: {}", dest_path);
         }
 
-        // SECURITY: Reject empty destinations like "" or "." that do not identify a concrete file.
-        // Optimization: iterate directly to avoid unnecessary Vec allocation.
-        if !path.components().any(|c| matches!(c, Component::Normal(_))) {
-            anyhow::bail!("Destination path must not be empty: {}", dest_path);
+        // SECURITY: Reject empty/traversal/root/prefix components and ensure at least one Normal component.
+        // Optimization: Use a single pass over components to validate safety.
+        let mut has_normal = false;
+        for component in path.components() {
+            match component {
+                Component::Normal(_) => has_normal = true,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                    anyhow::bail!(
+                        "Destination path contains invalid path components: {}",
+                        dest_path
+                    );
+                }
+                Component::CurDir => {}
+            }
         }
 
-        // SECURITY: Reject traversal, root, and drive-prefixed components.
-        // Optimization: iterate directly to avoid unnecessary Vec allocation.
-        if path.components().any(|c| {
-            matches!(
-                c,
-                Component::ParentDir | Component::RootDir | Component::Prefix(_)
-            )
-        }) {
-            anyhow::bail!(
-                "Destination path contains invalid path components: {}",
-                dest_path
-            );
+        if !has_normal {
+            anyhow::bail!("Destination path must not be empty: {}", dest_path);
         }
 
         let joined = self.project_root.join(path);
@@ -1325,7 +1325,7 @@ fn mcp_agent_matches_filter(agent: crate::mcp::McpAgent, filter: &str) -> bool {
 }
 
 fn is_agents_md_path(path: &Path) -> bool {
-    path.file_name().is_some_and(|name| name == "AGENTS.md")
+    path.file_name() == Some(std::ffi::OsStr::new("AGENTS.md"))
 }
 
 fn compressed_agents_md_path(path: &Path) -> PathBuf {
@@ -1398,11 +1398,13 @@ fn compress_agents_md_content(input: &str) -> String {
 }
 
 fn split_leading_whitespace(line: &str) -> (&str, &str) {
+    // Performance: Use byte operations to avoid UTF-8 decoding overhead
+    // for common leading ASCII whitespace.
     let idx = line
-        .char_indices()
-        .find(|(_, c)| *c != ' ' && *c != '\t')
-        .map(|(idx, _)| idx)
-        .unwrap_or_else(|| line.len());
+        .as_bytes()
+        .iter()
+        .position(|&b| b != b' ' && b != b'\t')
+        .unwrap_or(line.len());
     line.split_at(idx)
 }
 
@@ -1530,7 +1532,10 @@ fn path_glob_match(path: &[&str], pattern: &[&str]) -> bool {
 }
 
 fn backup_path_for_destination(dest: &Path) -> PathBuf {
-    PathBuf::from(format!("{}.bak", dest.display()))
+    // Performance: Use OsString::push to avoid string formatting and UTF-8 validation overhead.
+    let mut os_string = dest.as_os_str().to_os_string();
+    os_string.push(".bak");
+    PathBuf::from(os_string)
 }
 
 fn remove_existing_path(path: &Path) -> std::io::Result<()> {
