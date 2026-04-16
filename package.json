@@ -4,6 +4,13 @@
 	"workspaces": [
 		"npm/agentsync"
 	],
+	"pnpm": {
+		"onlyBuiltDependencies": [
+			"esbuild",
+			"lefthook",
+			"sharp"
+		]
+	},
 	"scripts": {
 		"update-deps": "pnpm update -i -r --latest",
 		"preinstall": "npx only-allow pnpm",
