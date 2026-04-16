@@ -1,6 +1,6 @@
 {
 	"name": "@dallay/agentsync",
-	"version": "1.42.8",
+	"version": "1.42.9",
 	"description": "A fast CLI tool to sync AI agent configurations and MCP servers across Claude, Copilot, Cursor, and more using symbolic links.",
 	"author": "Yuniel Acosta <yunielacosta738@gmail.com>",
 	"license": "MIT",
@@ -48,12 +48,12 @@
 		"typescript": "^6.0.0"
 	},
 	"optionalDependencies": {
-		"@dallay/agentsync-darwin-arm64": "1.42.8",
-		"@dallay/agentsync-darwin-x64": "1.42.8",
-		"@dallay/agentsync-linux-arm64": "1.42.8",
-		"@dallay/agentsync-linux-x64": "1.42.8",
-		"@dallay/agentsync-windows-arm64": "1.42.8",
-		"@dallay/agentsync-windows-x64": "1.42.8"
+		"@dallay/agentsync-darwin-arm64": "1.42.9",
+		"@dallay/agentsync-darwin-x64": "1.42.9",
+		"@dallay/agentsync-linux-arm64": "1.42.9",
+		"@dallay/agentsync-linux-x64": "1.42.9",
+		"@dallay/agentsync-windows-arm64": "1.42.9",
+		"@dallay/agentsync-windows-x64": "1.42.9"
 	},
 	"engines": {
 		"node": ">=18"

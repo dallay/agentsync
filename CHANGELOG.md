@@ -21,6 +21,28 @@
 * **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
 * **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
 
+## [1.42.9](https://github.com/dallay/agentsync/compare/v1.42.8...v1.42.9) (2026-04-16)
+
+
+### Bug Fixes
+
+* **deps:** allow build scripts for esbuild, lefthook, and sharp ([c153178](https://github.com/dallay/agentsync/commit/c153178e424da573c9d1e4fd6b751be927e00083))
+
+
+### Performance
+
+* optimize hot paths in symlink and path handling ([#354](https://github.com/dallay/agentsync/issues/354)) ([2715b89](https://github.com/dallay/agentsync/commit/2715b8956b1849b629b39cf1067dc6a31971e5d4))
+
+
+### Documentation
+
+* add crates.io and npm badges to READMEs ([119ca74](https://github.com/dallay/agentsync/commit/119ca747ca19ac6c13509c95834ea40abc5e985d))
+
+
+### Chores
+
+* **deps:** update devdependencies ([#353](https://github.com/dallay/agentsync/issues/353)) ([54f0408](https://github.com/dallay/agentsync/commit/54f0408ca09c95f95e029356e1b14d2dd08e7bc5))
+
 ## [1.42.8](https://github.com/dallay/agentsync/compare/v1.42.7...v1.42.8) (2026-04-15)
 
 
