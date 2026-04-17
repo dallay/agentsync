@@ -21,6 +21,20 @@
 * **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
 * **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
 
+## [1.42.10](https://github.com/dallay/agentsync/compare/v1.42.9...v1.42.10) (2026-04-17)
+
+
+### Bug Fixes
+
+* improve CI and E2E network resilience for apt-get ([f3f6a5b](https://github.com/dallay/agentsync/commit/f3f6a5bdb0c84039dbe510e5dfb1b7b9df068ca1))
+* robust apt-get retries in CI and E2E ([9052789](https://github.com/dallay/agentsync/commit/90527898cc0e44732fce9475e47370d4cc5fccee))
+
+
+### Chores
+
+* Convert skill docs to pointer files ([5472851](https://github.com/dallay/agentsync/commit/54728514f8e36998d84f11b503201c30da7e12cf))
+* **deps:** update devdependencies ([#358](https://github.com/dallay/agentsync/issues/358)) ([5511f1e](https://github.com/dallay/agentsync/commit/5511f1e5ebaaa3d04a60595a3d4e738c2567dc98))
+
 ## [1.42.9](https://github.com/dallay/agentsync/compare/v1.42.8...v1.42.9) (2026-04-16)
 
 
