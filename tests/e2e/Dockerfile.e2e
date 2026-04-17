@@ -3,7 +3,7 @@ ARG BUILD_TYPE=glibc
 
 # --- 1. GLIBC BUILDER (Debian-based) ---
 FROM rust:1.89-slim AS builder-glibc
-RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+RUN apt-get -o Acquire::Retries=3 update && apt-get -o Acquire::Retries=3 install -y --no-install-recommends --fix-missing pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 WORKDIR /usr/src/agentsync
 COPY . .
 RUN cargo build --release
@@ -26,7 +26,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Install essential utilities for testing based on the distribution
 RUN if command -v apt-get >/dev/null; then \
-        apt-get update && apt-get install -y bash curl ca-certificates tree jq util-linux && rm -rf /var/lib/apt/lists/*; \
+        apt-get -o Acquire::Retries=3 update && apt-get -o Acquire::Retries=3 install -y --fix-missing bash curl ca-certificates tree jq util-linux && rm -rf /var/lib/apt/lists/*; \
     elif command -v apk >/dev/null; then \
         apk add --no-cache bash curl ca-certificates tree jq shadow util-linux; \
     elif command -v pacman >/dev/null; then \
