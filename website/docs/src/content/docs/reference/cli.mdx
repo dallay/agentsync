@@ -139,7 +139,7 @@ agentsync skill [OPTIONS] <COMMAND>
 ```
 
 **Global Options**:
-- `--project-root <PROJECT_ROOT>`: Root of the project (defaults to CWD).
+- `-p, --project-root <PROJECT_ROOT>`: Root of the project (defaults to CWD).
 
 #### `install`
 
@@ -167,7 +167,7 @@ agentsync skill suggest [--json] [--install [--all]]
 Behavior:
 
 - `skill suggest` is read-only by default.
-- Detection scope is currently limited to Rust, Node/TypeScript, Astro, GitHub Actions, Docker, Make, and Python.
+- Detection scope currently supports 70+ technologies. See the [Skills guide](/guides/skills/#supported-repository-technology-detection-current-scope) for a representative list.
 - Detection comes from Rust repository scanning, while recommendation mapping comes from AgentSync's curated catalog.
 - Recommendations are opinionated, not exhaustive.
 - The runtime loads an embedded declarative catalog first, then optionally overlays valid provider metadata.
