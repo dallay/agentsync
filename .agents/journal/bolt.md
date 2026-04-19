@@ -128,3 +128,14 @@ reuse results within the same sync run.
 **Learning:** Attempting to reuse a `Vec<&str>` buffer outside a loop to reduce allocations (e.g., in `for_each_nested_glob_match`) was blocked by the Rust borrow checker. Since the string slices (`&str`) pointed to strings created *inside* the loop (`rel_str`), they could not be stored in a collection that persists across loop iterations.
 
 **Action:** When seeking to eliminate allocations in loops, be mindful of lifetimes. If the data being stored is owned by loop-local variables, buffer reuse requires either copying the data (which might defeat the purpose) or using `unsafe` code (which should be avoided). Focus on optimizations that don't involve cross-iteration storage of local references.
+
+## 2025-04-18 - Single-Pass Repository Metadata Collection
+
+**Learning:** Technology detection was performing redundant O(N) directory walks (up to depth 3)
+for every technology defined in the catalog with `file_extensions` rules. In projects with many
+supported technologies, this caused significant I/O overhead. Consolidating discovery into a
+single-pass `RepoMetadata` structure reduced redundant traversals from O(T * N) to O(N + T).
+
+**Action:** Consolidate multiple discovery operations (like searching for files, extensions, or
+packages) that target the same directory tree into a single traversal. Cache the results in a
+well-defined metadata structure for efficient O(1) lookups during rule evaluation.
