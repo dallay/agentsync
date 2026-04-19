@@ -5,7 +5,7 @@ use crate::skills::suggest::{
 use anyhow::{Context, Result};
 use regex::Regex;
 use serde::Deserialize;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::warn;
@@ -62,7 +62,7 @@ pub struct ConfigFileContentRules {
 struct RepoMetadata {
     /// All package names found in root and workspace package.json files.
     pub all_packages: BTreeSet<String>,
-    /// Map of file extensions (both with dot like ".rs" and without like "rs")
+    /// Map of file extensions (bare form without leading dot, e.g., "rs")
     /// to the first encountered file path. Consolidates multiple O(N) directory
     /// walks into a single pass.
     pub extensions: HashMap<String, PathBuf>,
@@ -70,12 +70,20 @@ struct RepoMetadata {
 
 impl RepoMetadata {
     /// Collect repository metadata in a single pass.
-    pub fn collect(project_root: &Path) -> Result<Self> {
+    /// Only scans for extensions present in `needed_exts` (normalized to bare form without dots).
+    pub fn collect(project_root: &Path, needed_exts: &HashSet<String>) -> Result<Self> {
         let all_packages = collect_package_names(project_root);
         let mut extensions = HashMap::new();
 
-        // Perform a single directory walk to discover all file extensions.
-        // Replicates the logic of the previous multi-pass scan_file_extensions.
+        // Early return if no extensions are needed.
+        if needed_exts.is_empty() {
+            return Ok(Self {
+                all_packages,
+                extensions,
+            });
+        }
+
+        // Perform a single directory walk to discover requested file extensions.
         for entry in WalkDir::new(project_root)
             .max_depth(3)
             .follow_links(false)
@@ -93,14 +101,11 @@ impl RepoMetadata {
 
             let path = entry.path();
             if let Some(ext) = path.extension().and_then(|ext| ext.to_str()) {
-                // Store both ".ext" and "ext" formats to match catalog rules efficiently.
-                let dot_ext = format!(".{ext}");
-                extensions
-                    .entry(dot_ext)
-                    .or_insert_with(|| path.to_path_buf());
-                extensions
-                    .entry(ext.to_string())
-                    .or_insert_with(|| path.to_path_buf());
+                let ext_bare = ext.to_string();
+                // Only collect extensions that are in the needed set.
+                if needed_exts.contains(&ext_bare) {
+                    extensions.entry(ext_bare).or_insert_with(|| path.to_path_buf());
+                }
             }
         }
 
@@ -228,12 +233,19 @@ impl CatalogDrivenDetector {
             })
             .transpose()?;
 
+        // Normalize file_extensions to bare form (strip leading dots).
+        let file_extensions = rules.file_extensions.as_ref().map(|exts| {
+            exts.iter()
+                .map(|ext| ext.strip_prefix('.').unwrap_or(ext).to_string())
+                .collect()
+        });
+
         Ok(CompiledDetectionRules {
             packages: rules.packages.clone(),
             package_patterns,
             config_files: rules.config_files.clone(),
             config_file_content,
-            file_extensions: rules.file_extensions.clone(),
+            file_extensions,
         })
     }
 }
@@ -244,9 +256,17 @@ impl RepoDetector for CatalogDrivenDetector {
             return Ok(Vec::new());
         }
 
+        // Collect all needed extensions across all rules (already normalized to bare form).
+        let mut needed_exts = HashSet::new();
+        for (_tech_id, compiled) in &self.rules {
+            if let Some(exts) = &compiled.file_extensions {
+                needed_exts.extend(exts.iter().cloned());
+            }
+        }
+
         // Phase 1: Collect repository metadata (packages and extensions) in a single pass.
         // Performance: This replaces multiple O(N) directory walks with one pass.
-        let metadata = RepoMetadata::collect(project_root)?;
+        let metadata = RepoMetadata::collect(project_root, &needed_exts)?;
 
         let mut detections = Vec::new();
 
@@ -335,6 +355,7 @@ fn evaluate_rules(
 
     // Check file_extensions using pre-collected metadata.
     // Performance: O(M) lookup in HashMap instead of O(N) WalkDir.
+    // Extensions are already normalized to bare form (no leading dot).
     if let Some(extensions) = &rules.file_extensions {
         for ext in extensions {
             if let Some(path) = metadata.extensions.get(ext) {
@@ -346,7 +367,7 @@ fn evaluate_rules(
                     tech_id,
                     DetectionConfidence::Medium,
                     &relative.display().to_string(),
-                    &format!("file with extension '{ext}' found"),
+                    &format!("file with extension '.{ext}' found"),
                 ));
             }
         }

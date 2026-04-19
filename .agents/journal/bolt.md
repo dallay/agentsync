@@ -129,7 +129,7 @@ reuse results within the same sync run.
 
 **Action:** When seeking to eliminate allocations in loops, be mindful of lifetimes. If the data being stored is owned by loop-local variables, buffer reuse requires either copying the data (which might defeat the purpose) or using `unsafe` code (which should be avoided). Focus on optimizations that don't involve cross-iteration storage of local references.
 
-## 2025-04-18 - Single-Pass Repository Metadata Collection
+## 2026-04-18 - Single-Pass Repository Metadata Collection
 
 **Learning:** Technology detection was performing redundant O(N) directory walks (up to depth 3)
 for every technology defined in the catalog with `file_extensions` rules. In projects with many
