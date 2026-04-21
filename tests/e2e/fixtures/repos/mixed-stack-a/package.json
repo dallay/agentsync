@@ -2,7 +2,7 @@
 	"name": "mixed-stack-a",
 	"private": true,
 	"dependencies": {
-		"astro": "^5.0.0"
+		"astro": "^6.1.6"
 	},
 	"devDependencies": {
 		"typescript": "^5.0.0"
