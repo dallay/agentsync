@@ -317,6 +317,16 @@ pub async fn fetch_and_unpack_to_tempdir(url: &str) -> Result<TempDir, SkillInst
 
         for i in 0..zip.len() {
             let mut file = zip.by_index(i).map_err(SkillInstallError::ZipArchive)?;
+
+            // SECURITY: Skip symlinks to prevent path traversal attacks.
+            #[cfg(unix)]
+            if file
+                .unix_mode()
+                .is_some_and(|mode| (mode & 0o120000) == 0o120000)
+            {
+                continue;
+            }
+
             let full_name = file.name();
 
             // Reject absolute paths and path traversal attempts
@@ -406,6 +416,14 @@ pub async fn fetch_and_unpack_to_tempdir(url: &str) -> Result<TempDir, SkillInst
 
         for entry in entries {
             let mut entry = entry.map_err(SkillInstallError::Io)?;
+
+            // SECURITY: Skip symlinks, hardlinks and other non-regular files to prevent
+            // path traversal attacks where a symlink is created and then followed.
+            let entry_type = entry.header().entry_type();
+            if !entry_type.is_file() && !entry_type.is_dir() {
+                continue;
+            }
+
             let full_path = entry.path().map_err(SkillInstallError::Io)?;
 
             if full_path.components().any(|c| {

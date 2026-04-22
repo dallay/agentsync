@@ -26,3 +26,8 @@ tool that are known to contain user-provided credentials or sensitive environmen
 **Vulnerability:** The `copy_dir_recursively` function used during local skill installation followed symbolic links. A malicious skill source could include a symlink to a sensitive file (e.g., `~/.ssh/id_rsa`), causing its content to be copied into the project.
 **Learning:** Rust's `std::fs::copy` follows symbolic links by default, copying the target's content rather than the link itself. Similarly, `DirEntry::metadata()` follows links, while `DirEntry::file_type()` does not.
 **Prevention:** Explicitly check `file_type.is_symlink()` and skip or handle symlinks appropriately when performing recursive copies of untrusted directory structures.
+
+## 2025-05-18 - Path Traversal via Symlinks in Skill Archives
+**Vulnerability:** Tar and Zip archive extraction was vulnerable to path traversal. While the code checked for `..` in filenames, an archive could contain a symbolic link to an outside directory (e.g., `link -> /etc`), followed by a file entry that uses that link (e.g., `link/passwd`), causing `tar::Entry::unpack` to follow the link and overwrite files outside the extraction root.
+**Learning:** Checking for `..` is insufficient for archive security if symbolic links are allowed. The `tar` crate's `unpack` methods will faithfully recreate and then follow symbolic links contained within the same archive.
+**Prevention:** Explicitly skip symbolic link and hard link entries when extracting untrusted archives. Only allow regular files and directories.
