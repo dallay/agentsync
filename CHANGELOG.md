@@ -21,6 +21,22 @@
 * **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
 * **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
 
+## [1.42.11](https://github.com/dallay/agentsync/compare/v1.42.10...v1.42.11) (2026-04-24)
+
+
+### Documentation
+
+* update CLI reference for accuracy and supported technologies ([1de4592](https://github.com/dallay/agentsync/commit/1de4592ab6c0b30344bcd29d4e667a10e1c7dd07))
+
+
+### Chores
+
+* **deps:** update actions/create-github-app-token digest to 1b10c78 ([4fa1018](https://github.com/dallay/agentsync/commit/4fa10184c91c2214b1e21b391a4b8aab2232b94e))
+* **deps:** update cargo dependencies ([4d61ca3](https://github.com/dallay/agentsync/commit/4d61ca3f6d15ef9dfa86143f1c002bab4c9f908d))
+* **deps:** update github actions ([674b6d0](https://github.com/dallay/agentsync/commit/674b6d01397e9e45d82a524d920a0d2844e1619a))
+* **deps:** update github actions ([63be8c5](https://github.com/dallay/agentsync/commit/63be8c55df4165defa47463f176cc3dadb60367a))
+* **deps:** update node.js to v24.15.0 ([8975f8c](https://github.com/dallay/agentsync/commit/8975f8c7c17cd40226c4d8ffa92c6204bdfbe7fd))
+
 ## [1.42.10](https://github.com/dallay/agentsync/compare/v1.42.9...v1.42.10) (2026-04-17)
 
 
