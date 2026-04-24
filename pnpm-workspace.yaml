@@ -17,3 +17,5 @@ minimumReleaseAge: 4320 # 3 days
 minimumReleaseAgeExclude:
   - '@dallay/*'
   - '@biomejs/*'
+  # Renovate security update: astro@6.1.6
+  - astro@6.1.6
