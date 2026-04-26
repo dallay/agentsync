@@ -128,3 +128,9 @@ reuse results within the same sync run.
 **Learning:** Attempting to reuse a `Vec<&str>` buffer outside a loop to reduce allocations (e.g., in `for_each_nested_glob_match`) was blocked by the Rust borrow checker. Since the string slices (`&str`) pointed to strings created *inside* the loop (`rel_str`), they could not be stored in a collection that persists across loop iterations.
 
 **Action:** When seeking to eliminate allocations in loops, be mindful of lifetimes. If the data being stored is owned by loop-local variables, buffer reuse requires either copying the data (which might defeat the purpose) or using `unsafe` code (which should be avoided). Focus on optimizations that don't involve cross-iteration storage of local references.
+
+## 2025-04-26 - Optimized Technology Detection via RepoMetadata
+
+**Learning:** Technology detection was performing redundant (T \times N)$ filesystem walks (where $ is the number of technologies with file extension rules and $ is the number of files) and numerous shallow `path.exists()` calls. By implementing a `RepoMetadata` struct that performs a single-pass `WalkDir` (max depth 3) and caches results in `HashSet` and `BTreeMap`, we reduced the filesystem interaction to (N)$ and detection to (T \log N)$ or (T)$ lookups.
+
+**Action:** Centralize repository scanning in a single-pass metadata collector when multiple independent rules need to query the same directory structure. Use cached paths and file metadata to satisfy existence and extension-based detection rules without triggering additional syscalls.
