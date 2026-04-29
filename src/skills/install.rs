@@ -131,7 +131,17 @@ pub fn install_from_zip(
     for i in 0..zip.len() {
         let mut file = zip.by_index(i).map_err(SkillInstallError::ZipArchive)?;
         let filename = file.name();
-        if filename.starts_with('/') || filename.contains("..") {
+        // SECURITY: Reject absolute paths, drive prefixes, and path traversal attempts.
+        // Also manually check for drive letters to ensure cross-platform safety on Unix.
+        if std::path::Path::new(filename).components().any(|c| {
+            matches!(
+                c,
+                std::path::Component::ParentDir
+                    | std::path::Component::RootDir
+                    | std::path::Component::Prefix(_)
+            )
+        }) || (filename.len() > 1 && filename.as_bytes()[1] == b':')
+        {
             return Err(SkillInstallError::PathTraversal(filename.to_string()));
         }
         let outpath = tmp.path().join(filename);
@@ -319,8 +329,17 @@ pub async fn fetch_and_unpack_to_tempdir(url: &str) -> Result<TempDir, SkillInst
             let mut file = zip.by_index(i).map_err(SkillInstallError::ZipArchive)?;
             let full_name = file.name();
 
-            // Reject absolute paths and path traversal attempts
-            if full_name.starts_with('/') || full_name.contains("..") {
+            // SECURITY: Reject absolute paths, drive prefixes, and path traversal attempts.
+            // Also manually check for drive letters to ensure cross-platform safety on Unix.
+            if std::path::Path::new(full_name).components().any(|c| {
+                matches!(
+                    c,
+                    std::path::Component::ParentDir
+                        | std::path::Component::RootDir
+                        | std::path::Component::Prefix(_)
+                )
+            }) || (full_name.len() > 1 && full_name.as_bytes()[1] == b':')
+            {
                 return Err(SkillInstallError::PathTraversal(full_name.to_string()));
             }
 
@@ -406,6 +425,14 @@ pub async fn fetch_and_unpack_to_tempdir(url: &str) -> Result<TempDir, SkillInst
 
         for entry in entries {
             let mut entry = entry.map_err(SkillInstallError::Io)?;
+
+            // SECURITY: Skip symlinks, hardlinks, and other special files to prevent
+            // unexpected side effects or path traversal during unpacking.
+            let entry_type = entry.header().entry_type();
+            if !entry_type.is_file() && !entry_type.is_dir() {
+                continue;
+            }
+
             let full_path = entry.path().map_err(SkillInstallError::Io)?;
 
             if full_path.components().any(|c| {
@@ -464,4 +491,82 @@ pub async fn fetch_and_unpack_to_tempdir(url: &str) -> Result<TempDir, SkillInst
         return Err(SkillInstallError::Other("unknown archive format".into()));
     }
     Ok(tmp)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+    use std::io::Write;
+    use zip::ZipWriter;
+    use zip::write::FileOptions;
+
+    #[test]
+    fn test_zip_absolute_path_rejection() {
+        let mut buf = Vec::new();
+        {
+            let mut zip = ZipWriter::new(Cursor::new(&mut buf));
+            zip.start_file("C:/absolute/path/SKILL.md", FileOptions::<()>::default())
+                .unwrap();
+            zip.write_all(b"name: test-skill").unwrap();
+            zip.finish().unwrap();
+        }
+
+        let temp_root = tempfile::tempdir().unwrap();
+        let result = install_from_zip("test-skill", Cursor::new(buf), temp_root.path());
+
+        match result {
+            Err(SkillInstallError::PathTraversal(path)) => {
+                assert!(
+                    path.contains("C:/absolute/path/SKILL.md")
+                        || path.contains(r"C:\absolute\path\SKILL.md")
+                );
+            }
+            other => panic!("Expected PathTraversal error, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_zip_parent_traversal_rejection() {
+        let mut buf = Vec::new();
+        {
+            let mut zip = ZipWriter::new(Cursor::new(&mut buf));
+            zip.start_file("../outside.md", FileOptions::<()>::default())
+                .unwrap();
+            zip.write_all(b"content").unwrap();
+            zip.finish().unwrap();
+        }
+
+        let temp_root = tempfile::tempdir().unwrap();
+        let result = install_from_zip("test-skill", Cursor::new(buf), temp_root.path());
+
+        match result {
+            Err(SkillInstallError::PathTraversal(path)) => {
+                assert!(path.contains("../outside.md"));
+            }
+            other => panic!("Expected PathTraversal error, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_zip_root_dir_rejection() {
+        let mut buf = Vec::new();
+        {
+            let mut zip = ZipWriter::new(Cursor::new(&mut buf));
+            zip.start_file("/absolute/path/SKILL.md", FileOptions::<()>::default())
+                .unwrap();
+            zip.write_all(b"content").unwrap();
+            zip.finish().unwrap();
+        }
+
+        let temp_root = tempfile::tempdir().unwrap();
+        let result = install_from_zip("test-skill", Cursor::new(buf), temp_root.path());
+
+        match result {
+            Err(SkillInstallError::PathTraversal(path)) => {
+                assert!(path.contains("/absolute/path/SKILL.md"));
+            }
+            other => panic!("Expected PathTraversal error, got {:?}", other),
+        }
+    }
 }
