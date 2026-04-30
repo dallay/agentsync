@@ -400,6 +400,22 @@ install_source = "https://github.com/mindrally/skills/archive/HEAD.zip#deno-type
 
 # --- Drizzle ---
 
+[[skills]]
+provider_skill_id = "bobmatnyc/claude-mpm-skills/drizzle-orm"
+local_skill_id = "drizzle-orm"
+title = "Drizzle ORM"
+summary = "Use Drizzle ORM for type-safe database access."
+install_source = "https://github.com/bobmatnyc/claude-mpm-skills/archive/HEAD.zip#skills/drizzle-orm"
+
+# --- .NET ---
+
+[[skills]]
+provider_skill_id = "dotnet/skills/dotnet"
+local_skill_id = "dotnet"
+title = ".NET"
+summary = "Build and maintain .NET applications with official guidance."
+install_source = "https://github.com/dotnet/skills/archive/HEAD.zip#.agents/skills/dotnet"
+
 # --- ElevenLabs ---
 
 [[skills]]
@@ -481,6 +497,15 @@ title = "Expo use-dom"
 summary = "Use DOM components in Expo applications."
 install_source = "https://github.com/expo/skills/archive/HEAD.zip#plugins/expo/skills/use-dom"
 
+# --- Flutter ---
+
+[[skills]]
+provider_skill_id = "flutter/skills/flutter"
+local_skill_id = "flutter"
+title = "Flutter"
+summary = "Build Flutter applications following official guidance."
+install_source = "https://github.com/flutter/skills/archive/HEAD.zip#skills/flutter"
+
 # --- GSAP ---
 
 [[skills]]
@@ -530,6 +555,15 @@ provider_skill_id = "greensock/gsap-skills/gsap-react"
 local_skill_id = "gsap-react"
 title = "GSAP React"
 summary = "Use GSAP animations in React applications."
+
+# --- HashiCorp / Terraform ---
+
+[[skills]]
+provider_skill_id = "hashicorp/agent-skills/terraform"
+local_skill_id = "terraform"
+title = "Terraform"
+summary = "Author and maintain Terraform configurations with HashiCorp guidance."
+install_source = "https://github.com/hashicorp/agent-skills/archive/HEAD.zip#skills/terraform"
 
 # --- Hono ---
 
@@ -628,6 +662,15 @@ provider_skill_id = "Kotlin/kotlin-agent-skills/kotlin-tooling-agp9-migration"
 local_skill_id = "kotlin-agp9-migration"
 title = "Kotlin AGP 9 Migration"
 summary = "Migrate Kotlin projects to Android Gradle Plugin 9."
+
+# --- Laravel ---
+
+[[skills]]
+provider_skill_id = "laravel/boost/laravel-boost"
+local_skill_id = "laravel-boost"
+title = "Laravel Boost"
+summary = "Use Laravel Boost guidance for Laravel applications."
+install_source = "https://github.com/laravel/boost/archive/HEAD.zip#.ai/boost"
 
 # --- NestJS ---
 
@@ -768,6 +811,29 @@ install_source = "https://github.com/remotion-dev/skills/archive/HEAD.zip#skills
 
 # --- shadcn/ui ---
 
+[[skills]]
+provider_skill_id = "shadcn/ui/shadcn"
+local_skill_id = "shadcn"
+title = "shadcn/ui"
+summary = "Build applications with shadcn/ui components and patterns."
+install_source = "https://github.com/shadcn-ui/ui/archive/HEAD.zip#apps/www/content/docs/ai"
+
+# --- Stripe ---
+
+[[skills]]
+provider_skill_id = "stripe/ai/stripe-best-practices"
+local_skill_id = "stripe-best-practices"
+title = "Stripe Best Practices"
+summary = "Implement Stripe payments following recommended practices."
+install_source = "https://github.com/stripe/ai/archive/HEAD.zip#skills/stripe-best-practices"
+
+[[skills]]
+provider_skill_id = "stripe/ai/upgrade-stripe"
+local_skill_id = "upgrade-stripe"
+title = "Upgrade Stripe"
+summary = "Upgrade Stripe integrations safely."
+install_source = "https://github.com/stripe/ai/archive/HEAD.zip#skills/upgrade-stripe"
+
 # --- Supabase ---
 
 [[skills]]
@@ -802,6 +868,13 @@ summary = "Build SwiftUI applications with expert-level patterns."
 
 # --- Tailwind CSS ---
 
+[[skills]]
+provider_skill_id = "giuseppe-trisciuoglio/developer-kit/tailwind-css-patterns"
+local_skill_id = "tailwind-css-patterns"
+title = "Tailwind CSS Patterns"
+summary = "Use maintainable Tailwind CSS utility patterns."
+install_source = "https://github.com/giuseppe-trisciuoglio/developer-kit/archive/HEAD.zip#skills/tailwind-css-patterns"
+
 # --- Tauri ---
 
 [[skills]]
@@ -813,9 +886,23 @@ install_source = "https://github.com/delexw/claude-code-misc/archive/HEAD.zip#sk
 
 # --- Turborepo ---
 
+[[skills]]
+provider_skill_id = "vercel/turborepo/turborepo"
+local_skill_id = "turborepo"
+title = "Turborepo"
+summary = "Configure and optimize Turborepo monorepos."
+install_source = "https://github.com/vercel/turborepo/archive/HEAD.zip#examples/with-agent-skills/.agents/skills/turborepo"
+
 # --- TypeScript ---
 
 # --- Vercel AI SDK ---
+
+[[skills]]
+provider_skill_id = "vercel/ai/ai-sdk"
+local_skill_id = "ai-sdk"
+title = "Vercel AI SDK"
+summary = "Build AI-powered applications with the Vercel AI SDK."
+install_source = "https://github.com/vercel/ai/archive/HEAD.zip#packages/ai/.agents/skills/ai-sdk"
 
 # --- Vercel Deploy ---
 
@@ -1440,6 +1527,25 @@ packages = ["typescript"]
 config_files = ["tsconfig.json"]
 
 [[technologies]]
+id = "tailwind"
+name = "Tailwind CSS"
+skills = ["giuseppe-trisciuoglio/developer-kit/tailwind-css-patterns"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["tailwindcss", "@tailwindcss/vite"]
+config_files = ["tailwind.config.js", "tailwind.config.ts", "tailwind.config.cjs", "tailwind.config.mjs"]
+
+[[technologies]]
+id = "shadcn"
+name = "shadcn/ui"
+skills = ["shadcn/ui/shadcn"]
+min_confidence = "medium"
+
+[technologies.detect]
+config_files = ["components.json"]
+
+[[technologies]]
 id = "supabase"
 name = "Supabase"
 skills = ["supabase/agent-skills/supabase-postgres-best-practices"]
@@ -1580,6 +1686,16 @@ min_confidence = "medium"
 packages = ["better-auth"]
 
 [[technologies]]
+id = "turborepo"
+name = "Turborepo"
+skills = ["vercel/turborepo/turborepo"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["turbo"]
+config_files = ["turbo.json"]
+
+[[technologies]]
 id = "vite"
 name = "Vite"
 skills = ["dallay/agents-skills/nothing-design", "antfu/skills/vite"]
@@ -1610,6 +1726,24 @@ min_confidence = "medium"
 
 [technologies.detect]
 packages = ["elevenlabs"]
+
+[[technologies]]
+id = "vercel_ai"
+name = "Vercel AI SDK"
+skills = ["vercel/ai/ai-sdk"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["ai", "@ai-sdk/openai", "@ai-sdk/anthropic", "@ai-sdk/google", "@ai-sdk/react"]
+
+[[technologies]]
+id = "stripe"
+name = "Stripe"
+skills = ["stripe/ai/stripe-best-practices", "stripe/ai/upgrade-stripe"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["stripe", "@stripe/stripe-js", "@stripe/react-stripe-js"]
 
 [[technologies]]
 id = "vercel_deploy"
@@ -1803,6 +1937,16 @@ min_confidence = "medium"
 packages = ["hono"]
 
 [[technologies]]
+id = "drizzle"
+name = "Drizzle ORM"
+skills = ["bobmatnyc/claude-mpm-skills/drizzle-orm"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["drizzle-orm", "drizzle-kit"]
+config_files = ["drizzle.config.ts", "drizzle.config.js", "drizzle.config.mjs"]
+
+[[technologies]]
 id = "vitest"
 name = "Vitest"
 skills = ["antfu/skills/vitest"]
@@ -1830,6 +1974,51 @@ min_confidence = "medium"
 [technologies.detect]
 packages = ["@tauri-apps/api", "@tauri-apps/cli"]
 config_files = ["src-tauri/tauri.conf.json"]
+
+[[technologies]]
+id = "terraform"
+name = "Terraform"
+skills = ["hashicorp/agent-skills/terraform"]
+min_confidence = "medium"
+
+[technologies.detect]
+config_files = [".terraform.lock.hcl", "terraform.tfvars", "main.tf", "variables.tf", "outputs.tf"]
+
+[[technologies]]
+id = "flutter"
+name = "Flutter"
+skills = ["flutter/skills/flutter"]
+min_confidence = "medium"
+
+[technologies.detect]
+config_files = ["pubspec.yaml"]
+
+[technologies.detect.config_file_content]
+files = ["pubspec.yaml"]
+patterns = ["flutter:"]
+
+[[technologies]]
+id = "laravel"
+name = "Laravel"
+skills = ["laravel/boost/laravel-boost"]
+min_confidence = "medium"
+
+[technologies.detect]
+config_files = ["artisan", "bootstrap/app.php"]
+
+[technologies.detect.config_file_content]
+files = ["composer.json"]
+patterns = ["laravel/framework", "illuminate/"]
+
+[[technologies]]
+id = "dotnet"
+name = ".NET"
+skills = ["dotnet/skills/dotnet"]
+min_confidence = "medium"
+
+[technologies.detect]
+config_files = ["global.json", "NuGet.Config", "Directory.Build.props", "Directory.Packages.props"]
+file_extensions = [".csproj", ".fsproj", ".vbproj", ".sln"]
 
 [[technologies]]
 id = "web_frontend"
