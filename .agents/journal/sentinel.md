@@ -26,3 +26,8 @@ tool that are known to contain user-provided credentials or sensitive environmen
 **Vulnerability:** The `copy_dir_recursively` function used during local skill installation followed symbolic links. A malicious skill source could include a symlink to a sensitive file (e.g., `~/.ssh/id_rsa`), causing its content to be copied into the project.
 **Learning:** Rust's `std::fs::copy` follows symbolic links by default, copying the target's content rather than the link itself. Similarly, `DirEntry::metadata()` follows links, while `DirEntry::file_type()` does not.
 **Prevention:** Explicitly check `file_type.is_symlink()` and skip or handle symlinks appropriately when performing recursive copies of untrusted directory structures.
+
+## 2025-05-18 - Cross-Platform Absolute Path Validation in Archives
+**Vulnerability:** String-based path checks (like `starts_with('/')`) or platform-specific `Path::is_absolute()` calls failed to detect Windows-style absolute paths (e.g., `C:/...`) when running on Unix systems, leading to potential path traversal vulnerabilities in skill archives.
+**Learning:** Rust's `std::path::Path` behavior depends on the host operating system. On Unix, a path starting with a drive letter is considered relative, which allows it to pass simple `is_absolute()` checks and be joined to a base directory, potentially escaping it if not carefully validated.
+**Prevention:** Use `Path::components()` to explicitly reject `RootDir`, `Prefix`, and `ParentDir` components. For cross-platform safety on Unix, also manually check for Windows drive letter patterns (e.g., `filename.as_bytes()[1] == b':'`) in untrusted archive entry paths.
