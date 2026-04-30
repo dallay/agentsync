@@ -64,6 +64,154 @@ fn skill_suggest_json_is_read_only_and_marks_installed_skills() {
 }
 
 #[test]
+fn skill_suggest_recommends_python_backend_frameworks_from_python_dependency_files() {
+    struct Case {
+        name: &'static str,
+        files: &'static [(&'static str, &'static str)],
+        expected_technology: &'static str,
+        expected_skill: &'static str,
+    }
+
+    let cases = [
+        Case {
+            name: "python-baseline-pyproject",
+            files: &[("pyproject.toml", "[project]\ndependencies = []\n")],
+            expected_technology: "python",
+            expected_skill: "python-executor",
+        },
+        Case {
+            name: "fastapi-requirements",
+            files: &[("requirements.txt", "fastapi[standard]==0.115.0\n")],
+            expected_technology: "fastapi",
+            expected_skill: "fastapi-templates",
+        },
+        Case {
+            name: "django-pyproject",
+            files: &[(
+                "pyproject.toml",
+                "[project]\ndependencies = [\"Django>=4.2\"]\n",
+            )],
+            expected_technology: "django",
+            expected_skill: "django-expert",
+        },
+        Case {
+            name: "flask-pipfile",
+            files: &[("Pipfile", "[packages]\nFlask = \"*\"\n")],
+            expected_technology: "flask",
+            expected_skill: "flask-api-development",
+        },
+        Case {
+            name: "pydantic-pyproject-poetry",
+            files: &[(
+                "pyproject.toml",
+                "[tool.poetry.dependencies]\npython = \"^3.12\"\npydantic = \"^2\"\n",
+            )],
+            expected_technology: "pydantic",
+            expected_skill: "pydantic",
+        },
+        Case {
+            name: "sqlalchemy-requirements",
+            files: &[("requirements.txt", "SQLAlchemy>=2\n")],
+            expected_technology: "sqlalchemy",
+            expected_skill: "sqlalchemy",
+        },
+        Case {
+            name: "pytest-pyproject-optional-deps",
+            files: &[(
+                "pyproject.toml",
+                "[project.optional-dependencies]\ntest = [\"pytest>=8\"]\n",
+            )],
+            expected_technology: "pytest",
+            expected_skill: "python-testing-patterns",
+        },
+        Case {
+            name: "pandas-requirements",
+            files: &[("requirements.txt", "pandas==2.2.0\n")],
+            expected_technology: "pandas",
+            expected_skill: "pandas-pro",
+        },
+        Case {
+            name: "numpy-requirements",
+            files: &[("requirements.txt", "numpy==2.0.0\n")],
+            expected_technology: "numpy",
+            expected_skill: "machine-learning",
+        },
+        Case {
+            name: "scikit-learn-requirements",
+            files: &[("requirements.txt", "scikit-learn==1.5.0\n")],
+            expected_technology: "scikit_learn",
+            expected_skill: "scikit-learn",
+        },
+        Case {
+            name: "celery-pipfile",
+            files: &[(
+                "Pipfile",
+                "[packages]\ncelery = { version = \"*\", extras = [\"redis\"] }\n",
+            )],
+            expected_technology: "celery",
+            expected_skill: "python-background-jobs",
+        },
+        Case {
+            name: "requests-editable-requirements",
+            files: &[(
+                "requirements.txt",
+                "-e git+https://example.com/client.git#egg=requests\n",
+            )],
+            expected_technology: "requests",
+            expected_skill: "python-patterns",
+        },
+    ];
+
+    for case in cases {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        for (path, contents) in case.files {
+            let path = root.join(path);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).unwrap();
+            }
+            fs::write(path, contents).unwrap();
+        }
+
+        let output = Command::new(agentsync_bin())
+            .current_dir(root)
+            .args(["skill", "suggest", "--json"])
+            .output()
+            .unwrap_or_else(|error| panic!("failed to run agentsync for {}: {error}", case.name));
+
+        assert!(
+            output.status.success(),
+            "{} stderr: {}",
+            case.name,
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let response: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        let detections = response["detections"].as_array().unwrap();
+        assert!(
+            detections
+                .iter()
+                .any(|detection| detection["technology"] == case.expected_technology),
+            "{} should detect {}. response: {}",
+            case.name,
+            case.expected_technology,
+            response
+        );
+
+        let recommendations = response["recommendations"].as_array().unwrap();
+        assert!(
+            recommendations
+                .iter()
+                .any(|recommendation| recommendation["skill_id"] == case.expected_skill),
+            "{} should recommend {}. response: {}",
+            case.name,
+            case.expected_skill,
+            response
+        );
+    }
+}
+
+#[test]
 fn skill_suggest_human_output_reports_empty_results() {
     let temp_dir = TempDir::new().unwrap();
     let output = Command::new(agentsync_bin())

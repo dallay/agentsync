@@ -459,6 +459,16 @@ fn collect_package_names(project_root: &Path) -> BTreeSet<String> {
         }
     }
 
+    if let Some(deps) = parse_requirements_txt_deps(&project_root.join("requirements.txt")) {
+        all_packages.extend(deps);
+    }
+    if let Some(deps) = parse_pyproject_toml_deps(&project_root.join("pyproject.toml")) {
+        all_packages.extend(deps);
+    }
+    if let Some(deps) = parse_pipfile_deps(&project_root.join("Pipfile")) {
+        all_packages.extend(deps);
+    }
+
     all_packages
 }
 
@@ -477,6 +487,136 @@ fn parse_package_json_deps(path: &Path) -> Option<BTreeSet<String>> {
     }
 
     Some(deps)
+}
+
+fn parse_requirements_txt_deps(path: &Path) -> Option<BTreeSet<String>> {
+    let content = fs::read_to_string(path).ok()?;
+    let mut deps = BTreeSet::new();
+
+    for raw_line in content.lines() {
+        let raw_line = raw_line.trim();
+        if let Some((_, egg)) = raw_line.split_once("#egg=") {
+            if let Some(name) = normalize_python_requirement_name(egg) {
+                deps.insert(name);
+            }
+            continue;
+        }
+
+        let line = raw_line.split('#').next().unwrap_or_default().trim();
+        if line.is_empty() || line.starts_with('-') {
+            continue;
+        }
+
+        if let Some((_, egg)) = line.split_once("#egg=") {
+            if let Some(name) = normalize_python_requirement_name(egg) {
+                deps.insert(name);
+            }
+            continue;
+        }
+
+        if let Some(name) = normalize_python_requirement_name(line) {
+            deps.insert(name);
+        }
+    }
+
+    Some(deps)
+}
+
+fn parse_pyproject_toml_deps(path: &Path) -> Option<BTreeSet<String>> {
+    let content = fs::read_to_string(path).ok()?;
+    let value: toml::Value = toml::from_str(&content).ok()?;
+    let mut deps = BTreeSet::new();
+
+    if let Some(project) = value.get("project").and_then(|v| v.as_table()) {
+        if let Some(dependencies) = project.get("dependencies").and_then(|v| v.as_array()) {
+            collect_python_dependency_array(dependencies, &mut deps);
+        }
+        if let Some(optional) = project
+            .get("optional-dependencies")
+            .and_then(|v| v.as_table())
+        {
+            for dependencies in optional.values().filter_map(|v| v.as_array()) {
+                collect_python_dependency_array(dependencies, &mut deps);
+            }
+        }
+    }
+
+    if let Some(poetry) = value
+        .get("tool")
+        .and_then(|v| v.get("poetry"))
+        .and_then(|v| v.as_table())
+    {
+        if let Some(dependencies) = poetry.get("dependencies").and_then(|v| v.as_table()) {
+            collect_python_dependency_table(dependencies, &mut deps);
+        }
+        if let Some(group) = poetry.get("group").and_then(|v| v.as_table()) {
+            for dependencies in group.values().filter_map(|group| {
+                group
+                    .get("dependencies")
+                    .and_then(|dependencies| dependencies.as_table())
+            }) {
+                collect_python_dependency_table(dependencies, &mut deps);
+            }
+        }
+        if let Some(dev_dependencies) = poetry.get("dev-dependencies").and_then(|v| v.as_table()) {
+            collect_python_dependency_table(dev_dependencies, &mut deps);
+        }
+    }
+
+    Some(deps)
+}
+
+fn parse_pipfile_deps(path: &Path) -> Option<BTreeSet<String>> {
+    let content = fs::read_to_string(path).ok()?;
+    let value: toml::Value = toml::from_str(&content).ok()?;
+    let mut deps = BTreeSet::new();
+
+    for section in ["packages", "dev-packages"] {
+        if let Some(dependencies) = value.get(section).and_then(|v| v.as_table()) {
+            collect_python_dependency_table(dependencies, &mut deps);
+        }
+    }
+
+    Some(deps)
+}
+
+fn collect_python_dependency_array(values: &[toml::Value], deps: &mut BTreeSet<String>) {
+    for dependency in values.iter().filter_map(|v| v.as_str()) {
+        if let Some(name) = normalize_python_requirement_name(dependency) {
+            deps.insert(name);
+        }
+    }
+}
+
+fn collect_python_dependency_table(
+    table: &toml::map::Map<String, toml::Value>,
+    deps: &mut BTreeSet<String>,
+) {
+    for package in table.keys() {
+        if package != "python" {
+            deps.insert(package.to_ascii_lowercase());
+        }
+    }
+}
+
+fn normalize_python_requirement_name(requirement: &str) -> Option<String> {
+    let trimmed = requirement.trim().trim_matches('"').trim_matches('\'');
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let end = trimmed
+        .find(|c: char| {
+            c.is_whitespace() || matches!(c, '[' | '<' | '>' | '=' | '!' | '~' | ';' | ',')
+        })
+        .unwrap_or(trimmed.len());
+    let name = trimmed[..end].trim();
+
+    if name.is_empty() {
+        None
+    } else {
+        Some(name.to_ascii_lowercase())
+    }
 }
 
 fn resolve_workspaces(project_root: &Path) -> Vec<PathBuf> {
@@ -572,4 +712,93 @@ fn expand_workspace_patterns(project_root: &Path, patterns: &[String]) -> Vec<Pa
     }
 
     dirs
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn collect_package_names_reads_requirements_txt_dependencies() {
+        let temp = TempDir::new().unwrap();
+        fs::write(
+            temp.path().join("requirements.txt"),
+            "django>=4.2\nfastapi[standard]==0.115.0\n# comment\n-e git+https://example.com/demo.git#egg=flask\n",
+        )
+        .unwrap();
+
+        let packages = collect_package_names(temp.path());
+
+        assert!(packages.contains("django"));
+        assert!(packages.contains("fastapi"));
+        assert!(packages.contains("flask"));
+    }
+
+    #[test]
+    fn collect_package_names_reads_pyproject_dependencies() {
+        let temp = TempDir::new().unwrap();
+        fs::write(
+            temp.path().join("pyproject.toml"),
+            r#"
+[project]
+dependencies = [
+  "django>=4.2",
+  "fastapi[standard]==0.115.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "requests"]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+pydantic = "^2"
+sqlalchemy = { version = "^2", extras = ["asyncio"] }
+
+[tool.poetry.group.dev.dependencies]
+pandas = "^2"
+"#,
+        )
+        .unwrap();
+
+        let packages = collect_package_names(temp.path());
+
+        for package in [
+            "django",
+            "fastapi",
+            "pytest",
+            "requests",
+            "pydantic",
+            "sqlalchemy",
+            "pandas",
+        ] {
+            assert!(
+                packages.contains(package),
+                "missing {package}: {packages:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn collect_package_names_reads_pipfile_dependencies() {
+        let temp = TempDir::new().unwrap();
+        fs::write(
+            temp.path().join("Pipfile"),
+            r#"
+[packages]
+flask = "*"
+celery = { version = "*", extras = ["redis"] }
+
+[dev-packages]
+pytest = "*"
+"#,
+        )
+        .unwrap();
+
+        let packages = collect_package_names(temp.path());
+
+        assert!(packages.contains("flask"));
+        assert!(packages.contains("celery"));
+        assert!(packages.contains("pytest"));
+    }
 }
