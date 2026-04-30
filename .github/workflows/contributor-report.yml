@@ -18,5 +18,5 @@ env:
 
 jobs:
   report:
-    uses: dallay/common-actions/.github/workflows/contributor-report.yml@v1.2.1
+    uses: dallay/common-actions/.github/workflows/contributor-report.yml@v2
     secrets: inherit
