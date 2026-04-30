@@ -31,6 +31,21 @@ pub enum SkillInstallError {
 }
 
 // Module-level helper to recursively copy directories
+fn archive_path_is_unsafe(path: &str) -> bool {
+    Path::new(path).components().any(|component| {
+        matches!(
+            component,
+            std::path::Component::ParentDir
+                | std::path::Component::RootDir
+                | std::path::Component::Prefix(_)
+        )
+    }) || path
+        .as_bytes()
+        .get(1)
+        .is_some_and(|second_byte| *second_byte == b':')
+        || path.starts_with('\\')
+}
+
 fn copy_dir_recursively(
     src: &std::path::Path,
     dst: &std::path::Path,
@@ -132,16 +147,7 @@ pub fn install_from_zip(
         let mut file = zip.by_index(i).map_err(SkillInstallError::ZipArchive)?;
         let filename = file.name();
         // SECURITY: Reject absolute paths, drive prefixes, and path traversal attempts.
-        // Also manually check for drive letters to ensure cross-platform safety on Unix.
-        if std::path::Path::new(filename).components().any(|c| {
-            matches!(
-                c,
-                std::path::Component::ParentDir
-                    | std::path::Component::RootDir
-                    | std::path::Component::Prefix(_)
-            )
-        }) || (filename.len() > 1 && filename.as_bytes()[1] == b':')
-        {
+        if archive_path_is_unsafe(filename) {
             return Err(SkillInstallError::PathTraversal(filename.to_string()));
         }
         let outpath = tmp.path().join(filename);
@@ -330,16 +336,7 @@ pub async fn fetch_and_unpack_to_tempdir(url: &str) -> Result<TempDir, SkillInst
             let full_name = file.name();
 
             // SECURITY: Reject absolute paths, drive prefixes, and path traversal attempts.
-            // Also manually check for drive letters to ensure cross-platform safety on Unix.
-            if std::path::Path::new(full_name).components().any(|c| {
-                matches!(
-                    c,
-                    std::path::Component::ParentDir
-                        | std::path::Component::RootDir
-                        | std::path::Component::Prefix(_)
-                )
-            }) || (full_name.len() > 1 && full_name.as_bytes()[1] == b':')
-            {
+            if archive_path_is_unsafe(full_name) {
                 return Err(SkillInstallError::PathTraversal(full_name.to_string()));
             }
 
@@ -434,17 +431,11 @@ pub async fn fetch_and_unpack_to_tempdir(url: &str) -> Result<TempDir, SkillInst
             }
 
             let full_path = entry.path().map_err(SkillInstallError::Io)?;
+            let full_path_string = full_path.to_string_lossy();
 
-            if full_path.components().any(|c| {
-                matches!(
-                    c,
-                    std::path::Component::ParentDir
-                        | std::path::Component::RootDir
-                        | std::path::Component::Prefix(_)
-                )
-            }) {
+            if archive_path_is_unsafe(&full_path_string) {
                 return Err(SkillInstallError::PathTraversal(
-                    full_path.to_string_lossy().into_owned(),
+                    full_path_string.into_owned(),
                 ));
             }
 
@@ -565,6 +556,35 @@ mod tests {
         match result {
             Err(SkillInstallError::PathTraversal(path)) => {
                 assert!(path.contains("/absolute/path/SKILL.md"));
+            }
+            other => panic!("Expected PathTraversal error, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_tar_windows_drive_path_rejection() {
+        let temp_root = tempfile::tempdir().unwrap();
+        let archive_path = temp_root.path().join("malicious.tar.gz");
+        {
+            let archive_file = std::fs::File::create(&archive_path).unwrap();
+            let encoder =
+                flate2::write::GzEncoder::new(archive_file, flate2::Compression::default());
+            let mut builder = tar::Builder::new(encoder);
+            let content = b"name: test-skill";
+            let mut header = tar::Header::new_gnu();
+            header.set_size(content.len() as u64);
+            header.set_cksum();
+            builder
+                .append_data(&mut header, "C:/absolute/path/SKILL.md", &content[..])
+                .unwrap();
+            builder.finish().unwrap();
+        }
+
+        let result = fetch_and_unpack_to_tempdir(archive_path.to_str().unwrap()).await;
+
+        match result {
+            Err(SkillInstallError::PathTraversal(path)) => {
+                assert!(path.contains("C:/absolute/path/SKILL.md"));
             }
             other => panic!("Expected PathTraversal error, got {:?}", other),
         }
