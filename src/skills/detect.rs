@@ -5,7 +5,7 @@ use crate::skills::suggest::{
 use anyhow::{Context, Result};
 use regex::Regex;
 use serde::Deserialize;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::warn;
@@ -490,36 +490,84 @@ fn parse_package_json_deps(path: &Path) -> Option<BTreeSet<String>> {
 }
 
 fn parse_requirements_txt_deps(path: &Path) -> Option<BTreeSet<String>> {
-    let content = fs::read_to_string(path).ok()?;
     let mut deps = BTreeSet::new();
+    let mut visited = HashSet::new();
+    parse_requirements_file(path, &mut deps, &mut visited).ok()?;
+    Some(deps)
+}
 
-    for raw_line in content.lines() {
-        let raw_line = raw_line.trim();
-        if let Some((_, egg)) = raw_line.split_once("#egg=") {
-            if let Some(name) = normalize_python_requirement_name(egg) {
-                deps.insert(name);
-            }
-            continue;
-        }
-
-        let line = raw_line.split('#').next().unwrap_or_default().trim();
-        if line.is_empty() || line.starts_with('-') {
-            continue;
-        }
-
-        if let Some((_, egg)) = line.split_once("#egg=") {
-            if let Some(name) = normalize_python_requirement_name(egg) {
-                deps.insert(name);
-            }
-            continue;
-        }
-
-        if let Some(name) = normalize_python_requirement_name(line) {
-            deps.insert(name);
-        }
+fn parse_requirements_file(
+    path: &Path,
+    deps: &mut BTreeSet<String>,
+    visited: &mut HashSet<PathBuf>,
+) -> Result<()> {
+    let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    if !visited.insert(path.clone()) {
+        return Ok(());
     }
 
-    Some(deps)
+    let content = fs::read_to_string(&path)?;
+    let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
+    for raw_line in content.lines() {
+        parse_requirement_line(raw_line, base_dir, deps, visited)?;
+    }
+
+    Ok(())
+}
+
+fn parse_requirement_line(
+    raw_line: &str,
+    base_dir: &Path,
+    deps: &mut BTreeSet<String>,
+    visited: &mut HashSet<PathBuf>,
+) -> Result<()> {
+    let raw_line = raw_line.trim();
+    if raw_line.starts_with('#') {
+        return Ok(());
+    }
+
+    if let Some((_, egg)) = raw_line.split_once("#egg=") {
+        if let Some(name) = normalize_python_requirement_name(egg) {
+            deps.insert(name);
+        }
+        return Ok(());
+    }
+
+    let line = raw_line.split('#').next().unwrap_or_default().trim();
+    if line.is_empty() {
+        return Ok(());
+    }
+
+    if let Some(include_path) = requirement_include_path(line) {
+        let include_path = base_dir.join(include_path);
+        parse_requirements_file(&include_path, deps, visited)?;
+        return Ok(());
+    }
+
+    if let Some((_, egg)) = line.split_once("#egg=") {
+        if let Some(name) = normalize_python_requirement_name(egg) {
+            deps.insert(name);
+        }
+        return Ok(());
+    }
+
+    if line.starts_with('-') {
+        return Ok(());
+    }
+
+    if let Some(name) = normalize_python_requirement_name(line) {
+        deps.insert(name);
+    }
+
+    Ok(())
+}
+
+fn requirement_include_path(line: &str) -> Option<&str> {
+    line.strip_prefix("-r ")
+        .or_else(|| line.strip_prefix("--requirement "))
+        .or_else(|| line.strip_prefix("--requirement="))
+        .map(str::trim)
+        .filter(|path| !path.is_empty())
 }
 
 fn parse_pyproject_toml_deps(path: &Path) -> Option<BTreeSet<String>> {
@@ -724,7 +772,7 @@ mod tests {
         let temp = TempDir::new().unwrap();
         fs::write(
             temp.path().join("requirements.txt"),
-            "django>=4.2\nfastapi[standard]==0.115.0\n# comment\n-e git+https://example.com/demo.git#egg=flask\n",
+            "django>=4.2\nfastapi[standard]==0.115.0\n# -e git+https://example.com/demo.git#egg=flask\n",
         )
         .unwrap();
 
@@ -732,7 +780,34 @@ mod tests {
 
         assert!(packages.contains("django"));
         assert!(packages.contains("fastapi"));
-        assert!(packages.contains("flask"));
+        assert!(!packages.contains("flask"));
+    }
+
+    #[test]
+    fn collect_package_names_reads_nested_requirements_txt_dependencies() {
+        let temp = TempDir::new().unwrap();
+        fs::create_dir_all(temp.path().join("requirements")).unwrap();
+        fs::write(
+            temp.path().join("requirements.txt"),
+            "-r requirements/base.txt\n--requirement=requirements/dev.txt\n",
+        )
+        .unwrap();
+        fs::write(
+            temp.path().join("requirements/base.txt"),
+            "django>=4.2\n-r cycle.txt\n",
+        )
+        .unwrap();
+        fs::write(temp.path().join("requirements/dev.txt"), "pytest>=8\n").unwrap();
+        fs::write(
+            temp.path().join("requirements/cycle.txt"),
+            "-r ../requirements.txt\n",
+        )
+        .unwrap();
+
+        let packages = collect_package_names(temp.path());
+
+        assert!(packages.contains("django"));
+        assert!(packages.contains("pytest"));
     }
 
     #[test]

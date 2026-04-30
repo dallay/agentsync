@@ -1324,7 +1324,7 @@ min_confidence = "medium"
 packages = ["fastapi"]
 
 [technologies.detect.config_file_content]
-files = ["pyproject.toml", "requirements.txt", "setup.py", "setup.cfg", "Pipfile"]
+files = ["setup.py", "setup.cfg"]
 patterns = ["fastapi", "FastAPI"]
 
 [[technologies]]
@@ -1338,7 +1338,7 @@ packages = ["django"]
 config_files = ["manage.py"]
 
 [technologies.detect.config_file_content]
-files = ["pyproject.toml", "requirements.txt", "setup.py", "setup.cfg", "Pipfile"]
+files = ["setup.py", "setup.cfg"]
 patterns = ["django", "Django"]
 
 [[technologies]]
@@ -1351,7 +1351,7 @@ min_confidence = "medium"
 packages = ["flask"]
 
 [technologies.detect.config_file_content]
-files = ["pyproject.toml", "requirements.txt", "setup.py", "setup.cfg", "Pipfile"]
+files = ["setup.py", "setup.cfg"]
 patterns = ["flask", "Flask"]
 
 [[technologies]]
@@ -1364,7 +1364,7 @@ min_confidence = "medium"
 packages = ["pydantic"]
 
 [technologies.detect.config_file_content]
-files = ["pyproject.toml", "requirements.txt", "setup.py", "setup.cfg", "Pipfile"]
+files = ["setup.py", "setup.cfg"]
 patterns = ["pydantic", "Pydantic"]
 
 [[technologies]]
@@ -1377,7 +1377,7 @@ min_confidence = "medium"
 packages = ["sqlalchemy"]
 
 [technologies.detect.config_file_content]
-files = ["pyproject.toml", "requirements.txt", "setup.py", "setup.cfg", "Pipfile"]
+files = ["setup.py", "setup.cfg"]
 patterns = ["sqlalchemy", "SQLAlchemy"]
 
 [[technologies]]
@@ -1390,7 +1390,7 @@ min_confidence = "medium"
 packages = ["pytest"]
 
 [technologies.detect.config_file_content]
-files = ["pyproject.toml", "requirements.txt", "setup.py", "setup.cfg", "Pipfile"]
+files = ["setup.py", "setup.cfg"]
 patterns = ["pytest", "Pytest"]
 
 [[technologies]]
@@ -1403,7 +1403,7 @@ min_confidence = "medium"
 packages = ["pandas"]
 
 [technologies.detect.config_file_content]
-files = ["pyproject.toml", "requirements.txt", "setup.py", "setup.cfg", "Pipfile"]
+files = ["setup.py", "setup.cfg"]
 patterns = ["pandas", "Pandas"]
 
 [[technologies]]
@@ -1416,7 +1416,7 @@ min_confidence = "medium"
 packages = ["numpy"]
 
 [technologies.detect.config_file_content]
-files = ["pyproject.toml", "requirements.txt", "setup.py", "setup.cfg", "Pipfile"]
+files = ["setup.py", "setup.cfg"]
 patterns = ["numpy", "NumPy"]
 
 [[technologies]]
@@ -1429,7 +1429,7 @@ min_confidence = "medium"
 packages = ["scikit-learn", "sklearn"]
 
 [technologies.detect.config_file_content]
-files = ["pyproject.toml", "requirements.txt", "setup.py", "setup.cfg", "Pipfile"]
+files = ["setup.py", "setup.cfg"]
 patterns = ["scikit-learn", "scikit_learn", "sklearn"]
 
 [[technologies]]
@@ -1442,7 +1442,7 @@ min_confidence = "medium"
 packages = ["celery"]
 
 [technologies.detect.config_file_content]
-files = ["pyproject.toml", "requirements.txt", "setup.py", "setup.cfg", "Pipfile"]
+files = ["setup.py", "setup.cfg"]
 patterns = ["celery", "Celery"]
 
 [[technologies]]
@@ -1455,7 +1455,7 @@ min_confidence = "medium"
 packages = ["requests"]
 
 [technologies.detect.config_file_content]
-files = ["pyproject.toml", "requirements.txt", "setup.py", "setup.cfg", "Pipfile"]
+files = ["setup.py", "setup.cfg"]
 patterns = ["requests", "Requests"]
 
 # --- Additional languages ---

@@ -78,6 +78,8 @@ prepare_default_skill_sources() {
         performance \
         pinned-tag \
         pr-creator \
+        python-executor \
+        python-testing-patterns \
         rust-async-patterns \
         seo \
         skill-creator \

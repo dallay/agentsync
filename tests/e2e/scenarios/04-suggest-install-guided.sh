@@ -20,10 +20,10 @@ run_with_tty "\n" "cd '$REPO_ROOT' && agentsync skill suggest --install" > "$TRA
 # Normalize: strip ANSI codes and carriage returns
 sed -e 's/\x1B\[[0-9;]*[mK]//g' -e 's/\r//g' "$TRANSCRIPT_FILE" > "$CLEAN_TRANSCRIPT_FILE"
 
-assert_file_contains "$CLEAN_TRANSCRIPT_FILE" "Installing 13 selected recommended skills..."
+assert_file_contains "$CLEAN_TRANSCRIPT_FILE" "Installing 15 selected recommended skills..."
 assert_file_contains "$CLEAN_TRANSCRIPT_FILE" "installed accessibility"
 assert_file_contains "$CLEAN_TRANSCRIPT_FILE" "Recommendation install summary"
-assert_file_contains "$CLEAN_TRANSCRIPT_FILE" "Installed: 13"
+assert_file_contains "$CLEAN_TRANSCRIPT_FILE" "Installed: 15"
 assert_file_contains "$CLEAN_TRANSCRIPT_FILE" "Already installed: 0"
 assert_file_contains "$CLEAN_TRANSCRIPT_FILE" "Failed: 0"
 
@@ -39,6 +39,8 @@ for skill_id in \
     makefile \
     nothing-design \
     performance \
+    python-executor \
+    python-testing-patterns \
     pinned-tag \
     rust-async-patterns \
     seo; do
