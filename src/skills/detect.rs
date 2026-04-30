@@ -5,7 +5,7 @@ use crate::skills::suggest::{
 use anyhow::{Context, Result};
 use regex::Regex;
 use serde::Deserialize;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::warn;
@@ -42,6 +42,66 @@ pub struct DetectionRules {
     /// File extensions to scan for (e.g., [".html", ".css", ".tsx"] for web frontend detection)
     #[serde(default)]
     pub file_extensions: Option<Vec<String>>,
+}
+
+/// Metadata about the repository collected in a single pass to optimize detection.
+struct RepoMetadata {
+    /// All relative paths found during a single-pass walk (max depth 3)
+    paths: BTreeSet<PathBuf>,
+    /// Set of relative paths that are directories
+    dirs: BTreeSet<PathBuf>,
+    /// Map of file extension (e.g., ".rs") to the first relative path found with it.
+    /// Used to quickly evaluate file_extensions rules.
+    extensions: BTreeMap<String, PathBuf>,
+}
+
+impl RepoMetadata {
+    fn collect(project_root: &Path) -> Self {
+        let mut paths = BTreeSet::new();
+        let mut dirs = BTreeSet::new();
+        let mut extensions = BTreeMap::new();
+
+        for entry in WalkDir::new(project_root)
+            .max_depth(3)
+            .follow_links(false)
+            .sort_by_file_name()
+            .into_iter()
+            .filter_entry(|entry| !should_ignore_entry(project_root, entry))
+            .flatten()
+        {
+            let Ok(relative) = entry.path().strip_prefix(project_root) else {
+                continue;
+            };
+
+            if relative.as_os_str().is_empty() {
+                continue;
+            }
+
+            let relative_buf = relative.to_path_buf();
+            paths.insert(relative_buf.clone());
+
+            if entry.file_type().is_dir() {
+                dirs.insert(relative_buf.clone());
+            }
+
+            if entry.file_type().is_file()
+                && let Some(ext) = relative.extension().and_then(|e| e.to_str())
+            {
+                let dot_ext = format!(".{ext}");
+                // Store first occurrence for deterministic evidence
+                extensions
+                    .entry(dot_ext)
+                    .or_insert_with(|| relative_buf.clone());
+                extensions.entry(ext.to_string()).or_insert(relative_buf);
+            }
+        }
+
+        Self {
+            paths,
+            dirs,
+            extensions,
+        }
+    }
 }
 
 /// Rules for detecting technologies by scanning file content.
@@ -190,14 +250,16 @@ impl RepoDetector for CatalogDrivenDetector {
             return Ok(Vec::new());
         }
 
-        // Phase 1: Collect all package names from root + workspaces
+        // Phase 1: Collect metadata and package names
+        let metadata = RepoMetadata::collect(project_root);
         let all_packages = collect_package_names(project_root);
 
         let mut detections = Vec::new();
 
         // Phase 2: Evaluate each technology's rules
         for (tech_id, compiled) in &self.rules {
-            if let Some(detection) = evaluate_rules(project_root, tech_id, compiled, &all_packages)
+            if let Some(detection) =
+                evaluate_rules(project_root, tech_id, compiled, &all_packages, &metadata)
             {
                 detections.push(detection);
             }
@@ -212,6 +274,7 @@ fn evaluate_rules(
     tech_id: &TechnologyId,
     rules: &CompiledDetectionRules,
     all_packages: &BTreeSet<String>,
+    metadata: &RepoMetadata,
 ) -> Option<TechnologyDetection> {
     // Check packages (exact match)
     if let Some(packages) = &rules.packages {
@@ -246,8 +309,9 @@ fn evaluate_rules(
     // Check config_files (existence)
     if let Some(config_files) = &rules.config_files {
         for file in config_files {
-            let path = project_root.join(file);
-            if path.exists() {
+            let path = PathBuf::from(file);
+            // Check cache first (hot path for shallow markers), fallback to fs for deeply nested ones
+            if metadata.paths.contains(&path) || project_root.join(&path).exists() {
                 return Some(make_detection(
                     tech_id,
                     DetectionConfidence::High,
@@ -260,7 +324,7 @@ fn evaluate_rules(
 
     // Check config_file_content (read files, search patterns)
     if let Some(content_rules) = &rules.config_file_content {
-        let files_to_scan = gather_content_scan_files(project_root, content_rules);
+        let files_to_scan = gather_content_scan_files(project_root, content_rules, metadata);
         for file_path in &files_to_scan {
             let absolute = project_root.join(file_path);
             if let Ok(content) = fs::read_to_string(&absolute) {
@@ -279,11 +343,19 @@ fn evaluate_rules(
         }
     }
 
-    // Check file_extensions (walkdir scan, max depth 3)
-    if let Some(extensions) = &rules.file_extensions
-        && let Some(detection) = scan_file_extensions(project_root, tech_id, extensions)
-    {
-        return Some(detection);
+    // Check file_extensions (lookup in metadata)
+    if let Some(extensions) = &rules.file_extensions {
+        for ext in extensions {
+            if let Some(path) = metadata.extensions.get(ext) {
+                let display = path.display().to_string();
+                return Some(make_detection(
+                    tech_id,
+                    DetectionConfidence::Medium,
+                    &display,
+                    &format!("file with extension '{ext}' found"),
+                ));
+            }
+        }
     }
 
     None
@@ -311,6 +383,7 @@ fn make_detection(
 fn gather_content_scan_files(
     project_root: &Path,
     rules: &CompiledConfigFileContentRules,
+    metadata: &RepoMetadata,
 ) -> Vec<PathBuf> {
     let mut files = Vec::new();
 
@@ -324,26 +397,28 @@ fn gather_content_scan_files(
             "gradle/libs.versions.toml",
         ] {
             let path = PathBuf::from(name);
-            if project_root.join(&path).exists() {
+            if metadata.paths.contains(&path) {
                 files.push(path);
             }
         }
 
         // Immediate subdirectory build files
-        if let Ok(entries) = fs::read_dir(project_root) {
-            for entry in entries.flatten() {
-                if entry.file_type().is_ok_and(|ft| ft.is_dir()) {
-                    let dir_name = entry.file_name();
-                    let dir_str = dir_name.to_string_lossy();
-                    if IGNORED_DIRS.contains(&dir_str.as_ref()) {
-                        continue;
-                    }
-                    for build_file in &["build.gradle.kts", "build.gradle"] {
-                        let path = PathBuf::from(dir_str.as_ref()).join(build_file);
-                        if project_root.join(&path).exists() {
-                            files.push(path);
-                        }
-                    }
+        // Find directories in metadata.paths with depth 1
+        let root_dirs: BTreeSet<PathBuf> = metadata
+            .dirs
+            .iter()
+            .filter(|p| {
+                p.parent() == Some(Path::new(""))
+                    && !IGNORED_DIRS.contains(&p.to_str().unwrap_or(""))
+            })
+            .cloned()
+            .collect();
+
+        for dir in root_dirs {
+            for build_file in &["build.gradle.kts", "build.gradle"] {
+                let path = dir.join(build_file);
+                if metadata.paths.contains(&path) {
+                    files.push(path);
                 }
             }
         }
@@ -352,54 +427,15 @@ fn gather_content_scan_files(
     if let Some(explicit_files) = &rules.files {
         for file in explicit_files {
             let path = PathBuf::from(file);
-            if project_root.join(&path).exists() && !files.contains(&path) {
+            if (metadata.paths.contains(&path) || project_root.join(&path).exists())
+                && !files.contains(&path)
+            {
                 files.push(path);
             }
         }
     }
 
     files
-}
-
-fn scan_file_extensions(
-    project_root: &Path,
-    tech_id: &TechnologyId,
-    extensions: &[String],
-) -> Option<TechnologyDetection> {
-    for entry in WalkDir::new(project_root)
-        .max_depth(3)
-        .follow_links(false)
-        .sort_by_file_name()
-        .into_iter()
-        .filter_entry(|entry| !should_ignore_entry(project_root, entry))
-    {
-        let entry = match entry {
-            Ok(entry) => entry,
-            Err(_) => continue,
-        };
-        if !entry.file_type().is_file() {
-            continue;
-        }
-
-        let path = entry.path();
-        if let Some(ext) = path.extension().and_then(|ext| ext.to_str()) {
-            let dot_ext = format!(".{ext}");
-            if extensions.iter().any(|e| e == &dot_ext || e == ext) {
-                let relative = path
-                    .strip_prefix(project_root)
-                    .unwrap_or(path)
-                    .to_path_buf();
-                return Some(make_detection(
-                    tech_id,
-                    DetectionConfidence::Medium,
-                    &relative.display().to_string(),
-                    &format!("file with extension '{dot_ext}' found"),
-                ));
-            }
-        }
-    }
-
-    None
 }
 
 // ---------------------------------------------------------------------------

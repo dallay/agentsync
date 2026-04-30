@@ -105,6 +105,19 @@ this redundant activity.
 CLI. This preserves file modification times and reduces I/O pressure in large projects or when
 integrated into automated hooks.
 
+## 2026-04-15 - Single-Pass Metadata Collection for Tech Detection
+
+**Learning:** The technology detection system was performing redundant filesystem walks and
+existence checks for each of the 78+ technologies in the catalog, leading to $O(T \times N)$
+complexity. By implementing a `RepoMetadata` struct that performs a single `WalkDir` (max depth 3)
+and caches paths, directory status, and file extensions, we reduced the complexity to $O(N)$.
+Caching the `FileType` during the initial walk is critical to eliminate subsequent `is_dir()`
+syscalls during rule evaluation.
+
+**Action:** When a process involves evaluating many rules against the same filesystem subtree,
+prefer a single-pass "collect then evaluate" model. Cache not just paths but also relevant
+metadata like `FileType` to avoid returning to the disk for basic queries.
+
 ## 2026-04-10 - Caching NestedGlob Discovery Results
 
 **Learning:** When multiple AI agents use the same `NestedGlob` configuration (e.g., searching for
