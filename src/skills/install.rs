@@ -574,9 +574,16 @@ mod tests {
             let mut header = tar::Header::new_gnu();
             header.set_size(content.len() as u64);
             header.set_cksum();
-            builder
-                .append_data(&mut header, "C:/absolute/path/SKILL.md", &content[..])
-                .unwrap();
+
+            // Bypass tar crate's path validation which fails on Windows during archive creation
+            // by injecting the path bytes directly into the raw header name field
+            let malicious_path = b"C:/absolute/path/SKILL.md";
+            let mut name_bytes = [0u8; 100];
+            name_bytes[..malicious_path.len()].copy_from_slice(malicious_path);
+            header.as_gnu_mut().unwrap().name = name_bytes;
+            header.set_cksum(); // Re-calculate checksum after modifying name
+
+            builder.append(&header, &content[..]).unwrap();
             builder.finish().unwrap();
         }
 
