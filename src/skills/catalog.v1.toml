@@ -193,6 +193,15 @@ local_skill_id = "astrolicious-astro"
 title = "Astro Best Practices"
 summary = "Build Astro sites following framework best practices and patterns."
 
+# --- Zod ---
+
+[[skills]]
+provider_skill_id = "pproenca/dot-skills/zod"
+local_skill_id = "zod"
+title = "Zod"
+summary = "Validate runtime data and infer TypeScript types with Zod."
+install_source = "https://github.com/pproenca/dot-skills/archive/HEAD.zip#skills/zod"
+
 # --- Azure ---
 
 [[skills]]
@@ -296,7 +305,79 @@ title = "Clerk Testing"
 summary = "Test Clerk authentication integrations."
 install_source = "https://github.com/clerk/skills/archive/HEAD.zip#skills/testing"
 
+[[skills]]
+provider_skill_id = "clerk/skills/clerk-nuxt-patterns"
+local_skill_id = "clerk-nuxt-patterns"
+title = "Clerk Nuxt Patterns"
+summary = "Implement Clerk authentication patterns in Nuxt apps."
+install_source = "https://github.com/clerk/skills/archive/HEAD.zip#skills/nuxt-patterns"
+
+[[skills]]
+provider_skill_id = "clerk/skills/clerk-vue-patterns"
+local_skill_id = "clerk-vue-patterns"
+title = "Clerk Vue Patterns"
+summary = "Implement Clerk authentication patterns in Vue apps."
+install_source = "https://github.com/clerk/skills/archive/HEAD.zip#skills/vue-patterns"
+
+[[skills]]
+provider_skill_id = "clerk/skills/clerk-react-patterns"
+local_skill_id = "clerk-react-patterns"
+title = "Clerk React Patterns"
+summary = "Implement Clerk authentication patterns in React apps."
+install_source = "https://github.com/clerk/skills/archive/HEAD.zip#skills/react-patterns"
+
+[[skills]]
+provider_skill_id = "clerk/skills/clerk-astro-patterns"
+local_skill_id = "clerk-astro-patterns"
+title = "Clerk Astro Patterns"
+summary = "Implement Clerk authentication patterns in Astro apps."
+install_source = "https://github.com/clerk/skills/archive/HEAD.zip#skills/astro-patterns"
+
+[[skills]]
+provider_skill_id = "clerk/skills/clerk-expo-patterns"
+local_skill_id = "clerk-expo-patterns"
+title = "Clerk Expo Patterns"
+summary = "Implement Clerk authentication patterns in Expo apps."
+install_source = "https://github.com/clerk/skills/archive/HEAD.zip#skills/expo-patterns"
+
+[[skills]]
+provider_skill_id = "clerk/skills/clerk-react-router-patterns"
+local_skill_id = "clerk-react-router-patterns"
+title = "Clerk React Router Patterns"
+summary = "Implement Clerk authentication patterns with React Router."
+install_source = "https://github.com/clerk/skills/archive/HEAD.zip#skills/react-router-patterns"
+
+[[skills]]
+provider_skill_id = "clerk/skills/clerk-tanstack-patterns"
+local_skill_id = "clerk-tanstack-patterns"
+title = "Clerk TanStack Start Patterns"
+summary = "Implement Clerk authentication patterns with TanStack Start."
+install_source = "https://github.com/clerk/skills/archive/HEAD.zip#skills/tanstack-patterns"
+
+[[skills]]
+provider_skill_id = "clerk/skills/clerk-chrome-extension-patterns"
+local_skill_id = "clerk-chrome-extension-patterns"
+title = "Clerk Chrome Extension Patterns"
+summary = "Implement Clerk authentication patterns in Chrome extensions."
+install_source = "https://github.com/clerk/skills/archive/HEAD.zip#skills/chrome-extension-patterns"
+
+# --- Bun ---
+
+[[skills]]
+provider_skill_id = "midudev/autoskills/bun"
+local_skill_id = "bun"
+title = "Bun"
+summary = "Build and run JavaScript and TypeScript projects with Bun."
+install_source = "https://github.com/midudev/autoskills/archive/HEAD.zip#packages/autoskills/.claude/skills/bun"
+
 # --- Cloudflare ---
+
+[[skills]]
+provider_skill_id = "cloudflare/vinext/migrate-to-vinext"
+local_skill_id = "migrate-to-vinext"
+title = "Migrate to Vinext"
+summary = "Migrate Vite applications to Cloudflare Vinext patterns."
+install_source = "https://github.com/cloudflare/vinext/archive/HEAD.zip#skills/migrate-to-vinext"
 
 [[skills]]
 provider_skill_id = "cloudflare/skills/cloudflare"
@@ -506,6 +587,15 @@ title = "Flutter"
 summary = "Build Flutter applications following official guidance."
 install_source = "https://github.com/flutter/skills/archive/HEAD.zip#skills/flutter"
 
+# --- Chrome Extension ---
+
+[[skills]]
+provider_skill_id = "mindrally/skills/chrome-extension-development"
+local_skill_id = "chrome-extension-development"
+title = "Chrome Extension Development"
+summary = "Build and maintain Chrome browser extensions."
+install_source = "https://github.com/mindrally/skills/archive/HEAD.zip#chrome-extension-development"
+
 # --- GSAP ---
 
 [[skills]]
@@ -711,7 +801,12 @@ summary = "Upgrade Next.js versions safely."
 
 # --- Node.js ---
 
-# --- Nuxt ---
+[[skills]]
+provider_skill_id = "aj-geddes/useful-ai-prompts/nodejs-express-server"
+local_skill_id = "nodejs-express-server"
+title = "Node.js Express Server"
+summary = "Build Express servers with Node.js patterns."
+install_source = "https://github.com/aj-geddes/useful-ai-prompts/archive/HEAD.zip#skills/nodejs-express-server"
 
 [[skills]]
 provider_skill_id = "antfu/skills/nuxt"
@@ -775,6 +870,15 @@ title = "Prisma Postgres"
 summary = "Use Prisma with PostgreSQL databases."
 install_source = "https://github.com/prisma/skills/archive/HEAD.zip#prisma-postgres"
 
+# --- React Hook Form ---
+
+[[skills]]
+provider_skill_id = "pproenca/dot-skills/react-hook-form"
+local_skill_id = "react-hook-form"
+title = "React Hook Form"
+summary = "Build performant, type-safe forms with React Hook Form."
+install_source = "https://github.com/pproenca/dot-skills/archive/HEAD.zip#skills/react-hook-form"
+
 # --- React ---
 
 [[skills]]
@@ -790,6 +894,11 @@ local_skill_id = "vercel-composition-patterns"
 title = "React Composition Patterns"
 summary = "Use React composition patterns for scalable architectures."
 install_source = "https://github.com/vercel-labs/agent-skills/archive/HEAD.zip#skills/composition-patterns"
+
+# --- React Router ---
+
+# autoskills detects React Router but does not currently attach a dedicated skill.
+# Keep it detectable so related combos (for example Clerk integration) can fire.
 
 # --- React Native ---
 
@@ -866,6 +975,15 @@ local_skill_id = "swiftui-expert"
 title = "SwiftUI Expert"
 summary = "Build SwiftUI applications with expert-level patterns."
 
+# --- TanStack Start ---
+
+[[skills]]
+provider_skill_id = "tanstack-skills/tanstack-skills/tanstack-start"
+local_skill_id = "tanstack-start"
+title = "TanStack Start"
+summary = "Build applications with TanStack Start."
+install_source = "https://github.com/tanstack-skills/tanstack-skills/archive/HEAD.zip#skills/tanstack-start"
+
 # --- Tailwind CSS ---
 
 [[skills]]
@@ -874,6 +992,85 @@ local_skill_id = "tailwind-css-patterns"
 title = "Tailwind CSS Patterns"
 summary = "Use maintainable Tailwind CSS utility patterns."
 install_source = "https://github.com/giuseppe-trisciuoglio/developer-kit/archive/HEAD.zip#skills/tailwind-css-patterns"
+
+# --- Three.js ---
+
+[[skills]]
+provider_skill_id = "cloudai-x/threejs-skills/threejs-animation"
+local_skill_id = "threejs-animation"
+title = "Three.js Animation"
+summary = "Create animations with Three.js."
+install_source = "https://github.com/cloudai-x/threejs-skills/archive/HEAD.zip#skills/threejs-animation"
+
+[[skills]]
+provider_skill_id = "cloudai-x/threejs-skills/threejs-fundamentals"
+local_skill_id = "threejs-fundamentals"
+title = "Three.js Fundamentals"
+summary = "Build Three.js scenes with core fundamentals."
+install_source = "https://github.com/cloudai-x/threejs-skills/archive/HEAD.zip#skills/threejs-fundamentals"
+
+[[skills]]
+provider_skill_id = "cloudai-x/threejs-skills/threejs-shaders"
+local_skill_id = "threejs-shaders"
+title = "Three.js Shaders"
+summary = "Use shaders in Three.js applications."
+install_source = "https://github.com/cloudai-x/threejs-skills/archive/HEAD.zip#skills/threejs-shaders"
+
+[[skills]]
+provider_skill_id = "cloudai-x/threejs-skills/threejs-geometry"
+local_skill_id = "threejs-geometry"
+title = "Three.js Geometry"
+summary = "Model and manipulate geometry in Three.js."
+install_source = "https://github.com/cloudai-x/threejs-skills/archive/HEAD.zip#skills/threejs-geometry"
+
+[[skills]]
+provider_skill_id = "cloudai-x/threejs-skills/threejs-interaction"
+local_skill_id = "threejs-interaction"
+title = "Three.js Interaction"
+summary = "Implement user interaction in Three.js scenes."
+install_source = "https://github.com/cloudai-x/threejs-skills/archive/HEAD.zip#skills/threejs-interaction"
+
+[[skills]]
+provider_skill_id = "cloudai-x/threejs-skills/threejs-materials"
+local_skill_id = "threejs-materials"
+title = "Three.js Materials"
+summary = "Use materials effectively in Three.js."
+install_source = "https://github.com/cloudai-x/threejs-skills/archive/HEAD.zip#skills/threejs-materials"
+
+[[skills]]
+provider_skill_id = "cloudai-x/threejs-skills/threejs-postprocessing"
+local_skill_id = "threejs-postprocessing"
+title = "Three.js Postprocessing"
+summary = "Add postprocessing effects to Three.js scenes."
+install_source = "https://github.com/cloudai-x/threejs-skills/archive/HEAD.zip#skills/threejs-postprocessing"
+
+[[skills]]
+provider_skill_id = "cloudai-x/threejs-skills/threejs-lighting"
+local_skill_id = "threejs-lighting"
+title = "Three.js Lighting"
+summary = "Light Three.js scenes effectively."
+install_source = "https://github.com/cloudai-x/threejs-skills/archive/HEAD.zip#skills/threejs-lighting"
+
+[[skills]]
+provider_skill_id = "cloudai-x/threejs-skills/threejs-textures"
+local_skill_id = "threejs-textures"
+title = "Three.js Textures"
+summary = "Apply and optimize textures in Three.js."
+install_source = "https://github.com/cloudai-x/threejs-skills/archive/HEAD.zip#skills/threejs-textures"
+
+[[skills]]
+provider_skill_id = "cloudai-x/threejs-skills/threejs-loaders"
+local_skill_id = "threejs-loaders"
+title = "Three.js Loaders"
+summary = "Load models and assets in Three.js."
+install_source = "https://github.com/cloudai-x/threejs-skills/archive/HEAD.zip#skills/threejs-loaders"
+
+[[skills]]
+provider_skill_id = "vercel-labs/json-render/react-three-fiber"
+local_skill_id = "react-three-fiber"
+title = "React Three Fiber"
+summary = "Render Three.js scenes through React Three Fiber patterns."
+install_source = "https://github.com/vercel-labs/json-render/archive/HEAD.zip#skills/react-three-fiber"
 
 # --- Tauri ---
 
@@ -903,6 +1100,13 @@ local_skill_id = "ai-sdk"
 title = "Vercel AI SDK"
 summary = "Build AI-powered applications with the Vercel AI SDK."
 install_source = "https://github.com/vercel/ai/archive/HEAD.zip#packages/ai/.agents/skills/ai-sdk"
+
+[[skills]]
+provider_skill_id = "vercel/ai/use-ai-sdk"
+local_skill_id = "use-ai-sdk"
+title = "Use Vercel AI SDK"
+summary = "Use the Vercel AI SDK in AI-powered applications."
+install_source = "https://github.com/vercel/ai/archive/HEAD.zip#packages/ai/.agents/skills/use-ai-sdk"
 
 # --- Vercel Deploy ---
 
@@ -1546,6 +1750,24 @@ min_confidence = "medium"
 config_files = ["components.json"]
 
 [[technologies]]
+id = "react_hook_form"
+name = "React Hook Form"
+skills = ["pproenca/dot-skills/react-hook-form"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["react-hook-form"]
+
+[[technologies]]
+id = "zod"
+name = "Zod"
+skills = ["pproenca/dot-skills/zod"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["zod"]
+
+[[technologies]]
 id = "supabase"
 name = "Supabase"
 skills = ["supabase/agent-skills/supabase-postgres-best-practices"]
@@ -1640,6 +1862,34 @@ min_confidence = "medium"
 packages = ["remotion", "@remotion/cli"]
 
 [[technologies]]
+id = "react_router"
+name = "React Router"
+skills = ["vercel-labs/agent-skills/vercel-react-best-practices"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["react-router", "@react-router/node", "@react-router/dev", "@react-router/serve"]
+
+[[technologies]]
+id = "tanstack_start"
+name = "TanStack Start"
+skills = ["tanstack-skills/tanstack-skills/tanstack-start"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["@tanstack/react-start", "@tanstack/start"]
+
+[[technologies]]
+id = "chrome_extension"
+name = "Chrome Extension"
+skills = ["mindrally/skills/chrome-extension-development"]
+min_confidence = "medium"
+
+[technologies.detect.config_file_content]
+files = ["manifest.json"]
+patterns = ["manifest_version"]
+
+[[technologies]]
 id = "clerk"
 name = "Clerk"
 skills = [
@@ -1730,7 +1980,7 @@ packages = ["elevenlabs"]
 [[technologies]]
 id = "vercel_ai"
 name = "Vercel AI SDK"
-skills = ["vercel/ai/ai-sdk"]
+skills = ["vercel/ai/ai-sdk", "vercel/ai/use-ai-sdk"]
 min_confidence = "medium"
 
 [technologies.detect]
@@ -1744,6 +1994,7 @@ min_confidence = "medium"
 
 [technologies.detect]
 packages = ["stripe", "@stripe/stripe-js", "@stripe/react-stripe-js"]
+
 
 [[technologies]]
 id = "vercel_deploy"
@@ -1823,6 +2074,35 @@ packages = ["oxlint"]
 config_files = [".oxlintrc.json", "oxlint.config.ts"]
 
 [[technologies]]
+id = "threejs"
+name = "Three.js"
+skills = [
+  "cloudai-x/threejs-skills/threejs-animation",
+  "cloudai-x/threejs-skills/threejs-fundamentals",
+  "cloudai-x/threejs-skills/threejs-shaders",
+  "cloudai-x/threejs-skills/threejs-geometry",
+  "cloudai-x/threejs-skills/threejs-interaction",
+  "cloudai-x/threejs-skills/threejs-materials",
+  "cloudai-x/threejs-skills/threejs-postprocessing",
+  "cloudai-x/threejs-skills/threejs-lighting",
+  "cloudai-x/threejs-skills/threejs-textures",
+  "cloudai-x/threejs-skills/threejs-loaders",
+]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["three"]
+
+[[technologies]]
+id = "react_three_fiber"
+name = "React Three Fiber"
+skills = ["vercel-labs/json-render/react-three-fiber"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["@react-three/fiber"]
+
+[[technologies]]
 id = "gsap"
 name = "GSAP"
 skills = [
@@ -1838,6 +2118,15 @@ min_confidence = "medium"
 
 [technologies.detect]
 packages = ["gsap"]
+
+[[technologies]]
+id = "bun"
+name = "Bun"
+skills = ["midudev/autoskills/bun"]
+min_confidence = "medium"
+
+[technologies.detect]
+config_files = ["bun.lockb", "bun.lock", "bunfig.toml"]
 
 [[technologies]]
 id = "node"
@@ -2100,6 +2389,13 @@ packages = ["swagger-ui-express", "@nestjs/swagger", "swagger-jsdoc", "openapi-t
 # =============================================================================
 
 [[combos]]
+id = "react-hook-form-zod"
+name = "React Hook Form + Zod"
+requires = ["react_hook_form", "zod"]
+skills = ["pproenca/dot-skills/zod"]
+enabled = true
+
+[[combos]]
 id = "astro-github-actions"
 name = "Astro + GitHub Actions"
 requires = ["astro", "github_actions"]
@@ -2135,10 +2431,108 @@ skills = ["currents-dev/playwright-best-practices-skill/playwright-best-practice
 enabled = true
 
 [[combos]]
+id = "nextjs-vercel-ai"
+name = "Next.js + Vercel AI SDK"
+requires = ["nextjs", "vercel_ai"]
+skills = ["vercel/ai/use-ai-sdk", "vercel-labs/next-skills/next-best-practices"]
+enabled = true
+
+[[combos]]
+id = "react-shadcn"
+name = "React + shadcn/ui"
+requires = ["react", "shadcn"]
+skills = ["shadcn/ui/shadcn", "vercel-labs/agent-skills/vercel-react-best-practices"]
+enabled = true
+
+[[combos]]
+id = "tailwind-shadcn"
+name = "Tailwind CSS + shadcn/ui"
+requires = ["tailwind", "shadcn"]
+skills = ["secondsky/claude-skills/tailwind-v4-shadcn"]
+enabled = true
+
+[[combos]]
 id = "gsap-react"
 name = "GSAP + React"
 requires = ["gsap", "react"]
 skills = ["greensock/gsap-skills/gsap-react"]
+enabled = true
+
+[[combos]]
+id = "cloudflare-vite"
+name = "Cloudflare + Vite"
+requires = ["cloudflare", "vite"]
+skills = ["cloudflare/vinext/migrate-to-vinext"]
+enabled = true
+
+[[combos]]
+id = "node-express"
+name = "Node.js + Express"
+requires = ["node", "express"]
+skills = ["aj-geddes/useful-ai-prompts/nodejs-express-server"]
+enabled = true
+
+[[combos]]
+id = "nuxt-clerk"
+name = "Nuxt + Clerk"
+requires = ["nuxt", "clerk"]
+skills = ["clerk/skills/clerk-nuxt-patterns"]
+enabled = true
+
+[[combos]]
+id = "vue-clerk"
+name = "Vue + Clerk"
+requires = ["vue", "clerk"]
+skills = ["clerk/skills/clerk-vue-patterns"]
+enabled = true
+
+[[combos]]
+id = "react-clerk"
+name = "React + Clerk"
+requires = ["react", "clerk"]
+skills = ["clerk/skills/clerk-react-patterns"]
+enabled = true
+
+[[combos]]
+id = "astro-clerk"
+name = "Astro + Clerk"
+requires = ["astro", "clerk"]
+skills = ["clerk/skills/clerk-astro-patterns"]
+enabled = true
+
+[[combos]]
+id = "expo-clerk"
+name = "Expo + Clerk"
+requires = ["expo", "clerk"]
+skills = ["clerk/skills/clerk-expo-patterns"]
+enabled = true
+
+[[combos]]
+id = "react-react-three-fiber"
+name = "React + React Three Fiber"
+requires = ["threejs", "react", "react_three_fiber"]
+skills = ["vercel-labs/json-render/react-three-fiber"]
+enabled = true
+
+[[combos]]
+id = "react-router-clerk"
+name = "React Router + Clerk"
+requires = ["react_router", "clerk"]
+skills = ["clerk/skills/clerk-react-router-patterns", "clerk/skills/clerk-setup", "clerk/skills/clerk"]
+enabled = true
+
+[[combos]]
+id = "tanstack-clerk"
+name = "TanStack Start + Clerk"
+requires = ["tanstack_start", "clerk"]
+skills = ["clerk/skills/clerk-tanstack-patterns", "clerk/skills/clerk-setup", "clerk/skills/clerk"]
+enabled = true
+
+[[combos]]
+id = "chrome-extension-clerk"
+name = "Chrome Extension + Clerk"
+requires = ["chrome_extension", "clerk"]
+skills = ["clerk/skills/clerk-chrome-extension-patterns", "clerk/skills/clerk-setup", "clerk/skills/clerk"]
 enabled = true
 
 [[combos]]
