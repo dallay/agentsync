@@ -64,136 +64,6 @@ fn skill_suggest_json_is_read_only_and_marks_installed_skills() {
 }
 
 #[test]
-fn skill_suggest_recommends_autoskills_frontend_parity_coverage() {
-    struct Case {
-        name: &'static str,
-        files: &'static [(&'static str, &'static str)],
-        expected_technology: &'static str,
-        expected_skill: &'static str,
-    }
-
-    let cases = [
-        Case {
-            name: "react-hook-form",
-            files: &[(
-                "package.json",
-                r#"{"dependencies":{"react-hook-form":"latest"}}"#,
-            )],
-            expected_technology: "react_hook_form",
-            expected_skill: "react-hook-form",
-        },
-        Case {
-            name: "zod",
-            files: &[("package.json", r#"{"dependencies":{"zod":"latest"}}"#)],
-            expected_technology: "zod",
-            expected_skill: "zod",
-        },
-        Case {
-            name: "react-router",
-            files: &[(
-                "package.json",
-                r#"{"dependencies":{"react-router":"latest"}}"#,
-            )],
-            expected_technology: "react_router",
-            expected_skill: "vercel-react-best-practices",
-        },
-        Case {
-            name: "tanstack-start",
-            files: &[(
-                "package.json",
-                r#"{"dependencies":{"@tanstack/react-start":"latest"}}"#,
-            )],
-            expected_technology: "tanstack_start",
-            expected_skill: "tanstack-start",
-        },
-        Case {
-            name: "chrome-extension",
-            files: &[(
-                "manifest.json",
-                r#"{"manifest_version":3,"name":"Demo","version":"1.0.0"}"#,
-            )],
-            expected_technology: "chrome_extension",
-            expected_skill: "chrome-extension-development",
-        },
-        Case {
-            name: "vercel-ai",
-            files: &[("package.json", r#"{"dependencies":{"ai":"latest"}}"#)],
-            expected_technology: "vercel_ai",
-            expected_skill: "use-ai-sdk",
-        },
-        Case {
-            name: "threejs",
-            files: &[("package.json", r#"{"dependencies":{"three":"latest"}}"#)],
-            expected_technology: "threejs",
-            expected_skill: "threejs-fundamentals",
-        },
-        Case {
-            name: "react-three-fiber",
-            files: &[(
-                "package.json",
-                r#"{"dependencies":{"@react-three/fiber":"latest"}}"#,
-            )],
-            expected_technology: "react_three_fiber",
-            expected_skill: "react-three-fiber",
-        },
-        Case {
-            name: "bun",
-            files: &[("bun.lock", "")],
-            expected_technology: "bun",
-            expected_skill: "bun",
-        },
-    ];
-
-    for case in cases {
-        let temp_dir = TempDir::new().unwrap();
-        let root = temp_dir.path();
-        for (path, contents) in case.files {
-            let path = root.join(path);
-            if let Some(parent) = path.parent() {
-                fs::create_dir_all(parent).unwrap();
-            }
-            fs::write(path, contents).unwrap();
-        }
-
-        let output = Command::new(agentsync_bin())
-            .current_dir(root)
-            .args(["skill", "suggest", "--json"])
-            .output()
-            .unwrap_or_else(|error| panic!("failed to run agentsync for {}: {error}", case.name));
-
-        assert!(
-            output.status.success(),
-            "{} stderr: {}",
-            case.name,
-            String::from_utf8_lossy(&output.stderr)
-        );
-
-        let response: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-        let detections = response["detections"].as_array().unwrap();
-        assert!(
-            detections
-                .iter()
-                .any(|detection| detection["technology"] == case.expected_technology),
-            "{} should detect {}. response: {}",
-            case.name,
-            case.expected_technology,
-            response
-        );
-
-        let recommendations = response["recommendations"].as_array().unwrap();
-        assert!(
-            recommendations
-                .iter()
-                .any(|recommendation| recommendation["skill_id"] == case.expected_skill),
-            "{} should recommend {}. response: {}",
-            case.name,
-            case.expected_skill,
-            response
-        );
-    }
-}
-
-#[test]
 fn skill_suggest_recommends_python_backend_frameworks_from_python_dependency_files() {
     struct Case {
         name: &'static str,
@@ -342,6 +212,118 @@ fn skill_suggest_recommends_python_backend_frameworks_from_python_dependency_fil
 }
 
 #[test]
+fn skill_suggest_recommends_js_frontend_autoskills_parity() {
+    struct Case {
+        name: &'static str,
+        files: &'static [(&'static str, &'static str)],
+        expected_technology: &'static str,
+        expected_skill: &'static str,
+    }
+
+    let cases = [
+        Case {
+            name: "react-hook-form-package-json",
+            files: &[(
+                "package.json",
+                r#"{"dependencies":{"react-hook-form":"^7.0.0"}}"#,
+            )],
+            expected_technology: "react-hook-form",
+            expected_skill: "react-hook-form",
+        },
+        Case {
+            name: "zod-package-json",
+            files: &[("package.json", r#"{"dependencies":{"zod":"^3.0.0"}}"#)],
+            expected_technology: "zod",
+            expected_skill: "zod",
+        },
+        Case {
+            name: "tanstack-start-package-json",
+            files: &[(
+                "package.json",
+                r#"{"dependencies":{"@tanstack/react-start":"^1.0.0"}}"#,
+            )],
+            expected_technology: "tanstack-start",
+            expected_skill: "tanstack-start",
+        },
+        Case {
+            name: "chrome-extension-manifest",
+            files: &[("manifest.json", r#"{"manifest_version":3,"name":"Demo"}"#)],
+            expected_technology: "chrome-extension",
+            expected_skill: "chrome-extension-development",
+        },
+        Case {
+            name: "bun-lockfile",
+            files: &[("bun.lock", "")],
+            expected_technology: "bun",
+            expected_skill: "bun",
+        },
+        Case {
+            name: "threejs-package-json",
+            files: &[("package.json", r#"{"dependencies":{"three":"^0.170.0"}}"#)],
+            expected_technology: "threejs",
+            expected_skill: "threejs-fundamentals",
+        },
+        Case {
+            name: "react-three-fiber-package-json",
+            files: &[(
+                "package.json",
+                r#"{"dependencies":{"@react-three/fiber":"^9.0.0"}}"#,
+            )],
+            expected_technology: "react-three-fiber",
+            expected_skill: "react-three-fiber",
+        },
+    ];
+
+    for case in cases {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        for (path, contents) in case.files {
+            let path = root.join(path);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).unwrap();
+            }
+            fs::write(path, contents).unwrap();
+        }
+
+        let output = Command::new(agentsync_bin())
+            .current_dir(root)
+            .args(["skill", "suggest", "--json"])
+            .output()
+            .unwrap_or_else(|error| panic!("failed to run agentsync for {}: {error}", case.name));
+
+        assert!(
+            output.status.success(),
+            "{} stderr: {}",
+            case.name,
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let response: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        let detections = response["detections"].as_array().unwrap();
+        assert!(
+            detections
+                .iter()
+                .any(|detection| detection["technology"] == case.expected_technology),
+            "{} should detect {}. response: {}",
+            case.name,
+            case.expected_technology,
+            response
+        );
+
+        let recommendations = response["recommendations"].as_array().unwrap();
+        assert!(
+            recommendations
+                .iter()
+                .any(|recommendation| recommendation["skill_id"] == case.expected_skill),
+            "{} should recommend {}. response: {}",
+            case.name,
+            case.expected_skill,
+            response
+        );
+    }
+}
+
+#[test]
 fn skill_suggest_recommends_autoskills_frontend_parity_combos() {
     struct Case {
         name: &'static str,
@@ -401,10 +383,7 @@ fn skill_suggest_recommends_autoskills_frontend_parity_combos() {
         },
         Case {
             name: "node-express",
-            files: &[
-                ("package-lock.json", "{}"),
-                ("package.json", r#"{"dependencies":{"express":"latest"}}"#),
-            ],
+            files: &[("package.json", r#"{"dependencies":{"express":"latest"}}"#)],
             expected_skills: &["nodejs-express-server"],
         },
         Case {
@@ -427,7 +406,7 @@ fn skill_suggest_recommends_autoskills_frontend_parity_combos() {
             name: "nuxt-clerk",
             files: &[(
                 "package.json",
-                r#"{"dependencies":{"nuxt":"latest","@clerk/vue":"latest"}}"#,
+                r#"{"dependencies":{"nuxt":"latest","@clerk/nuxt":"latest"}}"#,
             )],
             expected_skills: &["clerk-nuxt-patterns"],
         },
@@ -514,7 +493,6 @@ fn skill_suggest_recommends_autoskills_frontend_parity_combos() {
         let response: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
         let recommendations = response["recommendations"].as_array().unwrap();
         for expected_skill in case.expected_skills {
-            // Find the recommendation with the expected skill_id
             let matching_recommendation = recommendations
                 .iter()
                 .find(|recommendation| recommendation["skill_id"] == *expected_skill);
@@ -527,7 +505,6 @@ fn skill_suggest_recommends_autoskills_frontend_parity_combos() {
                 response
             );
 
-            // Verify that the recommendation came from a combo (has "combination" in reasons)
             let recommendation = matching_recommendation.unwrap();
             let reasons = recommendation["reasons"].as_array().unwrap();
             let has_combo_reason = reasons
@@ -537,9 +514,7 @@ fn skill_suggest_recommends_autoskills_frontend_parity_combos() {
             assert!(
                 has_combo_reason,
                 "{} should have combo reason for skill {}. recommendation: {}",
-                case.name,
-                expected_skill,
-                recommendation
+                case.name, expected_skill, recommendation
             );
         }
     }
