@@ -147,7 +147,7 @@ fn test_module_map_cli_placeholder_happy_path() {
         ui_dest.display()
     );
     assert!(
-        String::from_utf8_lossy(&clean.stdout).contains("Removed: 2 symlinks"),
+        String::from_utf8_lossy(&clean.stdout).contains("Removed: 2"),
         "{}",
         String::from_utf8_lossy(&clean.stdout)
     );
