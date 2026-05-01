@@ -514,14 +514,32 @@ fn skill_suggest_recommends_autoskills_frontend_parity_combos() {
         let response: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
         let recommendations = response["recommendations"].as_array().unwrap();
         for expected_skill in case.expected_skills {
+            // Find the recommendation with the expected skill_id
+            let matching_recommendation = recommendations
+                .iter()
+                .find(|recommendation| recommendation["skill_id"] == *expected_skill);
+
             assert!(
-                recommendations
-                    .iter()
-                    .any(|recommendation| recommendation["skill_id"] == *expected_skill),
+                matching_recommendation.is_some(),
                 "{} should recommend {}. response: {}",
                 case.name,
                 expected_skill,
                 response
+            );
+
+            // Verify that the recommendation came from a combo (has "combination" in reasons)
+            let recommendation = matching_recommendation.unwrap();
+            let reasons = recommendation["reasons"].as_array().unwrap();
+            let has_combo_reason = reasons
+                .iter()
+                .any(|reason| reason.as_str().unwrap().contains("combination"));
+
+            assert!(
+                has_combo_reason,
+                "{} should have combo reason for skill {}. recommendation: {}",
+                case.name,
+                expected_skill,
+                recommendation
             );
         }
     }

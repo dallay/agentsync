@@ -2740,7 +2740,7 @@ enabled = true
 [[combos]]
 id = "node-express"
 name = "Node.js + Express"
-requires = ["node", "express"]
+requires = ["express"]
 skills = ["aj-geddes/useful-ai-prompts/nodejs-express-server"]
 enabled = true
 
