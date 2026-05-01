@@ -145,6 +145,16 @@ fn render_apply_summary_with_color(
         use_color,
     ));
     lines.push(render_count(
+        "Removed",
+        result.removed,
+        if result.removed > 0 {
+            LabelKind::Warning
+        } else {
+            LabelKind::Muted
+        },
+        use_color,
+    ));
+    lines.push(render_count(
         "Errors",
         result.errors,
         if result.errors > 0 {
@@ -154,6 +164,7 @@ fn render_apply_summary_with_color(
         },
         use_color,
     ));
+
     lines
 }
 
@@ -195,6 +206,17 @@ fn render_mcp_summary_with_color(
     vec![
         render_count("Created", result.created, LabelKind::Success, use_color),
         render_count("Updated", result.updated, LabelKind::Warning, use_color),
+        render_count("Skipped", result.skipped, LabelKind::Muted, use_color),
+        render_count(
+            "Errors",
+            result.errors,
+            if result.errors > 0 {
+                LabelKind::Failure
+            } else {
+                LabelKind::Muted
+            },
+            use_color,
+        ),
     ]
 }
 
@@ -432,7 +454,11 @@ fn main() -> Result<()> {
                 print_lines(&render_mcp_phase(dry_run, use_color));
                 match linker.sync_mcp(dry_run, options.agents.as_ref()) {
                     Ok(mcp_result) => {
-                        if mcp_result.created > 0 || mcp_result.updated > 0 {
+                        if mcp_result.created > 0
+                            || mcp_result.updated > 0
+                            || mcp_result.skipped > 0
+                            || mcp_result.errors > 0
+                        {
                             print_lines(&render_mcp_summary_with_color(&mcp_result, use_color));
                         }
                     }
@@ -568,6 +594,7 @@ mod tests {
                 "  Created: 2".to_string(),
                 "  Updated: 1".to_string(),
                 "  Skipped: 3".to_string(),
+                "  Removed: 0".to_string(),
                 "  Errors: 1".to_string(),
             ]
         );
@@ -596,17 +623,22 @@ mod tests {
     }
 
     #[test]
-    fn test_render_mcp_summary_reports_created_and_updated() {
+    fn test_render_mcp_summary_reports_all_counts() {
         let summary = render_mcp_summary(&McpSyncResult {
             created: 1,
             updated: 2,
-            skipped: 0,
-            errors: 0,
+            skipped: 3,
+            errors: 4,
         });
 
         assert_eq!(
             summary,
-            vec!["  Created: 1".to_string(), "  Updated: 2".to_string()]
+            vec![
+                "  Created: 1".to_string(),
+                "  Updated: 2".to_string(),
+                "  Skipped: 3".to_string(),
+                "  Errors: 4".to_string(),
+            ]
         );
     }
 
