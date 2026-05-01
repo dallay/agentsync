@@ -1917,6 +1917,13 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn detect_suggest_install_output_mode_json_stays_json_without_tty() {
+        let mode =
+            detect_suggest_install_output_mode(true, false, Some("1"), Some("0"), Some("dumb"));
+        assert!(matches!(mode, SuggestInstallOutputMode::Json));
+    }
+
     // Tests for skill_id validation
     #[test]
     fn validate_skill_id_rejects_dotdot() {

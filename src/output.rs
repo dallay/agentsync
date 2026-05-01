@@ -412,6 +412,30 @@ mod tests {
     }
 
     #[test]
+    fn detect_output_mode_non_tty_human_output_is_plain_even_without_term() {
+        assert_eq!(
+            detect_output_mode(false, false, None, None, None),
+            OutputMode::Human { use_color: false }
+        );
+    }
+
+    #[test]
+    fn detect_output_mode_no_color_value_disables_color_regardless_of_value() {
+        assert_eq!(
+            detect_output_mode(false, true, Some("false"), None, Some("xterm")),
+            OutputMode::Human { use_color: false }
+        );
+    }
+
+    #[test]
+    fn detect_output_mode_clicolor_zero_disables_color_even_with_no_color_empty() {
+        assert_eq!(
+            detect_output_mode(false, true, Some(""), Some("0"), Some("xterm")),
+            OutputMode::Human { use_color: false }
+        );
+    }
+
+    #[test]
     fn detect_output_mode_term_dumb_case_insensitive() {
         assert_eq!(
             detect_output_mode(false, true, None, None, Some("DUMB")),
