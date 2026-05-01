@@ -831,6 +831,134 @@ local_skill_id = "vue-pinia-best-practices"
 title = "Vue Pinia Best Practices"
 summary = "Use Pinia state management in Vue apps following best practices."
 
+# --- Python ---
+
+[[skills]]
+provider_skill_id = "inferen-sh/skills/python-executor"
+local_skill_id = "python-executor"
+title = "Python Executor"
+summary = "Execute and iterate on Python code effectively."
+install_source = "https://github.com/inferen-sh/skills/archive/HEAD.zip#python-executor"
+
+[[skills]]
+provider_skill_id = "wshobson/agents/python-testing-patterns"
+local_skill_id = "python-testing-patterns"
+title = "Python Testing Patterns"
+summary = "Apply robust Python testing patterns and workflows."
+install_source = "https://github.com/wshobson/agents/archive/HEAD.zip#skills/python-testing-patterns"
+
+[[skills]]
+provider_skill_id = "wshobson/agents/fastapi-templates"
+local_skill_id = "fastapi-templates"
+title = "FastAPI Templates"
+summary = "Build FastAPI services using proven templates and patterns."
+install_source = "https://github.com/wshobson/agents/archive/HEAD.zip#skills/fastapi-templates"
+
+[[skills]]
+provider_skill_id = "mindrally/skills/fastapi-python"
+local_skill_id = "fastapi-python"
+title = "FastAPI Python"
+summary = "Develop FastAPI applications in Python."
+install_source = "https://github.com/mindrally/skills/archive/HEAD.zip#fastapi-python"
+
+[[skills]]
+provider_skill_id = "vintasoftware/django-ai-plugins/django-expert"
+local_skill_id = "django-expert"
+title = "Django Expert"
+summary = "Apply expert Django development practices."
+install_source = "https://github.com/vintasoftware/django-ai-plugins/archive/HEAD.zip#skills/django-expert"
+
+[[skills]]
+provider_skill_id = "affaan-m/everything-claude-code/django-patterns"
+local_skill_id = "django-patterns"
+title = "Django Patterns"
+summary = "Use effective Django application patterns."
+install_source = "https://github.com/affaan-m/everything-claude-code/archive/HEAD.zip#skills/django-patterns"
+
+[[skills]]
+provider_skill_id = "affaan-m/everything-claude-code/django-security"
+local_skill_id = "django-security"
+title = "Django Security"
+summary = "Harden Django applications using security best practices."
+install_source = "https://github.com/affaan-m/everything-claude-code/archive/HEAD.zip#skills/django-security"
+
+[[skills]]
+provider_skill_id = "aj-geddes/useful-ai-prompts/flask-api-development"
+local_skill_id = "flask-api-development"
+title = "Flask API Development"
+summary = "Develop APIs with Flask."
+install_source = "https://github.com/aj-geddes/useful-ai-prompts/archive/HEAD.zip#skills/flask-api-development"
+
+[[skills]]
+provider_skill_id = "bobmatnyc/claude-mpm-skills/pydantic"
+local_skill_id = "pydantic"
+title = "Pydantic"
+summary = "Model and validate data with Pydantic."
+install_source = "https://github.com/bobmatnyc/claude-mpm-skills/archive/HEAD.zip#skills/pydantic"
+
+[[skills]]
+provider_skill_id = "bobmatnyc/claude-mpm-skills/sqlalchemy"
+local_skill_id = "sqlalchemy"
+title = "SQLAlchemy"
+summary = "Use SQLAlchemy for Python database access."
+install_source = "https://github.com/bobmatnyc/claude-mpm-skills/archive/HEAD.zip#skills/sqlalchemy"
+
+[[skills]]
+provider_skill_id = "wispbit-ai/skills/sqlalchemy-alembic-expert-best-practices-code-review"
+local_skill_id = "sqlalchemy-alembic-expert-best-practices-code-review"
+title = "SQLAlchemy Alembic Expert"
+summary = "Review SQLAlchemy and Alembic code with expert best practices."
+install_source = "https://github.com/wispbit-ai/skills/archive/HEAD.zip#sqlalchemy-alembic-expert-best-practices-code-review"
+
+[[skills]]
+provider_skill_id = "jeffallan/claude-skills/pandas-pro"
+local_skill_id = "pandas-pro"
+title = "Pandas Pro"
+summary = "Analyze and transform data with Pandas."
+install_source = "https://github.com/jeffallan/claude-skills/archive/HEAD.zip#skills/pandas-pro"
+
+[[skills]]
+provider_skill_id = "pluginagentmarketplace/custom-plugin-python/pandas-data-analysis"
+local_skill_id = "pandas-data-analysis"
+title = "Pandas Data Analysis"
+summary = "Perform Python data analysis with Pandas."
+install_source = "https://github.com/pluginagentmarketplace/custom-plugin-python/archive/HEAD.zip#skills/pandas-data-analysis"
+
+[[skills]]
+provider_skill_id = "pluginagentmarketplace/custom-plugin-python/machine-learning"
+local_skill_id = "machine-learning"
+title = "Machine Learning"
+summary = "Apply Python machine learning workflows."
+install_source = "https://github.com/pluginagentmarketplace/custom-plugin-python/archive/HEAD.zip#skills/machine-learning"
+
+[[skills]]
+provider_skill_id = "davila7/claude-code-templates/scikit-learn"
+local_skill_id = "scikit-learn"
+title = "Scikit-Learn"
+summary = "Build machine learning workflows with scikit-learn."
+install_source = "https://github.com/davila7/claude-code-templates/archive/HEAD.zip#skills/scikit-learn"
+
+[[skills]]
+provider_skill_id = "davila7/claude-code-templates/senior-data-scientist"
+local_skill_id = "senior-data-scientist"
+title = "Senior Data Scientist"
+summary = "Use senior data science practices for Python ML work."
+install_source = "https://github.com/davila7/claude-code-templates/archive/HEAD.zip#skills/senior-data-scientist"
+
+[[skills]]
+provider_skill_id = "wshobson/agents/python-background-jobs"
+local_skill_id = "python-background-jobs"
+title = "Python Background Jobs"
+summary = "Build background job systems in Python."
+install_source = "https://github.com/wshobson/agents/archive/HEAD.zip#skills/python-background-jobs"
+
+[[skills]]
+provider_skill_id = "affaan-m/everything-claude-code/python-patterns"
+local_skill_id = "python-patterns"
+title = "Python Patterns"
+summary = "Apply effective Python development patterns."
+install_source = "https://github.com/affaan-m/everything-claude-code/archive/HEAD.zip#skills/python-patterns"
+
 # --- Playwright ---
 
 [[skills]]
@@ -1384,11 +1512,155 @@ config_files = ["package.json", "tsconfig.json"]
 [[technologies]]
 id = "python"
 name = "Python"
-skills = ["dallay/agents-skills/best-practices"]
+skills = ["dallay/agents-skills/best-practices", "inferen-sh/skills/python-executor", "wshobson/agents/python-testing-patterns"]
 min_confidence = "medium"
 
 [technologies.detect]
-config_files = ["pyproject.toml", "uv.lock", "poetry.lock", "requirements.txt"]
+config_files = ["pyproject.toml", "uv.lock", "poetry.lock", "requirements.txt", "setup.py", "setup.cfg", "Pipfile"]
+
+[[technologies]]
+id = "fastapi"
+name = "FastAPI"
+skills = ["wshobson/agents/fastapi-templates", "mindrally/skills/fastapi-python"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["fastapi"]
+
+[technologies.detect.config_file_content]
+files = ["setup.py", "setup.cfg"]
+patterns = ["fastapi", "FastAPI"]
+
+[[technologies]]
+id = "django"
+name = "Django"
+skills = ["vintasoftware/django-ai-plugins/django-expert", "affaan-m/everything-claude-code/django-patterns", "affaan-m/everything-claude-code/django-security"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["django"]
+config_files = ["manage.py"]
+
+[technologies.detect.config_file_content]
+files = ["setup.py", "setup.cfg"]
+patterns = ["django", "Django"]
+
+[[technologies]]
+id = "flask"
+name = "Flask"
+skills = ["aj-geddes/useful-ai-prompts/flask-api-development"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["flask"]
+
+[technologies.detect.config_file_content]
+files = ["setup.py", "setup.cfg"]
+patterns = ["flask", "Flask"]
+
+[[technologies]]
+id = "pydantic"
+name = "Pydantic"
+skills = ["bobmatnyc/claude-mpm-skills/pydantic"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["pydantic"]
+
+[technologies.detect.config_file_content]
+files = ["setup.py", "setup.cfg"]
+patterns = ["pydantic", "Pydantic"]
+
+[[technologies]]
+id = "sqlalchemy"
+name = "SQLAlchemy"
+skills = ["bobmatnyc/claude-mpm-skills/sqlalchemy", "wispbit-ai/skills/sqlalchemy-alembic-expert-best-practices-code-review"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["sqlalchemy"]
+
+[technologies.detect.config_file_content]
+files = ["setup.py", "setup.cfg"]
+patterns = ["sqlalchemy", "SQLAlchemy"]
+
+[[technologies]]
+id = "pytest"
+name = "Pytest"
+skills = ["wshobson/agents/python-testing-patterns"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["pytest"]
+
+[technologies.detect.config_file_content]
+files = ["setup.py", "setup.cfg"]
+patterns = ["pytest", "Pytest"]
+
+[[technologies]]
+id = "pandas"
+name = "Pandas"
+skills = ["jeffallan/claude-skills/pandas-pro", "pluginagentmarketplace/custom-plugin-python/pandas-data-analysis"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["pandas"]
+
+[technologies.detect.config_file_content]
+files = ["setup.py", "setup.cfg"]
+patterns = ["pandas", "Pandas"]
+
+[[technologies]]
+id = "numpy"
+name = "NumPy"
+skills = ["pluginagentmarketplace/custom-plugin-python/machine-learning", "pluginagentmarketplace/custom-plugin-python/pandas-data-analysis"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["numpy"]
+
+[technologies.detect.config_file_content]
+files = ["setup.py", "setup.cfg"]
+patterns = ["numpy", "NumPy"]
+
+[[technologies]]
+id = "scikit_learn"
+name = "Scikit-Learn"
+skills = ["davila7/claude-code-templates/scikit-learn", "davila7/claude-code-templates/senior-data-scientist"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["scikit-learn", "sklearn"]
+
+[technologies.detect.config_file_content]
+files = ["setup.py", "setup.cfg"]
+patterns = ["scikit-learn", "scikit_learn", "sklearn"]
+
+[[technologies]]
+id = "celery"
+name = "Celery"
+skills = ["wshobson/agents/python-background-jobs"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["celery"]
+
+[technologies.detect.config_file_content]
+files = ["setup.py", "setup.cfg"]
+patterns = ["celery", "Celery"]
+
+[[technologies]]
+id = "requests"
+name = "Requests"
+skills = ["affaan-m/everything-claude-code/python-patterns"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["requests"]
+
+[technologies.detect.config_file_content]
+files = ["setup.py", "setup.cfg"]
+patterns = ["requests", "Requests"]
 
 # --- Additional languages ---
 

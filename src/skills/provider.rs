@@ -146,15 +146,14 @@ pub fn resolve_catalog_install_source(
     local_skill_id: &str,
     project_root: Option<&Path>,
 ) -> Result<String> {
-    if let Some(install_source) = catalog.get_install_source(provider_skill_id) {
-        return Ok(install_source.to_string());
-    }
-
-    if provider_skill_id.starts_with(DALLAY_AGENTS_SKILLS_PREFIX)
-        && let Some(path) =
-            local_catalog_skill_source_dir(provider_skill_id, local_skill_id, project_root)
+    if let Some(path) =
+        local_catalog_skill_source_dir(provider_skill_id, local_skill_id, project_root)
     {
         return Ok(path.to_string_lossy().into_owned());
+    }
+
+    if let Some(install_source) = catalog.get_install_source(provider_skill_id) {
+        return Ok(install_source.to_string());
     }
 
     Ok(provider.resolve(provider_skill_id)?.download_url)
