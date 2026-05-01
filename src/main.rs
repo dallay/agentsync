@@ -298,6 +298,12 @@ enum Commands {
             help = "Run interactive configuration wizard to migrate existing files"
         )]
         wizard: bool,
+        #[arg(
+            long,
+            requires = "wizard",
+            help = "Run the init wizard with an experimental full-screen TUI intro"
+        )]
+        experimental_tui: bool,
     },
     /// Apply the configuration from agentsync.toml
     Apply {
@@ -360,6 +366,7 @@ fn main() -> Result<()> {
             path,
             force,
             wizard,
+            experimental_tui,
         } => {
             let project_root = path.unwrap_or_else(|| env::current_dir().unwrap());
             print_header();
@@ -368,7 +375,11 @@ fn main() -> Result<()> {
                     "{}",
                     "Starting interactive configuration wizard...\n".cyan()
                 );
-                init::init_wizard(&project_root, force)?;
+                if experimental_tui {
+                    init::init_wizard_experimental_tui(&project_root, force)?;
+                } else {
+                    init::init_wizard(&project_root, force)?;
+                }
             } else {
                 println!("{}", "Initializing agentsync configuration...\n".cyan());
                 init::init(&project_root, force)?;
@@ -529,10 +540,12 @@ fn print_header() {
 #[cfg(test)]
 mod tests {
     use super::{
-        init_next_steps_lines, render_apply_summary, render_clean_phase, render_clean_summary,
-        render_dry_run_notice, render_gitignore_phase, render_mcp_summary, render_sync_phase,
+        Cli, Commands, init_next_steps_lines, render_apply_summary, render_clean_phase,
+        render_clean_summary, render_dry_run_notice, render_gitignore_phase, render_mcp_summary,
+        render_sync_phase,
     };
     use agentsync::{SyncResult, mcp::McpSyncResult};
+    use clap::Parser;
 
     #[test]
     fn test_render_dry_run_notice_is_explicit() {
@@ -640,6 +653,29 @@ mod tests {
                 "  Errors: 4".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn test_init_experimental_tui_requires_wizard_flag() {
+        assert!(Cli::try_parse_from(["agentsync", "init", "--experimental-tui"]).is_err());
+    }
+
+    #[test]
+    fn test_init_experimental_tui_parses_with_wizard_flag() {
+        let cli = Cli::try_parse_from(["agentsync", "init", "--wizard", "--experimental-tui"])
+            .expect("experimental TUI should parse when wizard is enabled");
+
+        let Commands::Init {
+            wizard,
+            experimental_tui,
+            ..
+        } = cli.command
+        else {
+            panic!("expected init command");
+        };
+
+        assert!(wizard);
+        assert!(experimental_tui);
     }
 
     #[test]

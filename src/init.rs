@@ -5,6 +5,7 @@
 use anyhow::{Context, Result};
 use std::collections::BTreeMap;
 use std::fs;
+use std::io::{self, IsTerminal};
 use std::path::Path;
 
 use crate::config::{Config, SyncType, TargetConfig};
@@ -1006,6 +1007,36 @@ fn resolve_skills_mode_selection(choice: &SkillsWizardChoice, selected_index: us
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExperimentalTuiContext {
+    SafeInteractive,
+    Unsupported(&'static str),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExperimentalTuiIntroOutcome {
+    Continue,
+    Cancelled,
+}
+
+fn detect_experimental_tui_context(
+    stdin_is_tty: bool,
+    stdout_is_tty: bool,
+    term: Option<&str>,
+) -> ExperimentalTuiContext {
+    if !stdin_is_tty {
+        return ExperimentalTuiContext::Unsupported("stdin is not a terminal");
+    }
+    if !stdout_is_tty {
+        return ExperimentalTuiContext::Unsupported("stdout is not a terminal");
+    }
+    if term.is_some_and(|value| value.eq_ignore_ascii_case("dumb")) {
+        return ExperimentalTuiContext::Unsupported("TERM=dumb does not support full-screen TUI");
+    }
+
+    ExperimentalTuiContext::SafeInteractive
+}
+
 trait InitWizardRenderer {
     fn confirm_migration(&mut self) -> Result<bool>;
     fn select_files_to_migrate(
@@ -1420,6 +1451,128 @@ fn collect_post_init_skills_warnings(
     }
 
     Ok(warnings)
+}
+
+fn experimental_tui_context_from_env() -> ExperimentalTuiContext {
+    detect_experimental_tui_context(
+        io::stdin().is_terminal(),
+        io::stdout().is_terminal(),
+        std::env::var("TERM").ok().as_deref(),
+    )
+}
+
+pub fn init_wizard_experimental_tui(project_root: &Path, force: bool) -> Result<()> {
+    use colored::Colorize;
+
+    match experimental_tui_context_from_env() {
+        ExperimentalTuiContext::SafeInteractive => match run_experimental_tui_intro() {
+            Ok(ExperimentalTuiIntroOutcome::Continue) => {}
+            Ok(ExperimentalTuiIntroOutcome::Cancelled) => {
+                anyhow::bail!("experimental TUI wizard cancelled by user")
+            }
+            Err(error) => {
+                println!(
+                    "{}",
+                    format!(
+                        "Experimental full-screen TUI could not initialize ({error}); falling back to the standard wizard."
+                    )
+                    .yellow()
+                );
+            }
+        },
+        ExperimentalTuiContext::Unsupported(reason) => {
+            println!(
+                "{}",
+                format!(
+                    "Experimental full-screen TUI unavailable ({reason}); falling back to the standard wizard."
+                )
+                .yellow()
+            );
+        }
+    }
+
+    init_wizard(project_root, force)
+}
+
+fn run_experimental_tui_intro() -> Result<ExperimentalTuiIntroOutcome> {
+    use crossterm::{
+        event::{self, Event, KeyCode},
+        execute,
+        terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+    };
+    use ratatui::{
+        Terminal,
+        backend::CrosstermBackend,
+        layout::{Alignment, Constraint, Direction, Layout},
+        style::{Color, Modifier, Style},
+        text::{Line, Span},
+        widgets::{Block, Borders, Paragraph, Wrap},
+    };
+
+    struct TerminalGuard;
+
+    impl Drop for TerminalGuard {
+        fn drop(&mut self) {
+            let _ = disable_raw_mode();
+            let _ = execute!(io::stdout(), LeaveAlternateScreen);
+        }
+    }
+
+    enable_raw_mode()?;
+    execute!(io::stdout(), EnterAlternateScreen)?;
+    let _guard = TerminalGuard;
+
+    let backend = CrosstermBackend::new(io::stdout());
+    let mut terminal = Terminal::new(backend)?;
+    terminal.clear()?;
+
+    loop {
+        terminal.draw(|frame| {
+            let area = frame.area();
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Percentage(20),
+                    Constraint::Length(12),
+                    Constraint::Percentage(20),
+                ])
+                .split(area);
+
+            let paragraph = Paragraph::new(vec![
+                Line::from(Span::styled(
+                    "AgentSync experimental init wizard",
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                )),
+                Line::from(""),
+                Line::from("This full-screen TUI is experimental and opt-in."),
+                Line::from("The current migration flow will continue in the standard wizard."),
+                Line::from(""),
+                Line::from("Enter: continue"),
+                Line::from("Esc/q: cancel"),
+            ])
+            .alignment(Alignment::Center)
+            .block(
+                Block::default()
+                    .title(" Init wizard ")
+                    .borders(Borders::ALL),
+            )
+            .wrap(Wrap { trim: true });
+
+            frame.render_widget(paragraph, chunks[1]);
+        })?;
+
+        if let Event::Key(key) = event::read()? {
+            match key.code {
+                KeyCode::Enter => return Ok(ExperimentalTuiIntroOutcome::Continue),
+                KeyCode::Esc | KeyCode::Char('q') => {
+                    return Ok(ExperimentalTuiIntroOutcome::Cancelled);
+                }
+                _ => {}
+            }
+        }
+    }
 }
 
 /// Interactive wizard for initializing agentsync with file migration
@@ -3693,6 +3846,26 @@ mod tests {
         assert_eq!(
             resolve_skills_mode_selection(&choice, 1),
             SyncType::SymlinkContents
+        );
+    }
+
+    #[test]
+    fn test_experimental_tui_context_requires_safe_interactive_terminal() {
+        assert_eq!(
+            detect_experimental_tui_context(true, true, Some("xterm-256color")),
+            ExperimentalTuiContext::SafeInteractive
+        );
+        assert_eq!(
+            detect_experimental_tui_context(false, true, Some("xterm-256color")),
+            ExperimentalTuiContext::Unsupported("stdin is not a terminal")
+        );
+        assert_eq!(
+            detect_experimental_tui_context(true, false, Some("xterm-256color")),
+            ExperimentalTuiContext::Unsupported("stdout is not a terminal")
+        );
+        assert_eq!(
+            detect_experimental_tui_context(true, true, Some("dumb")),
+            ExperimentalTuiContext::Unsupported("TERM=dumb does not support full-screen TUI")
         );
     }
 

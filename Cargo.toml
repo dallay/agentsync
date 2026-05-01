@@ -68,6 +68,8 @@ is-terminal = "0.4"
 tempfile = "3.15"
 urlencoding = "2.1"
 url = "2.5"
+ratatui = { version = "0.30.0", default-features = false, features = ["crossterm"] }
+crossterm = "0.29.0"
 
 [dev-dependencies]
 rand = "0.10"
