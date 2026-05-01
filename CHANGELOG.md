@@ -21,6 +21,66 @@
 * **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
 * **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
 
+## [1.43.0](https://github.com/dallay/agentsync/compare/v1.42.10...v1.43.0) (2026-05-01)
+
+
+### Features
+
+* **skills:** add React/frontend parity with autoskills ([6050d89](https://github.com/dallay/agentsync/commit/6050d89fa8c78096bdec90c01d50196fa493b0a8))
+* **skills:** add React/frontend parity with autoskills ([211297f](https://github.com/dallay/agentsync/commit/211297f7c9329219ea07bf1ff7a7ec73c9e0f112))
+* **skills:** expand suggestion catalog coverage ([bd2ea4d](https://github.com/dallay/agentsync/commit/bd2ea4df26aa1a30bdbf54ba8f55f21f64a09b84))
+* **skills:** expand suggestion catalog coverage ([48dcca9](https://github.com/dallay/agentsync/commit/48dcca905a32c297a88f6aece4ea2bb8295df62a))
+* **suggest:** add JS frontend autoskills parity ([ebc8deb](https://github.com/dallay/agentsync/commit/ebc8deb12aff654a4794920ed48619b69393b427))
+* **suggest:** add JS frontend autoskills parity ([0c5a2e2](https://github.com/dallay/agentsync/commit/0c5a2e282663da37114bdb645058e1d399c2a5b6))
+* **suggest:** add Python dependency detection ([69431c5](https://github.com/dallay/agentsync/commit/69431c5b5bf42061ccbbf8dbbf0f3386cca132e5))
+* **suggest:** add Python dependency detection ([444428e](https://github.com/dallay/agentsync/commit/444428ec751a268802e8d14d45def5e83b33e9ab))
+
+
+### Bug Fixes
+
+* apply CodeRabbit auto-fixes ([84318f9](https://github.com/dallay/agentsync/commit/84318f9c225ab86d2415abadf814b436bb089937))
+* **e2e:** update install-all Python expectations ([578c47f](https://github.com/dallay/agentsync/commit/578c47f60bc674e9dea8f32dab56f94287ab4701))
+* harden tar archive path validation ([bf1d505](https://github.com/dallay/agentsync/commit/bf1d5055f7ec32e61916bfdedfdd026a7eabcfd9))
+* remove catalog dependency from root to fix CI release workflow ([d7c1836](https://github.com/dallay/agentsync/commit/d7c18360f3faa7db59c4314ace25e799adc10675))
+* resolve merge conflicts with origin/main (Python suggest parity) ([10a9de4](https://github.com/dallay/agentsync/commit/10a9de4d7904a40062471758102c1d503afb050e))
+* **security:** harden archive extraction against cross-platform path traversal ([226bfa3](https://github.com/dallay/agentsync/commit/226bfa37c99214696349fe0d9327a808132a740c))
+* **security:** harden archive extraction against path traversal ([9008c31](https://github.com/dallay/agentsync/commit/9008c31ce77ff115d1b8a7f713f9b37f620e84b4))
+* **suggest:** address Python detection review feedback ([346dc09](https://github.com/dallay/agentsync/commit/346dc09c3965312c25700a27de1e4cbe7462d272))
+* **suggest:** use local skill sources in E2E ([1e2dc03](https://github.com/dallay/agentsync/commit/1e2dc03c6344209c1bad21a70cf4777bba5326ef))
+* update rustls-webpki to patched version ([15721c3](https://github.com/dallay/agentsync/commit/15721c3f3444dc56d5dac691e7367a9400f15717))
+
+
+### Performance
+
+* optimize technology detection via single-pass metadata collection ([0cd4158](https://github.com/dallay/agentsync/commit/0cd4158f3910c648eb6e16d01d913932fe6a7ff3))
+* optimize technology detection via single-pass metadata collection ([c101dcc](https://github.com/dallay/agentsync/commit/c101dcc0a0860731985177f1b5703c6ace0a0fcc))
+
+
+### Documentation
+
+* update CLI reference for accuracy and supported technologies ([1de4592](https://github.com/dallay/agentsync/commit/1de4592ab6c0b30344bcd29d4e667a10e1c7dd07))
+
+
+### Tests
+
+* fix tar path generation for Windows test runners ([e1e31bd](https://github.com/dallay/agentsync/commit/e1e31bdd38e44a725861f9e8ab59233c9f43a5de))
+
+
+### Chores
+
+* **deps:** bump all rate-limited and major dependencies ([ccd3d9a](https://github.com/dallay/agentsync/commit/ccd3d9a83af08a4c6ba2cab246a14e26d500ff12))
+* **deps:** lock file maintenance ([f89605c](https://github.com/dallay/agentsync/commit/f89605cbf9e5d41b50c9ab541f339ec7d4091aff))
+* **deps:** lock file maintenance ([5cef41c](https://github.com/dallay/agentsync/commit/5cef41cd9294221cc19e3e74927d7470d81bbe24))
+* **deps:** update actions/create-github-app-token digest to 1b10c78 ([4fa1018](https://github.com/dallay/agentsync/commit/4fa10184c91c2214b1e21b391a4b8aab2232b94e))
+* **deps:** update all rate-limited and major dependency upgrades ([c20480d](https://github.com/dallay/agentsync/commit/c20480d9ea0825edeb543fa7cb23ed5b47bc8714))
+* **deps:** update cargo dependencies ([4d61ca3](https://github.com/dallay/agentsync/commit/4d61ca3f6d15ef9dfa86143f1c002bab4c9f908d))
+* **deps:** update dependency astro to v6.1.6 [security] ([e014410](https://github.com/dallay/agentsync/commit/e0144108e89ba84e3252a40d53a5529f35dafd33))
+* **deps:** update dependency astro to v6.1.6 [security] ([02cdda5](https://github.com/dallay/agentsync/commit/02cdda58745a80fcae4a1f090ed10dbbe538ead8))
+* **deps:** update github actions ([674b6d0](https://github.com/dallay/agentsync/commit/674b6d01397e9e45d82a524d920a0d2844e1619a))
+* **deps:** update github actions ([63be8c5](https://github.com/dallay/agentsync/commit/63be8c55df4165defa47463f176cc3dadb60367a))
+* **deps:** update node.js to v24.15.0 ([8975f8c](https://github.com/dallay/agentsync/commit/8975f8c7c17cd40226c4d8ffa92c6204bdfbe7fd))
+* update opencode plugin dependencies ([ccaaee5](https://github.com/dallay/agentsync/commit/ccaaee581e6f9746fa0ad8bfad79faf864cbd28e))
+
 ## [1.42.10](https://github.com/dallay/agentsync/compare/v1.42.9...v1.42.10) (2026-04-17)
 
 
