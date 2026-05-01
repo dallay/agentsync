@@ -5,7 +5,7 @@ use agentsync::skills::registry;
 use agentsync::skills::suggest::{
     SuggestInstallJsonResponse, SuggestInstallMode, SuggestInstallPhase,
     SuggestInstallProgressEvent, SuggestInstallProgressReporter, SuggestInstallStatus,
-    SuggestionService,
+    SuggestResponse, SuggestionService,
 };
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
@@ -267,6 +267,34 @@ fn render_suggest_install_status_line(
     format!("{} {body}", formatter.format_label(symbol, label, kind))
 }
 
+fn render_skill_action_success(action: &str, skill_id: &str, use_color: bool) -> String {
+    let formatter = HumanFormatter::new(use_color);
+    render_suggest_install_status_line(formatter, "✔", action, LabelKind::Success, skill_id)
+}
+
+fn render_skill_hint(remediation: &str) -> String {
+    format!("  Hint: {remediation}")
+}
+
+fn render_skill_action_failure(
+    skill_id: &str,
+    error_message: &str,
+    remediation: &str,
+    use_color: bool,
+) -> Vec<String> {
+    let formatter = HumanFormatter::new(use_color);
+    vec![
+        render_suggest_install_status_line(
+            formatter,
+            "✗",
+            "failed",
+            LabelKind::Failure,
+            &format!("{skill_id}: {error_message}"),
+        ),
+        render_skill_hint(remediation),
+    ]
+}
+
 fn render_suggest_install_activity_line(
     formatter: HumanFormatter,
     frame: &str,
@@ -360,20 +388,37 @@ fn run_suggest_install_live_worker(
     }
 }
 
-fn print_suggest_install_batch_start(mode: SuggestInstallMode, selected_count: usize) {
+fn print_suggest_install_batch_start(
+    mode: SuggestInstallMode,
+    selected_count: usize,
+    use_color: bool,
+) {
+    for line in render_suggest_install_batch_start(mode, selected_count, use_color) {
+        println!("{line}");
+    }
+}
+
+fn render_suggest_install_batch_start(
+    mode: SuggestInstallMode,
+    selected_count: usize,
+    use_color: bool,
+) -> Vec<String> {
+    let formatter = HumanFormatter::new(use_color);
     let noun = if selected_count == 1 {
         "skill"
     } else {
         "skills"
     };
-    match mode {
+    let detail = match mode {
         SuggestInstallMode::Interactive => {
-            println!("Installing {selected_count} selected recommended {noun}...");
+            format!("Installing {selected_count} selected recommended {noun}")
         }
-        SuggestInstallMode::InstallAll => {
-            println!("Installing {selected_count} recommended {noun}...");
-        }
-    }
+        SuggestInstallMode::InstallAll => format!("Installing {selected_count} recommended {noun}"),
+    };
+    vec![
+        formatter.format_heading("➤ Install recommendations"),
+        format!("  {detail}"),
+    ]
 }
 
 fn render_suggest_install_completion_summary(
@@ -429,6 +474,71 @@ fn render_suggest_install_completion_summary(
             lines.push(format!("    - {}: {}", failure.skill_id, message));
         }
     }
+
+    lines.join("\n")
+}
+
+fn render_skill_suggest_human(response: &SuggestResponse, use_color: bool) -> String {
+    let formatter = HumanFormatter::new(use_color);
+    let mut lines = Vec::<String>::new();
+
+    lines.push(formatter.format_heading("➤ Detected technologies"));
+    if response.detections.is_empty() {
+        lines.push("  none".to_string());
+    } else {
+        for detection in &response.detections {
+            let evidence = detection
+                .evidence
+                .iter()
+                .map(|evidence| evidence.path.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            lines.push(format!(
+                "  {} ({}): {}",
+                detection.technology,
+                detection.confidence.as_human_label(),
+                evidence
+            ));
+        }
+    }
+
+    lines.push(String::new());
+    lines.push(formatter.format_heading("➤ Recommended skills"));
+    if response.recommendations.is_empty() {
+        lines.push("  none".to_string());
+    } else {
+        for recommendation in &response.recommendations {
+            let installed = if recommendation.installed {
+                match recommendation.installed_version.as_deref() {
+                    Some(version) => format!("installed ({version})"),
+                    None => "installed".to_string(),
+                }
+            } else {
+                "not installed".to_string()
+            };
+
+            lines.push(format!(
+                "  {} — {} [{}]",
+                recommendation.skill_id, recommendation.title, installed
+            ));
+            lines.push(format!("    {}", recommendation.summary));
+            for reason in &recommendation.reasons {
+                lines.push(format!("    reason: {reason}"));
+            }
+        }
+    }
+
+    lines.push(String::new());
+    lines.push(formatter.format_heading("➤ Summary"));
+    lines.push(format!("  Detected: {}", response.summary.detected_count));
+    lines.push(format!(
+        "  Recommended: {}",
+        response.summary.recommended_count
+    ));
+    lines.push(format!(
+        "  Installable: {}",
+        response.summary.installable_count
+    ));
 
     lines.join("\n")
 }
@@ -563,10 +673,9 @@ pub fn run_update(args: SkillUpdateArgs, project_root: PathBuf) -> Result<()> {
                     println!("{}", serde_json::to_string(&output)?);
                 }
                 OutputMode::Human { use_color } => {
-                    let fmt = HumanFormatter::new(use_color);
                     println!(
-                        "{} {skill_id}",
-                        fmt.format_label("✔", "updated", LabelKind::Success)
+                        "{}",
+                        render_skill_action_success("updated", skill_id, use_color)
                     );
                 }
             }
@@ -588,13 +697,12 @@ pub fn run_update(args: SkillUpdateArgs, project_root: PathBuf) -> Result<()> {
                     Err(e.into())
                 }
                 OutputMode::Human { use_color } => {
-                    let fmt = HumanFormatter::new(use_color);
                     error!(%code, %err_string, "Update failed");
-                    println!(
-                        "{} {skill_id}: {err_string}",
-                        fmt.format_label("✗", "failed", LabelKind::Failure)
-                    );
-                    println!("Hint: {}", remediation);
+                    for line in
+                        render_skill_action_failure(skill_id, &err_string, remediation, use_color)
+                    {
+                        println!("{line}");
+                    }
                     Err(e.into())
                 }
             }
@@ -625,7 +733,11 @@ pub fn run_suggest(args: SkillSuggestArgs, project_root: PathBuf) -> Result<()> 
             if args.json {
                 println!("{}", serde_json::to_string(&response.to_json_response())?);
             } else {
-                println!("{}", response.render_human());
+                let use_color = match output::output_mode(false) {
+                    OutputMode::Human { use_color } => use_color,
+                    OutputMode::Json => false,
+                };
+                println!("{}", render_skill_suggest_human(&response, use_color));
             }
             return Ok(());
         }
@@ -674,7 +786,7 @@ pub fn run_suggest(args: SkillSuggestArgs, project_root: PathBuf) -> Result<()> 
                     )
                 };
 
-                print_suggest_install_batch_start(mode, selected_skill_ids.len());
+                print_suggest_install_batch_start(mode, selected_skill_ids.len(), use_color);
                 match output_mode {
                     SuggestInstallOutputMode::HumanLine { .. } => {
                         let mut reporter = SuggestInstallLineReporter::new(use_color);
@@ -773,7 +885,7 @@ pub fn run_suggest(args: SkillSuggestArgs, project_root: PathBuf) -> Result<()> 
                 println!("{}", serde_json::to_string(&output)?);
             } else {
                 error!(%code, error = %error_message, "Suggest failed");
-                println!("Hint: {}", remediation);
+                println!("{}", render_skill_hint(remediation));
             }
 
             Err(error)
@@ -865,10 +977,9 @@ pub fn run_install(args: SkillInstallArgs, project_root: PathBuf) -> Result<()> 
                     println!("{}", serde_json::to_string(&output)?);
                 }
                 OutputMode::Human { use_color } => {
-                    let fmt = HumanFormatter::new(use_color);
                     println!(
-                        "{} {skill_id}",
-                        fmt.format_label("✔", "installed", LabelKind::Success)
+                        "{}",
+                        render_skill_action_success("installed", skill_id, use_color)
                     );
                 }
             }
@@ -893,13 +1004,12 @@ pub fn run_install(args: SkillInstallArgs, project_root: PathBuf) -> Result<()> 
                     Err(e)
                 }
                 OutputMode::Human { use_color } => {
-                    let fmt = HumanFormatter::new(use_color);
                     error!(%code, %err_string, "Install failed");
-                    println!(
-                        "{} {skill_id}: {err_string}",
-                        fmt.format_label("✗", "failed", LabelKind::Failure)
-                    );
-                    println!("Hint: {}", remediation);
+                    for line in
+                        render_skill_action_failure(skill_id, &err_string, remediation, use_color)
+                    {
+                        println!("{line}");
+                    }
                     Err(e)
                 }
             }
@@ -985,10 +1095,9 @@ pub fn run_uninstall(args: SkillUninstallArgs, project_root: PathBuf) -> Result<
                     println!("{}", serde_json::to_string(&output)?);
                 }
                 OutputMode::Human { use_color } => {
-                    let fmt = HumanFormatter::new(use_color);
                     println!(
-                        "{} {skill_id}",
-                        fmt.format_label("✔", "uninstalled", LabelKind::Success)
+                        "{}",
+                        render_skill_action_success("uninstalled", skill_id, use_color)
                     );
                 }
             }
@@ -1022,13 +1131,12 @@ pub fn run_uninstall(args: SkillUninstallArgs, project_root: PathBuf) -> Result<
                     Err(anyhow::anyhow!(e))
                 }
                 OutputMode::Human { use_color } => {
-                    let fmt = HumanFormatter::new(use_color);
                     error!(%code, %err_string, "Uninstall failed");
-                    println!(
-                        "{} {skill_id}: {err_string}",
-                        fmt.format_label("✗", "failed", LabelKind::Failure)
-                    );
-                    println!("Hint: {}", remediation);
+                    for line in
+                        render_skill_action_failure(skill_id, &err_string, remediation, use_color)
+                    {
+                        println!("{line}");
+                    }
                     Err(anyhow::anyhow!(e))
                 }
             }
@@ -1268,6 +1376,11 @@ fn validate_skill_id(skill_id: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use agentsync::skills::catalog::{CatalogSkillMetadata, EmbeddedSkillCatalog};
+    use agentsync::skills::suggest::{
+        DetectionConfidence, DetectionEvidence, SkillSuggestion, SuggestResponse, SuggestSummary,
+        TechnologyDetection, TechnologyId,
+    };
     use std::sync::{Arc, Mutex};
 
     #[test]
@@ -1397,6 +1510,120 @@ mod tests {
         let result =
             try_convert_github_url("https://github.com/owner/repo/archive/HEAD.zip#subpath");
         assert_eq!(result, None);
+    }
+
+    #[test]
+    fn skill_action_success_uses_shared_label_shape() {
+        assert_eq!(
+            render_skill_action_success("installed", "rust-async-patterns", false),
+            "✔ installed rust-async-patterns"
+        );
+    }
+
+    #[test]
+    fn skill_action_failure_indents_hint() {
+        assert_eq!(
+            render_skill_action_failure(
+                "rust-async-patterns",
+                "simulated failure",
+                "Check permissions and try again.",
+                false,
+            ),
+            vec![
+                "✗ failed rust-async-patterns: simulated failure".to_string(),
+                "  Hint: Check permissions and try again.".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn skill_suggest_human_uses_headings_and_summary_counts() {
+        let response = SuggestResponse {
+            detections: vec![TechnologyDetection {
+                technology: TechnologyId::new("rust"),
+                confidence: DetectionConfidence::High,
+                root_relative_paths: vec![PathBuf::from("Cargo.toml")],
+                evidence: vec![DetectionEvidence {
+                    marker: "Cargo.toml".to_string(),
+                    path: PathBuf::from("Cargo.toml"),
+                    notes: None,
+                }],
+            }],
+            recommendations: vec![{
+                let catalog = EmbeddedSkillCatalog::default();
+                let metadata = CatalogSkillMetadata {
+                    skill_id: "rust-async-patterns".to_string(),
+                    provider_skill_id: "dallay/rust-async-patterns".to_string(),
+                    title: "Rust async programming patterns".to_string(),
+                    summary: "Master Rust async programming with Tokio.".to_string(),
+                };
+                let mut suggestion = SkillSuggestion::new(&metadata, &catalog);
+                suggestion.reasons = vec!["detected rust".to_string()];
+                suggestion.matched_technologies = vec![TechnologyId::new("rust")];
+                suggestion
+            }],
+            summary: SuggestSummary {
+                detected_count: 1,
+                recommended_count: 1,
+                installable_count: 1,
+            },
+        };
+
+        let output = render_skill_suggest_human(&response, false);
+        assert!(output.contains("➤ Detected technologies"), "{output}");
+        assert!(output.contains("  rust (high): Cargo.toml"), "{output}");
+        assert!(output.contains("➤ Recommended skills"), "{output}");
+        assert!(
+            output.contains(
+                "  rust-async-patterns — Rust async programming patterns [not installed]"
+            ),
+            "{output}"
+        );
+        assert!(
+            output.contains("    Master Rust async programming with Tokio."),
+            "{output}"
+        );
+        assert!(output.contains("    reason: detected rust"), "{output}");
+        assert!(output.contains("➤ Summary"), "{output}");
+        assert!(output.contains("  Detected: 1"), "{output}");
+        assert!(output.contains("  Recommended: 1"), "{output}");
+        assert!(output.contains("  Installable: 1"), "{output}");
+    }
+
+    #[test]
+    fn skill_suggest_human_reports_none_when_empty() {
+        let response = SuggestResponse {
+            detections: Vec::new(),
+            recommendations: Vec::new(),
+            summary: SuggestSummary {
+                detected_count: 0,
+                recommended_count: 0,
+                installable_count: 0,
+            },
+        };
+
+        assert_eq!(
+            render_skill_suggest_human(&response, false),
+            "➤ Detected technologies\n  none\n\n➤ Recommended skills\n  none\n\n➤ Summary\n  Detected: 0\n  Recommended: 0\n  Installable: 0"
+        );
+    }
+
+    #[test]
+    fn suggest_install_batch_start_uses_heading_shape() {
+        assert_eq!(
+            render_suggest_install_batch_start(SuggestInstallMode::InstallAll, 2, false),
+            vec![
+                "➤ Install recommendations".to_string(),
+                "  Installing 2 recommended skills".to_string(),
+            ]
+        );
+        assert_eq!(
+            render_suggest_install_batch_start(SuggestInstallMode::Interactive, 1, false),
+            vec![
+                "➤ Install recommendations".to_string(),
+                "  Installing 1 selected recommended skill".to_string(),
+            ]
+        );
     }
 
     #[test]
