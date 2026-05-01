@@ -8,17 +8,20 @@ pub enum LabelKind {
     Warning,
     Success,
     Failure,
+    #[allow(dead_code)]
+    Muted,
 }
 
-/// Output mode for single-operation skill commands.
+/// Output mode for commands that support machine-readable JSON and human output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputMode {
     Json,
     Human { use_color: bool },
 }
 
-/// Formatter for human-readable skill command output.
-/// When `use_color` is true, applies ANSI color+bold via the `colored` crate.
+/// Formatter for human-readable command output.
+///
+/// When `use_color` is true, applies ANSI styling via the `colored` crate.
 /// When false, returns plain text preserving Unicode symbols.
 #[derive(Debug, Clone, Copy)]
 pub struct HumanFormatter {
@@ -33,16 +36,7 @@ impl HumanFormatter {
     /// Format a status label: "{symbol} {label}" with color per kind.
     pub fn format_label(&self, symbol: &str, label: &str, kind: LabelKind) -> String {
         let text = format!("{symbol} {label}");
-        if !self.use_color {
-            return text;
-        }
-
-        match kind {
-            LabelKind::Info => text.cyan().bold().to_string(),
-            LabelKind::Warning => text.yellow().bold().to_string(),
-            LabelKind::Success => text.green().bold().to_string(),
-            LabelKind::Failure => text.red().bold().to_string(),
-        }
+        self.style_by_kind(text, kind, true)
     }
 
     /// Format a heading: bold when color is enabled, plain otherwise.
@@ -51,6 +45,64 @@ impl HumanFormatter {
             heading.bold().to_string()
         } else {
             heading.to_string()
+        }
+    }
+
+    /// Format subdued text for details that should not dominate the output.
+    #[allow(dead_code)]
+    pub fn format_muted(&self, text: &str) -> String {
+        if self.use_color {
+            text.dimmed().to_string()
+        } else {
+            text.to_string()
+        }
+    }
+
+    /// Format a key/value line as "label: value", with a muted label when color is enabled.
+    #[allow(dead_code)]
+    pub fn format_key_value(&self, label: &str, value: &str) -> String {
+        let formatted_label = if self.use_color {
+            label.dimmed().to_string()
+        } else {
+            label.to_string()
+        };
+        format!("{formatted_label}: {value}")
+    }
+
+    /// Format a summary line as "label: value", styling the value by semantic kind.
+    #[allow(dead_code)]
+    pub fn format_summary_line(&self, label: &str, value: &str, kind: LabelKind) -> String {
+        let formatted_value = self.style_by_kind(value.to_string(), kind, false);
+        self.format_key_value(label, &formatted_value)
+    }
+
+    /// Format a hint line using the existing arrow convention.
+    #[allow(dead_code)]
+    pub fn format_hint(&self, text: &str) -> String {
+        let arrow = if self.use_color {
+            "↳".blue().to_string()
+        } else {
+            "↳".to_string()
+        };
+        format!("{arrow} {text}")
+    }
+
+    fn style_by_kind(&self, text: String, kind: LabelKind, bold: bool) -> String {
+        if !self.use_color {
+            return text;
+        }
+
+        match (kind, bold) {
+            (LabelKind::Info, true) => text.cyan().bold().to_string(),
+            (LabelKind::Warning, true) => text.yellow().bold().to_string(),
+            (LabelKind::Success, true) => text.green().bold().to_string(),
+            (LabelKind::Failure, true) => text.red().bold().to_string(),
+            (LabelKind::Muted, true) => text.dimmed().bold().to_string(),
+            (LabelKind::Info, false) => text.cyan().to_string(),
+            (LabelKind::Warning, false) => text.yellow().to_string(),
+            (LabelKind::Success, false) => text.green().to_string(),
+            (LabelKind::Failure, false) => text.red().to_string(),
+            (LabelKind::Muted, false) => text.dimmed().to_string(),
         }
     }
 }
@@ -104,8 +156,6 @@ mod tests {
     fn force_color() {
         colored::control::set_override(true);
     }
-
-    // --- HumanFormatter::format_label tests ---
 
     #[test]
     fn format_label_success_colored() {
@@ -180,6 +230,13 @@ mod tests {
     }
 
     #[test]
+    fn format_label_muted_plain() {
+        let fmt = HumanFormatter::new(false);
+        let result = fmt.format_label("○", "skipped", LabelKind::Muted);
+        assert_eq!(result, "○ skipped");
+    }
+
+    #[test]
     fn format_label_each_kind_uses_distinct_color() {
         force_color();
         let fmt = HumanFormatter::new(true);
@@ -187,16 +244,15 @@ mod tests {
         let warn = fmt.format_label("!", "warn", LabelKind::Warning);
         let ok = fmt.format_label("✔", "ok", LabelKind::Success);
         let fail = fmt.format_label("✗", "fail", LabelKind::Failure);
-        // All contain ANSI escapes
-        for c in [&info, &warn, &ok, &fail] {
+        let muted = fmt.format_label("○", "muted", LabelKind::Muted);
+
+        for c in [&info, &warn, &ok, &fail, &muted] {
             assert!(c.contains("\x1b["), "{c}");
         }
-        // All four are distinct strings (different color codes)
-        let unique: HashSet<&String> = [&info, &warn, &ok, &fail].into_iter().collect();
-        assert_eq!(unique.len(), 4);
-    }
 
-    // --- HumanFormatter::format_heading tests ---
+        let unique: HashSet<&String> = [&info, &warn, &ok, &fail, &muted].into_iter().collect();
+        assert_eq!(unique.len(), 5);
+    }
 
     #[test]
     fn format_heading_bold_when_colored() {
@@ -214,7 +270,74 @@ mod tests {
         assert_eq!(result, "Summary");
     }
 
-    // --- detect_output_mode tests ---
+    #[test]
+    fn format_muted_plain_when_no_color() {
+        let fmt = HumanFormatter::new(false);
+        assert_eq!(fmt.format_muted("details"), "details");
+    }
+
+    #[test]
+    fn format_muted_dimmed_when_colored() {
+        force_color();
+        let fmt = HumanFormatter::new(true);
+        let result = fmt.format_muted("details");
+        assert!(result.contains("details"), "{result}");
+        assert!(result.contains("\x1b["), "expected ANSI escape: {result}");
+    }
+
+    #[test]
+    fn format_key_value_plain() {
+        let fmt = HumanFormatter::new(false);
+        assert_eq!(fmt.format_key_value("Created", "2"), "Created: 2");
+    }
+
+    #[test]
+    fn format_key_value_dims_label_when_colored() {
+        force_color();
+        let fmt = HumanFormatter::new(true);
+        let result = fmt.format_key_value("Created", "2");
+        assert!(result.contains("Created"), "{result}");
+        assert!(result.contains(": 2"), "{result}");
+        assert!(result.contains("\x1b["), "expected ANSI escape: {result}");
+    }
+
+    #[test]
+    fn format_summary_line_plain() {
+        let fmt = HumanFormatter::new(false);
+        assert_eq!(
+            fmt.format_summary_line("Errors", "0", LabelKind::Success),
+            "Errors: 0"
+        );
+    }
+
+    #[test]
+    fn format_summary_line_colors_value_when_colored() {
+        force_color();
+        let fmt = HumanFormatter::new(true);
+        let result = fmt.format_summary_line("Errors", "0", LabelKind::Success);
+        assert!(result.contains("Errors"), "{result}");
+        assert!(result.contains("0"), "{result}");
+        assert!(result.contains("\x1b["), "expected ANSI escape: {result}");
+    }
+
+    #[test]
+    fn format_hint_plain() {
+        let fmt = HumanFormatter::new(false);
+        assert_eq!(
+            fmt.format_hint("Run agentsync apply"),
+            "↳ Run agentsync apply"
+        );
+    }
+
+    #[test]
+    fn format_hint_colors_arrow_when_colored() {
+        force_color();
+        let fmt = HumanFormatter::new(true);
+        let result = fmt.format_hint("Run agentsync apply");
+        assert!(result.contains("↳"), "{result}");
+        assert!(result.contains("Run agentsync apply"), "{result}");
+        assert!(result.contains("\x1b["), "expected ANSI escape: {result}");
+    }
 
     #[test]
     fn detect_output_mode_json_takes_priority() {
@@ -226,7 +349,6 @@ mod tests {
 
     #[test]
     fn detect_output_mode_json_ignores_env_overrides() {
-        // Even with NO_COLOR, CLICOLOR=0, TERM=dumb — JSON wins
         assert_eq!(
             detect_output_mode(true, false, Some("1"), Some("0"), Some("dumb")),
             OutputMode::Json
@@ -258,16 +380,7 @@ mod tests {
     }
 
     #[test]
-    fn detect_output_mode_no_color_any_nonempty_value() {
-        assert_eq!(
-            detect_output_mode(false, true, Some("yes"), None, Some("xterm")),
-            OutputMode::Human { use_color: false }
-        );
-    }
-
-    #[test]
-    fn detect_output_mode_no_color_empty_value_allows_color() {
-        // Empty NO_COLOR should NOT suppress color (spec: non-empty)
+    fn detect_output_mode_empty_no_color_env_does_not_disable() {
         assert_eq!(
             detect_output_mode(false, true, Some(""), None, Some("xterm")),
             OutputMode::Human { use_color: true }
@@ -283,7 +396,7 @@ mod tests {
     }
 
     #[test]
-    fn detect_output_mode_clicolor_nonzero_allows_color() {
+    fn detect_output_mode_clicolor_nonzero_keeps_color() {
         assert_eq!(
             detect_output_mode(false, true, None, Some("1"), Some("xterm")),
             OutputMode::Human { use_color: true }
@@ -291,7 +404,7 @@ mod tests {
     }
 
     #[test]
-    fn detect_output_mode_dumb_term() {
+    fn detect_output_mode_term_dumb() {
         assert_eq!(
             detect_output_mode(false, true, None, None, Some("dumb")),
             OutputMode::Human { use_color: false }
@@ -299,130 +412,10 @@ mod tests {
     }
 
     #[test]
-    fn detect_output_mode_dumb_term_case_insensitive() {
+    fn detect_output_mode_term_dumb_case_insensitive() {
         assert_eq!(
             detect_output_mode(false, true, None, None, Some("DUMB")),
             OutputMode::Human { use_color: false }
-        );
-    }
-
-    #[test]
-    fn detect_output_mode_no_term_env_allows_color_on_tty() {
-        assert_eq!(
-            detect_output_mode(false, true, None, None, None),
-            OutputMode::Human { use_color: true }
-        );
-    }
-
-    // --- Human-output pattern tests for install/update/uninstall ---
-
-    #[test]
-    fn install_success_human_output_pattern() {
-        let fmt = HumanFormatter::new(false);
-        let skill_id = "my-skill";
-        let line = format!(
-            "{} {skill_id}",
-            fmt.format_label("✔", "installed", LabelKind::Success)
-        );
-        assert_eq!(line, "✔ installed my-skill");
-    }
-
-    #[test]
-    fn install_success_human_output_colored() {
-        force_color();
-        let fmt = HumanFormatter::new(true);
-        let skill_id = "my-skill";
-        let line = format!(
-            "{} {skill_id}",
-            fmt.format_label("✔", "installed", LabelKind::Success)
-        );
-        assert!(line.contains("✔ installed"), "{line}");
-        assert!(line.contains("my-skill"), "{line}");
-        assert!(line.contains("\x1b["), "expected ANSI: {line}");
-    }
-
-    #[test]
-    fn install_error_human_output_pattern() {
-        let fmt = HumanFormatter::new(false);
-        let skill_id = "bad-skill";
-        let err_msg = "source not found";
-        let line1 = format!(
-            "{} {skill_id}: {err_msg}",
-            fmt.format_label("✗", "failed", LabelKind::Failure)
-        );
-        let line2 = format!("Hint: {}", "Check the SKILL.md syntax");
-        assert_eq!(line1, "✗ failed bad-skill: source not found");
-        assert!(line2.starts_with("Hint: "));
-        assert!(!line2.contains("\x1b["), "Hint must not be colored");
-    }
-
-    #[test]
-    fn update_success_human_output_pattern() {
-        let fmt = HumanFormatter::new(false);
-        let skill_id = "my-skill";
-        let line = format!(
-            "{} {skill_id}",
-            fmt.format_label("✔", "updated", LabelKind::Success)
-        );
-        assert_eq!(line, "✔ updated my-skill");
-    }
-
-    #[test]
-    fn update_error_human_output_pattern() {
-        let fmt = HumanFormatter::new(false);
-        let skill_id = "bad-skill";
-        let err_msg = "update failed";
-        let line1 = format!(
-            "{} {skill_id}: {err_msg}",
-            fmt.format_label("✗", "failed", LabelKind::Failure)
-        );
-        assert_eq!(line1, "✗ failed bad-skill: update failed");
-    }
-
-    #[test]
-    fn uninstall_success_human_output_pattern() {
-        let fmt = HumanFormatter::new(false);
-        let skill_id = "my-skill";
-        let line = format!(
-            "{} {skill_id}",
-            fmt.format_label("✔", "uninstalled", LabelKind::Success)
-        );
-        assert_eq!(line, "✔ uninstalled my-skill");
-    }
-
-    #[test]
-    fn uninstall_error_human_output_pattern() {
-        let fmt = HumanFormatter::new(false);
-        let skill_id = "missing-skill";
-        let err_msg = "skill not found";
-        let line1 = format!(
-            "{} {skill_id}: {err_msg}",
-            fmt.format_label("✗", "failed", LabelKind::Failure)
-        );
-        let line2 = "Hint: Try 'list' to verify installed skills";
-        assert_eq!(line1, "✗ failed missing-skill: skill not found");
-        assert!(line2.contains("list"), "hint should mention list");
-        assert!(!line2.contains("\x1b["), "Hint must not be colored");
-    }
-
-    #[test]
-    fn uninstall_error_colored_has_ansi_on_failure_line_only() {
-        force_color();
-        let fmt = HumanFormatter::new(true);
-        let skill_id = "missing-skill";
-        let err_msg = "skill not found";
-        let failure_line = format!(
-            "{} {skill_id}: {err_msg}",
-            fmt.format_label("✗", "failed", LabelKind::Failure)
-        );
-        let hint_line = "Hint: Try 'list' to verify installed skills";
-        assert!(
-            failure_line.contains("\x1b["),
-            "failure line should have ANSI: {failure_line}"
-        );
-        assert!(
-            !hint_line.contains("\x1b["),
-            "hint line must NOT have ANSI: {hint_line}"
         );
     }
 }

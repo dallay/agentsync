@@ -10,6 +10,7 @@ use std::path::PathBuf;
 
 use agentsync::{Linker, SyncOptions, config::Config, gitignore, init};
 mod commands;
+mod output;
 use commands::doctor::run_doctor;
 use commands::skill::{SkillCommand, run_skill};
 use commands::status::{StatusArgs, run_status};
