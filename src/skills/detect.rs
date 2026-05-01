@@ -459,7 +459,8 @@ fn collect_package_names(project_root: &Path) -> BTreeSet<String> {
         }
     }
 
-    if let Some(deps) = parse_requirements_txt_deps(&project_root.join("requirements.txt")) {
+    let requirements_path = known_child_path(project_root, "requirements.txt");
+    if let Some(deps) = parse_requirements_txt_deps(&requirements_path) {
         all_packages.extend(deps);
     }
     if let Some(deps) = parse_pyproject_toml_deps(&project_root.join("pyproject.toml")) {
@@ -492,16 +493,22 @@ fn parse_package_json_deps(path: &Path) -> Option<BTreeSet<String>> {
 fn parse_requirements_txt_deps(path: &Path) -> Option<BTreeSet<String>> {
     let mut deps = BTreeSet::new();
     let mut visited = HashSet::new();
-    parse_requirements_file(path, &mut deps, &mut visited).ok()?;
+    let root = path.parent().unwrap_or_else(|| Path::new("."));
+    parse_requirements_file(path, root, &mut deps, &mut visited).ok()?;
     Some(deps)
 }
 
 fn parse_requirements_file(
     path: &Path,
+    root: &Path,
     deps: &mut BTreeSet<String>,
     visited: &mut HashSet<PathBuf>,
 ) -> Result<()> {
-    let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let path = canonical_existing_path(path)?;
+    let root = canonical_existing_path(root)?;
+    if !path.starts_with(&root) {
+        return Ok(());
+    }
     if !visited.insert(path.clone()) {
         return Ok(());
     }
@@ -509,7 +516,7 @@ fn parse_requirements_file(
     let content = fs::read_to_string(&path)?;
     let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
     for raw_line in content.lines() {
-        parse_requirement_line(raw_line, base_dir, deps, visited)?;
+        parse_requirement_line(raw_line, &root, base_dir, deps, visited)?;
     }
 
     Ok(())
@@ -517,6 +524,7 @@ fn parse_requirements_file(
 
 fn parse_requirement_line(
     raw_line: &str,
+    root: &Path,
     base_dir: &Path,
     deps: &mut BTreeSet<String>,
     visited: &mut HashSet<PathBuf>,
@@ -539,8 +547,8 @@ fn parse_requirement_line(
     }
 
     if let Some(include_path) = requirement_include_path(line) {
-        let include_path = base_dir.join(include_path);
-        parse_requirements_file(&include_path, deps, visited)?;
+        let include_path = known_child_path(base_dir, include_path);
+        parse_requirements_file(&include_path, root, deps, visited)?;
         return Ok(());
     }
 
@@ -568,6 +576,15 @@ fn requirement_include_path(line: &str) -> Option<&str> {
         .or_else(|| line.strip_prefix("--requirement="))
         .map(str::trim)
         .filter(|path| !path.is_empty())
+}
+
+fn known_child_path(root: &Path, child: &str) -> PathBuf {
+    root.join(child)
+}
+
+fn canonical_existing_path(path: &Path) -> Result<PathBuf> {
+    path.canonicalize()
+        .with_context(|| format!("failed to resolve path {}", path.display()))
 }
 
 fn parse_pyproject_toml_deps(path: &Path) -> Option<BTreeSet<String>> {
