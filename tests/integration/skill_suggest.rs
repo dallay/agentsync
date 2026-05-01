@@ -324,6 +324,203 @@ fn skill_suggest_recommends_js_frontend_autoskills_parity() {
 }
 
 #[test]
+fn skill_suggest_recommends_autoskills_frontend_parity_combos() {
+    struct Case {
+        name: &'static str,
+        files: &'static [(&'static str, &'static str)],
+        expected_skills: &'static [&'static str],
+    }
+
+    let cases = [
+        Case {
+            name: "react-hook-form-zod",
+            files: &[(
+                "package.json",
+                r#"{"dependencies":{"react-hook-form":"latest","zod":"latest"}}"#,
+            )],
+            expected_skills: &["react-hook-form", "zod"],
+        },
+        Case {
+            name: "nextjs-vercel-ai",
+            files: &[(
+                "package.json",
+                r#"{"dependencies":{"next":"latest","ai":"latest"}}"#,
+            )],
+            expected_skills: &["use-ai-sdk", "next-best-practices"],
+        },
+        Case {
+            name: "react-shadcn",
+            files: &[
+                (
+                    "package.json",
+                    r#"{"dependencies":{"react":"latest","react-dom":"latest"}}"#,
+                ),
+                ("components.json", "{}"),
+            ],
+            expected_skills: &["shadcn", "vercel-react-best-practices"],
+        },
+        Case {
+            name: "tailwind-shadcn",
+            files: &[
+                (
+                    "package.json",
+                    r#"{"dependencies":{"tailwindcss":"latest"}}"#,
+                ),
+                ("components.json", "{}"),
+            ],
+            expected_skills: &["tailwind-v4-shadcn"],
+        },
+        Case {
+            name: "cloudflare-vite",
+            files: &[
+                (
+                    "package.json",
+                    r#"{"dependencies":{"vite":"latest","wrangler":"latest"}}"#,
+                ),
+                ("wrangler.toml", "name = 'demo'\n"),
+            ],
+            expected_skills: &["migrate-to-vinext"],
+        },
+        Case {
+            name: "node-express",
+            files: &[("package.json", r#"{"dependencies":{"express":"latest"}}"#)],
+            expected_skills: &["nodejs-express-server"],
+        },
+        Case {
+            name: "react-three-fiber",
+            files: &[(
+                "package.json",
+                r#"{"dependencies":{"react":"latest","react-dom":"latest","three":"latest","@react-three/fiber":"latest"}}"#,
+            )],
+            expected_skills: &["react-three-fiber"],
+        },
+        Case {
+            name: "react-clerk",
+            files: &[(
+                "package.json",
+                r#"{"dependencies":{"react":"latest","react-dom":"latest","@clerk/clerk-react":"latest"}}"#,
+            )],
+            expected_skills: &["clerk-react-patterns"],
+        },
+        Case {
+            name: "nuxt-clerk",
+            files: &[(
+                "package.json",
+                r#"{"dependencies":{"nuxt":"latest","@clerk/nuxt":"latest"}}"#,
+            )],
+            expected_skills: &["clerk-nuxt-patterns"],
+        },
+        Case {
+            name: "vue-clerk",
+            files: &[(
+                "package.json",
+                r#"{"dependencies":{"vue":"latest","@clerk/vue":"latest"}}"#,
+            )],
+            expected_skills: &["clerk-vue-patterns"],
+        },
+        Case {
+            name: "astro-clerk",
+            files: &[(
+                "package.json",
+                r#"{"dependencies":{"astro":"latest","@clerk/astro":"latest"}}"#,
+            )],
+            expected_skills: &["clerk-astro-patterns"],
+        },
+        Case {
+            name: "expo-clerk",
+            files: &[(
+                "package.json",
+                r#"{"dependencies":{"expo":"latest","@clerk/clerk-expo":"latest"}}"#,
+            )],
+            expected_skills: &["clerk-expo-patterns"],
+        },
+        Case {
+            name: "react-router-clerk",
+            files: &[(
+                "package.json",
+                r#"{"dependencies":{"react-router":"latest","@clerk/react-router":"latest"}}"#,
+            )],
+            expected_skills: &["clerk-react-router-patterns"],
+        },
+        Case {
+            name: "tanstack-clerk",
+            files: &[(
+                "package.json",
+                r#"{"dependencies":{"@tanstack/react-start":"latest","@clerk/tanstack-react-start":"latest"}}"#,
+            )],
+            expected_skills: &["clerk-tanstack-patterns"],
+        },
+        Case {
+            name: "chrome-extension-clerk",
+            files: &[
+                (
+                    "package.json",
+                    r#"{"dependencies":{"@clerk/chrome-extension":"latest"}}"#,
+                ),
+                (
+                    "manifest.json",
+                    r#"{"manifest_version":3,"name":"Demo","version":"1.0.0"}"#,
+                ),
+            ],
+            expected_skills: &["clerk-chrome-extension-patterns"],
+        },
+    ];
+
+    for case in cases {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        for (path, contents) in case.files {
+            let path = root.join(path);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).unwrap();
+            }
+            fs::write(path, contents).unwrap();
+        }
+
+        let output = Command::new(agentsync_bin())
+            .current_dir(root)
+            .args(["skill", "suggest", "--json"])
+            .output()
+            .unwrap_or_else(|error| panic!("failed to run agentsync for {}: {error}", case.name));
+
+        assert!(
+            output.status.success(),
+            "{} stderr: {}",
+            case.name,
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let response: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        let recommendations = response["recommendations"].as_array().unwrap();
+        for expected_skill in case.expected_skills {
+            let matching_recommendation = recommendations
+                .iter()
+                .find(|recommendation| recommendation["skill_id"] == *expected_skill);
+
+            assert!(
+                matching_recommendation.is_some(),
+                "{} should recommend {}. response: {}",
+                case.name,
+                expected_skill,
+                response
+            );
+
+            let recommendation = matching_recommendation.unwrap();
+            let reasons = recommendation["reasons"].as_array().unwrap();
+            let has_combo_reason = reasons
+                .iter()
+                .any(|reason| reason.as_str().unwrap().contains("combination"));
+
+            assert!(
+                has_combo_reason,
+                "{} should have combo reason for skill {}. recommendation: {}",
+                case.name, expected_skill, recommendation
+            );
+        }
+    }
+}
+
+#[test]
 fn skill_suggest_human_output_reports_empty_results() {
     let temp_dir = TempDir::new().unwrap();
     let output = Command::new(agentsync_bin())

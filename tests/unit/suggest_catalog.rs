@@ -861,7 +861,7 @@ impl Provider for NoMatchCatalogProvider {
 fn combo_triggers_when_all_required_technologies_detected() {
     let catalog = EmbeddedSkillCatalog::default();
 
-    // nextjs-clerk combo requires both "nextjs" and "clerk"
+    // nextjs-clerk combo requires both "nextjs" and framework-scoped "clerk-nextjs"
     let detections = vec![
         detection(
             TechnologyId::new("nextjs"),
@@ -869,7 +869,7 @@ fn combo_triggers_when_all_required_technologies_detected() {
             "package.json",
         ),
         detection(
-            TechnologyId::new("clerk"),
+            TechnologyId::new("clerk-nextjs"),
             DetectionConfidence::High,
             "package.json",
         ),
@@ -898,7 +898,7 @@ fn combo_triggers_when_all_required_technologies_detected() {
 fn combo_does_not_trigger_with_partial_requirements() {
     let catalog = EmbeddedSkillCatalog::default();
 
-    // Only "nextjs" detected, no "clerk" — the nextjs-clerk combo should NOT trigger
+    // Only "nextjs" detected, no framework-scoped "clerk-nextjs" — the nextjs-clerk combo should NOT trigger
     let detections = vec![detection(
         TechnologyId::new("nextjs"),
         DetectionConfidence::High,

@@ -296,7 +296,70 @@ title = "Clerk Testing"
 summary = "Test Clerk authentication integrations."
 install_source = "https://github.com/clerk/skills/archive/HEAD.zip#skills/testing"
 
+[[skills]]
+provider_skill_id = "clerk/skills/clerk-nuxt-patterns"
+local_skill_id = "clerk-nuxt-patterns"
+title = "Clerk Nuxt Patterns"
+summary = "Implement Clerk authentication patterns in Nuxt apps."
+install_source = "https://github.com/clerk/skills/archive/HEAD.zip#skills/nuxt-patterns"
+
+[[skills]]
+provider_skill_id = "clerk/skills/clerk-vue-patterns"
+local_skill_id = "clerk-vue-patterns"
+title = "Clerk Vue Patterns"
+summary = "Implement Clerk authentication patterns in Vue apps."
+install_source = "https://github.com/clerk/skills/archive/HEAD.zip#skills/vue-patterns"
+
+[[skills]]
+provider_skill_id = "clerk/skills/clerk-react-patterns"
+local_skill_id = "clerk-react-patterns"
+title = "Clerk React Patterns"
+summary = "Implement Clerk authentication patterns in React apps."
+install_source = "https://github.com/clerk/skills/archive/HEAD.zip#skills/react-patterns"
+
+[[skills]]
+provider_skill_id = "clerk/skills/clerk-astro-patterns"
+local_skill_id = "clerk-astro-patterns"
+title = "Clerk Astro Patterns"
+summary = "Implement Clerk authentication patterns in Astro apps."
+install_source = "https://github.com/clerk/skills/archive/HEAD.zip#skills/astro-patterns"
+
+[[skills]]
+provider_skill_id = "clerk/skills/clerk-expo-patterns"
+local_skill_id = "clerk-expo-patterns"
+title = "Clerk Expo Patterns"
+summary = "Implement Clerk authentication patterns in Expo apps."
+install_source = "https://github.com/clerk/skills/archive/HEAD.zip#skills/expo-patterns"
+
+[[skills]]
+provider_skill_id = "clerk/skills/clerk-react-router-patterns"
+local_skill_id = "clerk-react-router-patterns"
+title = "Clerk React Router Patterns"
+summary = "Implement Clerk authentication patterns with React Router."
+install_source = "https://github.com/clerk/skills/archive/HEAD.zip#skills/react-router-patterns"
+
+[[skills]]
+provider_skill_id = "clerk/skills/clerk-tanstack-patterns"
+local_skill_id = "clerk-tanstack-patterns"
+title = "Clerk TanStack Start Patterns"
+summary = "Implement Clerk authentication patterns with TanStack Start."
+install_source = "https://github.com/clerk/skills/archive/HEAD.zip#skills/tanstack-patterns"
+
+[[skills]]
+provider_skill_id = "clerk/skills/clerk-chrome-extension-patterns"
+local_skill_id = "clerk-chrome-extension-patterns"
+title = "Clerk Chrome Extension Patterns"
+summary = "Implement Clerk authentication patterns in Chrome extensions."
+install_source = "https://github.com/clerk/skills/archive/HEAD.zip#skills/chrome-extension-patterns"
+
 # --- Cloudflare ---
+
+[[skills]]
+provider_skill_id = "cloudflare/vinext/migrate-to-vinext"
+local_skill_id = "migrate-to-vinext"
+title = "Migrate to Vinext"
+summary = "Migrate Vite applications to Cloudflare Vinext patterns."
+install_source = "https://github.com/cloudflare/vinext/archive/HEAD.zip#skills/migrate-to-vinext"
 
 [[skills]]
 provider_skill_id = "cloudflare/skills/cloudflare"
@@ -711,7 +774,12 @@ summary = "Upgrade Next.js versions safely."
 
 # --- Node.js ---
 
-# --- Nuxt ---
+[[skills]]
+provider_skill_id = "aj-geddes/useful-ai-prompts/nodejs-express-server"
+local_skill_id = "nodejs-express-server"
+title = "Node.js Express Server"
+summary = "Build Express servers with Node.js patterns."
+install_source = "https://github.com/aj-geddes/useful-ai-prompts/archive/HEAD.zip#skills/nodejs-express-server"
 
 [[skills]]
 provider_skill_id = "antfu/skills/nuxt"
@@ -933,6 +1001,11 @@ title = "Zod"
 summary = "Use Zod schemas for type-safe validation and parsing."
 install_source = "https://github.com/pproenca/dot-skills/archive/HEAD.zip#skills/.curated/zod"
 
+# --- React Router ---
+
+# autoskills detects React Router but does not currently attach a dedicated skill.
+# Keep it detectable so related combos (for example Clerk integration) can fire.
+
 # --- React Native ---
 
 [[skills]]
@@ -1141,6 +1214,13 @@ local_skill_id = "ai-sdk"
 title = "Vercel AI SDK"
 summary = "Build AI-powered applications with the Vercel AI SDK."
 install_source = "https://github.com/vercel/ai/archive/HEAD.zip#packages/ai/.agents/skills/ai-sdk"
+
+[[skills]]
+provider_skill_id = "vercel/ai/use-ai-sdk"
+local_skill_id = "use-ai-sdk"
+title = "Use Vercel AI SDK"
+summary = "Use the Vercel AI SDK in AI-powered applications."
+install_source = "https://github.com/vercel/ai/archive/HEAD.zip#packages/ai/.agents/skills/use-ai-sdk"
 
 # --- Vercel Deploy ---
 
@@ -2040,6 +2120,15 @@ min_confidence = "medium"
 packages = ["remotion", "@remotion/cli"]
 
 [[technologies]]
+id = "react_router"
+name = "React Router"
+skills = ["vercel-labs/agent-skills/vercel-react-best-practices"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["react-router", "@react-router/node", "@react-router/dev", "@react-router/serve"]
+
+[[technologies]]
 id = "clerk"
 name = "Clerk"
 skills = [
@@ -2069,7 +2158,87 @@ packages = [
   "@clerk/chrome-extension",
   "@clerk/backend",
 ]
-package_patterns = ["^@clerk/"]
+
+[[technologies]]
+id = "clerk-nextjs"
+name = "Clerk Next.js"
+skills = ["clerk/skills/clerk"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["@clerk/nextjs"]
+
+[[technologies]]
+id = "clerk-nuxt"
+name = "Clerk Nuxt"
+skills = ["clerk/skills/clerk"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["@clerk/nuxt"]
+
+[[technologies]]
+id = "clerk-vue"
+name = "Clerk Vue"
+skills = ["clerk/skills/clerk"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["@clerk/vue"]
+
+[[technologies]]
+id = "clerk-react"
+name = "Clerk React"
+skills = ["clerk/skills/clerk"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["@clerk/react", "@clerk/clerk-react"]
+
+[[technologies]]
+id = "clerk-astro"
+name = "Clerk Astro"
+skills = ["clerk/skills/clerk"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["@clerk/astro"]
+
+[[technologies]]
+id = "clerk-expo"
+name = "Clerk Expo"
+skills = ["clerk/skills/clerk"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["@clerk/expo", "@clerk/clerk-expo"]
+
+[[technologies]]
+id = "clerk-react-router"
+name = "Clerk React Router"
+skills = ["clerk/skills/clerk"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["@clerk/react-router"]
+
+[[technologies]]
+id = "clerk-tanstack"
+name = "Clerk TanStack Start"
+skills = ["clerk/skills/clerk"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["@clerk/tanstack-react-start"]
+
+[[technologies]]
+id = "clerk-chrome-extension"
+name = "Clerk Chrome Extension"
+skills = ["clerk/skills/clerk"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["@clerk/chrome-extension"]
 
 [[technologies]]
 id = "better_auth"
@@ -2187,7 +2356,7 @@ packages = ["elevenlabs"]
 [[technologies]]
 id = "vercel_ai"
 name = "Vercel AI SDK"
-skills = ["vercel/ai/ai-sdk"]
+skills = ["vercel/ai/ai-sdk", "vercel/ai/use-ai-sdk"]
 min_confidence = "medium"
 
 [technologies.detect]
@@ -2201,6 +2370,7 @@ min_confidence = "medium"
 
 [technologies.detect]
 packages = ["stripe", "@stripe/stripe-js", "@stripe/react-stripe-js"]
+
 
 [[technologies]]
 id = "vercel_deploy"
@@ -2557,6 +2727,13 @@ packages = ["swagger-ui-express", "@nestjs/swagger", "swagger-jsdoc", "openapi-t
 # =============================================================================
 
 [[combos]]
+id = "react-hook-form-zod"
+name = "React Hook Form + Zod"
+requires = ["react-hook-form", "zod"]
+skills = ["pproenca/dot-skills/react-hook-form", "pproenca/dot-skills/zod"]
+enabled = true
+
+[[combos]]
 id = "astro-github-actions"
 name = "Astro + GitHub Actions"
 requires = ["astro", "github_actions"]
@@ -2592,6 +2769,27 @@ skills = ["currents-dev/playwright-best-practices-skill/playwright-best-practice
 enabled = true
 
 [[combos]]
+id = "nextjs-vercel-ai"
+name = "Next.js + Vercel AI SDK"
+requires = ["nextjs", "vercel_ai"]
+skills = ["vercel/ai/use-ai-sdk", "vercel-labs/next-skills/next-best-practices"]
+enabled = true
+
+[[combos]]
+id = "react-shadcn"
+name = "React + shadcn/ui"
+requires = ["react", "shadcn"]
+skills = ["shadcn/ui/shadcn", "vercel-labs/agent-skills/vercel-react-best-practices"]
+enabled = true
+
+[[combos]]
+id = "tailwind-shadcn"
+name = "Tailwind CSS + shadcn/ui"
+requires = ["tailwind", "shadcn"]
+skills = ["secondsky/claude-skills/tailwind-v4-shadcn"]
+enabled = true
+
+[[combos]]
 id = "gsap-react"
 name = "GSAP + React"
 requires = ["gsap", "react"]
@@ -2599,8 +2797,85 @@ skills = ["greensock/gsap-skills/gsap-react"]
 enabled = true
 
 [[combos]]
+id = "cloudflare-vite"
+name = "Cloudflare + Vite"
+requires = ["cloudflare", "vite"]
+skills = ["cloudflare/vinext/migrate-to-vinext"]
+enabled = true
+
+[[combos]]
+id = "node-express"
+name = "Node.js + Express"
+requires = ["express"]
+skills = ["aj-geddes/useful-ai-prompts/nodejs-express-server"]
+enabled = true
+
+[[combos]]
+id = "nuxt-clerk"
+name = "Nuxt + Clerk"
+requires = ["nuxt", "clerk-nuxt"]
+skills = ["clerk/skills/clerk-nuxt-patterns"]
+enabled = true
+
+[[combos]]
+id = "vue-clerk"
+name = "Vue + Clerk"
+requires = ["vue", "clerk-vue"]
+skills = ["clerk/skills/clerk-vue-patterns"]
+enabled = true
+
+[[combos]]
+id = "react-clerk"
+name = "React + Clerk"
+requires = ["react", "clerk-react"]
+skills = ["clerk/skills/clerk-react-patterns"]
+enabled = true
+
+[[combos]]
+id = "astro-clerk"
+name = "Astro + Clerk"
+requires = ["astro", "clerk-astro"]
+skills = ["clerk/skills/clerk-astro-patterns"]
+enabled = true
+
+[[combos]]
+id = "expo-clerk"
+name = "Expo + Clerk"
+requires = ["expo", "clerk-expo"]
+skills = ["clerk/skills/clerk-expo-patterns"]
+enabled = true
+
+[[combos]]
+id = "react-react-three-fiber"
+name = "React + React Three Fiber"
+requires = ["threejs", "react", "react-three-fiber"]
+skills = ["midudev/autoskills/react-three-fiber"]
+enabled = true
+
+[[combos]]
+id = "react-router-clerk"
+name = "React Router + Clerk"
+requires = ["react_router", "clerk-react-router"]
+skills = ["clerk/skills/clerk-react-router-patterns", "clerk/skills/clerk-setup", "clerk/skills/clerk"]
+enabled = true
+
+[[combos]]
+id = "tanstack-clerk"
+name = "TanStack Start + Clerk"
+requires = ["tanstack-start", "clerk-tanstack"]
+skills = ["clerk/skills/clerk-tanstack-patterns", "clerk/skills/clerk-setup", "clerk/skills/clerk"]
+enabled = true
+
+[[combos]]
+id = "chrome-extension-clerk"
+name = "Chrome Extension + Clerk"
+requires = ["chrome-extension", "clerk-chrome-extension"]
+skills = ["clerk/skills/clerk-chrome-extension-patterns", "clerk/skills/clerk-setup", "clerk/skills/clerk"]
+enabled = true
+
+[[combos]]
 id = "nextjs-clerk"
 name = "Next.js + Clerk"
-requires = ["nextjs", "clerk"]
+requires = ["nextjs", "clerk-nextjs"]
 skills = ["clerk/skills/clerk-nextjs-patterns", "clerk/skills/clerk-setup", "clerk/skills/clerk"]
 enabled = true
