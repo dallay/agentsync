@@ -1,4 +1,4 @@
-use crate::commands::skill_fmt::{self, HumanFormatter, LabelKind, OutputMode};
+use crate::output::{self, HumanFormatter, LabelKind, OutputMode};
 use agentsync::skills::catalog::EmbeddedSkillCatalog;
 use agentsync::skills::provider::{Provider, SkillsShProvider, resolve_catalog_install_source};
 use agentsync::skills::registry;
@@ -32,7 +32,7 @@ fn detect_suggest_install_output_mode(
     clicolor: Option<&str>,
     term: Option<&str>,
 ) -> SuggestInstallOutputMode {
-    let base = skill_fmt::detect_output_mode(json, stdout_is_tty, no_color, clicolor, term);
+    let base = output::detect_output_mode(json, stdout_is_tty, no_color, clicolor, term);
     match base {
         OutputMode::Json => SuggestInstallOutputMode::Json,
         OutputMode::Human { use_color } => {
@@ -538,7 +538,7 @@ pub fn run_update(args: SkillUpdateArgs, project_root: PathBuf) -> Result<()> {
             update_source_path,
         ))
     };
-    let mode = skill_fmt::output_mode(args.json);
+    let mode = output::output_mode(args.json);
     match result {
         Ok(()) => {
             match mode {
@@ -840,7 +840,7 @@ pub fn run_install(args: SkillInstallArgs, project_root: PathBuf) -> Result<()> 
         &source,
         &target_root,
     );
-    let mode = skill_fmt::output_mode(args.json);
+    let mode = output::output_mode(args.json);
     match result {
         Ok(()) => {
             match mode {
@@ -973,7 +973,7 @@ pub fn run_uninstall(args: SkillUninstallArgs, project_root: PathBuf) -> Result<
 
     let result = agentsync::skills::uninstall::uninstall_skill(skill_id, &target_root);
 
-    let mode = skill_fmt::output_mode(args.json);
+    let mode = output::output_mode(args.json);
     match result {
         Ok(()) => {
             match mode {
