@@ -588,6 +588,7 @@ fn canonical_existing_path(path: &Path) -> Result<PathBuf> {
 }
 
 fn parse_pyproject_toml_deps(path: &Path) -> Option<BTreeSet<String>> {
+    let path = canonical_existing_path(path).ok()?;
     let content = fs::read_to_string(path).ok()?;
     let value: toml::Value = toml::from_str(&content).ok()?;
     let mut deps = BTreeSet::new();
@@ -632,6 +633,7 @@ fn parse_pyproject_toml_deps(path: &Path) -> Option<BTreeSet<String>> {
 }
 
 fn parse_pipfile_deps(path: &Path) -> Option<BTreeSet<String>> {
+    let path = canonical_existing_path(path).ok()?;
     let content = fs::read_to_string(path).ok()?;
     let value: toml::Value = toml::from_str(&content).ok()?;
     let mut deps = BTreeSet::new();
