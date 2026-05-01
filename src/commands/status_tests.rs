@@ -52,6 +52,41 @@ mod tests {
         )
     }
 
+    fn status_entry(
+        destination: &str,
+        sync_type: &str,
+        destination_kind: crate::commands::status::DestinationKind,
+        points_to: Option<&str>,
+        expected_source: Option<&str>,
+        issues: Vec<crate::commands::status::StatusIssue>,
+    ) -> StatusEntry {
+        StatusEntry {
+            destination: destination.into(),
+            sync_type: sync_type.into(),
+            destination_kind,
+            exists: destination_kind != crate::commands::status::DestinationKind::Missing,
+            is_symlink: destination_kind == crate::commands::status::DestinationKind::Symlink,
+            points_to: points_to.map(str::to_string),
+            expected_source: expected_source.map(str::to_string),
+            issues,
+            managed_children: None,
+        }
+    }
+
+    fn status_issue(
+        kind: crate::commands::status::StatusIssueKind,
+        path: &str,
+        expected: Option<&str>,
+        actual: Option<&str>,
+    ) -> crate::commands::status::StatusIssue {
+        crate::commands::status::StatusIssue {
+            kind,
+            path: path.into(),
+            expected: expected.map(str::to_string),
+            actual: actual.map(str::to_string),
+        }
+    }
+
     fn single_symlink_config(source: &str, destination: &str) -> String {
         format!(
             r#"
@@ -574,6 +609,156 @@ mod tests {
                     .display()
                     .to_string()
             )
+        );
+    }
+
+    #[test]
+    fn test_render_healthy_symlink_entry_uses_structured_ok_line() {
+        let entry = status_entry(
+            "/tmp/dest",
+            "symlink",
+            crate::commands::status::DestinationKind::Symlink,
+            Some("/tmp/source"),
+            Some("/tmp/source"),
+            Vec::new(),
+        );
+
+        let rendered = render_status_entry(&entry, &plain_formatter());
+
+        assert_eq!(rendered, vec!["✔ OK: /tmp/dest -> /tmp/source"]);
+    }
+
+    #[test]
+    fn test_render_symlink_contents_invalid_container_type_shows_actual_and_expected() {
+        let entry = status_entry(
+            "/tmp/.claude/commands",
+            "symlink-contents",
+            crate::commands::status::DestinationKind::File,
+            None,
+            Some("/tmp/.agents/commands"),
+            vec![status_issue(
+                crate::commands::status::StatusIssueKind::InvalidDestinationType,
+                "/tmp/.claude/commands",
+                Some("directory"),
+                Some("file"),
+            )],
+        );
+
+        let rendered = render_status_entry(&entry, &plain_formatter());
+
+        assert!(rendered[0].contains("✗ Drift:"));
+        assert!(rendered[0].contains("exists as file"));
+        assert!(rendered.iter().any(|line| line == "  actual: file"));
+        assert!(rendered.iter().any(|line| line == "  expected: directory"));
+    }
+
+    #[test]
+    fn test_render_missing_expected_child_uses_child_file_name_and_expected_detail() {
+        let entry = status_entry(
+            "/tmp/.claude/commands",
+            "symlink-contents",
+            crate::commands::status::DestinationKind::Directory,
+            None,
+            Some("/tmp/.agents/commands"),
+            vec![status_issue(
+                crate::commands::status::StatusIssueKind::MissingExpectedChild,
+                "/tmp/.claude/commands/review.md",
+                Some("/tmp/.agents/commands/review.md"),
+                None,
+            )],
+        );
+
+        let rendered = render_status_entry(&entry, &plain_formatter());
+
+        assert!(rendered[0].contains("✗ Drift:"));
+        assert!(rendered[0].contains("missing managed child review.md"));
+        assert!(
+            rendered
+                .iter()
+                .any(|line| line == "  expected: /tmp/.agents/commands/review.md")
+        );
+    }
+
+    #[test]
+    fn test_render_child_not_symlink_shows_actual_detail() {
+        let entry = status_entry(
+            "/tmp/.claude/commands",
+            "symlink-contents",
+            crate::commands::status::DestinationKind::Directory,
+            None,
+            Some("/tmp/.agents/commands"),
+            vec![status_issue(
+                crate::commands::status::StatusIssueKind::ChildNotSymlink,
+                "/tmp/.claude/commands/review.md",
+                Some("symlink"),
+                Some("file"),
+            )],
+        );
+
+        let rendered = render_status_entry(&entry, &plain_formatter());
+
+        assert!(rendered[0].contains("✗ Drift:"));
+        assert!(rendered[0].contains("exists but is not a symlink"));
+        assert!(rendered.iter().any(|line| line == "  actual: file"));
+        assert!(rendered.iter().any(|line| line == "  expected: symlink"));
+    }
+
+    #[test]
+    fn test_render_top_level_incorrect_link_shows_actual_and_expected_details() {
+        let entry = status_entry(
+            "/tmp/dest",
+            "symlink",
+            crate::commands::status::DestinationKind::Symlink,
+            Some("/tmp/old-source"),
+            Some("/tmp/source"),
+            vec![status_issue(
+                crate::commands::status::StatusIssueKind::IncorrectLinkTarget,
+                "/tmp/dest",
+                Some("/tmp/source"),
+                Some("/tmp/old-source"),
+            )],
+        );
+
+        let rendered = render_status_entry(&entry, &plain_formatter());
+
+        assert!(rendered[0].contains("✗ Incorrect link:"));
+        assert!(rendered[0].contains("/tmp/dest"));
+        assert!(
+            rendered
+                .iter()
+                .any(|line| line == "  actual: /tmp/old-source")
+        );
+        assert!(
+            rendered
+                .iter()
+                .any(|line| line == "  expected: /tmp/source")
+        );
+    }
+
+    #[test]
+    fn test_render_symlink_missing_expected_source_shows_actual_detail() {
+        let entry = status_entry(
+            "/tmp/dest",
+            "symlink",
+            crate::commands::status::DestinationKind::Symlink,
+            Some("/tmp/missing-source"),
+            Some("/tmp/missing-source"),
+            vec![status_issue(
+                crate::commands::status::StatusIssueKind::MissingExpectedSource,
+                "/tmp/dest",
+                None,
+                Some("/tmp/missing-source"),
+            )],
+        );
+
+        let rendered = render_status_entry(&entry, &plain_formatter());
+
+        assert!(rendered[0].contains("! Link points to missing source:"));
+        assert!(rendered[0].contains("/tmp/missing-source"));
+        assert!(
+            rendered
+                .iter()
+                .any(|line| line == "  actual: /tmp/missing-source")
         );
     }
 
