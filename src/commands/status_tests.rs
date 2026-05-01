@@ -2,12 +2,17 @@
 mod tests {
     use crate::commands::status::{
         StatusEntry, collect_status_entries, collect_status_hints, entry_is_problematic,
-        render_status_entry,
+        render_status_entry, render_status_hint, render_status_summary,
     };
+    use crate::output::HumanFormatter;
     use agentsync::{Linker, config::Config, linker::SyncOptions};
     use std::fs;
     use std::path::PathBuf;
     use tempfile::TempDir;
+
+    fn plain_formatter() -> HumanFormatter {
+        HumanFormatter::new(false)
+    }
 
     fn load_linker(temp_dir: &TempDir, config_content: &str) -> (Linker, PathBuf) {
         let agents_dir = temp_dir.path().join(".agents");
@@ -307,11 +312,11 @@ mod tests {
         assert_eq!(entry["issues"], serde_json::json!([]));
         assert_eq!(entry["managed_children"], serde_json::json!([]));
 
-        let rendered = render_status_entry(&entries[0]);
-        assert_eq!(rendered.len(), 1);
-        assert!(rendered[0].contains("OK:"));
-        assert!(rendered[0].contains("symlink-contents container"));
-        assert!(rendered[0].contains("0 managed entries expected"));
+        let rendered = render_status_entry(&entries[0], &plain_formatter());
+        assert_eq!(rendered.len(), 3);
+        assert!(rendered[0].contains("✔ OK:"));
+        assert!(rendered[1].contains("type: symlink-contents container"));
+        assert!(rendered[2].contains("managed entries expected: 0"));
     }
 
     #[test]
@@ -430,11 +435,13 @@ mod tests {
                 && issue["actual"].as_str().unwrap().contains("wrong.md")
         }));
 
-        let rendered = render_status_entry(&entries[0]);
-        assert_eq!(rendered.len(), 1);
-        assert!(rendered[0].contains("Drift:"));
-        assert!(rendered[0].contains("review.md points to"));
-        assert!(rendered[0].contains("wrong.md"));
+        let rendered = render_status_entry(&entries[0], &plain_formatter());
+        assert_eq!(rendered.len(), 3);
+        assert!(rendered[0].contains("✗ Drift:"));
+        assert!(rendered[0].contains("review.md"));
+        assert!(rendered.iter().any(|line| line.contains("actual:")));
+        assert!(rendered.iter().any(|line| line.contains("expected:")));
+        assert!(rendered.iter().any(|line| line.contains("wrong.md")));
     }
 
     #[test]
@@ -457,9 +464,10 @@ mod tests {
             crate::commands::status::StatusIssueKind::MissingDestination
         );
 
-        let rendered = render_status_entry(&entries[0]);
-        assert_eq!(rendered.len(), 1);
-        assert!(rendered[0].contains("Missing:"));
+        let rendered = render_status_entry(&entries[0], &plain_formatter());
+        assert_eq!(rendered.len(), 2);
+        assert!(rendered[0].contains("! Missing:"));
+        assert!(rendered.iter().any(|line| line.contains("expected:")));
         assert!(
             rendered[0].contains(
                 &temp_dir
@@ -493,9 +501,11 @@ mod tests {
             crate::commands::status::StatusIssueKind::InvalidDestinationType
         );
 
-        let rendered = render_status_entry(&entries[0]);
-        assert_eq!(rendered.len(), 1);
+        let rendered = render_status_entry(&entries[0], &plain_formatter());
+        assert_eq!(rendered.len(), 3);
         assert!(rendered[0].contains("Exists but not a symlink:"));
+        assert!(rendered.iter().any(|line| line.contains("actual:")));
+        assert!(rendered.iter().any(|line| line.contains("expected:")));
         assert!(
             rendered[0].contains(
                 &temp_dir
@@ -528,9 +538,10 @@ mod tests {
             crate::commands::status::StatusIssueKind::MissingDestination
         );
 
-        let rendered = render_status_entry(&entries[0]);
-        assert_eq!(rendered.len(), 1);
+        let rendered = render_status_entry(&entries[0], &plain_formatter());
+        assert_eq!(rendered.len(), 2);
         assert!(rendered[0].contains("missing managed container directory"));
+        assert!(rendered.iter().any(|line| line.contains("expected:")));
     }
 
     #[test]
@@ -551,9 +562,10 @@ mod tests {
             crate::commands::status::StatusIssueKind::MissingExpectedSource
         );
 
-        let rendered = render_status_entry(&entries[0]);
-        assert_eq!(rendered.len(), 1);
+        let rendered = render_status_entry(&entries[0], &plain_formatter());
+        assert_eq!(rendered.len(), 2);
         assert!(rendered[0].contains("Missing source container directory"));
+        assert!(rendered.iter().any(|line| line.contains("actual:")));
         assert!(
             rendered[0].contains(
                 &temp_dir
@@ -563,6 +575,24 @@ mod tests {
                     .to_string()
             )
         );
+    }
+
+    #[test]
+    fn test_render_status_hint_uses_hint_style() {
+        let rendered = render_status_hint("Run agentsync apply", &plain_formatter());
+        assert_eq!(rendered, "↳ Run agentsync apply");
+    }
+
+    #[test]
+    fn test_render_status_summary_all_good() {
+        let rendered = render_status_summary(0, &plain_formatter());
+        assert_eq!(rendered, "Status: All good");
+    }
+
+    #[test]
+    fn test_render_status_summary_problem_count() {
+        let rendered = render_status_summary(3, &plain_formatter());
+        assert_eq!(rendered, "Status: 3 problems found");
     }
 
     #[test]
