@@ -919,6 +919,20 @@ title = "React Composition Patterns"
 summary = "Use React composition patterns for scalable architectures."
 install_source = "https://github.com/vercel-labs/agent-skills/archive/HEAD.zip#skills/composition-patterns"
 
+[[skills]]
+provider_skill_id = "pproenca/dot-skills/react-hook-form"
+local_skill_id = "react-hook-form"
+title = "React Hook Form"
+summary = "Build performant, type-safe React forms with React Hook Form."
+install_source = "https://github.com/pproenca/dot-skills/archive/HEAD.zip#skills/.curated/react-hook-form"
+
+[[skills]]
+provider_skill_id = "pproenca/dot-skills/zod"
+local_skill_id = "zod"
+title = "Zod"
+summary = "Use Zod schemas for type-safe validation and parsing."
+install_source = "https://github.com/pproenca/dot-skills/archive/HEAD.zip#skills/.curated/zod"
+
 # --- React Native ---
 
 [[skills]]
@@ -927,6 +941,102 @@ local_skill_id = "sleek-design-mobile-apps"
 title = "Sleek Design Mobile Apps"
 summary = "Design and build polished React Native mobile applications."
 install_source = "https://github.com/sleekdotdesign/agent-skills/archive/HEAD.zip#skills/design-mobile-apps"
+
+# --- TanStack Start ---
+
+[[skills]]
+provider_skill_id = "tanstack-skills/tanstack-skills/tanstack-start"
+local_skill_id = "tanstack-start"
+title = "TanStack Start"
+summary = "Build full-stack React applications with TanStack Start."
+install_source = "https://github.com/tanstack-skills/tanstack-skills/archive/HEAD.zip#plugins/tanstack-start/skills/tanstack-start"
+
+# --- Chrome Extension ---
+
+[[skills]]
+provider_skill_id = "mindrally/skills/chrome-extension-development"
+local_skill_id = "chrome-extension-development"
+title = "Chrome Extension Development"
+summary = "Build Chrome extensions using manifest and extension platform best practices."
+install_source = "https://github.com/mindrally/skills/archive/HEAD.zip#chrome-extension-development"
+
+# --- Three.js ---
+
+[[skills]]
+provider_skill_id = "cloudai-x/threejs-skills/threejs-animation"
+local_skill_id = "threejs-animation"
+title = "Three.js Animation"
+summary = "Create animation systems and motion patterns in Three.js."
+
+[[skills]]
+provider_skill_id = "cloudai-x/threejs-skills/threejs-fundamentals"
+local_skill_id = "threejs-fundamentals"
+title = "Three.js Fundamentals"
+summary = "Apply core Three.js scene, camera, renderer, and object patterns."
+
+[[skills]]
+provider_skill_id = "cloudai-x/threejs-skills/threejs-shaders"
+local_skill_id = "threejs-shaders"
+title = "Three.js Shaders"
+summary = "Build custom shader materials and GLSL effects in Three.js."
+
+[[skills]]
+provider_skill_id = "cloudai-x/threejs-skills/threejs-geometry"
+local_skill_id = "threejs-geometry"
+title = "Three.js Geometry"
+summary = "Work with geometry, buffers, and mesh construction in Three.js."
+
+[[skills]]
+provider_skill_id = "cloudai-x/threejs-skills/threejs-interaction"
+local_skill_id = "threejs-interaction"
+title = "Three.js Interaction"
+summary = "Add picking, controls, and interactive behavior to Three.js scenes."
+
+[[skills]]
+provider_skill_id = "cloudai-x/threejs-skills/threejs-materials"
+local_skill_id = "threejs-materials"
+title = "Three.js Materials"
+summary = "Use materials and rendering properties effectively in Three.js."
+
+[[skills]]
+provider_skill_id = "cloudai-x/threejs-skills/threejs-postprocessing"
+local_skill_id = "threejs-postprocessing"
+title = "Three.js Postprocessing"
+summary = "Implement postprocessing pipelines and visual effects in Three.js."
+
+[[skills]]
+provider_skill_id = "cloudai-x/threejs-skills/threejs-lighting"
+local_skill_id = "threejs-lighting"
+title = "Three.js Lighting"
+summary = "Design lighting setups and illumination models in Three.js."
+
+[[skills]]
+provider_skill_id = "cloudai-x/threejs-skills/threejs-textures"
+local_skill_id = "threejs-textures"
+title = "Three.js Textures"
+summary = "Load, configure, and optimize textures in Three.js."
+
+[[skills]]
+provider_skill_id = "cloudai-x/threejs-skills/threejs-loaders"
+local_skill_id = "threejs-loaders"
+title = "Three.js Loaders"
+summary = "Load models and assets with Three.js loaders."
+
+[[skills]]
+provider_skill_id = "midudev/autoskills/react-three-fiber"
+local_skill_id = "react-three-fiber"
+title = "React Three Fiber"
+summary = "Build Three.js experiences with React Three Fiber."
+install_source = "https://github.com/midudev/autoskills/archive/HEAD.zip#packages/autoskills/skills-registry/react-three-fiber"
+
+# --- Bun ---
+
+[[skills]]
+provider_skill_id = "midudev/autoskills/bun"
+local_skill_id = "bun"
+title = "Bun"
+summary = "Use Bun for JavaScript runtime, package management, and tooling workflows."
+install_source = "https://github.com/midudev/autoskills/archive/HEAD.zip#packages/autoskills/skills-registry/bun"
 
 # --- Remotion ---
 
@@ -1724,6 +1834,24 @@ min_confidence = "medium"
 packages = ["react", "react-dom"]
 
 [[technologies]]
+id = "react-hook-form"
+name = "React Hook Form"
+skills = ["pproenca/dot-skills/react-hook-form"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["react-hook-form"]
+
+[[technologies]]
+id = "zod"
+name = "Zod"
+skills = ["pproenca/dot-skills/zod"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["zod"]
+
+[[technologies]]
 id = "nextjs"
 name = "Next.js"
 skills = ["dallay/agents-skills/nothing-design", "vercel-labs/next-skills/next-best-practices", "vercel-labs/next-skills/next-cache-components", "vercel-labs/next-skills/next-upgrade"]
@@ -1976,6 +2104,63 @@ min_confidence = "medium"
 [technologies.detect]
 packages = ["vite"]
 config_files = ["vite.config.js", "vite.config.ts", "vite.config.mjs"]
+
+[[technologies]]
+id = "tanstack-start"
+name = "TanStack Start"
+skills = ["tanstack-skills/tanstack-skills/tanstack-start"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["@tanstack/react-start", "@tanstack/start"]
+
+[[technologies]]
+id = "chrome-extension"
+name = "Chrome Extension"
+skills = ["mindrally/skills/chrome-extension-development"]
+min_confidence = "medium"
+
+[technologies.detect.config_file_content]
+files = ["manifest.json"]
+patterns = ["manifest_version"]
+
+[[technologies]]
+id = "bun"
+name = "Bun"
+skills = ["midudev/autoskills/bun"]
+min_confidence = "medium"
+
+[technologies.detect]
+config_files = ["bun.lockb", "bun.lock", "bunfig.toml"]
+
+[[technologies]]
+id = "threejs"
+name = "Three.js"
+skills = [
+  "cloudai-x/threejs-skills/threejs-animation",
+  "cloudai-x/threejs-skills/threejs-fundamentals",
+  "cloudai-x/threejs-skills/threejs-shaders",
+  "cloudai-x/threejs-skills/threejs-geometry",
+  "cloudai-x/threejs-skills/threejs-interaction",
+  "cloudai-x/threejs-skills/threejs-materials",
+  "cloudai-x/threejs-skills/threejs-postprocessing",
+  "cloudai-x/threejs-skills/threejs-lighting",
+  "cloudai-x/threejs-skills/threejs-textures",
+  "cloudai-x/threejs-skills/threejs-loaders",
+]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["three"]
+
+[[technologies]]
+id = "react-three-fiber"
+name = "React Three Fiber"
+skills = ["midudev/autoskills/react-three-fiber"]
+min_confidence = "medium"
+
+[technologies.detect]
+packages = ["@react-three/fiber"]
 
 [[technologies]]
 id = "azure"
