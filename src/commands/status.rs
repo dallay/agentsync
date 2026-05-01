@@ -1,9 +1,9 @@
+use crate::output::{HumanFormatter, LabelKind, OutputMode};
 use agentsync::config::{SyncType, TargetConfig};
 use agentsync::skills_layout::detect_skills_mode_mismatch;
 use agentsync::{Linker, linker::SymlinkContentsChildExpectation};
 use anyhow::Result;
 use clap::Args;
-use colored::Colorize;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -156,24 +156,30 @@ pub fn run_status(json: bool, project_root: PathBuf) -> Result<()> {
         return Ok(());
     }
 
+    let use_color = match crate::output::output_mode(json) {
+        OutputMode::Json => false,
+        OutputMode::Human { use_color } => use_color,
+    };
+    let formatter = HumanFormatter::new(use_color);
+
     for entry in &entries {
-        for line in render_status_entry(entry) {
+        for line in render_status_entry(entry, &formatter) {
             println!("{line}");
         }
 
         if !entry_is_problematic(entry)
             && let Some(hint) = hints.get(&entry.destination)
         {
-            println!("  {} {}", "↳".blue(), hint);
+            println!("  {}", render_status_hint(hint, &formatter));
         }
     }
 
     if problems > 0 {
-        println!("\nStatus: {} problems found", problems);
+        println!("\n{}", render_status_summary(problems, &formatter));
         std::process::exit(1);
     }
 
-    println!("\nStatus: All good");
+    println!("\n{}", render_status_summary(0, &formatter));
     Ok(())
 }
 
@@ -214,116 +220,180 @@ pub fn entry_is_problematic(e: &StatusEntry) -> bool {
     !e.issues.is_empty()
 }
 
-pub(crate) fn render_status_entry(entry: &StatusEntry) -> Vec<String> {
+pub(crate) fn render_status_entry(entry: &StatusEntry, formatter: &HumanFormatter) -> Vec<String> {
     if entry.issues.is_empty() {
-        return vec![render_ok_line(entry)];
+        return render_ok_line(entry, formatter);
     }
 
     entry
         .issues
         .iter()
-        .map(|issue| render_issue_line(entry, issue))
+        .flat_map(|issue| render_issue_line(entry, issue, formatter))
         .collect()
 }
 
-fn render_ok_line(entry: &StatusEntry) -> String {
+fn render_ok_line(entry: &StatusEntry, formatter: &HumanFormatter) -> Vec<String> {
     match entry.sync_type.as_str() {
         "symlink-contents" => {
             let managed_count = entry.managed_children.as_ref().map_or(0, Vec::len);
             if entry.destination_kind == DestinationKind::Directory {
-                format!(
-                    "{} OK: {} (symlink-contents container, {} managed entries expected)",
-                    "✔".green(),
-                    entry.destination,
-                    managed_count
-                )
+                vec![
+                    format!(
+                        "{}: {}",
+                        formatter.format_label("✔", "OK", LabelKind::Success),
+                        entry.destination
+                    ),
+                    format!(
+                        "  {}",
+                        formatter.format_key_value("type", "symlink-contents container")
+                    ),
+                    format!(
+                        "  {}",
+                        formatter.format_key_value(
+                            "managed entries expected",
+                            &managed_count.to_string()
+                        )
+                    ),
+                ]
             } else {
-                format!("{} OK: {}", "✔".green(), entry.destination)
+                vec![format!(
+                    "{}: {}",
+                    formatter.format_label("✔", "OK", LabelKind::Success),
+                    entry.destination
+                )]
             }
         }
-        _ => format!(
-            "{} OK: {} -> {}",
-            "✔".green(),
+        _ => vec![format!(
+            "{}: {} -> {}",
+            formatter.format_label("✔", "OK", LabelKind::Success),
             entry.destination,
             entry.points_to.as_deref().unwrap_or("<unknown>")
-        ),
+        )],
     }
 }
 
-fn render_issue_line(entry: &StatusEntry, issue: &StatusIssue) -> String {
-    match issue.kind {
+fn render_issue_line(
+    entry: &StatusEntry,
+    issue: &StatusIssue,
+    formatter: &HumanFormatter,
+) -> Vec<String> {
+    let mut lines = match issue.kind {
         StatusIssueKind::MissingDestination => match entry.sync_type.as_str() {
-            "symlink-contents" => format!(
-                "{} Drift: {} missing managed container directory",
-                "✗".red(),
+            "symlink-contents" => vec![format!(
+                "{}: {} missing managed container directory",
+                formatter.format_label("✗", "Drift", LabelKind::Failure),
                 entry.destination
-            ),
-            _ => format!("{} Missing: {}", "!".yellow(), entry.destination),
+            )],
+            _ => vec![format!(
+                "{}: {}",
+                formatter.format_label("!", "Missing", LabelKind::Warning),
+                entry.destination
+            )],
         },
         StatusIssueKind::InvalidDestinationType => {
             if entry.sync_type.as_str() == "symlink-contents" {
-                format!(
-                    "{} Drift: {} exists as {} but symlink-contents expects a directory container",
-                    "✗".red(),
+                vec![format!(
+                    "{}: {} exists as {} but symlink-contents expects a directory container",
+                    formatter.format_label("✗", "Drift", LabelKind::Failure),
                     entry.destination,
                     issue.actual.as_deref().unwrap_or("an invalid path type")
-                )
+                )]
             } else {
-                format!(
-                    "{} Exists but not a symlink: {}",
-                    "·".dimmed(),
+                vec![format!(
+                    "{}: {}",
+                    formatter.format_label("·", "Exists but not a symlink", LabelKind::Muted),
                     entry.destination
-                )
+                )]
             }
         }
-        StatusIssueKind::MissingExpectedChild => format!(
-            "{} Drift: {} missing managed child {}",
-            "✗".red(),
+        StatusIssueKind::MissingExpectedChild => vec![format!(
+            "{}: {} missing managed child {}",
+            formatter.format_label("✗", "Drift", LabelKind::Failure),
             entry.destination,
             Path::new(&issue.path)
                 .file_name()
                 .and_then(|name| name.to_str())
                 .unwrap_or(&issue.path)
-        ),
-        StatusIssueKind::ChildNotSymlink => format!(
-            "{} Drift: {} exists but is not a symlink",
-            "✗".red(),
+        )],
+        StatusIssueKind::ChildNotSymlink => vec![format!(
+            "{}: {} exists but is not a symlink",
+            formatter.format_label("✗", "Drift", LabelKind::Failure),
             issue.path
-        ),
+        )],
         StatusIssueKind::IncorrectLinkTarget => {
             if issue.path == entry.destination {
-                format!(
-                    "{} Incorrect link: {} -> {} (expected: {})",
-                    "✗".red(),
-                    entry.destination,
-                    issue.actual.as_deref().unwrap_or("<unknown>"),
-                    issue.expected.as_deref().unwrap_or("<unknown>")
-                )
+                vec![format!(
+                    "{}: {}",
+                    formatter.format_label("✗", "Incorrect link", LabelKind::Failure),
+                    entry.destination
+                )]
             } else {
-                format!(
-                    "{} Drift: {} points to {} (expected: {})",
-                    "✗".red(),
-                    issue.path,
-                    issue.actual.as_deref().unwrap_or("<unknown>"),
-                    issue.expected.as_deref().unwrap_or("<unknown>")
-                )
+                vec![format!(
+                    "{}: {}",
+                    formatter.format_label("✗", "Drift", LabelKind::Failure),
+                    issue.path
+                )]
             }
         }
         StatusIssueKind::MissingExpectedSource => {
             if entry.sync_type.as_str() == "symlink-contents" {
-                format!(
-                    "{} Missing source container directory: {}",
-                    "!".yellow(),
+                vec![format!(
+                    "{}: {}",
+                    formatter.format_label(
+                        "!",
+                        "Missing source container directory",
+                        LabelKind::Warning
+                    ),
                     entry.destination
-                )
+                )]
             } else {
-                format!(
-                    "{} Link points to missing source: {}",
-                    "!".yellow(),
+                vec![format!(
+                    "{}: {}",
+                    formatter.format_label(
+                        "!",
+                        "Link points to missing source",
+                        LabelKind::Warning
+                    ),
                     issue.actual.as_deref().unwrap_or(&entry.destination)
-                )
+                )]
             }
         }
+    };
+
+    lines.extend(issue_detail_lines(issue, formatter));
+    lines
+}
+
+fn issue_detail_lines(issue: &StatusIssue, formatter: &HumanFormatter) -> Vec<String> {
+    let mut lines = Vec::new();
+    if let Some(actual) = issue.actual.as_deref() {
+        lines.push(format!(
+            "  {}",
+            formatter.format_key_value("actual", actual)
+        ));
+    }
+    if let Some(expected) = issue.expected.as_deref() {
+        lines.push(format!(
+            "  {}",
+            formatter.format_key_value("expected", expected)
+        ));
+    }
+    lines
+}
+
+pub(crate) fn render_status_hint(hint: &str, formatter: &HumanFormatter) -> String {
+    formatter.format_hint(hint)
+}
+
+pub(crate) fn render_status_summary(problems: usize, formatter: &HumanFormatter) -> String {
+    if problems == 0 {
+        formatter.format_summary_line("Status", "All good", LabelKind::Success)
+    } else {
+        formatter.format_summary_line(
+            "Status",
+            &format!("{problems} problems found"),
+            LabelKind::Failure,
+        )
     }
 }
 
