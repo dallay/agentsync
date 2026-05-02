@@ -602,7 +602,7 @@ If you need agentsync in CI, you can download the latest version automatically u
 
 ## Skills
 
-AgentSync includes a curated skill catalog with 100+ skills across 40+ technologies. Skills are small bundles of AI-agent instructions that can be installed into your project.
+AgentSync includes a curated skill catalog with 200+ skills across 110+ technologies. Skills are small bundles of AI-agent instructions that can be installed into your project.
 
 - **[dallay/agents-skills](https://github.com/dallay/agents-skills)** — Canonical home for all dallay-maintained skills. Community contributions welcome via PR.
 - **External providers** — Skills from Angular, Vercel, Cloudflare, Expo, Stripe, and many more are resolved from their respective repositories.
