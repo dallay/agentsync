@@ -146,9 +146,6 @@ fn test_module_map_cli_placeholder_happy_path() {
         "expected {} to be removed",
         ui_dest.display()
     );
-    assert!(
-        String::from_utf8_lossy(&clean.stdout).contains("Removed: 2 symlinks"),
-        "{}",
-        String::from_utf8_lossy(&clean.stdout)
-    );
+    let clean_stdout = String::from_utf8_lossy(&clean.stdout);
+    assert!(clean_stdout.contains("Removed: 2"), "{clean_stdout}");
 }

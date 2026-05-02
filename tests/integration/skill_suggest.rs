@@ -536,12 +536,13 @@ fn skill_suggest_human_output_reports_empty_results() {
     );
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Detected technologies: none"), "{stdout}");
-    assert!(stdout.contains("Recommended skills: none"), "{stdout}");
-    assert!(
-        stdout.contains("Summary: 0 detected, 0 recommended, 0 installable"),
-        "{stdout}"
-    );
+    assert!(stdout.contains("➤ Detected technologies"), "{stdout}");
+    assert!(stdout.contains("➤ Recommended skills"), "{stdout}");
+    assert!(stdout.contains("➤ Summary"), "{stdout}");
+    assert!(stdout.contains("  none"), "{stdout}");
+    assert!(stdout.contains("  Detected: 0"), "{stdout}");
+    assert!(stdout.contains("  Recommended: 0"), "{stdout}");
+    assert!(stdout.contains("  Installable: 0"), "{stdout}");
 }
 
 #[test]
@@ -779,8 +780,9 @@ fn skill_suggest_install_all_human_output_is_line_oriented_and_readable_without_
     );
 
     let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("➤ Install recommendations"), "{stdout}");
     assert!(
-        stdout.contains("Installing 3 recommended skills..."),
+        stdout.contains("Installing 3 recommended skills"),
         "{stdout}"
     );
     assert!(

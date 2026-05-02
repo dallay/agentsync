@@ -8,12 +8,230 @@ use colored::Colorize;
 use std::env;
 use std::path::PathBuf;
 
-use agentsync::{Linker, SyncOptions, config::Config, gitignore, init};
+use agentsync::{Linker, SyncOptions, SyncResult, config::Config, gitignore, init};
 mod commands;
 mod output;
 use commands::doctor::run_doctor;
 use commands::skill::{SkillCommand, run_skill};
 use commands::status::{StatusArgs, run_status};
+use output::{HumanFormatter, LabelKind, output_mode};
+
+fn human_use_color() -> bool {
+    match output_mode(false) {
+        output::OutputMode::Human { use_color } => use_color,
+        output::OutputMode::Json => false,
+    }
+}
+
+fn render_phase(title: &str, detail: &str, use_color: bool) -> Vec<String> {
+    let formatter = HumanFormatter::new(use_color);
+    vec![
+        formatter.format_heading(&format!("➤ {title}")),
+        format!("  {detail}"),
+    ]
+}
+
+fn render_dry_run_notice(use_color: bool) -> Vec<String> {
+    let formatter = HumanFormatter::new(use_color);
+    vec![
+        formatter.format_label("!", "Dry run", LabelKind::Warning),
+        "  No filesystem changes will be made.".to_string(),
+    ]
+}
+
+fn merge_clean_result_into_apply_result(result: &mut SyncResult, clean_result: &SyncResult) {
+    result.updated += clean_result.updated;
+    result.skipped += clean_result.skipped;
+    result.removed += clean_result.removed;
+    result.errors += clean_result.errors;
+}
+
+#[cfg(test)]
+fn render_clean_phase(dry_run: bool) -> Vec<String> {
+    render_clean_phase_with_color(dry_run, false)
+}
+
+fn render_clean_phase_with_color(dry_run: bool, use_color: bool) -> Vec<String> {
+    render_phase(
+        "Clean",
+        if dry_run {
+            "Previewing managed symlink removals"
+        } else {
+            "Removing managed symlinks"
+        },
+        use_color,
+    )
+}
+
+#[cfg(test)]
+fn render_sync_phase(dry_run: bool, clean_first: bool) -> Vec<String> {
+    render_sync_phase_with_color(dry_run, clean_first, false)
+}
+
+fn render_sync_phase_with_color(dry_run: bool, clean_first: bool, use_color: bool) -> Vec<String> {
+    let detail = match (dry_run, clean_first) {
+        (true, true) => "Previewing clean and sync changes",
+        (true, false) => "Previewing agent configuration changes",
+        (false, true) => "Cleaning existing symlinks before syncing",
+        (false, false) => "Syncing agent configurations",
+    };
+    render_phase("Sync", detail, use_color)
+}
+
+#[cfg(test)]
+fn render_gitignore_phase(enabled: bool, dry_run: bool) -> Vec<String> {
+    render_gitignore_phase_with_color(enabled, dry_run, false)
+}
+
+fn render_gitignore_phase_with_color(enabled: bool, dry_run: bool, use_color: bool) -> Vec<String> {
+    let detail = match (enabled, dry_run) {
+        (true, true) => "Previewing .gitignore update",
+        (true, false) => "Updating .gitignore",
+        (false, true) => "Previewing .gitignore cleanup",
+        (false, false) => "Cleaning .gitignore",
+    };
+    render_phase("Gitignore", detail, use_color)
+}
+
+fn render_mcp_phase(dry_run: bool, use_color: bool) -> Vec<String> {
+    render_phase(
+        "MCP",
+        if dry_run {
+            "Previewing MCP configuration changes"
+        } else {
+            "Syncing MCP configurations"
+        },
+        use_color,
+    )
+}
+
+fn render_count(label: &str, value: usize, kind: LabelKind, use_color: bool) -> String {
+    let formatter = HumanFormatter::new(use_color);
+    format!(
+        "  {}",
+        formatter.format_summary_line(label, &value.to_string(), kind)
+    )
+}
+
+#[cfg(test)]
+fn render_apply_summary(dry_run: bool, result: &SyncResult) -> Vec<String> {
+    render_apply_summary_with_color(dry_run, result, false)
+}
+
+fn render_apply_summary_with_color(
+    dry_run: bool,
+    result: &SyncResult,
+    use_color: bool,
+) -> Vec<String> {
+    let formatter = HumanFormatter::new(use_color);
+    let mut lines = vec![formatter.format_label(
+        "✔",
+        if dry_run {
+            "Sync dry run complete"
+        } else {
+            "Sync complete"
+        },
+        LabelKind::Success,
+    )];
+    lines.push(render_count(
+        "Created",
+        result.created,
+        LabelKind::Success,
+        use_color,
+    ));
+    lines.push(render_count(
+        "Updated",
+        result.updated,
+        LabelKind::Warning,
+        use_color,
+    ));
+    lines.push(render_count(
+        "Skipped",
+        result.skipped,
+        LabelKind::Muted,
+        use_color,
+    ));
+    lines.push(render_count(
+        "Removed",
+        result.removed,
+        if result.removed > 0 {
+            LabelKind::Warning
+        } else {
+            LabelKind::Muted
+        },
+        use_color,
+    ));
+    lines.push(render_count(
+        "Errors",
+        result.errors,
+        if result.errors > 0 {
+            LabelKind::Failure
+        } else {
+            LabelKind::Muted
+        },
+        use_color,
+    ));
+
+    lines
+}
+
+#[cfg(test)]
+fn render_clean_summary(dry_run: bool, removed: usize) -> Vec<String> {
+    render_clean_summary_with_color(dry_run, removed, false)
+}
+
+fn render_clean_summary_with_color(dry_run: bool, removed: usize, use_color: bool) -> Vec<String> {
+    let formatter = HumanFormatter::new(use_color);
+    vec![
+        formatter.format_label(
+            "✔",
+            if dry_run {
+                "Clean dry run complete"
+            } else {
+                "Clean complete"
+            },
+            LabelKind::Success,
+        ),
+        render_count(
+            if dry_run { "Would remove" } else { "Removed" },
+            removed,
+            LabelKind::Success,
+            use_color,
+        ),
+    ]
+}
+
+#[cfg(test)]
+fn render_mcp_summary(result: &agentsync::mcp::McpSyncResult) -> Vec<String> {
+    render_mcp_summary_with_color(result, false)
+}
+
+fn render_mcp_summary_with_color(
+    result: &agentsync::mcp::McpSyncResult,
+    use_color: bool,
+) -> Vec<String> {
+    vec![
+        render_count("Created", result.created, LabelKind::Success, use_color),
+        render_count("Updated", result.updated, LabelKind::Warning, use_color),
+        render_count("Skipped", result.skipped, LabelKind::Muted, use_color),
+        render_count(
+            "Errors",
+            result.errors,
+            if result.errors > 0 {
+                LabelKind::Failure
+            } else {
+                LabelKind::Muted
+            },
+            use_color,
+        ),
+    ]
+}
+
+fn print_lines(lines: &[String]) {
+    for line in lines {
+        println!("{line}");
+    }
+}
 
 fn init_next_steps_lines(wizard: bool) -> Option<Vec<String>> {
     if wizard {
@@ -87,6 +305,12 @@ enum Commands {
             help = "Run interactive configuration wizard to migrate existing files"
         )]
         wizard: bool,
+        #[arg(
+            long,
+            requires = "wizard",
+            help = "Run the init wizard with an experimental full-screen TUI intro"
+        )]
+        experimental_tui: bool,
     },
     /// Apply the configuration from agentsync.toml
     Apply {
@@ -149,6 +373,7 @@ fn main() -> Result<()> {
             path,
             force,
             wizard,
+            experimental_tui,
         } => {
             let project_root = path.unwrap_or_else(|| env::current_dir().unwrap());
             print_header();
@@ -157,7 +382,11 @@ fn main() -> Result<()> {
                     "{}",
                     "Starting interactive configuration wizard...\n".cyan()
                 );
-                init::init_wizard(&project_root, force)?;
+                if experimental_tui {
+                    init::init_wizard_experimental_tui(&project_root, force)?;
+                } else {
+                    init::init_wizard(&project_root, force)?;
+                }
             } else {
                 println!("{}", "Initializing agentsync configuration...\n".cyan());
                 init::init(&project_root, force)?;
@@ -192,16 +421,25 @@ fn main() -> Result<()> {
             }
             let config = Config::load(&config_path)?;
             let linker = Linker::new(config, config_path);
-            if clean {
-                println!("{}", "➤ Cleaning existing symlinks".cyan().bold());
+            let use_color = human_use_color();
+            if dry_run {
+                print_lines(&render_dry_run_notice(use_color));
+                println!();
+            }
+            let clean_result = if clean {
+                print_lines(&render_clean_phase_with_color(dry_run, use_color));
                 let clean_opts = SyncOptions {
                     dry_run,
                     verbose,
                     ..Default::default()
                 };
-                linker.clean(&clean_opts)?;
-            }
-            println!("{}", "➤ Syncing agent configurations".cyan().bold());
+                let clean_result = linker.clean(&clean_opts)?;
+                println!();
+                Some(clean_result)
+            } else {
+                None
+            };
+            print_lines(&render_sync_phase_with_color(dry_run, clean, use_color));
             let options = SyncOptions {
                 clean: false,
                 dry_run,
@@ -209,9 +447,13 @@ fn main() -> Result<()> {
                 agents,
             };
             let mut result = linker.sync(&options)?;
+            if let Some(clean_result) = &clean_result {
+                merge_clean_result_into_apply_result(&mut result, clean_result);
+            }
             if !no_gitignore {
                 if linker.config().gitignore.enabled {
-                    println!("\n{}", "➤ Updating .gitignore".cyan().bold());
+                    println!();
+                    print_lines(&render_gitignore_phase_with_color(true, dry_run, use_color));
                     let entries = linker.config().all_gitignore_entries();
                     gitignore::update_gitignore(
                         linker.project_root(),
@@ -220,7 +462,10 @@ fn main() -> Result<()> {
                         dry_run,
                     )?;
                 } else {
-                    println!("\n{}", "➤ Cleaning .gitignore".cyan().bold());
+                    println!();
+                    print_lines(&render_gitignore_phase_with_color(
+                        false, dry_run, use_color,
+                    ));
                     gitignore::cleanup_gitignore(
                         linker.project_root(),
                         &linker.config().gitignore.marker,
@@ -229,15 +474,16 @@ fn main() -> Result<()> {
                 }
             }
             if linker.config().mcp.enabled && !linker.config().mcp_servers.is_empty() {
-                println!("\n{}", "➤ Syncing MCP configurations".cyan().bold());
+                println!();
+                print_lines(&render_mcp_phase(dry_run, use_color));
                 match linker.sync_mcp(dry_run, options.agents.as_ref()) {
                     Ok(mcp_result) => {
-                        if mcp_result.created > 0 || mcp_result.updated > 0 {
-                            println!(
-                                "  MCP configs: Created {}, Updated {}",
-                                mcp_result.created.to_string().green(),
-                                mcp_result.updated.to_string().yellow(),
-                            );
+                        if mcp_result.created > 0
+                            || mcp_result.updated > 0
+                            || mcp_result.skipped > 0
+                            || mcp_result.errors > 0
+                        {
+                            print_lines(&render_mcp_summary_with_color(&mcp_result, use_color));
                         }
                     }
                     Err(e) => {
@@ -246,18 +492,10 @@ fn main() -> Result<()> {
                     }
                 }
             }
-            println!("\n{}", "✨ Sync complete!".green().bold());
-            println!(
-                "  Created: {}, Updated: {}, Skipped: {}, Errors: {}",
-                result.created.to_string().green(),
-                result.updated.to_string().yellow(),
-                result.skipped.to_string().dimmed(),
-                if result.errors > 0 {
-                    result.errors.to_string().red()
-                } else {
-                    result.errors.to_string().dimmed()
-                }
-            );
+            println!();
+            print_lines(&render_apply_summary_with_color(
+                dry_run, &result, use_color,
+            ));
         }
         Commands::Clean {
             path,
@@ -273,14 +511,24 @@ fn main() -> Result<()> {
             };
             let config = Config::load(&config_path)?;
             let linker = Linker::new(config, config_path);
+            let use_color = human_use_color();
+            if dry_run {
+                print_lines(&render_dry_run_notice(use_color));
+                println!();
+            }
+            print_lines(&render_clean_phase_with_color(dry_run, use_color));
             let options = SyncOptions {
                 dry_run,
                 verbose,
                 ..Default::default()
             };
             let result = linker.clean(&options)?;
-            println!("\n{}", "✨ Clean complete!".green().bold());
-            println!("  Removed: {} symlinks", result.removed.to_string().green());
+            println!();
+            print_lines(&render_clean_summary_with_color(
+                dry_run,
+                result.removed,
+                use_color,
+            ));
         }
         Commands::DevInstall { skill_id, json } => {
             let project_root = env::current_dir().unwrap();
@@ -304,7 +552,170 @@ fn print_header() {
 
 #[cfg(test)]
 mod tests {
-    use super::init_next_steps_lines;
+    use super::{
+        Cli, Commands, init_next_steps_lines, render_apply_summary, render_clean_phase,
+        render_clean_summary, render_dry_run_notice, render_gitignore_phase, render_mcp_summary,
+        render_sync_phase,
+    };
+    use agentsync::{SyncResult, mcp::McpSyncResult};
+    use clap::Parser;
+
+    #[test]
+    fn test_render_dry_run_notice_is_explicit() {
+        assert_eq!(
+            render_dry_run_notice(false),
+            vec![
+                "! Dry run".to_string(),
+                "  No filesystem changes will be made.".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_render_sync_phase_names_dry_run_preview() {
+        assert_eq!(
+            render_sync_phase(true, false),
+            vec![
+                "➤ Sync".to_string(),
+                "  Previewing agent configuration changes".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_render_gitignore_phase_distinguishes_update_and_clean() {
+        assert_eq!(
+            render_gitignore_phase(true, false),
+            vec![
+                "➤ Gitignore".to_string(),
+                "  Updating .gitignore".to_string()
+            ]
+        );
+        assert_eq!(
+            render_gitignore_phase(false, true),
+            vec![
+                "➤ Gitignore".to_string(),
+                "  Previewing .gitignore cleanup".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_render_apply_summary_uses_consistent_counts() {
+        let summary = render_apply_summary(
+            false,
+            &SyncResult {
+                created: 2,
+                updated: 1,
+                skipped: 3,
+                removed: 0,
+                errors: 1,
+            },
+        );
+
+        assert_eq!(
+            summary,
+            vec![
+                "✔ Sync complete".to_string(),
+                "  Created: 2".to_string(),
+                "  Updated: 1".to_string(),
+                "  Skipped: 3".to_string(),
+                "  Removed: 0".to_string(),
+                "  Errors: 1".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_render_clean_phase_and_summary_make_dry_run_clear() {
+        assert_eq!(
+            render_clean_phase(true),
+            vec![
+                "➤ Clean".to_string(),
+                "  Previewing managed symlink removals".to_string()
+            ]
+        );
+        assert_eq!(
+            render_clean_summary(false, 3),
+            vec!["✔ Clean complete".to_string(), "  Removed: 3".to_string()]
+        );
+        assert_eq!(
+            render_clean_summary(true, 3),
+            vec![
+                "✔ Clean dry run complete".to_string(),
+                "  Would remove: 3".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_render_mcp_summary_reports_all_counts() {
+        let summary = render_mcp_summary(&McpSyncResult {
+            created: 1,
+            updated: 2,
+            skipped: 3,
+            errors: 4,
+        });
+
+        assert_eq!(
+            summary,
+            vec![
+                "  Created: 1".to_string(),
+                "  Updated: 2".to_string(),
+                "  Skipped: 3".to_string(),
+                "  Errors: 4".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_merge_clean_result_into_apply_result_preserves_created_count() {
+        let mut result = SyncResult {
+            created: 3,
+            updated: 5,
+            skipped: 7,
+            removed: 11,
+            errors: 13,
+        };
+        let clean_result = SyncResult {
+            created: 17,
+            updated: 19,
+            skipped: 23,
+            removed: 29,
+            errors: 31,
+        };
+
+        super::merge_clean_result_into_apply_result(&mut result, &clean_result);
+
+        assert_eq!(result.created, 3);
+        assert_eq!(result.updated, 24);
+        assert_eq!(result.skipped, 30);
+        assert_eq!(result.removed, 40);
+        assert_eq!(result.errors, 44);
+    }
+
+    #[test]
+    fn test_init_experimental_tui_requires_wizard_flag() {
+        assert!(Cli::try_parse_from(["agentsync", "init", "--experimental-tui"]).is_err());
+    }
+
+    #[test]
+    fn test_init_experimental_tui_parses_with_wizard_flag() {
+        let cli = Cli::try_parse_from(["agentsync", "init", "--wizard", "--experimental-tui"])
+            .expect("experimental TUI should parse when wizard is enabled");
+
+        let Commands::Init {
+            wizard,
+            experimental_tui,
+            ..
+        } = cli.command
+        else {
+            panic!("expected init command");
+        };
+
+        assert!(wizard);
+        assert!(experimental_tui);
+    }
 
     #[test]
     fn test_init_next_steps_lines_suppresses_generic_footer_for_wizard_runs() {

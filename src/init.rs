@@ -5,6 +5,7 @@
 use anyhow::{Context, Result};
 use std::collections::BTreeMap;
 use std::fs;
+use std::io::{self, IsTerminal};
 use std::path::Path;
 
 use crate::config::{Config, SyncType, TargetConfig};
@@ -1006,6 +1007,82 @@ fn resolve_skills_mode_selection(choice: &SkillsWizardChoice, selected_index: us
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExperimentalTuiContext {
+    SafeInteractive,
+    Unsupported(&'static str),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExperimentalTuiIntroOutcome {
+    Continue,
+    Cancelled,
+}
+
+fn detect_experimental_tui_context(
+    stdin_is_tty: bool,
+    stdout_is_tty: bool,
+    term: Option<&str>,
+) -> ExperimentalTuiContext {
+    if !stdin_is_tty {
+        return ExperimentalTuiContext::Unsupported("stdin is not a terminal");
+    }
+    if !stdout_is_tty {
+        return ExperimentalTuiContext::Unsupported("stdout is not a terminal");
+    }
+    if term.is_some_and(|value| value.eq_ignore_ascii_case("dumb")) {
+        return ExperimentalTuiContext::Unsupported("TERM=dumb does not support full-screen TUI");
+    }
+
+    ExperimentalTuiContext::SafeInteractive
+}
+
+trait InitWizardRenderer {
+    fn confirm_migration(&mut self) -> Result<bool>;
+    fn select_files_to_migrate(
+        &mut self,
+        discovered_files: &[DiscoveredFile],
+    ) -> Result<Vec<usize>>;
+    fn select_skills_mode(&mut self, choice: &SkillsWizardChoice) -> Result<usize>;
+    fn confirm_backup_originals(&mut self) -> Result<bool>;
+}
+
+fn select_wizard_files<R: InitWizardRenderer>(
+    renderer: &mut R,
+    discovered_files: &[DiscoveredFile],
+) -> Result<Option<Vec<DiscoveredFile>>> {
+    if !renderer.confirm_migration()? {
+        return Ok(None);
+    }
+
+    let selections = renderer.select_files_to_migrate(discovered_files)?;
+    let files_to_migrate = selections
+        .iter()
+        .map(|&idx| discovered_files[idx].clone())
+        .collect::<Vec<_>>();
+
+    Ok(Some(files_to_migrate))
+}
+
+fn select_wizard_skills_modes<R: InitWizardRenderer>(
+    renderer: &mut R,
+    skills_choices: &[SkillsWizardChoice],
+    can_write_config: bool,
+) -> Result<BTreeMap<String, SyncType>> {
+    let mut skills_modes = BTreeMap::new();
+    if can_write_config {
+        for choice in skills_choices {
+            let selection = renderer.select_skills_mode(choice)?;
+            skills_modes.insert(
+                choice.agent_name.clone(),
+                resolve_skills_mode_selection(choice, selection),
+            );
+        }
+    }
+
+    Ok(skills_modes)
+}
+
 fn build_default_config_with_skills_modes(modes: &BTreeMap<String, SyncType>) -> String {
     let mut rendered = Vec::new();
     let mut current_skills_agent: Option<String> = None;
@@ -1376,10 +1453,217 @@ fn collect_post_init_skills_warnings(
     Ok(warnings)
 }
 
+fn experimental_tui_context_from_env() -> ExperimentalTuiContext {
+    detect_experimental_tui_context(
+        io::stdin().is_terminal(),
+        io::stdout().is_terminal(),
+        std::env::var("TERM").ok().as_deref(),
+    )
+}
+
+fn missing_terminal_tui_error(reason: &str) -> Option<String> {
+    if reason.contains("stdin is not a terminal") || reason.contains("stdout is not a terminal") {
+        Some(format!(
+            "experimental TUI requires an interactive terminal ({reason}); run `agentsync init --wizard` for the standard wizard"
+        ))
+    } else {
+        None
+    }
+}
+
+pub fn init_wizard_experimental_tui(project_root: &Path, force: bool) -> Result<()> {
+    use colored::Colorize;
+
+    match experimental_tui_context_from_env() {
+        ExperimentalTuiContext::SafeInteractive => match run_experimental_tui_intro() {
+            Ok(ExperimentalTuiIntroOutcome::Continue) => {}
+            Ok(ExperimentalTuiIntroOutcome::Cancelled) => {
+                anyhow::bail!("experimental TUI wizard cancelled by user")
+            }
+            Err(error) => {
+                println!(
+                    "{}",
+                    format!(
+                        "Experimental full-screen TUI could not initialize ({error}); falling back to the standard wizard."
+                    )
+                    .yellow()
+                );
+            }
+        },
+        ExperimentalTuiContext::Unsupported(reason) => {
+            if let Some(message) = missing_terminal_tui_error(reason) {
+                anyhow::bail!(message);
+            }
+            println!(
+                "{}",
+                format!(
+                    "Experimental full-screen TUI unavailable ({reason}); falling back to the standard wizard."
+                )
+                .yellow()
+            );
+        }
+    }
+
+    init_wizard(project_root, force)
+}
+
+fn render_experimental_tui_intro_frame(frame: &mut ratatui::Frame<'_>) {
+    use ratatui::{
+        layout::{Alignment, Constraint, Direction, Layout},
+        style::{Color, Modifier, Style},
+        text::{Line, Span},
+        widgets::{Block, Borders, Paragraph, Wrap},
+    };
+
+    let area = frame.area();
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage(20),
+            Constraint::Length(12),
+            Constraint::Percentage(20),
+        ])
+        .split(area);
+
+    let paragraph = Paragraph::new(vec![
+        Line::from(Span::styled(
+            "AgentSync experimental init wizard",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from("This full-screen TUI is experimental and opt-in."),
+        Line::from("The current migration flow will continue in the standard wizard."),
+        Line::from(""),
+        Line::from("Enter: continue"),
+        Line::from("Esc/q: cancel"),
+    ])
+    .alignment(Alignment::Center)
+    .block(
+        Block::default()
+            .title(" Init wizard ")
+            .borders(Borders::ALL),
+    )
+    .wrap(Wrap { trim: true });
+
+    frame.render_widget(paragraph, chunks[1]);
+}
+
+fn run_experimental_tui_intro() -> Result<ExperimentalTuiIntroOutcome> {
+    use crossterm::{
+        event::{self, Event, KeyCode},
+        execute,
+        terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+    };
+    use ratatui::{Terminal, backend::CrosstermBackend};
+
+    struct TerminalGuard;
+
+    impl Drop for TerminalGuard {
+        fn drop(&mut self) {
+            let _ = disable_raw_mode();
+            let _ = execute!(io::stdout(), LeaveAlternateScreen);
+        }
+    }
+
+    enable_raw_mode()?;
+    let _guard = TerminalGuard;
+    execute!(io::stdout(), EnterAlternateScreen)?;
+
+    let backend = CrosstermBackend::new(io::stdout());
+    let mut terminal = Terminal::new(backend)?;
+    terminal.clear()?;
+
+    loop {
+        terminal.draw(render_experimental_tui_intro_frame)?;
+
+        if let Event::Key(key) = event::read()? {
+            match key.code {
+                KeyCode::Enter => return Ok(ExperimentalTuiIntroOutcome::Continue),
+                KeyCode::Esc | KeyCode::Char('q') => {
+                    return Ok(ExperimentalTuiIntroOutcome::Cancelled);
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
 /// Interactive wizard for initializing agentsync with file migration
 pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
     use colored::Colorize;
     use dialoguer::{Confirm, MultiSelect, Select, theme::ColorfulTheme};
+
+    struct DialoguerInitWizardRenderer;
+
+    impl InitWizardRenderer for DialoguerInitWizardRenderer {
+        fn confirm_migration(&mut self) -> Result<bool> {
+            Ok(Confirm::with_theme(&ColorfulTheme::default())
+                .with_prompt("Would you like to migrate these files to the .agents/ directory?")
+                .default(true)
+                .interact()?)
+        }
+
+        fn select_files_to_migrate(
+            &mut self,
+            discovered_files: &[DiscoveredFile],
+        ) -> Result<Vec<usize>> {
+            Ok(MultiSelect::with_theme(&ColorfulTheme::default())
+                .with_prompt("Select files to migrate (use Space to select, Enter to confirm)")
+                .items(
+                    discovered_files
+                        .iter()
+                        .map(|f| f.display_name.as_str())
+                        .collect::<Vec<_>>(),
+                )
+                .defaults(&discovered_files.iter().map(|_| true).collect::<Vec<_>>())
+                .interact()?)
+        }
+
+        fn select_skills_mode(&mut self, choice: &SkillsWizardChoice) -> Result<usize> {
+            println!(
+                "\n{}",
+                format!(
+                    "🧠 Skills target for {} ({})",
+                    choice.agent_name, choice.destination
+                )
+                .cyan()
+            );
+            println!(
+                "  {} Recommended: {}{}",
+                "ℹ".blue(),
+                sync_type_label(choice.recommended_mode).bold(),
+                choice
+                    .reason
+                    .as_ref()
+                    .map(|reason| format!(" — {reason}"))
+                    .unwrap_or_default()
+            );
+
+            Ok(Select::with_theme(&ColorfulTheme::default())
+                .with_prompt("How should this skills target sync?")
+                .items([
+                    "symlink — link the whole directory to .agents/skills",
+                    "symlink-contents — keep a directory and link each item inside it",
+                ])
+                .default(if choice.recommended_mode == SyncType::Symlink {
+                    0
+                } else {
+                    1
+                })
+                .interact()?)
+        }
+
+        fn confirm_backup_originals(&mut self) -> Result<bool> {
+            Ok(Confirm::with_theme(&ColorfulTheme::default())
+                .with_prompt(
+                    "Would you like to back up the original files? (They will be moved to .agents/backup/)",
+                )
+                .default(true)
+                .interact()?)
+        }
+    }
 
     // Scan for existing agent files
     println!("{}", "🔍 Scanning for existing agent files...".cyan());
@@ -1404,36 +1688,14 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
 
     println!();
 
-    // Ask if user wants to migrate files
-    let should_migrate = Confirm::with_theme(&ColorfulTheme::default())
-        .with_prompt("Would you like to migrate these files to the .agents/ directory?")
-        .default(true)
-        .interact()?;
-
-    if !should_migrate {
+    let mut renderer = DialoguerInitWizardRenderer;
+    let Some(files_to_migrate) = select_wizard_files(&mut renderer, &discovered_files)? else {
         println!(
             "{}",
             "  Skipping migration. Creating standard configuration...".dimmed()
         );
         return init(project_root, force);
-    }
-
-    // Let user select which files to migrate
-    let selections = MultiSelect::with_theme(&ColorfulTheme::default())
-        .with_prompt("Select files to migrate (use Space to select, Enter to confirm)")
-        .items(
-            discovered_files
-                .iter()
-                .map(|f| f.display_name.as_str())
-                .collect::<Vec<_>>(),
-        )
-        .defaults(&discovered_files.iter().map(|_| true).collect::<Vec<_>>())
-        .interact()?;
-
-    let files_to_migrate: Vec<_> = selections
-        .iter()
-        .map(|&idx| discovered_files[idx].clone())
-        .collect();
+    };
 
     if files_to_migrate.is_empty() {
         println!("{}", "  No files selected for migration.".dimmed());
@@ -1481,47 +1743,8 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
     let config_path = agents_dir.join("agentsync.toml");
     let can_write_config = force || !config_path.exists();
     let skills_choices = build_skills_wizard_choices(project_root, &skills_dir, &files_to_migrate);
-    let mut skills_modes = BTreeMap::new();
-    if can_write_config {
-        for choice in &skills_choices {
-            println!(
-                "\n{}",
-                format!(
-                    "🧠 Skills target for {} ({})",
-                    choice.agent_name, choice.destination
-                )
-                .cyan()
-            );
-            println!(
-                "  {} Recommended: {}{}",
-                "ℹ".blue(),
-                sync_type_label(choice.recommended_mode).bold(),
-                choice
-                    .reason
-                    .as_ref()
-                    .map(|reason| format!(" — {reason}"))
-                    .unwrap_or_default()
-            );
-
-            let selection = Select::with_theme(&ColorfulTheme::default())
-                .with_prompt("How should this skills target sync?")
-                .items([
-                    "symlink — link the whole directory to .agents/skills",
-                    "symlink-contents — keep a directory and link each item inside it",
-                ])
-                .default(if choice.recommended_mode == SyncType::Symlink {
-                    0
-                } else {
-                    1
-                })
-                .interact()?;
-
-            skills_modes.insert(
-                choice.agent_name.clone(),
-                resolve_skills_mode_selection(choice, selection),
-            );
-        }
-    }
+    let skills_modes =
+        select_wizard_skills_modes(&mut renderer, &skills_choices, can_write_config)?;
 
     let rendered_config = build_default_config_with_skills_modes(&skills_modes);
     let layout_facts = build_wizard_layout_facts(&rendered_config)?;
@@ -1854,14 +2077,7 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
     let backup_outcome = if matches!(agents_md_outcome, ManagedFileOutcome::Preserved) {
         BackupOutcome::NotOffered
     } else {
-        let should_backup = Confirm::with_theme(&ColorfulTheme::default())
-            .with_prompt(
-                "Would you like to back up the original files? (They will be moved to .agents/backup/)",
-            )
-            .default(true)
-            .interact()?;
-
-        if should_backup {
+        if renderer.confirm_backup_originals()? {
             let backup_dir = agents_dir.join("backup");
             fs::create_dir_all(&backup_dir)?;
             let mut moved_count = 0;
@@ -2010,6 +2226,34 @@ mod tests {
     use super::*;
     use std::collections::BTreeMap;
     use tempfile::TempDir;
+
+    struct ScriptedWizardRenderer {
+        migrate: bool,
+        selected_files: Vec<usize>,
+        skills_modes: Vec<usize>,
+        backup: bool,
+    }
+
+    impl InitWizardRenderer for ScriptedWizardRenderer {
+        fn confirm_migration(&mut self) -> Result<bool> {
+            Ok(self.migrate)
+        }
+
+        fn select_files_to_migrate(
+            &mut self,
+            _discovered_files: &[DiscoveredFile],
+        ) -> Result<Vec<usize>> {
+            Ok(self.selected_files.clone())
+        }
+
+        fn select_skills_mode(&mut self, _choice: &SkillsWizardChoice) -> Result<usize> {
+            Ok(self.skills_modes.remove(0))
+        }
+
+        fn confirm_backup_originals(&mut self) -> Result<bool> {
+            Ok(self.backup)
+        }
+    }
 
     // ==========================================================================
     // INIT FUNCTION TESTS
@@ -3618,6 +3862,109 @@ mod tests {
             resolve_skills_mode_selection(&choice, 1),
             SyncType::SymlinkContents
         );
+    }
+
+    #[test]
+    fn test_experimental_tui_context_requires_safe_interactive_terminal() {
+        assert_eq!(
+            detect_experimental_tui_context(true, true, Some("xterm-256color")),
+            ExperimentalTuiContext::SafeInteractive
+        );
+        assert_eq!(
+            detect_experimental_tui_context(false, true, Some("xterm-256color")),
+            ExperimentalTuiContext::Unsupported("stdin is not a terminal")
+        );
+        assert_eq!(
+            detect_experimental_tui_context(true, false, Some("xterm-256color")),
+            ExperimentalTuiContext::Unsupported("stdout is not a terminal")
+        );
+        assert_eq!(
+            detect_experimental_tui_context(true, true, Some("dumb")),
+            ExperimentalTuiContext::Unsupported("TERM=dumb does not support full-screen TUI")
+        );
+    }
+
+    #[test]
+    fn test_missing_terminal_tui_error_only_blocks_non_tty_contexts() {
+        assert_eq!(
+            missing_terminal_tui_error("stdin is not a terminal"),
+            Some("experimental TUI requires an interactive terminal (stdin is not a terminal); run `agentsync init --wizard` for the standard wizard".to_string())
+        );
+        assert_eq!(
+            missing_terminal_tui_error("stdout is not a terminal"),
+            Some("experimental TUI requires an interactive terminal (stdout is not a terminal); run `agentsync init --wizard` for the standard wizard".to_string())
+        );
+        assert_eq!(
+            missing_terminal_tui_error("TERM=dumb does not support full-screen TUI"),
+            None
+        );
+    }
+
+    #[test]
+    fn test_experimental_tui_intro_frame_renders_context_and_controls() {
+        use ratatui::{Terminal, backend::TestBackend};
+
+        let backend = TestBackend::new(90, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(render_experimental_tui_intro_frame)
+            .expect("intro frame should render to test backend");
+
+        let rendered = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+
+        assert!(
+            rendered.contains("AgentSync experimental init wizard"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("Enter: continue"), "{rendered}");
+        assert!(rendered.contains("Esc/q: cancel"), "{rendered}");
+    }
+
+    #[test]
+    fn test_wizard_selection_helpers_use_renderer_decisions_without_dialoguer() {
+        let discovered = vec![
+            DiscoveredFile {
+                path: "CLAUDE.md".into(),
+                file_type: AgentFileType::ClaudeInstructions,
+                display_name: "CLAUDE.md".to_string(),
+            },
+            DiscoveredFile {
+                path: ".claude/skills".into(),
+                file_type: AgentFileType::ClaudeSkills,
+                display_name: "Claude skills".to_string(),
+            },
+        ];
+        let choices = vec![SkillsWizardChoice {
+            agent_name: "claude".to_string(),
+            destination: ".claude/skills".to_string(),
+            recommended_mode: SyncType::Symlink,
+            reason: None,
+            already_canonical: false,
+        }];
+        let mut renderer = ScriptedWizardRenderer {
+            migrate: true,
+            selected_files: vec![1],
+            skills_modes: vec![1],
+            backup: true,
+        };
+
+        let files_to_migrate = select_wizard_files(&mut renderer, &discovered)
+            .unwrap()
+            .expect("migration should be selected");
+        let skills_modes = select_wizard_skills_modes(&mut renderer, &choices, true).unwrap();
+        let should_backup_originals = renderer.confirm_backup_originals().unwrap();
+
+        assert_eq!(files_to_migrate.len(), 1);
+        assert_eq!(files_to_migrate[0].path, discovered[1].path);
+        assert_eq!(skills_modes.get("claude"), Some(&SyncType::SymlinkContents));
+        assert!(should_backup_originals);
     }
 
     #[test]

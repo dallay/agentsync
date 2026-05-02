@@ -25,29 +25,29 @@ importers:
         version: 6.0.3
     optionalDependencies:
       '@dallay/agentsync-darwin-arm64':
-        specifier: 1.42.10
-        version: 1.42.10
+        specifier: 1.43.0
+        version: 1.43.0
       '@dallay/agentsync-darwin-x64':
-        specifier: 1.42.10
-        version: 1.42.10
+        specifier: 1.43.0
+        version: 1.43.0
       '@dallay/agentsync-linux-arm64':
-        specifier: 1.42.10
-        version: 1.42.10
+        specifier: 1.43.0
+        version: 1.43.0
       '@dallay/agentsync-linux-x64':
-        specifier: 1.42.10
-        version: 1.42.10
+        specifier: 1.43.0
+        version: 1.43.0
       '@dallay/agentsync-windows-arm64':
-        specifier: 1.42.10
-        version: 1.42.10
+        specifier: 1.43.0
+        version: 1.43.0
       '@dallay/agentsync-windows-x64':
-        specifier: 1.42.10
-        version: 1.42.10
+        specifier: 1.43.0
+        version: 1.43.0
 
   website/docs:
     dependencies:
       '@astrojs/starlight':
         specifier: ^0.38.4
-        version: 0.38.4(astro@6.1.6(@types/node@25.6.0)(rollup@4.60.2))
+        version: 0.38.4(astro@6.1.10(@types/node@25.6.0)(rollup@4.60.2))
       '@fontsource/geist-mono':
         specifier: ^5.2.7
         version: 5.2.7
@@ -58,14 +58,14 @@ importers:
         specifier: ^2.2.468
         version: 2.2.468
       astro:
-        specifier: ^6.1.1
-        version: 6.1.6(@types/node@25.6.0)(rollup@4.60.2)
+        specifier: ^6.1.10
+        version: 6.1.10(@types/node@25.6.0)(rollup@4.60.2)
       sharp:
         specifier: ^0.34.5
         version: 0.34.5
       starlight-theme-black:
         specifier: ^0.6.0
-        version: 0.6.0(@astrojs/starlight@0.38.4(astro@6.1.6(@types/node@25.6.0)(rollup@4.60.2)))
+        version: 0.6.0(@astrojs/starlight@0.38.4(astro@6.1.10(@types/node@25.6.0)(rollup@4.60.2)))
       unplugin-icons:
         specifier: ^23.0.1
         version: 23.0.1
@@ -81,8 +81,14 @@ packages:
   '@astrojs/internal-helpers@0.8.0':
     resolution: {integrity: sha512-J56GrhEiV+4dmrGLPNOl2pZjpHXAndWVyiVDYGDuw6MWKpBSEMLdFxHzeM/6sqaknw9M+HFfHZAcvi3OfT3D/w==}
 
+  '@astrojs/internal-helpers@0.9.0':
+    resolution: {integrity: sha512-GdYkzR26re8izmyYlBqf4z2s7zNngmWLFuxw0UKiPNqHraZGS6GKWIwSHgS22RDlu2ePFJ8bzmpBcUszut/SDg==}
+
   '@astrojs/markdown-remark@7.1.0':
     resolution: {integrity: sha512-P+HnCsu2js3BoTc8kFmu+E9gOcFeMdPris75g+Zl4sY8+bBRbSQV6xzcBDbZ27eE7yBGEGQoqjpChx+KJYIPYQ==}
+
+  '@astrojs/markdown-remark@7.1.1':
+    resolution: {integrity: sha512-C6e9BnLGlbdv6bV8MYGeHpHxsUHrCrB4OuRLqi5LI7oiBVcBcqfUN06zpwFQdHgV48QCCrMmLpyqBr7VqC+swA==}
 
   '@astrojs/mdx@5.0.3':
     resolution: {integrity: sha512-zv/OlM5sZZvyjHqJjR3FjJvoCgbxdqj3t4jO/gSEUNcck3BjdtMgNQw8UgPfAGe4yySdG4vjZ3OC5wUxhu7ckg==}
@@ -102,8 +108,8 @@ packages:
     peerDependencies:
       astro: ^6.0.0
 
-  '@astrojs/telemetry@3.3.0':
-    resolution: {integrity: sha512-UFBgfeldP06qu6khs/yY+q1cDAaArM2/7AEIqQ9Cuvf7B1hNLq0xDrZkct+QoIGyjq56y8IaE2I3CTvG99mlhQ==}
+  '@astrojs/telemetry@3.3.1':
+    resolution: {integrity: sha512-7fcIxXS9J4ls5tr8b3ww9rbAIz2+HrhNJYZdkAhhB4za/I5IZ/60g+Bs8q7zwG0tOIZfNB4JWhVJ1Qkl/OrNCw==}
     engines: {node: 18.20.8 || ^20.3.0 || >=22.0.0}
 
   '@babel/helper-string-parser@7.27.1':
@@ -198,43 +204,43 @@ packages:
     resolution: {integrity: sha512-kzyuwOAQnXJNLS9PSyrk0CWk35nWJW/zl/6KvnTBMFK65gm7U1/Z5BqjxeapjZCIhQcM/DsrEmcbRwDyXyXK4A==}
     engines: {node: '>=14'}
 
-  '@dallay/agentsync-darwin-arm64@1.42.10':
-    resolution: {integrity: sha512-kgdOGp/BbWqhbNHA857MzXCoOTGKPyFi3E7ZttzOVaId1iAFKNam0IA4gbVD5XPsSRGy/L5B0oisolIB+xeEMg==}
+  '@dallay/agentsync-darwin-arm64@1.43.0':
+    resolution: {integrity: sha512-jj+D4QNS6eHNb9vqingz9ZLA54qgUw+dQB/pYReSxti1rWSk7OWYJ0NzXB/atJQyGPcriTeGPG/ov3hMDg8xLA==}
     engines: {node: '>=18'}
     cpu: [arm64]
     os: [darwin]
     hasBin: true
 
-  '@dallay/agentsync-darwin-x64@1.42.10':
-    resolution: {integrity: sha512-on/8dCGKPFkHdGpv7UyMXAexfryy4fRCCBE/rwQihBlnBtiP42TTW+goSfpsrap0+/P8e8xSIDK3pS7LabKLBA==}
+  '@dallay/agentsync-darwin-x64@1.43.0':
+    resolution: {integrity: sha512-jcoMjwdzFZ+hOQ/T57+NpYRUSgaASudJAe8BQhBw6ksgQj/1M4+p+56E2oNSrcWOvUbZnMXd2tV3XFvI59JQLw==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [darwin]
     hasBin: true
 
-  '@dallay/agentsync-linux-arm64@1.42.10':
-    resolution: {integrity: sha512-onMZRuTcCYy9Q4xPi5pb50PX7i8ZDH4iaM0GKpIV6fj4rLiIKU3i6+mjx+tQHaZA5mIAhMEWKrC6ae3UrRvcqA==}
+  '@dallay/agentsync-linux-arm64@1.43.0':
+    resolution: {integrity: sha512-RxWfYgISN5/UU4u9Tl72QT1jLn7Jm8JHoq84a1k6TZNM5B9qScOdXWek1/uA4nMS4Q+lYbZOntMn0wLBsaEh1A==}
     engines: {node: '>=18'}
     cpu: [arm64]
     os: [linux]
     hasBin: true
 
-  '@dallay/agentsync-linux-x64@1.42.10':
-    resolution: {integrity: sha512-3WZewEDc/6sTVeRUdm1uYZFlPgqMNK+Pr/X64Rl2gEU6TuywJm9wn0kNWIrDeHWbTPqBBNUzMenDo/AFqPuTtg==}
+  '@dallay/agentsync-linux-x64@1.43.0':
+    resolution: {integrity: sha512-WGYYVuxtJ8g7jSO9LTVBt93DfBHOm5EEkowPvTIjTqzJHmdefpJNZiqhy+DuiYjzTYMLH2lOeItRe3i1W9CJLQ==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [linux]
     hasBin: true
 
-  '@dallay/agentsync-windows-arm64@1.42.10':
-    resolution: {integrity: sha512-8O0mN0T39x4kAanLTD69XMrQskyoGhNP+3vn25Dfr8XaUocAZc8eXN7eOuyoCATueVxBYR1Bd2FnDnaeMrWLfA==}
+  '@dallay/agentsync-windows-arm64@1.43.0':
+    resolution: {integrity: sha512-3kTpf3Qeqqw+9b0b24URZbkzvApTafTqZKfddu/Wu+tEbUxI18Q3P+PB0hIE7DOGKqfAw9G3VuoJW8J7ZOkV7Q==}
     engines: {node: '>=18'}
     cpu: [arm64]
     os: [win32]
     hasBin: true
 
-  '@dallay/agentsync-windows-x64@1.42.10':
-    resolution: {integrity: sha512-KfX0pkREJCHzlsHcLwa0i7271GwQw6xzcDXSLi0EeJkqx0ttBxsdSuXqwppTuM4vcFrbxEBtFoQN9avTOpXGGA==}
+  '@dallay/agentsync-windows-x64@1.43.0':
+    resolution: {integrity: sha512-I4KYdHUaCbhmHotmQXvMoZGYeGOaIDeejHy/x5Vrf6LVmjvRhZTZc4jsgC5euDbPV/iw5GvbcjtbXDZCbULuvQ==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
@@ -916,8 +922,8 @@ packages:
     peerDependencies:
       astro: ^4.0.0-beta || ^5.0.0-beta || ^3.3.0 || ^6.0.0-beta
 
-  astro@6.1.6:
-    resolution: {integrity: sha512-pRsz+kYriwCV/AUcY/I9OVKtVHuYFs2DtCszAxprXded/kTE53nMwxfnK0Nf6FPfaX9vcUiLnigcSIhuFoKntA==}
+  astro@6.1.10:
+    resolution: {integrity: sha512-jQAIki6c862oxRr7OXXC+h3n4wg1EpmKgCH3vv1FtXM9VFmD2iTjlaxrfb0I6eQCwtUjSBxfJBFBDSXHu7Wing==}
     engines: {node: '>=22.12.0', npm: '>=9.6.5', pnpm: '>=7.1.0'}
     hasBin: true
 
@@ -1276,6 +1282,11 @@ packages:
   is-docker@3.0.0:
     resolution: {integrity: sha512-eljcgEDlEns/7AXFosB5K/2nCM4P7FQPkGc/DWLy5rmFEWvZayGrik1d9/QIY5nJ4f9YsVvBkA6kJpHn9rISdQ==}
     engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
+    hasBin: true
+
+  is-docker@4.0.0:
+    resolution: {integrity: sha512-LHE+wROyG/Y/0ZnbktRCoTix2c1RhgWaZraMZ8o1Q7zCh0VSrICJQO5oqIIISrcSBtrXv0o233w1IYwsWCjTzA==}
+    engines: {node: '>=20'}
     hasBin: true
 
   is-hexadecimal@2.0.1:
@@ -2106,6 +2117,10 @@ snapshots:
     dependencies:
       picomatch: 4.0.4
 
+  '@astrojs/internal-helpers@0.9.0':
+    dependencies:
+      picomatch: 4.0.4
+
   '@astrojs/markdown-remark@7.1.0':
     dependencies:
       '@astrojs/internal-helpers': 0.8.0
@@ -2132,12 +2147,38 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@astrojs/mdx@5.0.3(astro@6.1.6(@types/node@25.6.0)(rollup@4.60.2))':
+  '@astrojs/markdown-remark@7.1.1':
+    dependencies:
+      '@astrojs/internal-helpers': 0.9.0
+      '@astrojs/prism': 4.0.1
+      github-slugger: 2.0.0
+      hast-util-from-html: 2.0.3
+      hast-util-to-text: 4.0.2
+      js-yaml: 4.1.1
+      mdast-util-definitions: 6.0.0
+      rehype-raw: 7.0.0
+      rehype-stringify: 10.0.1
+      remark-gfm: 4.0.1
+      remark-parse: 11.0.0
+      remark-rehype: 11.1.2
+      remark-smartypants: 3.0.2
+      retext-smartypants: 6.2.0
+      shiki: 4.0.2
+      smol-toml: 1.6.1
+      unified: 11.0.5
+      unist-util-remove-position: 5.0.0
+      unist-util-visit: 5.1.0
+      unist-util-visit-parents: 6.0.2
+      vfile: 6.0.3
+    transitivePeerDependencies:
+      - supports-color
+
+  '@astrojs/mdx@5.0.3(astro@6.1.10(@types/node@25.6.0)(rollup@4.60.2))':
     dependencies:
       '@astrojs/markdown-remark': 7.1.0
       '@mdx-js/mdx': 3.1.1
       acorn: 8.16.0
-      astro: 6.1.6(@types/node@25.6.0)(rollup@4.60.2)
+      astro: 6.1.10(@types/node@25.6.0)(rollup@4.60.2)
       es-module-lexer: 2.1.0
       estree-util-visit: 2.0.0
       hast-util-to-html: 9.0.5
@@ -2161,17 +2202,17 @@ snapshots:
       stream-replace-string: 2.0.0
       zod: 4.3.6
 
-  '@astrojs/starlight@0.38.4(astro@6.1.6(@types/node@25.6.0)(rollup@4.60.2))':
+  '@astrojs/starlight@0.38.4(astro@6.1.10(@types/node@25.6.0)(rollup@4.60.2))':
     dependencies:
       '@astrojs/markdown-remark': 7.1.0
-      '@astrojs/mdx': 5.0.3(astro@6.1.6(@types/node@25.6.0)(rollup@4.60.2))
+      '@astrojs/mdx': 5.0.3(astro@6.1.10(@types/node@25.6.0)(rollup@4.60.2))
       '@astrojs/sitemap': 3.7.2
       '@pagefind/default-ui': 1.5.0
       '@types/hast': 3.0.4
       '@types/js-yaml': 4.0.9
       '@types/mdast': 4.0.4
-      astro: 6.1.6(@types/node@25.6.0)(rollup@4.60.2)
-      astro-expressive-code: 0.41.7(astro@6.1.6(@types/node@25.6.0)(rollup@4.60.2))
+      astro: 6.1.10(@types/node@25.6.0)(rollup@4.60.2)
+      astro-expressive-code: 0.41.7(astro@6.1.10(@types/node@25.6.0)(rollup@4.60.2))
       bcp-47: 2.1.0
       hast-util-from-html: 2.0.3
       hast-util-select: 6.0.4
@@ -2195,17 +2236,14 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@astrojs/telemetry@3.3.0':
+  '@astrojs/telemetry@3.3.1':
     dependencies:
       ci-info: 4.4.0
-      debug: 4.4.3
       dlv: 1.1.3
       dset: 3.1.4
-      is-docker: 3.0.0
+      is-docker: 4.0.0
       is-wsl: 3.1.1
       which-pm-runs: 1.1.0
-    transitivePeerDependencies:
-      - supports-color
 
   '@babel/helper-string-parser@7.27.1': {}
 
@@ -2275,22 +2313,22 @@ snapshots:
 
   '@ctrl/tinycolor@4.2.0': {}
 
-  '@dallay/agentsync-darwin-arm64@1.42.10':
+  '@dallay/agentsync-darwin-arm64@1.43.0':
     optional: true
 
-  '@dallay/agentsync-darwin-x64@1.42.10':
+  '@dallay/agentsync-darwin-x64@1.43.0':
     optional: true
 
-  '@dallay/agentsync-linux-arm64@1.42.10':
+  '@dallay/agentsync-linux-arm64@1.43.0':
     optional: true
 
-  '@dallay/agentsync-linux-x64@1.42.10':
+  '@dallay/agentsync-linux-x64@1.43.0':
     optional: true
 
-  '@dallay/agentsync-windows-arm64@1.42.10':
+  '@dallay/agentsync-windows-arm64@1.43.0':
     optional: true
 
-  '@dallay/agentsync-windows-x64@1.42.10':
+  '@dallay/agentsync-windows-x64@1.43.0':
     optional: true
 
   '@emnapi/runtime@1.9.2':
@@ -2809,17 +2847,17 @@ snapshots:
 
   astring@1.9.0: {}
 
-  astro-expressive-code@0.41.7(astro@6.1.6(@types/node@25.6.0)(rollup@4.60.2)):
+  astro-expressive-code@0.41.7(astro@6.1.10(@types/node@25.6.0)(rollup@4.60.2)):
     dependencies:
-      astro: 6.1.6(@types/node@25.6.0)(rollup@4.60.2)
+      astro: 6.1.10(@types/node@25.6.0)(rollup@4.60.2)
       rehype-expressive-code: 0.41.7
 
-  astro@6.1.6(@types/node@25.6.0)(rollup@4.60.2):
+  astro@6.1.10(@types/node@25.6.0)(rollup@4.60.2):
     dependencies:
       '@astrojs/compiler': 3.0.1
-      '@astrojs/internal-helpers': 0.8.0
-      '@astrojs/markdown-remark': 7.1.0
-      '@astrojs/telemetry': 3.3.0
+      '@astrojs/internal-helpers': 0.9.0
+      '@astrojs/markdown-remark': 7.1.1
+      '@astrojs/telemetry': 3.3.1
       '@capsizecss/unpack': 4.0.0
       '@clack/prompts': 1.2.0
       '@oslojs/encoding': 1.1.0
@@ -3390,6 +3428,8 @@ snapshots:
   is-decimal@2.0.1: {}
 
   is-docker@3.0.0: {}
+
+  is-docker@4.0.0: {}
 
   is-hexadecimal@2.0.1: {}
 
@@ -4348,9 +4388,9 @@ snapshots:
 
   space-separated-tokens@2.0.2: {}
 
-  starlight-theme-black@0.6.0(@astrojs/starlight@0.38.4(astro@6.1.6(@types/node@25.6.0)(rollup@4.60.2))):
+  starlight-theme-black@0.6.0(@astrojs/starlight@0.38.4(astro@6.1.10(@types/node@25.6.0)(rollup@4.60.2))):
     dependencies:
-      '@astrojs/starlight': 0.38.4(astro@6.1.6(@types/node@25.6.0)(rollup@4.60.2))
+      '@astrojs/starlight': 0.38.4(astro@6.1.10(@types/node@25.6.0)(rollup@4.60.2))
       '@fontsource/geist-mono': 5.2.7
       '@fontsource/geist-sans': 5.2.5
       '@pagefind/default-ui': 1.5.0
