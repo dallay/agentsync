@@ -411,9 +411,11 @@ fn render_suggest_install_batch_start(
     };
     let detail = match mode {
         SuggestInstallMode::Interactive => {
-            format!("Installing {selected_count} selected recommended {noun}")
+            format!("Installing {selected_count} selected recommended {noun}...")
         }
-        SuggestInstallMode::InstallAll => format!("Installing {selected_count} recommended {noun}"),
+        SuggestInstallMode::InstallAll => {
+            format!("Installing {selected_count} recommended {noun}...")
+        }
     };
     vec![
         formatter.format_heading("➤ Install recommendations"),
@@ -1614,14 +1616,14 @@ mod tests {
             render_suggest_install_batch_start(SuggestInstallMode::InstallAll, 2, false),
             vec![
                 "➤ Install recommendations".to_string(),
-                "  Installing 2 recommended skills".to_string(),
+                "  Installing 2 recommended skills...".to_string(),
             ]
         );
         assert_eq!(
             render_suggest_install_batch_start(SuggestInstallMode::Interactive, 1, false),
             vec![
                 "➤ Install recommendations".to_string(),
-                "  Installing 1 selected recommended skill".to_string(),
+                "  Installing 1 selected recommended skill...".to_string(),
             ]
         );
     }

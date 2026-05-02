@@ -1494,20 +1494,56 @@ pub fn init_wizard_experimental_tui(project_root: &Path, force: bool) -> Result<
     init_wizard(project_root, force)
 }
 
+fn render_experimental_tui_intro_frame(frame: &mut ratatui::Frame<'_>) {
+    use ratatui::{
+        layout::{Alignment, Constraint, Direction, Layout},
+        style::{Color, Modifier, Style},
+        text::{Line, Span},
+        widgets::{Block, Borders, Paragraph, Wrap},
+    };
+
+    let area = frame.area();
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage(20),
+            Constraint::Length(12),
+            Constraint::Percentage(20),
+        ])
+        .split(area);
+
+    let paragraph = Paragraph::new(vec![
+        Line::from(Span::styled(
+            "AgentSync experimental init wizard",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from("This full-screen TUI is experimental and opt-in."),
+        Line::from("The current migration flow will continue in the standard wizard."),
+        Line::from(""),
+        Line::from("Enter: continue"),
+        Line::from("Esc/q: cancel"),
+    ])
+    .alignment(Alignment::Center)
+    .block(
+        Block::default()
+            .title(" Init wizard ")
+            .borders(Borders::ALL),
+    )
+    .wrap(Wrap { trim: true });
+
+    frame.render_widget(paragraph, chunks[1]);
+}
+
 fn run_experimental_tui_intro() -> Result<ExperimentalTuiIntroOutcome> {
     use crossterm::{
         event::{self, Event, KeyCode},
         execute,
         terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
     };
-    use ratatui::{
-        Terminal,
-        backend::CrosstermBackend,
-        layout::{Alignment, Constraint, Direction, Layout},
-        style::{Color, Modifier, Style},
-        text::{Line, Span},
-        widgets::{Block, Borders, Paragraph, Wrap},
-    };
+    use ratatui::{Terminal, backend::CrosstermBackend};
 
     struct TerminalGuard;
 
@@ -1527,41 +1563,7 @@ fn run_experimental_tui_intro() -> Result<ExperimentalTuiIntroOutcome> {
     terminal.clear()?;
 
     loop {
-        terminal.draw(|frame| {
-            let area = frame.area();
-            let chunks = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([
-                    Constraint::Percentage(20),
-                    Constraint::Length(12),
-                    Constraint::Percentage(20),
-                ])
-                .split(area);
-
-            let paragraph = Paragraph::new(vec![
-                Line::from(Span::styled(
-                    "AgentSync experimental init wizard",
-                    Style::default()
-                        .fg(Color::Cyan)
-                        .add_modifier(Modifier::BOLD),
-                )),
-                Line::from(""),
-                Line::from("This full-screen TUI is experimental and opt-in."),
-                Line::from("The current migration flow will continue in the standard wizard."),
-                Line::from(""),
-                Line::from("Enter: continue"),
-                Line::from("Esc/q: cancel"),
-            ])
-            .alignment(Alignment::Center)
-            .block(
-                Block::default()
-                    .title(" Init wizard ")
-                    .borders(Borders::ALL),
-            )
-            .wrap(Wrap { trim: true });
-
-            frame.render_widget(paragraph, chunks[1]);
-        })?;
+        terminal.draw(render_experimental_tui_intro_frame)?;
 
         if let Event::Key(key) = event::read()? {
             match key.code {
@@ -3867,6 +3869,33 @@ mod tests {
             detect_experimental_tui_context(true, true, Some("dumb")),
             ExperimentalTuiContext::Unsupported("TERM=dumb does not support full-screen TUI")
         );
+    }
+
+    #[test]
+    fn test_experimental_tui_intro_frame_renders_context_and_controls() {
+        use ratatui::{Terminal, backend::TestBackend};
+
+        let backend = TestBackend::new(90, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(render_experimental_tui_intro_frame)
+            .expect("intro frame should render to test backend");
+
+        let rendered = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+
+        assert!(
+            rendered.contains("AgentSync experimental init wizard"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("Enter: continue"), "{rendered}");
+        assert!(rendered.contains("Esc/q: cancel"), "{rendered}");
     }
 
     #[test]
