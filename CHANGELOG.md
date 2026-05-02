@@ -21,6 +21,49 @@
 * **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
 * **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
 
+## [1.44.0](https://github.com/dallay/agentsync/compare/v1.43.0...v1.44.0) (2026-05-02)
+
+
+### Features
+
+* add experimental init TUI mode ([4e26099](https://github.com/dallay/agentsync/commit/4e260995ff76f07ef1093d2b856e8f07ad693521))
+* improve apply and clean output ([f6a65c9](https://github.com/dallay/agentsync/commit/f6a65c917091957a0337e0cb528a5d8649839495))
+* improve skill command output ([ded88ed](https://github.com/dallay/agentsync/commit/ded88ed85a0947f91e0791d5e47a14d01a44fb9c))
+* improve status output readability ([6d9233c](https://github.com/dallay/agentsync/commit/6d9233ce871ca571e9e1ba34fd9ce965f87695e9))
+* introduce shared human output formatter ([dcaf855](https://github.com/dallay/agentsync/commit/dcaf8554fb4f3a02d2ed0ae04a6f921724b945b4))
+
+
+### Bug Fixes
+
+* address TUI and summary review feedback ([ad03e7d](https://github.com/dallay/agentsync/commit/ad03e7d4a7a927ab382291b8bfa6bd3d532d7cb6))
+* **docs:** update vulnerable Astro dependencies ([3c125f7](https://github.com/dallay/agentsync/commit/3c125f76bbf07ea39cbf66c27910d5339bd734cd))
+* include omitted summary counts ([6192669](https://github.com/dallay/agentsync/commit/61926690f8b0ec3f86f2e71faa9166c9224be4c8))
+* restore guided install E2E output ([f96ec2e](https://github.com/dallay/agentsync/commit/f96ec2e7d3ba7ed453b4fe787e7fdf1e74dc936c))
+* skip existing suggested skills ([765e2d8](https://github.com/dallay/agentsync/commit/765e2d8197561debde870ef4c4c92764e5bcec48))
+
+
+### Documentation
+
+* add CLI TUI compatibility contract ([c28d694](https://github.com/dallay/agentsync/commit/c28d694984a248dd680bc276de9b83802ccce627))
+* update technology and skill counts for accuracy ([1181911](https://github.com/dallay/agentsync/commit/1181911052125d971d6f459e3cc5c2fde53ca729))
+
+
+### Code Refactoring
+
+* prepare init wizard renderer seam ([a2aad15](https://github.com/dallay/agentsync/commit/a2aad15acb7c45905bae8a3d4dfb64edcbdf2567))
+
+
+### Continuous Integration
+
+* remove contributor workflow ([e15eac6](https://github.com/dallay/agentsync/commit/e15eac63ff74a2527e609c6f2574b95d41d1518e))
+
+
+### Tests
+
+* align module map clean output expectation ([cbe3bde](https://github.com/dallay/agentsync/commit/cbe3bded34d4e8e442ef0deed5af7a484553b379))
+* align skill suggest output expectations ([f7a7617](https://github.com/dallay/agentsync/commit/f7a7617eb5ba6b480e68957b961002a2fb629d42))
+* cover status output render branches ([8d9909e](https://github.com/dallay/agentsync/commit/8d9909ee6cd91c8252e43df15df3ddf0d3d29f67))
+
 ## [1.43.0](https://github.com/dallay/agentsync/compare/v1.42.10...v1.43.0) (2026-05-01)
 
 
