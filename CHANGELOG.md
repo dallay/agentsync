@@ -21,6 +21,33 @@
 * **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
 * **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
 
+## [1.45.0](https://github.com/dallay/agentsync/compare/v1.44.0...v1.45.0) (2026-05-02)
+
+
+### Features
+
+* add .dockerignore and enhance skill installation paths ([bf00f99](https://github.com/dallay/agentsync/commit/bf00f99631ee9509ba7e236832f81e472d6589ff))
+
+
+### Bug Fixes
+
+* address review feedback for skill output ([04ed0ff](https://github.com/dallay/agentsync/commit/04ed0ffa96037e52eba4d8eda051ccafffa55cc3))
+* optimize compression cache to use Rc&lt;str&gt; for reduced memory allocation ([44633a3](https://github.com/dallay/agentsync/commit/44633a3f25a449736e58d225bb28168fc9496883))
+* prevent circular symlinks in symlink-contents sync type ([634da57](https://github.com/dallay/agentsync/commit/634da57127c64b8e58d303f3df3b6c45cc690f78))
+* update Astro and uuid dependencies to latest versions ([fcd392c](https://github.com/dallay/agentsync/commit/fcd392c87522f7a50fd51724ab409d05f801683f))
+* update common-actions references from [@v2](https://github.com/v2) to [@v2](https://github.com/v2).0.0 ([4c14daa](https://github.com/dallay/agentsync/commit/4c14daa8cc50fc79f5e85f94ec461782c1881cff))
+
+
+### Documentation
+
+* fix skill command description to match CLI help text ([1b74252](https://github.com/dallay/agentsync/commit/1b742527fb1ba51aee3185a013e80227694da01d))
+
+
+### Tests
+
+* add diffutils to Arch E2E container for suggest scenario ([f2be824](https://github.com/dallay/agentsync/commit/f2be824815a091b8ce90ed12064263b3b5e7be70))
+* align skill installed fixtures with filesystem state ([738f232](https://github.com/dallay/agentsync/commit/738f232bc827a4e0083edc7b262139647ac8083a))
+
 ## [1.44.0](https://github.com/dallay/agentsync/compare/v1.43.0...v1.44.0) (2026-05-02)
 
 
