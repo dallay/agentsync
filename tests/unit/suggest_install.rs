@@ -74,6 +74,7 @@ fn install_all_skips_already_installed_recommendations() {
 
     let skills_dir = root.join(".agents/skills");
     fs::create_dir_all(&skills_dir).unwrap();
+    fs::create_dir_all(skills_dir.join("docker-expert")).unwrap();
     fs::write(
         skills_dir.join("registry.json"),
         serde_json::to_string_pretty(&serde_json::json!({
@@ -162,6 +163,7 @@ fn install_flow_rechecks_registry_before_installing() {
 
     let skills_dir = root.join(".agents/skills");
     fs::create_dir_all(&skills_dir).unwrap();
+    fs::create_dir_all(skills_dir.join("rust-async-patterns")).unwrap();
     fs::write(
         skills_dir.join("registry.json"),
         serde_json::to_string_pretty(&serde_json::json!({
@@ -212,6 +214,7 @@ fn suggest_marks_canonical_vue_skill_as_installed_when_legacy_alias_exists() {
 
     let skills_dir = root.join(".agents/skills");
     fs::create_dir_all(&skills_dir).unwrap();
+    fs::create_dir_all(skills_dir.join("antfu-vue")).unwrap();
     fs::write(
         skills_dir.join("registry.json"),
         serde_json::to_string_pretty(&serde_json::json!({
@@ -255,6 +258,7 @@ fn install_flow_skips_canonical_vue_when_legacy_alias_is_installed() {
 
     let skills_dir = root.join(".agents/skills");
     fs::create_dir_all(&skills_dir).unwrap();
+    fs::create_dir_all(skills_dir.join("antfu-vue")).unwrap();
     fs::write(
         skills_dir.join("registry.json"),
         serde_json::to_string_pretty(&serde_json::json!({

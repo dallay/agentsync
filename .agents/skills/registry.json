@@ -1,1 +1,136 @@
-registry.json
+{
+  "schemaVersion": 1,
+  "last_updated": "2026-05-02T14:08:56.336437+00:00",
+  "skills": {
+    "accessibility": {
+      "name": "accessibility",
+      "version": null,
+      "description": "Audit and improve web accessibility following WCAG 2.1 guidelines. Use when the task involves `improve accessibility`, `a11y audit`, `WCAG compliance`, `screen reader support`, `keyboard navigation`, or `make accessible`.",
+      "provider": null,
+      "source": "/var/folders/zz/d4kl1hfj1j15nxm43d24px300000gn/T/.tmpQE0kcA",
+      "installedAt": "2026-05-02T14:08:49.360329+00:00",
+      "files": null,
+      "manifestHash": null
+    },
+    "astrolicious-astro": {
+      "name": "astro",
+      "version": null,
+      "description": "Skill for building with the Astro web framework. Helps create Astro components and pages, configure SSR adapters, set up content collections, deploy static sites, and manage project structure and CLI commands. Use when the user needs to work with Astro, mentions .astro files, asks about static site generation (SSG), islands architecture, content collections, or deploying an Astro project.",
+      "provider": null,
+      "source": "/var/folders/zz/d4kl1hfj1j15nxm43d24px300000gn/T/.tmpZOYGvB",
+      "installedAt": "2026-05-02T14:08:49.755568+00:00",
+      "files": null,
+      "manifestHash": null
+    },
+    "best-practices": {
+      "name": "best-practices",
+      "version": null,
+      "description": "Apply modern web development best practices for security, compatibility, and code quality. Use when the task involves `apply best practices`, `security audit`, `modernize code`, `code quality review`, or `check for vulnerabilities`.",
+      "provider": null,
+      "source": "/var/folders/zz/d4kl1hfj1j15nxm43d24px300000gn/T/.tmpUnT0K7",
+      "installedAt": "2026-05-02T14:08:50.339585+00:00",
+      "files": null,
+      "manifestHash": null
+    },
+    "core-web-vitals": {
+      "name": "core-web-vitals",
+      "version": null,
+      "description": "Optimize Core Web Vitals (LCP, INP, CLS) for better page experience and search ranking. Use when the task involves `improve Core Web Vitals`, `fix LCP`, `reduce CLS`, `optimize INP`, `page experience optimization`, or `fix layout shifts`.",
+      "provider": null,
+      "source": "/var/folders/zz/d4kl1hfj1j15nxm43d24px300000gn/T/.tmpMNxMDI",
+      "installedAt": "2026-05-02T14:08:50.850324+00:00",
+      "files": null,
+      "manifestHash": null
+    },
+    "docker-expert": {
+      "name": "docker-expert",
+      "version": null,
+      "description": "Advanced Docker containerization expert for multi-stage builds, image optimization, security hardening, and Compose orchestration. Use when the task involves `working with Dockerfile`, `docker-compose.yml`, `containerization`, `multi-stage builds`, or `optimizing Docker images`.",
+      "provider": null,
+      "source": "/var/folders/zz/d4kl1hfj1j15nxm43d24px300000gn/T/.tmpNvxOCL",
+      "installedAt": "2026-05-02T14:08:51.395934+00:00",
+      "files": null,
+      "manifestHash": null
+    },
+    "frontend-design": {
+      "name": "frontend-design",
+      "version": null,
+      "description": "Create distinctive, production-grade frontend interfaces with high design quality that avoids generic AI aesthetics. Use when the task involves `build web components`, `create frontend interface`, `build web page`, `build web application`, `frontend design`, `create UI component`, or `design web interface`.",
+      "provider": null,
+      "source": "/var/folders/zz/d4kl1hfj1j15nxm43d24px300000gn/T/.tmpMxcFaI",
+      "installedAt": "2026-05-02T14:08:51.884864+00:00",
+      "files": null,
+      "manifestHash": null
+    },
+    "github-actions": {
+      "name": "github-actions",
+      "version": null,
+      "description": "Comprehensive guide for building robust, secure, and efficient CI/CD pipelines using GitHub Actions. Use when the task involves `creating or editing GitHub Actions workflows`, `.github/workflows/*.yml`, `CI/CD pipelines`, `GitHub Actions best practices`, or `workflow optimization`.",
+      "provider": null,
+      "source": "/var/folders/zz/d4kl1hfj1j15nxm43d24px300000gn/T/.tmpmk0mnc",
+      "installedAt": "2026-05-02T14:08:52.440865+00:00",
+      "files": null,
+      "manifestHash": null
+    },
+    "makefile": {
+      "name": "makefile",
+      "version": null,
+      "description": "Best practices for authoring clean, maintainable, and portable GNU Make Makefiles. Use when the task involves `creating or editing Makefiles`, `Makefile`, `makefile`, `*.mk`, `GNUmakefile`, `GNU Make patterns`, `build automation`, or `makefile troubleshooting`.",
+      "provider": null,
+      "source": "/var/folders/zz/d4kl1hfj1j15nxm43d24px300000gn/T/.tmpyt1b7L",
+      "installedAt": "2026-05-02T14:08:53.165751+00:00",
+      "files": null,
+      "manifestHash": null
+    },
+    "nothing-design": {
+      "name": "nothing-design",
+      "version": null,
+      "description": "Guides intentional Nothing-inspired UI and design-system work with typography, spacing, hierarchy, components, and platform-specific execution. Use when the user explicitly asks for Nothing style, Nothing design, or `/nothing-design`, not for generic UI or design tasks.",
+      "provider": null,
+      "source": "/var/folders/zz/d4kl1hfj1j15nxm43d24px300000gn/T/.tmppkYF9D",
+      "installedAt": "2026-05-02T14:08:53.701563+00:00",
+      "files": null,
+      "manifestHash": null
+    },
+    "performance": {
+      "name": "performance",
+      "version": null,
+      "description": "Optimize web performance for faster loading and better user experience. Use when the task involves `speed up my site`, `optimize performance`, `reduce load time`, `fix slow loading`, `improve page speed`, or `performance audit`.",
+      "provider": null,
+      "source": "/var/folders/zz/d4kl1hfj1j15nxm43d24px300000gn/T/.tmpFuu2y8",
+      "installedAt": "2026-05-02T14:08:54.353560+00:00",
+      "files": null,
+      "manifestHash": null
+    },
+    "pinned-tag": {
+      "name": "pinned-tag",
+      "version": null,
+      "description": "Manage pinned tags and commit SHAs for GitHub Actions security, resolving mutable tags to immutable commit references. Use when the task involves `Unpinned tag for a non-immutable Action`, `pin GitHub Action to commit SHA`, `resolve git tag to SHA`, or `GitHub Actions security hardening`.",
+      "provider": null,
+      "source": "/var/folders/zz/d4kl1hfj1j15nxm43d24px300000gn/T/.tmpLcTUJU",
+      "installedAt": "2026-05-02T14:08:54.995680+00:00",
+      "files": null,
+      "manifestHash": null
+    },
+    "rust-async-patterns": {
+      "name": "rust-async-patterns",
+      "version": null,
+      "description": "Master Rust async programming with Tokio, async traits, error handling, and concurrent patterns. Use when the task involves `async Rust`, `Tokio patterns`, `Rust concurrent programming`, `async traits`, or `Rust futures and streams`.",
+      "provider": null,
+      "source": "/var/folders/zz/d4kl1hfj1j15nxm43d24px300000gn/T/.tmpseJ3ib",
+      "installedAt": "2026-05-02T14:08:55.596130+00:00",
+      "files": null,
+      "manifestHash": null
+    },
+    "seo": {
+      "name": "seo",
+      "version": null,
+      "description": "Optimize for search engine visibility and ranking. Use when the task involves `improve SEO`, `optimize for search`, `fix meta tags`, `add structured data`, `sitemap optimization`, or `search engine optimization`.",
+      "provider": null,
+      "source": "/var/folders/zz/d4kl1hfj1j15nxm43d24px300000gn/T/.tmp89W6f3",
+      "installedAt": "2026-05-02T14:08:56.336226+00:00",
+      "files": null,
+      "manifestHash": null
+    }
+  }
+}
