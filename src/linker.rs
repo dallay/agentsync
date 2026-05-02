@@ -65,7 +65,7 @@ pub struct Linker {
     project_root: PathBuf,
     source_dir: PathBuf,
     path_cache: RefCell<HashMap<PathBuf, PathBuf>>,
-    compression_cache: RefCell<HashMap<PathBuf, String>>,
+    compression_cache: RefCell<HashMap<PathBuf, Rc<str>>>,
     /// Cache for NestedGlob discovery results: (search_root, pattern, excludes) -> [(full_path, rel_path)]
     glob_cache: RefCell<HashMap<NestedGlobKey, NestedGlobMatches>>,
     ensured_dirs: RefCell<HashSet<PathBuf>>,
@@ -481,18 +481,21 @@ impl Linker {
         let compressed = {
             let mut cache = self.compression_cache.borrow_mut();
             if let Some(cached) = cache.get(source) {
-                cached.clone()
+                Rc::clone(cached)
             } else {
                 let content = fs::read_to_string(source)
                     .with_context(|| format!("Failed to read AGENTS.md: {}", source.display()))?;
-                let compressed = compress_agents_md_content(&content);
-                cache.insert(source.to_path_buf(), compressed.clone());
+                // Optimization: cache compressed AGENTS.md as Rc<str> so every agent sharing the
+                // same source reuses one allocation. Previously the cache returned cloned Strings,
+                // copying the full compressed content once per target before the eventual write.
+                let compressed: Rc<str> = Rc::from(compress_agents_md_content(&content));
+                cache.insert(source.to_path_buf(), Rc::clone(&compressed));
                 compressed
             }
         };
 
         if let Ok(existing) = fs::read_to_string(dest)
-            && existing == compressed
+            && existing.as_str() == compressed.as_ref()
         {
             self.ensured_compressed
                 .borrow_mut()
@@ -505,7 +508,7 @@ impl Linker {
         }
 
         self.revalidate_destination_path(dest)?;
-        fs::write(dest, &compressed)
+        fs::write(dest, compressed.as_bytes())
             .with_context(|| format!("Failed to write compressed AGENTS.md: {}", dest.display()))?;
         self.invalidate_discovery_caches();
 
