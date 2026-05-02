@@ -663,6 +663,41 @@ impl Linker {
             return Ok(result);
         }
 
+        // SECURITY: Detect if dest_dir is a symlink pointing to source_dir BEFORE ensure_directory
+        // This prevents creating circular symlinks inside the source directory
+        if dest_dir.exists()
+            && dest_dir.is_symlink()
+            && let Ok(dest_target) = fs::read_link(dest_dir)
+        {
+            let dest_canonical = if dest_target.is_absolute() {
+                dest_target
+            } else {
+                dest_dir.parent().unwrap_or(dest_dir).join(&dest_target)
+            };
+
+            // Canonicalize both paths to compare them
+            let source_canonical = fs::canonicalize(source_dir).ok();
+            let dest_resolved = fs::canonicalize(&dest_canonical).ok();
+
+            if source_canonical.is_some()
+                && dest_resolved.is_some()
+                && source_canonical == dest_resolved
+            {
+                println!(
+                    "  {} Destination is a symlink to source: {} -> {}",
+                    "!".yellow(),
+                    dest_dir.display(),
+                    source_dir.display()
+                );
+                println!(
+                    "  {} Skipping to prevent circular symlinks in source directory",
+                    "!".yellow()
+                );
+                result.skipped += 1;
+                return Ok(result);
+            }
+        }
+
         // Create destination directory if needed
         self.ensure_directory(dest_dir, options)?;
 
@@ -2396,6 +2431,58 @@ mod tests {
 
         assert_eq!(result.skipped, 1);
         assert_eq!(result.created, 0);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_sync_symlink_contents_skips_circular_destination() {
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        let skills_dir = agents_dir.join("skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        // Create some skill directories
+        let skill1 = skills_dir.join("skill1");
+        let skill2 = skills_dir.join("skill2");
+        fs::create_dir_all(&skill1).unwrap();
+        fs::create_dir_all(&skill2).unwrap();
+        fs::write(skill1.join("SKILL.md"), "# Skill 1").unwrap();
+        fs::write(skill2.join("SKILL.md"), "# Skill 2").unwrap();
+
+        // Create destination in project root as a symlink pointing to .agents/skills
+        let dest_skills = temp_dir.path().join("dest_skills");
+
+        // Create destination as a symlink pointing back to source
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(".agents/skills", &dest_skills).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        let config_content = r#"
+            source_dir = "."
+            [agents.opencode]
+            enabled = true
+            [agents.opencode.targets.skills]
+            source = "skills"
+            destination = "dest_skills"
+            type = "symlink-contents"
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let options = SyncOptions::default();
+        let result = linker.sync(&options).unwrap();
+
+        // Should skip the target because destination is a symlink to source
+        assert_eq!(result.skipped, 1);
+        assert_eq!(result.created, 0);
+
+        // Verify that source directories are still intact (not converted to symlinks)
+        assert!(skill1.is_dir());
+        assert!(skill2.is_dir());
+        assert!(!skill1.is_symlink());
+        assert!(!skill2.is_symlink());
     }
 
     #[test]
