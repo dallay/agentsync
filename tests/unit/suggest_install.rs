@@ -454,6 +454,7 @@ fn install_flow_emits_skip_event_after_registry_recheck() {
 
     let skills_dir = root.join(".agents/skills");
     fs::create_dir_all(&skills_dir).unwrap();
+    fs::create_dir_all(skills_dir.join("rust-async-patterns")).unwrap();
     fs::write(
         skills_dir.join("registry.json"),
         serde_json::to_string_pretty(&serde_json::json!({

@@ -24,6 +24,7 @@ fn skill_suggest_json_is_read_only_and_marks_installed_skills() {
 
     let skills_dir = root.join(".agents/skills");
     fs::create_dir_all(&skills_dir).unwrap();
+    fs::create_dir_all(skills_dir.join("docker-expert")).unwrap();
     let registry_path = skills_dir.join("registry.json");
     let registry_body = serde_json::json!({
         "schemaVersion": 1,
@@ -582,6 +583,7 @@ fn skill_suggest_install_all_installs_pending_recommendations_and_skips_installe
 
     let skills_dir = root.join(".agents/skills");
     fs::create_dir_all(&skills_dir).unwrap();
+    fs::create_dir_all(skills_dir.join("docker-expert")).unwrap();
     fs::write(
         skills_dir.join("registry.json"),
         serde_json::to_string_pretty(&serde_json::json!({
@@ -637,6 +639,8 @@ fn skill_suggest_install_all_is_a_no_op_when_everything_is_already_installed() {
 
     let skills_dir = root.join(".agents/skills");
     fs::create_dir_all(&skills_dir).unwrap();
+    fs::create_dir_all(skills_dir.join("docker-expert")).unwrap();
+    fs::create_dir_all(skills_dir.join("rust-async-patterns")).unwrap();
     let registry_path = skills_dir.join("registry.json");
     let registry_body = serde_json::json!({
         "schemaVersion": 1,
@@ -680,8 +684,8 @@ fn skill_suggest_install_all_is_a_no_op_when_everything_is_already_installed() {
 
     let registry_after = fs::read_to_string(&registry_path).unwrap();
     assert_eq!(registry_after, registry_body);
-    assert!(!skills_dir.join("docker-expert").exists());
-    assert!(!skills_dir.join("rust-async-patterns").exists());
+    assert!(skills_dir.join("docker-expert").exists());
+    assert!(skills_dir.join("rust-async-patterns").exists());
 }
 
 #[test]
@@ -750,6 +754,7 @@ fn skill_suggest_install_all_human_output_is_line_oriented_and_readable_without_
 
     let skills_dir = root.join(".agents/skills");
     fs::create_dir_all(&skills_dir).unwrap();
+    fs::create_dir_all(skills_dir.join("docker-expert")).unwrap();
     fs::write(
         skills_dir.join("registry.json"),
         serde_json::to_string_pretty(&serde_json::json!({
@@ -812,7 +817,9 @@ fn skill_suggest_install_all_human_output_is_line_oriented_and_readable_without_
 fn suggestion_service_preserves_local_install_lookup_with_provider_overlay() {
     let temp_dir = TempDir::new().unwrap();
     let root = temp_dir.path();
-    fs::create_dir_all(root.join(".agents/skills")).unwrap();
+    let skills_dir = root.join(".agents/skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+    fs::create_dir_all(skills_dir.join("custom-rust")).unwrap();
     fs::write(
         root.join(".agents/skills/registry.json"),
         serde_json::to_string_pretty(&serde_json::json!({
