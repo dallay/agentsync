@@ -8,5 +8,5 @@ permissions:
 
 jobs:
   label:
-    uses: dallay/common-actions/.github/workflows/pr-labeler.yml@v2
+    uses: dallay/common-actions/.github/workflows/pr-labeler.yml@v2.0.0
     secrets: inherit
