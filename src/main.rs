@@ -124,14 +124,20 @@ fn render_apply_summary_with_color(
     use_color: bool,
 ) -> Vec<String> {
     let formatter = HumanFormatter::new(use_color);
+    let has_errors = result.errors > 0;
     let mut lines = vec![formatter.format_label(
-        "✔",
-        if dry_run {
-            "Sync dry run complete"
-        } else {
-            "Sync complete"
+        if has_errors { "✗" } else { "✔" },
+        match (dry_run, has_errors) {
+            (true, true) => "Sync dry run completed with errors",
+            (true, false) => "Sync dry run complete",
+            (false, true) => "Sync completed with errors",
+            (false, false) => "Sync complete",
         },
-        LabelKind::Success,
+        if has_errors {
+            LabelKind::Failure
+        } else {
+            LabelKind::Success
+        },
     )];
     lines.push(render_count(
         "Created",
@@ -176,26 +182,46 @@ fn render_apply_summary_with_color(
 }
 
 #[cfg(test)]
-fn render_clean_summary(dry_run: bool, removed: usize) -> Vec<String> {
-    render_clean_summary_with_color(dry_run, removed, false)
+fn render_clean_summary(dry_run: bool, result: &SyncResult) -> Vec<String> {
+    render_clean_summary_with_color(dry_run, result, false)
 }
 
-fn render_clean_summary_with_color(dry_run: bool, removed: usize, use_color: bool) -> Vec<String> {
+fn render_clean_summary_with_color(
+    dry_run: bool,
+    result: &SyncResult,
+    use_color: bool,
+) -> Vec<String> {
     let formatter = HumanFormatter::new(use_color);
+    let has_errors = result.errors > 0;
     vec![
         formatter.format_label(
-            "✔",
-            if dry_run {
-                "Clean dry run complete"
-            } else {
-                "Clean complete"
+            if has_errors { "✗" } else { "✔" },
+            match (dry_run, has_errors) {
+                (true, true) => "Clean dry run completed with errors",
+                (true, false) => "Clean dry run complete",
+                (false, true) => "Clean completed with errors",
+                (false, false) => "Clean complete",
             },
-            LabelKind::Success,
+            if has_errors {
+                LabelKind::Failure
+            } else {
+                LabelKind::Success
+            },
         ),
         render_count(
             if dry_run { "Would remove" } else { "Removed" },
-            removed,
+            result.removed,
             LabelKind::Success,
+            use_color,
+        ),
+        render_count(
+            "Errors",
+            result.errors,
+            if result.errors > 0 {
+                LabelKind::Failure
+            } else {
+                LabelKind::Muted
+            },
             use_color,
         ),
     ]
@@ -525,9 +551,7 @@ fn main() -> Result<()> {
             let result = linker.clean(&options)?;
             println!();
             print_lines(&render_clean_summary_with_color(
-                dry_run,
-                result.removed,
-                use_color,
+                dry_run, &result, use_color,
             ));
         }
         Commands::DevInstall { skill_id, json } => {
@@ -616,7 +640,7 @@ mod tests {
         assert_eq!(
             summary,
             vec![
-                "✔ Sync complete".to_string(),
+                "✗ Sync completed with errors".to_string(),
                 "  Created: 2".to_string(),
                 "  Updated: 1".to_string(),
                 "  Skipped: 3".to_string(),
@@ -636,14 +660,32 @@ mod tests {
             ]
         );
         assert_eq!(
-            render_clean_summary(false, 3),
-            vec!["✔ Clean complete".to_string(), "  Removed: 3".to_string()]
+            render_clean_summary(
+                false,
+                &SyncResult {
+                    removed: 3,
+                    ..Default::default()
+                }
+            ),
+            vec![
+                "✔ Clean complete".to_string(),
+                "  Removed: 3".to_string(),
+                "  Errors: 0".to_string()
+            ]
         );
         assert_eq!(
-            render_clean_summary(true, 3),
+            render_clean_summary(
+                true,
+                &SyncResult {
+                    removed: 3,
+                    errors: 1,
+                    ..Default::default()
+                }
+            ),
             vec![
-                "✔ Clean dry run complete".to_string(),
-                "  Would remove: 3".to_string()
+                "✗ Clean dry run completed with errors".to_string(),
+                "  Would remove: 3".to_string(),
+                "  Errors: 1".to_string()
             ]
         );
     }

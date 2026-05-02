@@ -276,9 +276,20 @@ fn render_skill_hint(remediation: &str) -> String {
     format!("  Hint: {remediation}")
 }
 
-fn render_skill_command_error(error_message: &str, remediation: &str) -> Vec<String> {
+fn render_skill_command_error(
+    error_message: &str,
+    remediation: &str,
+    use_color: bool,
+) -> Vec<String> {
+    let formatter = HumanFormatter::new(use_color);
     vec![
-        format!("Error: {error_message}"),
+        render_suggest_install_status_line(
+            formatter,
+            "✗",
+            "error",
+            LabelKind::Failure,
+            error_message,
+        ),
         render_skill_hint(remediation),
     ]
 }
@@ -894,7 +905,11 @@ pub fn run_suggest(args: SkillSuggestArgs, project_root: PathBuf) -> Result<()> 
                 println!("{}", serde_json::to_string(&output)?);
             } else {
                 error!(%code, error = %error_message, "Suggest failed");
-                for line in render_skill_command_error(&error_message, remediation) {
+                let use_color = match output::output_mode(false) {
+                    OutputMode::Human { use_color } => use_color,
+                    OutputMode::Json => false,
+                };
+                for line in render_skill_command_error(&error_message, remediation, use_color) {
                     println!("{line}");
                 }
             }
@@ -1622,9 +1637,9 @@ mod tests {
     #[test]
     fn skill_command_error_renders_failure_and_hint() {
         assert_eq!(
-            render_skill_command_error("project root is unreadable", "Check permissions"),
+            render_skill_command_error("project root is unreadable", "Check permissions", false),
             vec![
-                "Error: project root is unreadable".to_string(),
+                "✗ error project root is unreadable".to_string(),
                 "  Hint: Check permissions".to_string(),
             ]
         );

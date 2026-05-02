@@ -193,12 +193,9 @@ fn installed_skill_path_exists(target_root: &Path, recommendation: &SkillSuggest
 
 fn recommendation_is_already_installed(
     target_root: &Path,
-    installed_skill_states: &BTreeMap<String, InstalledSkillState>,
     recommendation: &SkillSuggestion,
 ) -> bool {
-    installed_state_for_recommendation(installed_skill_states, recommendation)
-        .is_some_and(|state| state.installed)
-        || installed_skill_path_exists(target_root, recommendation)
+    installed_skill_path_exists(target_root, recommendation)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -346,14 +343,14 @@ impl SuggestionService {
 
         let mut recommendations = recommend_skills(catalog, &detections);
         for recommendation in &mut recommendations {
-            recommendation.annotate_installed_state(installed_state_for_recommendation(
-                &installed_skill_states,
-                recommendation,
-            ));
-            if !recommendation.installed
-                && installed_skill_path_exists(&target_root, recommendation)
-            {
+            if installed_skill_path_exists(&target_root, recommendation) {
+                recommendation.annotate_installed_state(installed_state_for_recommendation(
+                    &installed_skill_states,
+                    recommendation,
+                ));
                 recommendation.installed = true;
+            } else {
+                recommendation.annotate_installed_state(None);
             }
         }
 
@@ -488,7 +485,7 @@ impl SuggestionService {
                 .get(skill_id.as_str())
                 .expect("skill_id should be in recommendation_map - this is a bug");
 
-            if recommendation_is_already_installed(&target_root, &installed_state, recommendation) {
+            if recommendation_is_already_installed(&target_root, recommendation) {
                 reporter.on_event(SuggestInstallProgressEvent::SkippedAlreadyInstalled {
                     skill_id: recommendation.skill_id.clone(),
                 });
@@ -856,6 +853,26 @@ mod tests {
                 installable_count: 1,
             },
         }
+    }
+
+    #[test]
+    fn recommendation_installed_check_ignores_registry_without_skill_path() {
+        let temp = tempfile::tempdir().unwrap();
+        let recommendation = test_suggestion("accessibility");
+        let mut installed_state = BTreeMap::new();
+        installed_state.insert(
+            "accessibility".to_string(),
+            InstalledSkillState {
+                installed: true,
+                version: Some("1.0.0".to_string()),
+            },
+        );
+
+        assert!(installed_state_for_recommendation(&installed_state, &recommendation).is_some());
+        assert!(!recommendation_is_already_installed(
+            &temp.path().join(".agents").join("skills"),
+            &recommendation
+        ));
     }
 
     #[test]

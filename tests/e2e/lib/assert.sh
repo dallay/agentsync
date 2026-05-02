@@ -36,6 +36,12 @@ assert_file_contains() {
     grep -F -- "$expected" "$path" >/dev/null || fail "Expected '$expected' in $path"
 }
 
+assert_file_equals() {
+    local path="$1"
+    local expected_path="$2"
+    cmp -s "$expected_path" "$path" || fail "Expected $path to match $expected_path"
+}
+
 assert_json_expr() {
     local path="$1"
     local expr="$2"
