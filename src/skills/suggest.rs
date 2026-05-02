@@ -180,6 +180,27 @@ fn installed_state_for_recommendation<'a>(
         .find_map(|skill_id| installed_skill_states.get(skill_id))
 }
 
+fn installed_skill_path_exists(target_root: &Path, recommendation: &SkillSuggestion) -> bool {
+    std::iter::once(recommendation.skill_id.as_str())
+        .chain(
+            recommendation
+                .legacy_local_skill_ids
+                .iter()
+                .map(std::string::String::as_str),
+        )
+        .any(|skill_id| target_root.join(skill_id).symlink_metadata().is_ok())
+}
+
+fn recommendation_is_already_installed(
+    target_root: &Path,
+    installed_skill_states: &BTreeMap<String, InstalledSkillState>,
+    recommendation: &SkillSuggestion,
+) -> bool {
+    installed_state_for_recommendation(installed_skill_states, recommendation)
+        .is_some_and(|state| state.installed)
+        || installed_skill_path_exists(target_root, recommendation)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SuggestSummary {
     pub detected_count: usize,
@@ -319,12 +340,9 @@ impl SuggestionService {
         catalog: &ResolvedSkillCatalog,
         detections: Vec<TechnologyDetection>,
     ) -> Result<SuggestResponse> {
-        let installed_skill_states = read_installed_skill_states(
-            &project_root
-                .join(".agents")
-                .join("skills")
-                .join("registry.json"),
-        )?;
+        let target_root = project_root.join(".agents").join("skills");
+        let installed_skill_states =
+            read_installed_skill_states(&target_root.join("registry.json"))?;
 
         let mut recommendations = recommend_skills(catalog, &detections);
         for recommendation in &mut recommendations {
@@ -332,6 +350,11 @@ impl SuggestionService {
                 &installed_skill_states,
                 recommendation,
             ));
+            if !recommendation.installed
+                && installed_skill_path_exists(&target_root, recommendation)
+            {
+                recommendation.installed = true;
+            }
         }
 
         let summary = SuggestSummary {
@@ -465,9 +488,7 @@ impl SuggestionService {
                 .get(skill_id.as_str())
                 .expect("skill_id should be in recommendation_map - this is a bug");
 
-            if installed_state_for_recommendation(&installed_state, recommendation)
-                .is_some_and(|state| state.installed)
-            {
+            if recommendation_is_already_installed(&target_root, &installed_state, recommendation) {
                 reporter.on_event(SuggestInstallProgressEvent::SkippedAlreadyInstalled {
                     skill_id: recommendation.skill_id.clone(),
                 });
@@ -780,5 +801,99 @@ fn dedupe_preserve_order(skill_ids: &[String]) -> Vec<String> {
 impl fmt::Display for DetectionConfidence {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.as_human_label())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct FailingProvider;
+
+    impl Provider for FailingProvider {
+        fn manifest(&self) -> Result<String> {
+            bail!("manifest should not be requested")
+        }
+
+        fn resolve(&self, _id: &str) -> Result<crate::skills::provider::SkillInstallInfo> {
+            bail!("existing skill paths should skip provider resolution")
+        }
+    }
+
+    #[derive(Default)]
+    struct RecordingReporter {
+        events: Vec<SuggestInstallProgressEvent>,
+    }
+
+    impl SuggestInstallProgressReporter for RecordingReporter {
+        fn on_event(&mut self, event: SuggestInstallProgressEvent) {
+            self.events.push(event);
+        }
+    }
+
+    fn test_suggestion(skill_id: &str) -> SkillSuggestion {
+        SkillSuggestion {
+            skill_id: skill_id.to_string(),
+            provider_skill_id: format!("provider/{skill_id}"),
+            title: skill_id.to_string(),
+            summary: format!("summary for {skill_id}"),
+            legacy_local_skill_ids: Vec::new(),
+            reasons: vec!["test reason".to_string()],
+            matched_technologies: vec![TechnologyId::new("rust")],
+            installed: false,
+            installed_version: None,
+            catalog_source: "test:v1".to_string(),
+        }
+    }
+
+    fn test_response(skill_id: &str) -> SuggestResponse {
+        SuggestResponse {
+            detections: Vec::new(),
+            recommendations: vec![test_suggestion(skill_id)],
+            summary: SuggestSummary {
+                detected_count: 0,
+                recommended_count: 1,
+                installable_count: 1,
+            },
+        }
+    }
+
+    #[test]
+    fn install_selected_treats_existing_skill_path_as_already_installed() {
+        let temp = tempfile::tempdir().unwrap();
+        let target_root = temp.path().join(".agents").join("skills");
+        std::fs::create_dir_all(target_root.join("accessibility")).unwrap();
+
+        let service = SuggestionService;
+        let response = test_response("accessibility");
+        let provider = FailingProvider;
+        let mut reporter = RecordingReporter::default();
+        let mut install_called = false;
+
+        let result = service
+            .install_selected_with_reporter(
+                temp.path(),
+                &response,
+                &provider,
+                SuggestInstallMode::Interactive,
+                &["accessibility".to_string()],
+                &mut reporter,
+                |_skill_id, _source, _target_root| {
+                    install_called = true;
+                    Ok(())
+                },
+            )
+            .unwrap();
+
+        assert!(!install_called);
+        assert_eq!(result.results.len(), 1);
+        assert_eq!(
+            result.results[0].status,
+            SuggestInstallStatus::AlreadyInstalled
+        );
+        assert!(matches!(
+            reporter.events.as_slice(),
+            [SuggestInstallProgressEvent::SkippedAlreadyInstalled { skill_id }] if skill_id == "accessibility"
+        ));
     }
 }

@@ -22,7 +22,8 @@ log_step "Running human-readable suggestion output"
 agentsync skill suggest > suggest.txt
 
 log_step "Asserting empty-state messages"
-assert_file_contains "suggest.txt" "Detected technologies: none"
-assert_file_contains "suggest.txt" "Recommended skills: none"
+assert_file_contains "suggest.txt" "➤ Detected technologies"
+assert_file_contains "suggest.txt" "➤ Recommended skills"
+assert_file_contains "suggest.txt" "none"
 
 echo "✅ suggest blank-project scenario passed"
