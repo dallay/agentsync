@@ -1,3 +1,7 @@
+---
+title: CLI and TUI compatibility contract
+---
+
 # CLI and TUI compatibility contract
 
 AgentSync can improve its human interface without breaking existing CLI users when every output change follows this contract.
