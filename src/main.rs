@@ -39,6 +39,13 @@ fn render_dry_run_notice(use_color: bool) -> Vec<String> {
     ]
 }
 
+fn merge_clean_result_into_apply_result(result: &mut SyncResult, clean_result: &SyncResult) {
+    result.updated += clean_result.updated;
+    result.skipped += clean_result.skipped;
+    result.removed += clean_result.removed;
+    result.errors += clean_result.errors;
+}
+
 #[cfg(test)]
 fn render_clean_phase(dry_run: bool) -> Vec<String> {
     render_clean_phase_with_color(dry_run, false)
@@ -419,16 +426,19 @@ fn main() -> Result<()> {
                 print_lines(&render_dry_run_notice(use_color));
                 println!();
             }
-            if clean {
+            let clean_result = if clean {
                 print_lines(&render_clean_phase_with_color(dry_run, use_color));
                 let clean_opts = SyncOptions {
                     dry_run,
                     verbose,
                     ..Default::default()
                 };
-                linker.clean(&clean_opts)?;
+                let clean_result = linker.clean(&clean_opts)?;
                 println!();
-            }
+                Some(clean_result)
+            } else {
+                None
+            };
             print_lines(&render_sync_phase_with_color(dry_run, clean, use_color));
             let options = SyncOptions {
                 clean: false,
@@ -437,6 +447,9 @@ fn main() -> Result<()> {
                 agents,
             };
             let mut result = linker.sync(&options)?;
+            if let Some(clean_result) = &clean_result {
+                merge_clean_result_into_apply_result(&mut result, clean_result);
+            }
             if !no_gitignore {
                 if linker.config().gitignore.enabled {
                     println!();
@@ -653,6 +666,32 @@ mod tests {
                 "  Errors: 4".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn test_merge_clean_result_into_apply_result_preserves_created_count() {
+        let mut result = SyncResult {
+            created: 3,
+            updated: 5,
+            skipped: 7,
+            removed: 11,
+            errors: 13,
+        };
+        let clean_result = SyncResult {
+            created: 17,
+            updated: 19,
+            skipped: 23,
+            removed: 29,
+            errors: 31,
+        };
+
+        super::merge_clean_result_into_apply_result(&mut result, &clean_result);
+
+        assert_eq!(result.created, 3);
+        assert_eq!(result.updated, 24);
+        assert_eq!(result.skipped, 30);
+        assert_eq!(result.removed, 40);
+        assert_eq!(result.errors, 44);
     }
 
     #[test]

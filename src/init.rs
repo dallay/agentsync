@@ -1461,6 +1461,16 @@ fn experimental_tui_context_from_env() -> ExperimentalTuiContext {
     )
 }
 
+fn missing_terminal_tui_error(reason: &str) -> Option<String> {
+    if reason.contains("stdin is not a terminal") || reason.contains("stdout is not a terminal") {
+        Some(format!(
+            "experimental TUI requires an interactive terminal ({reason}); run `agentsync init --wizard` for the standard wizard"
+        ))
+    } else {
+        None
+    }
+}
+
 pub fn init_wizard_experimental_tui(project_root: &Path, force: bool) -> Result<()> {
     use colored::Colorize;
 
@@ -1481,6 +1491,9 @@ pub fn init_wizard_experimental_tui(project_root: &Path, force: bool) -> Result<
             }
         },
         ExperimentalTuiContext::Unsupported(reason) => {
+            if let Some(message) = missing_terminal_tui_error(reason) {
+                anyhow::bail!(message);
+            }
             println!(
                 "{}",
                 format!(
@@ -1555,8 +1568,8 @@ fn run_experimental_tui_intro() -> Result<ExperimentalTuiIntroOutcome> {
     }
 
     enable_raw_mode()?;
-    execute!(io::stdout(), EnterAlternateScreen)?;
     let _guard = TerminalGuard;
+    execute!(io::stdout(), EnterAlternateScreen)?;
 
     let backend = CrosstermBackend::new(io::stdout());
     let mut terminal = Terminal::new(backend)?;
@@ -3868,6 +3881,22 @@ mod tests {
         assert_eq!(
             detect_experimental_tui_context(true, true, Some("dumb")),
             ExperimentalTuiContext::Unsupported("TERM=dumb does not support full-screen TUI")
+        );
+    }
+
+    #[test]
+    fn test_missing_terminal_tui_error_only_blocks_non_tty_contexts() {
+        assert_eq!(
+            missing_terminal_tui_error("stdin is not a terminal"),
+            Some("experimental TUI requires an interactive terminal (stdin is not a terminal); run `agentsync init --wizard` for the standard wizard".to_string())
+        );
+        assert_eq!(
+            missing_terminal_tui_error("stdout is not a terminal"),
+            Some("experimental TUI requires an interactive terminal (stdout is not a terminal); run `agentsync init --wizard` for the standard wizard".to_string())
+        );
+        assert_eq!(
+            missing_terminal_tui_error("TERM=dumb does not support full-screen TUI"),
+            None
         );
     }
 

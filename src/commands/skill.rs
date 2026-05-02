@@ -276,6 +276,13 @@ fn render_skill_hint(remediation: &str) -> String {
     format!("  Hint: {remediation}")
 }
 
+fn render_skill_command_error(error_message: &str, remediation: &str) -> Vec<String> {
+    vec![
+        format!("Error: {error_message}"),
+        render_skill_hint(remediation),
+    ]
+}
+
 fn render_skill_action_failure(
     skill_id: &str,
     error_message: &str,
@@ -887,7 +894,9 @@ pub fn run_suggest(args: SkillSuggestArgs, project_root: PathBuf) -> Result<()> 
                 println!("{}", serde_json::to_string(&output)?);
             } else {
                 error!(%code, error = %error_message, "Suggest failed");
-                println!("{}", render_skill_hint(remediation));
+                for line in render_skill_command_error(&error_message, remediation) {
+                    println!("{line}");
+                }
             }
 
             Err(error)
@@ -1607,6 +1616,17 @@ mod tests {
         assert_eq!(
             render_skill_suggest_human(&response, false),
             "➤ Detected technologies\n  none\n\n➤ Recommended skills\n  none\n\n➤ Summary\n  Detected: 0\n  Recommended: 0\n  Installable: 0"
+        );
+    }
+
+    #[test]
+    fn skill_command_error_renders_failure_and_hint() {
+        assert_eq!(
+            render_skill_command_error("project root is unreadable", "Check permissions"),
+            vec![
+                "Error: project root is unreadable".to_string(),
+                "  Hint: Check permissions".to_string(),
+            ]
         );
     }
 
