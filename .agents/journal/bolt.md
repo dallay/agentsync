@@ -141,3 +141,7 @@ reuse results within the same sync run.
 **Learning:** Attempting to reuse a `Vec<&str>` buffer outside a loop to reduce allocations (e.g., in `for_each_nested_glob_match`) was blocked by the Rust borrow checker. Since the string slices (`&str`) pointed to strings created *inside* the loop (`rel_str`), they could not be stored in a collection that persists across loop iterations.
 
 **Action:** When seeking to eliminate allocations in loops, be mindful of lifetimes. If the data being stored is owned by loop-local variables, buffer reuse requires either copying the data (which might defeat the purpose) or using `unsafe` code (which should be avoided). Focus on optimizations that don't involve cross-iteration storage of local references.
+
+## 2026-05-20 - Single-Pass Metadata and Rule Pre-Compilation for Tech Detection
+**Learning:** Technology detection was performing redundant filesystem existence checks and repetitive `PathBuf` allocations for each of the 111+ technologies in the catalog. Even with a 3-depth limit, the (T \times N)$ overhead was significant. By enhancing `RepoMetadata` with `HashSet` for (1)$ lookups, caching immediate `root_dirs`, and pre-compiling `config_files` markers into `PathBuf`s during rule compilation, we moved almost all detection logic from disk to memory.
+**Action:** Centralize repository metadata collection into optimized data structures and pre-compile static configuration markers to eliminate redundant I/O and heap allocations in large-scale rule evaluation loops.
