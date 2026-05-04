@@ -187,7 +187,7 @@ Those destinations stay as real directories:
 
 ## Agent Compatibility Matrix
 
-AgentSync has two support levels:
+AgentSync supports 32 agents across two levels:
 
 - **Native MCP generation** (built-in formatter + merge behavior): `claude`, `copilot`, `codex`, `gemini`, `cursor`, `vscode`, `opencode`.
 - **Configurable sync targets** (rules/skills via symlink): any agent as long as you declare `[agents.<name>.targets.*]` entries.
@@ -203,33 +203,37 @@ The matrix below documents common agent locations and whether AgentSync can hand
 | Pi Coding Agent | - | No native MCP formatter | Configurable |
 | Jules | - | No native MCP formatter | Configurable |
 | Cursor | `.cursor/rules/agentsync.mdc` | `.cursor/mcp.json` (native MCP) | Configurable; `.cursor/skills/` |
-| Windsurf | `.windsurfrules` | No native MCP formatter; `.windsurf/mcp_config.json` ignore | Configurable |
+| VS Code | - | `.vscode/mcp.json` (native MCP) | Configurable |
+| Windsurf | `.windsurfrules` | `.windsurf/mcp_config.json` ignore | Configurable |
 | Cline | `.clinerules` | No native MCP formatter | Configurable |
-| Crush | `CRUSH.md` | No native MCP formatter; `.crush.json` ignore | Configurable |
+| Crush | `CRUSH.md` | `CRUSH.md`, `.crush.json` ignore | Configurable |
 | Amp | `AMPCODE.md` | No native MCP formatter | Configurable |
-| Antigravity | - | No native MCP formatter; `.agent/rules/`, `.agent/skills/` ignores | Configurable |
-| Amazon Q CLI | - | No native MCP formatter; `.amazonq/rules/`, `.amazonq/mcp.json` ignores | Configurable |
-| Aider | - | No native MCP formatter; `.aider.conf.yml`, `.aiderignore` ignores | Configurable |
-| Firebase Studio | - | No native MCP formatter; `.idx/airules.md`, `.idx/mcp.json` ignores | Configurable |
-| Open Hands | - | No native MCP formatter; `.openhands/microagents/` ignore | Configurable |
+| Antigravity | - | `.agent/rules/`, `.agent/skills/` ignores | Configurable; `.agent/skills/` |
+| Amazon Q CLI | - | `.amazonq/rules/`, `.amazonq/mcp.json` ignores | Configurable |
+| Aider | - | `.aider.conf.yml`, `.aiderignore` ignores | Configurable |
+| Firebase Studio | - | `.idx/airules.md`, `.idx/mcp.json` ignores | Configurable |
+| Open Hands | - | `.openhands/microagents/` ignore | Configurable |
 
 **Note (Cursor rules filename):** `.cursor/rules/agentsync.mdc` is the documented example path used by AgentSync for Cursor rules. You may use a different `.mdc` filename/path if you configure it explicitly under your `[agents.<name>.targets.*]` entries.
+
+| Agent | Rules File(s) | MCP Configuration / Notes | Skills Support / Location |
+| :--- | :--- | :--- | :--- |
 | Gemini CLI | `GEMINI.md` | `.gemini/settings.json` (native MCP, adds `"trust": true`) | Configurable; `.gemini/skills/` |
-| Junie | - | No native MCP formatter; `.junie/` ignore | Configurable |
-| AugmentCode | - | No native MCP formatter; `.augment/rules/` ignore | Configurable |
-| Kilo Code | - | No native MCP formatter; `.kilocode/mcp.json` ignore | Configurable |
+| Junie | - | `.junie/` ignore | Configurable |
+| AugmentCode | - | `.augment/rules/` ignore | Configurable |
+| Kilo Code | - | `.kilocode/mcp.json` ignore | Configurable |
 | OpenCode | `OPENCODE.md` | `opencode.json` (native MCP) | Configurable; `.opencode/skills/` |
-| Goose | - | No native MCP formatter; `.goosehints` ignore | Configurable |
-| Qwen Code | - | No native MCP formatter; `.qwen/settings.json` ignore | Configurable |
-| RooCode | - | No native MCP formatter; `.roo/mcp.json`, `.roo/rules/`, `.roo/skills/` ignores | Configurable |
-| Zed | - | No native MCP formatter; `.zed/settings.json` ignore | Configurable |
-| Trae AI | - | No native MCP formatter; `.trae/rules/` ignore | Configurable |
-| Warp | `WARP.md` | No native MCP formatter | Configurable |
-| Kiro | - | No native MCP formatter; `.kiro/steering/`, `.kiro/settings/mcp.json` ignores | Configurable |
-| Firebender | - | No native MCP formatter; `firebender.json` ignore | Configurable |
-| Factory Droid | - | No native MCP formatter; `.factory/mcp.json`, `.factory/skills/` ignores | Configurable |
-| Mistral Vibe | - | No native MCP formatter; `.vibe/config.toml`, `.vibe/skills/` ignores | Configurable |
-| JetBrains AI Assistant | - | No native MCP formatter; `.aiassistant/rules/` ignore | Configurable |
+| Goose | `.goosehints` | `.goosehints` ignore | Configurable |
+| Qwen Code | - | `.qwen/settings.json` ignore | Configurable |
+| RooCode | - | `.roo/mcp.json`, `.roo/rules/`, `.roo/skills/` ignores | Configurable; `.roo/skills/` |
+| Zed | - | `.zed/settings.json` ignore | Configurable |
+| Trae AI | - | `.trae/rules/` ignore | Configurable |
+| Warp | `WARP.md` | `WARP.md` ignore | Configurable |
+| Kiro | - | `.kiro/steering/`, `.kiro/settings/mcp.json` ignores | Configurable |
+| Firebender | - | `firebender.json` ignore | Configurable |
+| Factory Droid | - | `.factory/mcp.json`, `.factory/skills/` ignores | Configurable; `.factory/skills/` |
+| Mistral Vibe | - | `.vibe/config.toml`, `.vibe/skills/` ignores | Configurable; `.vibe/skills/` |
+| JetBrains AI Assistant | - | `.aiassistant/rules/` ignore | Configurable |
 
 ### What "configurable" means in practice
 

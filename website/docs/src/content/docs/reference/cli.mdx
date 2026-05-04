@@ -64,7 +64,7 @@ agentsync apply [OPTIONS]
 ```
 
 **Options**:
-- `-p, --path <PATH>`: Project root directory. Also aliased as `--project-root`.
+- `-p, --path <PATH>`: Project root directory (defaults to current dir). Also aliased as `--project-root`.
 - `-c, --config <CONFIG>`: Use a custom configuration file path instead of the default `.agents/agentsync.toml`.
 - `--clean`: Deletes existing symbolic links before applying.
 - `--dry-run`: Shows what actions would be taken without actually making any changes, including pending `.gitignore` writes or cleanup when gitignore reconciliation is active.
@@ -119,11 +119,11 @@ Preview without any gitignore writes or cleanup:
 Removes all symbolic links managed by AgentSync.
 
 ```bash
-agentsync clean [FLAGS]
+agentsync clean [OPTIONS]
 ```
 
-**Flags**:
-- `-p, --path <PATH>`: Path to the project root. Also aliased as `--project-root`.
+**Options**:
+- `-p, --path <PATH>`: Project root directory (defaults to current dir). Also aliased as `--project-root`.
 - `-c, --config <PATH>`: Path to a custom configuration file.
 - `--dry-run`: Shows what would be removed without actually deleting anything.
 - `-v, --verbose`: Enable verbose logging.
@@ -250,34 +250,16 @@ agentsync doctor [OPTIONS]
 
 ---
 
-### `version`
-
-Shows the current version of the AgentSync CLI.
-
-<CommandTabs command="--version" />
-
----
-
-### `--help`
-
-Shows help information for the CLI or a specific command.
-
-<CommandTabs command="--help" />
-
-<CommandTabs command="apply --help" />
-
----
-
 ### `status`
 
 Verify the status of AgentSync-managed targets and report drift.
 
 ```bash
-agentsync status [--project-root <path>] [--json]
+agentsync status [OPTIONS]
 ```
 
-**Flags**:
-- `-p, --project-root <path>`: Optional. Path to the project root to locate the agentsync config. If omitted, the current working directory is used.
+**Options**:
+- `-p, --project-root <PROJECT_ROOT>`: Project root (defaults to CWD).
 - `--json`: Output machine-readable JSON (pretty-printed) describing each managed target. Useful for CI.
 
 **Behavior**:
@@ -319,3 +301,21 @@ Examples
   - <CommandTabs command="status --project-root /path/to/repo --json" />
 
 On Windows, `status` is also a practical post-setup verification step after you fix symlink permissions or switch to WSL. See the <a href="/guides/windows-symlink-setup/">Windows Symlink Setup guide</a> for the broader verification flow.
+
+---
+
+### `--version`
+
+Shows the current version of the AgentSync CLI. This is a global flag available at the root.
+
+<CommandTabs command="--version" />
+
+---
+
+### `--help`
+
+Shows help information for the CLI or a specific command.
+
+<CommandTabs command="--help" />
+
+<CommandTabs command="apply --help" />

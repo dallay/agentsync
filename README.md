@@ -337,6 +337,7 @@ agentsync status
 agentsync doctor [--project-root <path>]
 
 # Manage skills
+agentsync skill suggest
 agentsync skill install <skill-id>
 agentsync skill update <skill-id>
 agentsync skill uninstall <skill-id>
@@ -442,7 +443,7 @@ AgentSync supports the following agents and will synchronize corresponding files
 - **VS Code** — `.vscode/mcp.json` (agent id: `vscode`)
 - **OpenCode** — `opencode.json` (agent id: `opencode`)
 
-AgentSync also supports 32+ agents (7 native MCP agents and 25+ configurable agents) including Windsurf, Cline, Amazon Q, Aider, RooCode, Trae, and more. See the [full list in the documentation](https://dallay.github.io/agentsync/reference/configuration/).
+AgentSync also supports 32 agents (7 native MCP agents and 25 configurable agents) including Windsurf, Cline, Amazon Q, Aider, RooCode, Trae, and more. See the [full list in the documentation](https://dallay.github.io/agentsync/reference/configuration/).
 
 See the [MCP Integration Guide](https://dallay.github.io/agentsync/guides/mcp/) for formatter details and merge behavior.
 
@@ -602,7 +603,7 @@ If you need agentsync in CI, you can download the latest version automatically u
 
 ## Skills
 
-AgentSync includes a curated skill catalog with 100+ skills across 40+ technologies. Skills are small bundles of AI-agent instructions that can be installed into your project.
+AgentSync includes a curated skill catalog with 150+ skills across 70+ technologies. Skills are small bundles of AI-agent instructions that can be installed into your project.
 
 - **[dallay/agents-skills](https://github.com/dallay/agents-skills)** — Canonical home for all dallay-maintained skills. Community contributions welcome via PR.
 - **External providers** — Skills from Angular, Vercel, Cloudflare, Expo, Stripe, and many more are resolved from their respective repositories.
