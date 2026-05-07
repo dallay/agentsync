@@ -5,7 +5,7 @@ use crate::skills::suggest::{
 use anyhow::{Context, Result};
 use regex::Regex;
 use serde::Deserialize;
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::warn;
@@ -47,26 +47,25 @@ pub struct DetectionRules {
 /// Metadata about the repository collected in a single pass to optimize detection.
 struct RepoMetadata {
     /// All relative paths found during a single-pass walk (max depth 3)
-    paths: BTreeSet<PathBuf>,
-    /// Set of relative paths that are directories
-    dirs: BTreeSet<PathBuf>,
+    paths: HashSet<PathBuf>,
+    /// Pre-calculated directories at depth 1 for faster lookups.
+    root_dirs: HashSet<PathBuf>,
     /// Map of file extension (e.g., ".rs") to the first relative path found with it.
     /// Used to quickly evaluate file_extensions rules.
-    extensions: BTreeMap<String, PathBuf>,
+    extensions: HashMap<String, PathBuf>,
 }
 
 impl RepoMetadata {
     fn collect(project_root: &Path) -> Self {
-        let mut paths = BTreeSet::new();
-        let mut dirs = BTreeSet::new();
-        let mut extensions = BTreeMap::new();
+        let mut paths = HashSet::new();
+        let mut root_dirs = HashSet::new();
+        let mut extensions = HashMap::new();
 
         for entry in WalkDir::new(project_root)
             .max_depth(3)
             .follow_links(false)
-            .sort_by_file_name()
             .into_iter()
-            .filter_entry(|entry| !should_ignore_entry(project_root, entry))
+            .filter_entry(|entry| !should_ignore_entry(entry))
             .flatten()
         {
             let Ok(relative) = entry.path().strip_prefix(project_root) else {
@@ -81,7 +80,9 @@ impl RepoMetadata {
             paths.insert(relative_buf.clone());
 
             if entry.file_type().is_dir() {
-                dirs.insert(relative_buf.clone());
+                if entry.depth() == 1 {
+                    root_dirs.insert(relative_buf.clone());
+                }
             }
 
             if entry.file_type().is_file()
@@ -92,13 +93,15 @@ impl RepoMetadata {
                 extensions
                     .entry(dot_ext)
                     .or_insert_with(|| relative_buf.clone());
-                extensions.entry(ext.to_string()).or_insert(relative_buf);
+                extensions
+                    .entry(ext.to_string())
+                    .or_insert_with(|| relative_buf);
             }
         }
 
         Self {
             paths,
-            dirs,
+            root_dirs,
             extensions,
         }
     }
@@ -121,7 +124,7 @@ pub trait RepoDetector {
     fn detect(&self, project_root: &Path) -> Result<Vec<TechnologyDetection>>;
 }
 
-fn should_ignore_entry(project_root: &Path, entry: &DirEntry) -> bool {
+fn should_ignore_entry(entry: &DirEntry) -> bool {
     if !entry.file_type().is_dir() {
         return false;
     }
@@ -130,12 +133,10 @@ fn should_ignore_entry(project_root: &Path, entry: &DirEntry) -> bool {
         return false;
     }
 
+    // Optimization: Check entry.file_name() directly to avoid path manipulation.
     entry
-        .path()
-        .strip_prefix(project_root)
-        .ok()
-        .and_then(|relative_path| relative_path.file_name())
-        .and_then(|name| name.to_str())
+        .file_name()
+        .to_str()
         .is_some_and(|name| IGNORED_DIRS.contains(&name))
 }
 
@@ -146,13 +147,13 @@ fn should_ignore_entry(project_root: &Path, entry: &DirEntry) -> bool {
 struct CompiledDetectionRules {
     packages: Option<Vec<String>>,
     package_patterns: Option<Vec<Regex>>,
-    config_files: Option<Vec<String>>,
+    config_files: Option<Vec<PathBuf>>,
     config_file_content: Option<CompiledConfigFileContentRules>,
     file_extensions: Option<Vec<String>>,
 }
 
 struct CompiledConfigFileContentRules {
-    files: Option<Vec<String>>,
+    files: Option<Vec<PathBuf>>,
     patterns: Vec<Regex>,
     scan_gradle_layout: bool,
 }
@@ -209,6 +210,11 @@ impl CatalogDrivenDetector {
             })
             .transpose()?;
 
+        let config_files = rules
+            .config_files
+            .as_ref()
+            .map(|files| files.iter().map(PathBuf::from).collect());
+
         let config_file_content = rules
             .config_file_content
             .as_ref()
@@ -227,7 +233,10 @@ impl CatalogDrivenDetector {
                     .collect::<Result<Vec<_>>>()?;
 
                 Ok::<_, anyhow::Error>(CompiledConfigFileContentRules {
-                    files: content_rules.files.clone(),
+                    files: content_rules
+                        .files
+                        .as_ref()
+                        .map(|files| files.iter().map(PathBuf::from).collect()),
                     patterns,
                     scan_gradle_layout: content_rules.scan_gradle_layout.unwrap_or(false),
                 })
@@ -237,7 +246,7 @@ impl CatalogDrivenDetector {
         Ok(CompiledDetectionRules {
             packages: rules.packages.clone(),
             package_patterns,
-            config_files: rules.config_files.clone(),
+            config_files,
             config_file_content,
             file_extensions: rules.file_extensions.clone(),
         })
@@ -273,7 +282,7 @@ fn evaluate_rules(
     project_root: &Path,
     tech_id: &TechnologyId,
     rules: &CompiledDetectionRules,
-    all_packages: &BTreeSet<String>,
+    all_packages: &HashSet<String>,
     metadata: &RepoMetadata,
 ) -> Option<TechnologyDetection> {
     // Check packages (exact match)
@@ -308,15 +317,15 @@ fn evaluate_rules(
 
     // Check config_files (existence)
     if let Some(config_files) = &rules.config_files {
-        for file in config_files {
-            let path = PathBuf::from(file);
+        for path in config_files {
             // Check cache first (hot path for shallow markers), fallback to fs for deeply nested ones
-            if metadata.paths.contains(&path) || project_root.join(&path).exists() {
+            if metadata.paths.contains(path) || project_root.join(path).exists() {
+                let display = path.display().to_string();
                 return Some(make_detection(
                     tech_id,
                     DetectionConfidence::High,
-                    file,
-                    &format!("config file '{file}' exists"),
+                    &display,
+                    &format!("config file '{display}' exists"),
                 ));
             }
         }
@@ -403,18 +412,8 @@ fn gather_content_scan_files(
         }
 
         // Immediate subdirectory build files
-        // Find directories in metadata.paths with depth 1
-        let root_dirs: BTreeSet<PathBuf> = metadata
-            .dirs
-            .iter()
-            .filter(|p| {
-                p.parent() == Some(Path::new(""))
-                    && !IGNORED_DIRS.contains(&p.to_str().unwrap_or(""))
-            })
-            .cloned()
-            .collect();
-
-        for dir in root_dirs {
+        // Optimization: Use pre-calculated root_dirs for faster scan.
+        for dir in &metadata.root_dirs {
             for build_file in &["build.gradle.kts", "build.gradle"] {
                 let path = dir.join(build_file);
                 if metadata.paths.contains(&path) {
@@ -425,12 +424,11 @@ fn gather_content_scan_files(
     }
 
     if let Some(explicit_files) = &rules.files {
-        for file in explicit_files {
-            let path = PathBuf::from(file);
-            if (metadata.paths.contains(&path) || project_root.join(&path).exists())
-                && !files.contains(&path)
+        for path in explicit_files {
+            if (metadata.paths.contains(path) || project_root.join(path).exists())
+                && !files.contains(path)
             {
-                files.push(path);
+                files.push(path.clone());
             }
         }
     }
@@ -442,8 +440,8 @@ fn gather_content_scan_files(
 // Package.json parsing and workspace resolution
 // ---------------------------------------------------------------------------
 
-fn collect_package_names(project_root: &Path) -> BTreeSet<String> {
-    let mut all_packages = BTreeSet::new();
+fn collect_package_names(project_root: &Path) -> HashSet<String> {
+    let mut all_packages = HashSet::new();
 
     // Parse root package.json
     if let Some(deps) = parse_package_json_deps(&project_root.join("package.json")) {
@@ -473,12 +471,12 @@ fn collect_package_names(project_root: &Path) -> BTreeSet<String> {
     all_packages
 }
 
-fn parse_package_json_deps(path: &Path) -> Option<BTreeSet<String>> {
+fn parse_package_json_deps(path: &Path) -> Option<HashSet<String>> {
     let content = fs::read_to_string(path).ok()?;
     let json: serde_json::Value = serde_json::from_str(&content).ok()?;
     let obj = json.as_object()?;
 
-    let mut deps = BTreeSet::new();
+    let mut deps = HashSet::new();
     for key in &["dependencies", "devDependencies", "peerDependencies"] {
         if let Some(section) = obj.get(*key).and_then(|v| v.as_object()) {
             for dep_name in section.keys() {
@@ -490,8 +488,8 @@ fn parse_package_json_deps(path: &Path) -> Option<BTreeSet<String>> {
     Some(deps)
 }
 
-fn parse_requirements_txt_deps(path: &Path) -> Option<BTreeSet<String>> {
-    let mut deps = BTreeSet::new();
+fn parse_requirements_txt_deps(path: &Path) -> Option<HashSet<String>> {
+    let mut deps = HashSet::new();
     let mut visited = HashSet::new();
     let root = path.parent().unwrap_or_else(|| Path::new("."));
     parse_requirements_file(path, root, &mut deps, &mut visited).ok()?;
@@ -501,7 +499,7 @@ fn parse_requirements_txt_deps(path: &Path) -> Option<BTreeSet<String>> {
 fn parse_requirements_file(
     path: &Path,
     root: &Path,
-    deps: &mut BTreeSet<String>,
+    deps: &mut HashSet<String>,
     visited: &mut HashSet<PathBuf>,
 ) -> Result<()> {
     let path = canonical_existing_path(path)?;
@@ -526,7 +524,7 @@ fn parse_requirement_line(
     raw_line: &str,
     root: &Path,
     base_dir: &Path,
-    deps: &mut BTreeSet<String>,
+    deps: &mut HashSet<String>,
     visited: &mut HashSet<PathBuf>,
 ) -> Result<()> {
     let raw_line = raw_line.trim();
@@ -587,11 +585,11 @@ fn canonical_existing_path(path: &Path) -> Result<PathBuf> {
         .with_context(|| format!("failed to resolve path {}", path.display()))
 }
 
-fn parse_pyproject_toml_deps(path: &Path) -> Option<BTreeSet<String>> {
+fn parse_pyproject_toml_deps(path: &Path) -> Option<HashSet<String>> {
     let path = canonical_existing_path(path).ok()?;
     let content = fs::read_to_string(path).ok()?;
     let value: toml::Value = toml::from_str(&content).ok()?;
-    let mut deps = BTreeSet::new();
+    let mut deps = HashSet::new();
 
     if let Some(project) = value.get("project").and_then(|v| v.as_table()) {
         if let Some(dependencies) = project.get("dependencies").and_then(|v| v.as_array()) {
@@ -632,11 +630,11 @@ fn parse_pyproject_toml_deps(path: &Path) -> Option<BTreeSet<String>> {
     Some(deps)
 }
 
-fn parse_pipfile_deps(path: &Path) -> Option<BTreeSet<String>> {
+fn parse_pipfile_deps(path: &Path) -> Option<HashSet<String>> {
     let path = canonical_existing_path(path).ok()?;
     let content = fs::read_to_string(path).ok()?;
     let value: toml::Value = toml::from_str(&content).ok()?;
-    let mut deps = BTreeSet::new();
+    let mut deps = HashSet::new();
 
     for section in ["packages", "dev-packages"] {
         if let Some(dependencies) = value.get(section).and_then(|v| v.as_table()) {
@@ -647,7 +645,7 @@ fn parse_pipfile_deps(path: &Path) -> Option<BTreeSet<String>> {
     Some(deps)
 }
 
-fn collect_python_dependency_array(values: &[toml::Value], deps: &mut BTreeSet<String>) {
+fn collect_python_dependency_array(values: &[toml::Value], deps: &mut HashSet<String>) {
     for dependency in values.iter().filter_map(|v| v.as_str()) {
         if let Some(name) = normalize_python_requirement_name(dependency) {
             deps.insert(name);
@@ -657,7 +655,7 @@ fn collect_python_dependency_array(values: &[toml::Value], deps: &mut BTreeSet<S
 
 fn collect_python_dependency_table(
     table: &toml::map::Map<String, toml::Value>,
-    deps: &mut BTreeSet<String>,
+    deps: &mut HashSet<String>,
 ) {
     for package in table.keys() {
         if package != "python" {
