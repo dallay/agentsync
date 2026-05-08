@@ -788,15 +788,17 @@ fn expand_workspace_patterns(
             // Glob: use cached directories from metadata to find workspace members
             // avoiding redundant O(N) filesystem walks.
             for dir_rel in &metadata.dirs {
+                let manifest = dir_rel.join("package.json");
                 if dir_rel.parent() == Some(base_rel)
-                    && metadata.paths.contains(&dir_rel.join("package.json"))
+                    && (metadata.paths.contains(&manifest) || project_root.join(&manifest).exists())
                 {
                     dirs.push(project_root.join(dir_rel));
                 }
             }
         } else {
-            // Exact path: check cache for package.json existence
-            if metadata.paths.contains(&base_rel.join("package.json")) {
+            // Exact path: check cache first, then fall back to filesystem existence.
+            let manifest = base_rel.join("package.json");
+            if metadata.paths.contains(&manifest) || project_root.join(&manifest).exists() {
                 dirs.push(project_root.join(base_rel));
             }
         }
