@@ -1,0 +1,139 @@
+{
+  "id": 11864609,
+  "name": "main",
+  "target": "branch",
+  "source_type": "Repository",
+  "source": "dallay/agentsync",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "exclude": [],
+      "include": [
+        "~DEFAULT_BRANCH"
+      ]
+    }
+  },
+  "rules": [
+    {
+      "type": "deletion"
+    },
+    {
+      "type": "non_fast_forward"
+    },
+    {
+      "type": "creation"
+    },
+    {
+      "type": "required_linear_history"
+    },
+    {
+      "type": "required_signatures"
+    },
+    {
+      "type": "pull_request",
+      "parameters": {
+        "required_approving_review_count": 1,
+        "dismiss_stale_reviews_on_push": true,
+        "required_reviewers": [],
+        "require_code_owner_review": true,
+        "require_last_push_approval": true,
+        "required_review_thread_resolution": true,
+        "allowed_merge_methods": [
+          "merge",
+          "squash",
+          "rebase"
+        ]
+      }
+    },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": true,
+        "do_not_enforce_on_create": false,
+        "required_status_checks": [
+          {
+            "context": "Check",
+            "integration_id": 15368
+          },
+          {
+            "context": "Rustfmt",
+            "integration_id": 15368
+          },
+          {
+            "context": "Clippy",
+            "integration_id": 15368
+          },
+          {
+            "context": "Build (macos-latest)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Build (ubuntu-latest)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Build (windows-latest)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Test (macos-latest)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Test (ubuntu-latest)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Test (windows-latest)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Security Audit",
+            "integration_id": 15368
+          },
+          {
+            "context": "E2E Tests (alpine)",
+            "integration_id": 15368
+          },
+          {
+            "context": "E2E Tests (arch)",
+            "integration_id": 15368
+          },
+          {
+            "context": "E2E Tests (ubuntu)",
+            "integration_id": 15368
+          }
+        ]
+      }
+    },
+    {
+      "type": "merge_queue",
+      "parameters": {
+        "merge_method": "MERGE",
+        "max_entries_to_build": 5,
+        "min_entries_to_merge": 1,
+        "max_entries_to_merge": 5,
+        "min_entries_to_merge_wait_minutes": 5,
+        "grouping_strategy": "ALLGREEN",
+        "check_response_timeout_minutes": 60
+      }
+    }
+  ],
+  "bypass_actors": [
+    {
+      "actor_id": 5,
+      "actor_type": "RepositoryRole",
+      "bypass_mode": "always"
+    },
+    {
+      "actor_id": 915548,
+      "actor_type": "Integration",
+      "bypass_mode": "always"
+    },
+    {
+      "actor_id": 2502251,
+      "actor_type": "Integration",
+      "bypass_mode": "always"
+    }
+  ]
+}

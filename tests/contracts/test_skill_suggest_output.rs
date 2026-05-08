@@ -332,3 +332,66 @@ fn skill_suggest_install_json_error_contract_has_no_human_progress_lines() {
     let value: serde_json::Value = serde_json::from_str(trimmed).unwrap();
     assert_eq!(value["code"], "interactive_tty_required");
 }
+
+/// E2E test for issue #409: detect technologies in nested projects
+#[test]
+fn skill_suggest_detects_technologies_from_nested_projects() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+
+    // project-alpha: Java/Maven
+    fs::create_dir_all(root.join("project-alpha/src/main/java")).unwrap();
+    fs::write(
+        root.join("project-alpha/pom.xml"),
+        r#"<?xml version="1.0"?><project><artifactId>alpha</artifactId></project>"#,
+    )
+    .unwrap();
+    fs::write(root.join("project-alpha/Dockerfile"), "FROM openjdk:17\n").unwrap();
+
+    // project-beta: Node.js
+    fs::create_dir_all(root.join("project-beta")).unwrap();
+    fs::write(
+        root.join("project-beta/package.json"),
+        r#"{"name": "beta", "dependencies": {"express": "^4.0.0"}}"#,
+    )
+    .unwrap();
+
+    let output = Command::new(agentsync_bin())
+        .current_dir(root)
+        .args(["skill", "suggest", "--json"])
+        .output()
+        .expect("failed to run agentsync skill suggest --json");
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let value: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("invalid JSON output");
+
+    let detections = value["detections"]
+        .as_array()
+        .expect("detections should be array");
+    assert!(
+        !detections.is_empty(),
+        "Expected detections from nested projects, got empty"
+    );
+
+    let technologies: Vec<&str> = detections
+        .iter()
+        .map(|d| d["technology"].as_str().unwrap())
+        .collect();
+
+    let has_java = technologies.contains(&"java");
+    let has_docker = technologies.contains(&"docker");
+    let has_nodejs = technologies.contains(&"node_typescript");
+
+    // All three technologies should be detected from nested projects
+    assert!(
+        has_java && has_docker && has_nodejs,
+        "Expected java AND docker AND node_typescript from nested projects, got: {:?}",
+        technologies
+    );
+}

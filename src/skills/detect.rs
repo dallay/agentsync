@@ -5,7 +5,7 @@ use crate::skills::suggest::{
 use anyhow::{Context, Result};
 use regex::Regex;
 use serde::Deserialize;
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::warn;
@@ -23,6 +23,32 @@ const IGNORED_DIRS: &[&str] = &[
     ".turbo",
     ".pnpm-store",
 ];
+
+/// Known project manifest files for nested project discovery (issue #409)
+const PROJECT_MANIFEST_FILES: &[&str] = &[
+    "pom.xml",
+    "build.gradle",
+    "build.gradle.kts",
+    "settings.gradle",
+    "settings.gradle.kts",
+    "Cargo.toml",
+    "go.mod",
+    "package.json",
+    "pyproject.toml",
+    "Pipfile",
+    "requirements.txt",
+    "setup.py",
+    "composer.json",
+    "Gemfile",
+    "mix.exs",
+    "pubspec.yaml",
+    "Package.swift",
+    "Dockerfile",
+];
+
+/// Maximum depth for nested project discovery (issue #409).
+/// Limit to 4 levels to avoid scanning too deep and hitting test/fixture directories.
+const MAX_DISCOVER_DEPTH: usize = 4;
 
 /// Detection rules parsed from the catalog's `[technologies.detect]` block.
 #[derive(Debug, Clone, Default, Deserialize, PartialEq)]
@@ -46,20 +72,24 @@ pub struct DetectionRules {
 
 /// Metadata about the repository collected in a single pass to optimize detection.
 struct RepoMetadata {
-    /// All relative paths found during a single-pass walk (max depth 3)
-    paths: BTreeSet<PathBuf>,
-    /// Set of relative paths that are directories
-    dirs: BTreeSet<PathBuf>,
+    /// All relative paths found during a single-pass walk (max depth 3).
+    /// Uses HashSet for O(1) existence checks during rule evaluation.
+    paths: HashSet<PathBuf>,
+    /// Set of relative paths that are directories.
+    dirs: HashSet<PathBuf>,
+    /// Immediate subdirectories of the project root (depth 1), cached for fast Gradle scanning.
+    root_dirs: Vec<PathBuf>,
     /// Map of file extension (e.g., ".rs") to the first relative path found with it.
     /// Used to quickly evaluate file_extensions rules.
-    extensions: BTreeMap<String, PathBuf>,
+    extensions: HashMap<String, PathBuf>,
 }
 
 impl RepoMetadata {
     fn collect(project_root: &Path) -> Self {
-        let mut paths = BTreeSet::new();
-        let mut dirs = BTreeSet::new();
-        let mut extensions = BTreeMap::new();
+        let mut paths = HashSet::new();
+        let mut dirs = HashSet::new();
+        let mut root_dirs = Vec::new();
+        let mut extensions = HashMap::new();
 
         for entry in WalkDir::new(project_root)
             .max_depth(3)
@@ -80,6 +110,9 @@ impl RepoMetadata {
             let relative_buf = relative.to_path_buf();
             paths.insert(relative_buf.clone());
 
+            if entry.file_type().is_dir() && entry.depth() == 1 {
+                root_dirs.push(relative_buf.clone());
+            }
             if entry.file_type().is_dir() {
                 dirs.insert(relative_buf.clone());
             }
@@ -88,7 +121,8 @@ impl RepoMetadata {
                 && let Some(ext) = relative.extension().and_then(|e| e.to_str())
             {
                 let dot_ext = format!(".{ext}");
-                // Store first occurrence for deterministic evidence
+                // Store first occurrence for deterministic evidence.
+                // Note: WalkDir sort_by_file_name() ensures deterministic choice if multiple exist.
                 extensions
                     .entry(dot_ext)
                     .or_insert_with(|| relative_buf.clone());
@@ -99,6 +133,7 @@ impl RepoMetadata {
         Self {
             paths,
             dirs,
+            root_dirs,
             extensions,
         }
     }
@@ -121,7 +156,7 @@ pub trait RepoDetector {
     fn detect(&self, project_root: &Path) -> Result<Vec<TechnologyDetection>>;
 }
 
-fn should_ignore_entry(project_root: &Path, entry: &DirEntry) -> bool {
+fn should_ignore_entry(_project_root: &Path, entry: &DirEntry) -> bool {
     if !entry.file_type().is_dir() {
         return false;
     }
@@ -130,12 +165,11 @@ fn should_ignore_entry(project_root: &Path, entry: &DirEntry) -> bool {
         return false;
     }
 
+    // Optimization: Use entry.file_name() directly to avoid expensive path manipulations
+    // and redundant strip_prefix calls during the walk.
     entry
-        .path()
-        .strip_prefix(project_root)
-        .ok()
-        .and_then(|relative_path| relative_path.file_name())
-        .and_then(|name| name.to_str())
+        .file_name()
+        .to_str()
         .is_some_and(|name| IGNORED_DIRS.contains(&name))
 }
 
@@ -146,7 +180,8 @@ fn should_ignore_entry(project_root: &Path, entry: &DirEntry) -> bool {
 struct CompiledDetectionRules {
     packages: Option<Vec<String>>,
     package_patterns: Option<Vec<Regex>>,
-    config_files: Option<Vec<String>>,
+    /// Pre-converted PathBufs to avoid repeated heap allocations during detection.
+    config_files: Option<Vec<PathBuf>>,
     config_file_content: Option<CompiledConfigFileContentRules>,
     file_extensions: Option<Vec<String>>,
 }
@@ -234,10 +269,15 @@ impl CatalogDrivenDetector {
             })
             .transpose()?;
 
+        let config_files = rules
+            .config_files
+            .as_ref()
+            .map(|files| files.iter().map(PathBuf::from).collect());
+
         Ok(CompiledDetectionRules {
             packages: rules.packages.clone(),
             package_patterns,
-            config_files: rules.config_files.clone(),
+            config_files,
             config_file_content,
             file_extensions: rules.file_extensions.clone(),
         })
@@ -250,18 +290,75 @@ impl RepoDetector for CatalogDrivenDetector {
             return Ok(Vec::new());
         }
 
-        // Phase 1: Collect metadata and package names
+        // Collect nested projects once to avoid double WalkDir traversal (issue #409)
+        let nested_dirs = discover_nested_projects(project_root);
+
+        // Collect metadata and packages (including nested projects for issue #409)
         let metadata = RepoMetadata::collect(project_root);
-        let all_packages = collect_package_names(project_root);
+        let all_packages = collect_package_names_with_nested(project_root, &nested_dirs);
 
         let mut detections = Vec::new();
 
-        // Phase 2: Evaluate each technology's rules
+        // Phase 1: Evaluate root project
         for (tech_id, compiled) in &self.rules {
             if let Some(detection) =
                 evaluate_rules(project_root, tech_id, compiled, &all_packages, &metadata)
             {
                 detections.push(detection);
+            }
+        }
+
+        // Phase 2: Scan nested projects (issue #409)
+        for nested_dir in &nested_dirs {
+            let nested_meta = RepoMetadata::collect(nested_dir);
+            let nested_pkgs = collect_package_names(nested_dir, &nested_meta);
+
+            // Compute offset for path adjustment
+            let offset = nested_dir
+                .strip_prefix(project_root)
+                .ok()
+                .map(|p| p.to_path_buf());
+
+            for (tech_id, compiled) in &self.rules {
+                // Skip if already detected at root
+                if detections.iter().any(|d| d.technology == *tech_id) {
+                    continue;
+                }
+
+                if let Some(detection) =
+                    evaluate_rules(nested_dir, tech_id, compiled, &nested_pkgs, &nested_meta)
+                {
+                    // Adjust paths: detections are relative to nested_dir, need to prepend offset
+                    let adjusted = TechnologyDetection {
+                        technology: detection.technology,
+                        confidence: detection.confidence,
+                        root_relative_paths: detection
+                            .root_relative_paths
+                            .iter()
+                            .map(|p| {
+                                if let Some(ref off) = offset {
+                                    off.join(p)
+                                } else {
+                                    p.clone()
+                                }
+                            })
+                            .collect(),
+                        evidence: detection
+                            .evidence
+                            .iter()
+                            .map(|e| DetectionEvidence {
+                                marker: e.marker.clone(),
+                                path: if let Some(ref off) = offset {
+                                    off.join(&e.path)
+                                } else {
+                                    e.path.clone()
+                                },
+                                notes: e.notes.clone(),
+                            })
+                            .collect(),
+                    };
+                    detections.push(adjusted);
+                }
             }
         }
 
@@ -308,15 +405,15 @@ fn evaluate_rules(
 
     // Check config_files (existence)
     if let Some(config_files) = &rules.config_files {
-        for file in config_files {
-            let path = PathBuf::from(file);
+        for path in config_files {
             // Check cache first (hot path for shallow markers), fallback to fs for deeply nested ones
-            if metadata.paths.contains(&path) || project_root.join(&path).exists() {
+            if metadata.paths.contains(path) || project_root.join(path).exists() {
+                let display = path.display().to_string();
                 return Some(make_detection(
                     tech_id,
                     DetectionConfidence::High,
-                    file,
-                    &format!("config file '{file}' exists"),
+                    &display,
+                    &format!("config file '{}' exists", display),
                 ));
             }
         }
@@ -402,19 +499,9 @@ fn gather_content_scan_files(
             }
         }
 
-        // Immediate subdirectory build files
-        // Find directories in metadata.paths with depth 1
-        let root_dirs: BTreeSet<PathBuf> = metadata
-            .dirs
-            .iter()
-            .filter(|p| {
-                p.parent() == Some(Path::new(""))
-                    && !IGNORED_DIRS.contains(&p.to_str().unwrap_or(""))
-            })
-            .cloned()
-            .collect();
-
-        for dir in root_dirs {
+        // Optimization: Use pre-calculated root_dirs from metadata to avoid
+        // re-filtering the entire directory set on every tech rule evaluation.
+        for dir in &metadata.root_dirs {
             for build_file in &["build.gradle.kts", "build.gradle"] {
                 let path = dir.join(build_file);
                 if metadata.paths.contains(&path) {
@@ -442,31 +529,46 @@ fn gather_content_scan_files(
 // Package.json parsing and workspace resolution
 // ---------------------------------------------------------------------------
 
-fn collect_package_names(project_root: &Path) -> BTreeSet<String> {
+fn collect_package_names(project_root: &Path, metadata: &RepoMetadata) -> BTreeSet<String> {
     let mut all_packages = BTreeSet::new();
 
     // Parse root package.json
-    if let Some(deps) = parse_package_json_deps(&project_root.join("package.json")) {
+    let root_pkg_path = Path::new("package.json");
+    if metadata.paths.contains(root_pkg_path)
+        && let Some(deps) = parse_package_json_deps(&project_root.join(root_pkg_path))
+    {
         all_packages.extend(deps);
     }
 
     // Resolve workspaces and parse each workspace's package.json
-    let workspace_dirs = resolve_workspaces(project_root);
+    let workspace_dirs = resolve_workspaces(project_root, metadata);
     for workspace_dir in workspace_dirs {
         let pkg_path = workspace_dir.join("package.json");
+        // We still check existence here because resolve_workspaces ensures they existed,
+        // but parse_package_json_deps does its own read.
         if let Some(deps) = parse_package_json_deps(&pkg_path) {
             all_packages.extend(deps);
         }
     }
 
-    let requirements_path = known_child_path(project_root, "requirements.txt");
-    if let Some(deps) = parse_requirements_txt_deps(&requirements_path) {
+    let requirements_path = Path::new("requirements.txt");
+    if metadata.paths.contains(requirements_path)
+        && let Some(deps) = parse_requirements_txt_deps(&project_root.join(requirements_path))
+    {
         all_packages.extend(deps);
     }
-    if let Some(deps) = parse_pyproject_toml_deps(&project_root.join("pyproject.toml")) {
+
+    let pyproject_path = Path::new("pyproject.toml");
+    if metadata.paths.contains(pyproject_path)
+        && let Some(deps) = parse_pyproject_toml_deps(&project_root.join(pyproject_path))
+    {
         all_packages.extend(deps);
     }
-    if let Some(deps) = parse_pipfile_deps(&project_root.join("Pipfile")) {
+
+    let pipfile_path = Path::new("Pipfile");
+    if metadata.paths.contains(pipfile_path)
+        && let Some(deps) = parse_pipfile_deps(&project_root.join(pipfile_path))
+    {
         all_packages.extend(deps);
     }
 
@@ -686,25 +788,28 @@ fn normalize_python_requirement_name(requirement: &str) -> Option<String> {
     }
 }
 
-fn resolve_workspaces(project_root: &Path) -> Vec<PathBuf> {
+fn resolve_workspaces(project_root: &Path, metadata: &RepoMetadata) -> Vec<PathBuf> {
     // Try pnpm-workspace.yaml first
-    let pnpm_path = project_root.join("pnpm-workspace.yaml");
-    if let Ok(content) = fs::read_to_string(&pnpm_path) {
+    let pnpm_rel = Path::new("pnpm-workspace.yaml");
+    if metadata.paths.contains(pnpm_rel)
+        && let Ok(content) = fs::read_to_string(project_root.join(pnpm_rel))
+    {
         let patterns = parse_pnpm_workspace_yaml(&content);
         if !patterns.is_empty() {
-            return expand_workspace_patterns(project_root, &patterns);
+            return expand_workspace_patterns(project_root, &patterns, metadata);
         }
     }
 
     // Try package.json workspaces field
-    let pkg_path = project_root.join("package.json");
-    if let Ok(content) = fs::read_to_string(&pkg_path)
+    let pkg_rel = Path::new("package.json");
+    if metadata.paths.contains(pkg_rel)
+        && let Ok(content) = fs::read_to_string(project_root.join(pkg_rel))
         && let Ok(json) = serde_json::from_str::<serde_json::Value>(&content)
         && let Some(workspaces) = json.get("workspaces")
     {
         let patterns = parse_package_json_workspaces(workspaces);
         if !patterns.is_empty() {
-            return expand_workspace_patterns(project_root, &patterns);
+            return expand_workspace_patterns(project_root, &patterns, metadata);
         }
     }
 
@@ -746,7 +851,11 @@ fn parse_package_json_workspaces(workspaces: &serde_json::Value) -> Vec<String> 
     Vec::new()
 }
 
-fn expand_workspace_patterns(project_root: &Path, patterns: &[String]) -> Vec<PathBuf> {
+fn expand_workspace_patterns(
+    project_root: &Path,
+    patterns: &[String],
+    metadata: &RepoMetadata,
+) -> Vec<PathBuf> {
     let mut dirs = Vec::new();
 
     for pattern in patterns {
@@ -756,29 +865,99 @@ fn expand_workspace_patterns(project_root: &Path, patterns: &[String]) -> Vec<Pa
             .trim_end_matches("/*")
             .trim_end_matches('/');
 
-        let base_path = project_root.join(base);
+        let base_rel = Path::new(base);
 
         if pattern.contains('*') {
-            // Glob: list directories under the base path
-            if let Ok(entries) = fs::read_dir(&base_path) {
-                for entry in entries.flatten() {
-                    if entry.file_type().is_ok_and(|ft| ft.is_dir()) {
-                        let dir = entry.path();
-                        if dir.join("package.json").exists() {
-                            dirs.push(dir);
-                        }
-                    }
+            // Glob: use cached directories from metadata to find workspace members
+            // avoiding redundant O(N) filesystem walks.
+            for dir_rel in &metadata.dirs {
+                let manifest = dir_rel.join("package.json");
+                if dir_rel.parent() == Some(base_rel)
+                    && (metadata.paths.contains(&manifest) || project_root.join(&manifest).exists())
+                {
+                    dirs.push(project_root.join(dir_rel));
                 }
             }
         } else {
-            // Exact path: check if it has a package.json
-            if base_path.join("package.json").exists() {
-                dirs.push(base_path);
+            // Exact path: check cache first, then fall back to filesystem existence.
+            let manifest = base_rel.join("package.json");
+            if metadata.paths.contains(&manifest) || project_root.join(&manifest).exists() {
+                dirs.push(project_root.join(base_rel));
             }
         }
     }
 
     dirs
+}
+
+/// Discovers standalone projects in subdirectories (issue #409)
+fn discover_nested_projects(project_root: &Path) -> Vec<PathBuf> {
+    use std::collections::BTreeSet;
+
+    let mut projects_set = BTreeSet::new();
+
+    // Directory names that indicate test/fixture content, not standalone projects
+    // Note: these are at the project root level, not nested (e.g., `tests/e2e/app` is still a valid project)
+    const TEST_DIR_NAMES: &[&str] = &["tests", "test", "__tests__", "fixtures", "examples"];
+
+    for entry in WalkDir::new(project_root)
+        .max_depth(MAX_DISCOVER_DEPTH)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|e| !should_ignore_entry(project_root, e))
+        .flatten()
+    {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+
+        if !PROJECT_MANIFEST_FILES.contains(&name) {
+            continue;
+        }
+
+        let Some(dir) = path.parent() else {
+            continue;
+        };
+
+        // Skip if the DIRECTORY itself (not parent) is a test/fixture directory
+        if dir != project_root {
+            let dir_name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if TEST_DIR_NAMES.contains(&dir_name) {
+                continue;
+            }
+        }
+
+        if dir != project_root {
+            projects_set.insert(dir.to_path_buf());
+        }
+    }
+
+    projects_set.into_iter().collect()
+}
+
+/// Collects package names including from nested projects.
+///
+/// NOTE: At root-phase (Phase 1), only package.json deps are merged from nested projects
+/// because they're needed for package_patterns detection (e.g., "@azure/*" matches).
+/// Other ecosystems (Python, Java, etc.) are handled later in Phase 2
+/// where each nested project gets full `collect_package_names()` processing.
+fn collect_package_names_with_nested(
+    project_root: &Path,
+    nested_dirs: &[PathBuf],
+) -> BTreeSet<String> {
+    let metadata = RepoMetadata::collect(project_root);
+    let mut pkgs = collect_package_names(project_root, &metadata);
+    for nested in nested_dirs {
+        if let Some(deps) = parse_package_json_deps(&nested.join("package.json")) {
+            pkgs.extend(deps);
+        }
+    }
+    pkgs
 }
 
 #[cfg(test)]
@@ -795,7 +974,8 @@ mod tests {
         )
         .unwrap();
 
-        let packages = collect_package_names(temp.path());
+        let metadata = RepoMetadata::collect(temp.path());
+        let packages = collect_package_names(temp.path(), &metadata);
 
         assert!(packages.contains("django"));
         assert!(packages.contains("fastapi"));
@@ -823,7 +1003,8 @@ mod tests {
         )
         .unwrap();
 
-        let packages = collect_package_names(temp.path());
+        let metadata = RepoMetadata::collect(temp.path());
+        let packages = collect_package_names(temp.path(), &metadata);
 
         assert!(packages.contains("django"));
         assert!(packages.contains("pytest"));
@@ -855,7 +1036,8 @@ pandas = "^2"
         )
         .unwrap();
 
-        let packages = collect_package_names(temp.path());
+        let metadata = RepoMetadata::collect(temp.path());
+        let packages = collect_package_names(temp.path(), &metadata);
 
         for package in [
             "django",
@@ -889,10 +1071,57 @@ pytest = "*"
         )
         .unwrap();
 
-        let packages = collect_package_names(temp.path());
+        let metadata = RepoMetadata::collect(temp.path());
+        let packages = collect_package_names(temp.path(), &metadata);
 
         assert!(packages.contains("flask"));
         assert!(packages.contains("celery"));
         assert!(packages.contains("pytest"));
+    }
+
+    #[test]
+    fn discover_nested_projects_finds_dockerfile_in_subdirectory() {
+        let temp = TempDir::new().unwrap();
+        fs::create_dir_all(temp.path().join("services/api")).unwrap();
+        fs::write(temp.path().join("services/api/Dockerfile"), "FROM node:20").unwrap();
+
+        let projects = discover_nested_projects(temp.path());
+
+        assert!(projects.iter().any(|p| p.ends_with("services/api")));
+    }
+
+    #[test]
+    fn discover_nested_projects_finds_multiple_manifests() {
+        let temp = TempDir::new().unwrap();
+        fs::create_dir_all(temp.path().join("backend")).unwrap();
+        fs::create_dir_all(temp.path().join("frontend")).unwrap();
+        fs::write(temp.path().join("backend/pom.xml"), "<project/>").unwrap();
+        fs::write(temp.path().join("frontend/package.json"), "{}").unwrap();
+
+        let projects = discover_nested_projects(temp.path());
+
+        assert_eq!(projects.len(), 2);
+    }
+
+    #[test]
+    fn collect_package_names_with_nested_includes_nested_packages() {
+        let temp = TempDir::new().unwrap();
+        fs::write(
+            temp.path().join("package.json"),
+            r#"{"dependencies": {"express": "^4.0"}}"#,
+        )
+        .unwrap();
+        fs::create_dir_all(temp.path().join("services/api")).unwrap();
+        fs::write(
+            temp.path().join("services/api/package.json"),
+            r#"{"dependencies": {"axios": "^1.0"}}"#,
+        )
+        .unwrap();
+
+        let nested_dirs = discover_nested_projects(temp.path());
+        let packages = collect_package_names_with_nested(temp.path(), &nested_dirs);
+
+        assert!(packages.contains("express"));
+        assert!(packages.contains("axios"));
     }
 }
