@@ -24,6 +24,15 @@ const IGNORED_DIRS: &[&str] = &[
     ".pnpm-store",
 ];
 
+/// Known project manifest files for nested project discovery (issue #409)
+const PROJECT_MANIFEST_FILES: &[&str] = &[
+    "pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle",
+    "settings.gradle.kts", "Cargo.toml", "go.mod", "package.json",
+    "pyproject.toml", "Pipfile", "requirements.txt", "setup.py",
+    "composer.json", "Gemfile", "mix.exs", "pubspec.yaml",
+    "Package.swift", "Dockerfile",
+];
+
 /// Detection rules parsed from the catalog's `[technologies.detect]` block.
 #[derive(Debug, Clone, Default, Deserialize, PartialEq)]
 pub struct DetectionRules {
@@ -250,18 +259,60 @@ impl RepoDetector for CatalogDrivenDetector {
             return Ok(Vec::new());
         }
 
-        // Phase 1: Collect metadata and package names
+        // Collect metadata and packages (including nested projects for issue #409)
         let metadata = RepoMetadata::collect(project_root);
-        let all_packages = collect_package_names(project_root);
+        let all_packages = collect_package_names_with_nested(project_root);
 
         let mut detections = Vec::new();
 
-        // Phase 2: Evaluate each technology's rules
+        // Phase 1: Evaluate root project
         for (tech_id, compiled) in &self.rules {
             if let Some(detection) =
                 evaluate_rules(project_root, tech_id, compiled, &all_packages, &metadata)
             {
                 detections.push(detection);
+            }
+        }
+
+        // Phase 2: Scan nested projects (issue #409)
+        for nested_dir in discover_nested_projects(project_root) {
+            let nested_meta = RepoMetadata::collect(&nested_dir);
+            let nested_pkgs = collect_package_names(&nested_dir);
+
+            for (tech_id, compiled) in &self.rules {
+                // Skip if already detected at root
+                if detections.iter().any(|d| d.technology == *tech_id) {
+                    continue;
+                }
+
+                if let Some(detection) =
+                    evaluate_rules(&nested_dir, tech_id, compiled, &nested_pkgs, &nested_meta)
+                {
+                    // Convert path to relative for display
+                    let adjusted = TechnologyDetection {
+                        technology: detection.technology,
+                        confidence: detection.confidence,
+                        root_relative_paths: detection
+                            .root_relative_paths
+                            .iter()
+                            .map(|p| p.strip_prefix(project_root).unwrap_or(p).to_path_buf())
+                            .collect(),
+                        evidence: detection
+                            .evidence
+                            .iter()
+                            .map(|e| DetectionEvidence {
+                                marker: e.marker.clone(),
+                                path: e
+                                    .path
+                                    .strip_prefix(project_root)
+                                    .unwrap_or(&e.path)
+                                    .to_path_buf(),
+                                notes: e.notes.clone(),
+                            })
+                            .collect(),
+                    };
+                    detections.push(adjusted);
+                }
             }
         }
 
@@ -779,6 +830,55 @@ fn expand_workspace_patterns(project_root: &Path, patterns: &[String]) -> Vec<Pa
     }
 
     dirs
+}
+
+/// Discovers standalone projects in subdirectories (issue #409)
+fn discover_nested_projects(project_root: &Path) -> Vec<PathBuf> {
+    let mut projects = Vec::new();
+    let max_depth = 4;
+
+    for entry in WalkDir::new(project_root)
+        .max_depth(max_depth)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|e| !should_ignore_entry(project_root, e))
+        .flatten()
+    {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+
+        if !PROJECT_MANIFEST_FILES.contains(&name) {
+            continue;
+        }
+
+        let Some(dir) = path.parent() else {
+            continue;
+        };
+
+        if dir != project_root && !projects.contains(&dir.to_path_buf()) {
+            projects.push(dir.to_path_buf());
+        }
+    }
+
+    projects.sort();
+    projects
+}
+
+/// Collects package names including from nested projects
+fn collect_package_names_with_nested(project_root: &Path) -> BTreeSet<String> {
+    let mut pkgs = collect_package_names(project_root);
+    for nested in discover_nested_projects(project_root) {
+        if let Some(deps) = parse_package_json_deps(&nested.join("package.json")) {
+            pkgs.extend(deps);
+        }
+    }
+    pkgs
 }
 
 #[cfg(test)]
