@@ -1008,4 +1008,49 @@ pytest = "*"
         assert!(packages.contains("celery"));
         assert!(packages.contains("pytest"));
     }
+
+    #[test]
+    fn discover_nested_projects_finds_dockerfile_in_subdirectory() {
+        let temp = TempDir::new().unwrap();
+        fs::create_dir_all(temp.path().join("services/api")).unwrap();
+        fs::write(temp.path().join("services/api/Dockerfile"), "FROM node:20").unwrap();
+
+        let projects = discover_nested_projects(temp.path());
+
+        assert!(projects.iter().any(|p| p.ends_with("services/api")));
+    }
+
+    #[test]
+    fn discover_nested_projects_finds_multiple_manifests() {
+        let temp = TempDir::new().unwrap();
+        fs::create_dir_all(temp.path().join("backend")).unwrap();
+        fs::create_dir_all(temp.path().join("frontend")).unwrap();
+        fs::write(temp.path().join("backend/pom.xml"), "<project/>").unwrap();
+        fs::write(temp.path().join("frontend/package.json"), "{}").unwrap();
+
+        let projects = discover_nested_projects(temp.path());
+
+        assert_eq!(projects.len(), 2);
+    }
+
+    #[test]
+    fn collect_package_names_with_nested_includes_nested_packages() {
+        let temp = TempDir::new().unwrap();
+        fs::write(
+            temp.path().join("package.json"),
+            r#"{"dependencies": {"express": "^4.0"}}"#,
+        )
+        .unwrap();
+        fs::create_dir_all(temp.path().join("services/api")).unwrap();
+        fs::write(
+            temp.path().join("services/api/package.json"),
+            r#"{"dependencies": {"axios": "^1.0"}}"#,
+        )
+        .unwrap();
+
+        let packages = collect_package_names_with_nested(temp.path());
+
+        assert!(packages.contains("express"));
+        assert!(packages.contains("axios"));
+    }
 }
