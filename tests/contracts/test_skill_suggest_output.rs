@@ -388,9 +388,10 @@ fn skill_suggest_detects_technologies_from_nested_projects() {
     let has_docker = technologies.contains(&"docker");
     let has_nodejs = technologies.contains(&"node_typescript");
 
+    // All three technologies should be detected from nested projects
     assert!(
-        has_java || has_docker || has_nodejs,
-        "Expected java/docker/node_typescript from nested projects, got: {:?}",
+        has_java && has_docker && has_nodejs,
+        "Expected java AND docker AND node_typescript from nested projects, got: {:?}",
         technologies
     );
 }

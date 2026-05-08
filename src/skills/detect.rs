@@ -46,6 +46,10 @@ const PROJECT_MANIFEST_FILES: &[&str] = &[
     "Dockerfile",
 ];
 
+/// Maximum depth for nested project discovery (issue #409).
+/// Limit to 4 levels to avoid scanning too deep and hitting test/fixture directories.
+const MAX_DISCOVER_DEPTH: usize = 4;
+
 /// Detection rules parsed from the catalog's `[technologies.detect]` block.
 #[derive(Debug, Clone, Default, Deserialize, PartialEq)]
 pub struct DetectionRules {
@@ -272,9 +276,12 @@ impl RepoDetector for CatalogDrivenDetector {
             return Ok(Vec::new());
         }
 
+        // Collect nested projects once to avoid double WalkDir traversal (issue #409)
+        let nested_dirs = discover_nested_projects(project_root);
+
         // Collect metadata and packages (including nested projects for issue #409)
         let metadata = RepoMetadata::collect(project_root);
-        let all_packages = collect_package_names_with_nested(project_root);
+        let all_packages = collect_package_names_with_nested(project_root, &nested_dirs);
 
         let mut detections = Vec::new();
 
@@ -288,9 +295,15 @@ impl RepoDetector for CatalogDrivenDetector {
         }
 
         // Phase 2: Scan nested projects (issue #409)
-        for nested_dir in discover_nested_projects(project_root) {
-            let nested_meta = RepoMetadata::collect(&nested_dir);
-            let nested_pkgs = collect_package_names(&nested_dir);
+        for nested_dir in &nested_dirs {
+            let nested_meta = RepoMetadata::collect(nested_dir);
+            let nested_pkgs = collect_package_names(nested_dir);
+
+            // Compute offset for path adjustment
+            let offset = nested_dir
+                .strip_prefix(project_root)
+                .ok()
+                .map(|p| p.to_path_buf());
 
             for (tech_id, compiled) in &self.rules {
                 // Skip if already detected at root
@@ -299,27 +312,33 @@ impl RepoDetector for CatalogDrivenDetector {
                 }
 
                 if let Some(detection) =
-                    evaluate_rules(&nested_dir, tech_id, compiled, &nested_pkgs, &nested_meta)
+                    evaluate_rules(nested_dir, tech_id, compiled, &nested_pkgs, &nested_meta)
                 {
-                    // Convert path to relative for display
+                    // Adjust paths: detections are relative to nested_dir, need to prepend offset
                     let adjusted = TechnologyDetection {
                         technology: detection.technology,
                         confidence: detection.confidence,
                         root_relative_paths: detection
                             .root_relative_paths
                             .iter()
-                            .map(|p| p.strip_prefix(project_root).unwrap_or(p).to_path_buf())
+                            .map(|p| {
+                                if let Some(ref off) = offset {
+                                    off.join(p)
+                                } else {
+                                    p.clone()
+                                }
+                            })
                             .collect(),
                         evidence: detection
                             .evidence
                             .iter()
                             .map(|e| DetectionEvidence {
                                 marker: e.marker.clone(),
-                                path: e
-                                    .path
-                                    .strip_prefix(project_root)
-                                    .unwrap_or(&e.path)
-                                    .to_path_buf(),
+                                path: if let Some(ref off) = offset {
+                                    off.join(&e.path)
+                                } else {
+                                    e.path.clone()
+                                },
                                 notes: e.notes.clone(),
                             })
                             .collect(),
@@ -847,11 +866,16 @@ fn expand_workspace_patterns(project_root: &Path, patterns: &[String]) -> Vec<Pa
 
 /// Discovers standalone projects in subdirectories (issue #409)
 fn discover_nested_projects(project_root: &Path) -> Vec<PathBuf> {
-    let mut projects = Vec::new();
-    let max_depth = 4;
+    use std::collections::BTreeSet;
+
+    let mut projects_set = BTreeSet::new();
+
+    // Directory names that indicate test/fixture content, not standalone projects
+    // Note: these are at the project root level, not nested (e.g., `tests/e2e/app` is still a valid project)
+    const TEST_DIR_NAMES: &[&str] = &["tests", "test", "__tests__", "fixtures", "examples"];
 
     for entry in WalkDir::new(project_root)
-        .max_depth(max_depth)
+        .max_depth(MAX_DISCOVER_DEPTH)
         .follow_links(false)
         .into_iter()
         .filter_entry(|e| !should_ignore_entry(project_root, e))
@@ -874,19 +898,34 @@ fn discover_nested_projects(project_root: &Path) -> Vec<PathBuf> {
             continue;
         };
 
-        if dir != project_root && !projects.contains(&dir.to_path_buf()) {
-            projects.push(dir.to_path_buf());
+        // Skip if the DIRECTORY itself (not parent) is a test/fixture directory
+        if dir != project_root {
+            let dir_name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if TEST_DIR_NAMES.contains(&dir_name) {
+                continue;
+            }
+        }
+
+        if dir != project_root {
+            projects_set.insert(dir.to_path_buf());
         }
     }
 
-    projects.sort();
-    projects
+    projects_set.into_iter().collect()
 }
 
-/// Collects package names including from nested projects
-fn collect_package_names_with_nested(project_root: &Path) -> BTreeSet<String> {
+/// Collects package names including from nested projects.
+///
+/// NOTE: At root-phase (Phase 1), only package.json deps are merged from nested projects
+/// because they're needed for package_patterns detection (e.g., "@azure/*" matches).
+/// Other ecosystems (Python, Java, etc.) are handled later in Phase 2
+/// where each nested project gets full `collect_package_names()` processing.
+fn collect_package_names_with_nested(
+    project_root: &Path,
+    nested_dirs: &[PathBuf],
+) -> BTreeSet<String> {
     let mut pkgs = collect_package_names(project_root);
-    for nested in discover_nested_projects(project_root) {
+    for nested in nested_dirs {
         if let Some(deps) = parse_package_json_deps(&nested.join("package.json")) {
             pkgs.extend(deps);
         }
@@ -1048,7 +1087,8 @@ pytest = "*"
         )
         .unwrap();
 
-        let packages = collect_package_names_with_nested(temp.path());
+        let nested_dirs = discover_nested_projects(temp.path());
+        let packages = collect_package_names_with_nested(temp.path(), &nested_dirs);
 
         assert!(packages.contains("express"));
         assert!(packages.contains("axios"));

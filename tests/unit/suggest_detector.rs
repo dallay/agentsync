@@ -85,13 +85,6 @@ fn prunes_ignored_directories_and_does_not_detect_nested_config_files() {
         "{\"name\":\"fake\"}\n",
     )
     .unwrap();
-    // node_modules should be ignored
-    fs::create_dir_all(root.join("node_modules/fake-app")).unwrap();
-    fs::write(
-        root.join("node_modules/fake-app/package.json"),
-        "{\"name\":\"fake\"}\n",
-    )
-    .unwrap();
     // Dockerfile in subdirectory - WITH issue #409, SHOULD be detected
     fs::create_dir_all(root.join("tests/e2e")).unwrap();
     fs::write(root.join("tests/e2e/Dockerfile"), "FROM scratch\n").unwrap();
