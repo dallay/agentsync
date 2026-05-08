@@ -21,6 +21,37 @@
 * **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
 * **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
 
+## [1.45.1](https://github.com/dallay/agentsync/compare/v1.45.0...v1.45.1) (2026-05-08)
+
+
+### Bug Fixes
+
+* collapse nested if in detect.rs for clippy ([6017dac](https://github.com/dallay/agentsync/commit/6017dac5e2d3dc61f3da9d800c3a9e34785c31ad))
+* detect technologies in multi-project repositories (issue [#409](https://github.com/dallay/agentsync/issues/409)) ([6b2798f](https://github.com/dallay/agentsync/commit/6b2798fab4c656cc4b709011a83551e1a08d50cc))
+* detect technologies in nested projects (issue [#409](https://github.com/dallay/agentsync/issues/409)) ([b7b0969](https://github.com/dallay/agentsync/commit/b7b0969186303003befdc2057a736bcebaad578a))
+
+
+### Performance
+
+* address tech detection PR review feedback ([46b399b](https://github.com/dallay/agentsync/commit/46b399bc2306174d07ad4df747f2c716facf6408))
+* optimize technology detection and workspace resolution ([7e4e7da](https://github.com/dallay/agentsync/commit/7e4e7daa5b4e1a25ccc3cb2c35a4119acc19f0c5))
+* optimize technology detection and workspace resolution ([b99377d](https://github.com/dallay/agentsync/commit/b99377d298cfdfe9f53920b3502c36ca2cd76717))
+
+
+### Styles
+
+* fix cargo fmt issues ([a68144f](https://github.com/dallay/agentsync/commit/a68144fba8d40368671763efb8e1758c83565e3e))
+
+
+### Code Refactoring
+
+* fix path adjustment and add optimizations for nested project discovery ([b3a9a67](https://github.com/dallay/agentsync/commit/b3a9a671937a3667c6c285d69ce4557194e075ac))
+
+
+### Tests
+
+* add unit tests for nested project discovery ([01469c4](https://github.com/dallay/agentsync/commit/01469c4400fe2d2ec40a8a71b8a1128c4cbb3d45))
+
 ## [1.45.0](https://github.com/dallay/agentsync/compare/v1.44.0...v1.45.0) (2026-05-02)
 
 
