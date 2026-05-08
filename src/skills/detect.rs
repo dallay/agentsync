@@ -84,10 +84,10 @@ impl RepoMetadata {
             let relative_buf = relative.to_path_buf();
             paths.insert(relative_buf.clone());
 
+            if entry.file_type().is_dir() && entry.depth() == 1 {
+                root_dirs.push(relative_buf.clone());
+            }
             if entry.file_type().is_dir() {
-                if entry.depth() == 1 {
-                    root_dirs.push(relative_buf.clone());
-                }
                 dirs.insert(relative_buf.clone());
             }
 
