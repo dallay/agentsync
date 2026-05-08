@@ -389,7 +389,13 @@ impl Linker {
                 // For NestedGlob, `source` is relative to the project root (not source_dir).
                 let search_root = self.project_root.join(&target.source);
                 // SECURITY: Validate search root to prevent traversal/absolute escapes.
-                self.revalidate_destination_path(&search_root)?;
+                self.revalidate_destination_path(&search_root)
+                    .with_context(|| {
+                        format!(
+                            "NestedGlob source resolves outside project root: {}",
+                            target.source
+                        )
+                    })?;
 
                 self.process_nested_glob(
                     &search_root,
