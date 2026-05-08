@@ -85,8 +85,7 @@ fn prunes_ignored_directories_and_does_not_detect_nested_config_files() {
         "{\"name\":\"fake\"}\n",
     )
     .unwrap();
-    // Dockerfile only in a non-root subdir — catalog checks root config_files only,
-    // so Docker should NOT be detected.
+    // Dockerfile in subdirectory - WITH issue #409, SHOULD be detected
     fs::create_dir_all(root.join("tests/e2e")).unwrap();
     fs::write(root.join("tests/e2e/Dockerfile"), "FROM scratch\n").unwrap();
 
@@ -101,11 +100,13 @@ fn prunes_ignored_directories_and_does_not_detect_nested_config_files() {
         "node_modules/fake-app/package.json should not trigger node_typescript detection"
     );
 
+    // With issue #409 fix, nested Docker IS now detected
+    let has_docker = detections
+        .iter()
+        .any(|detection| detection.technology == TechnologyId::new(TechnologyId::DOCKER));
     assert!(
-        detections
-            .iter()
-            .all(|detection| detection.technology != TechnologyId::new(TechnologyId::DOCKER)),
-        "Dockerfile in tests/e2e/ should not trigger docker detection (only root config_files checked)"
+        has_docker,
+        "Dockerfile in tests/e2e/ should trigger docker detection"
     );
 }
 

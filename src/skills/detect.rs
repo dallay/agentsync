@@ -24,6 +24,32 @@ const IGNORED_DIRS: &[&str] = &[
     ".pnpm-store",
 ];
 
+/// Known project manifest files for nested project discovery (issue #409)
+const PROJECT_MANIFEST_FILES: &[&str] = &[
+    "pom.xml",
+    "build.gradle",
+    "build.gradle.kts",
+    "settings.gradle",
+    "settings.gradle.kts",
+    "Cargo.toml",
+    "go.mod",
+    "package.json",
+    "pyproject.toml",
+    "Pipfile",
+    "requirements.txt",
+    "setup.py",
+    "composer.json",
+    "Gemfile",
+    "mix.exs",
+    "pubspec.yaml",
+    "Package.swift",
+    "Dockerfile",
+];
+
+/// Maximum depth for nested project discovery (issue #409).
+/// Limit to 4 levels to avoid scanning too deep and hitting test/fixture directories.
+const MAX_DISCOVER_DEPTH: usize = 4;
+
 /// Detection rules parsed from the catalog's `[technologies.detect]` block.
 #[derive(Debug, Clone, Default, Deserialize, PartialEq)]
 pub struct DetectionRules {
@@ -250,18 +276,75 @@ impl RepoDetector for CatalogDrivenDetector {
             return Ok(Vec::new());
         }
 
-        // Phase 1: Collect metadata and package names
+        // Collect nested projects once to avoid double WalkDir traversal (issue #409)
+        let nested_dirs = discover_nested_projects(project_root);
+
+        // Collect metadata and packages (including nested projects for issue #409)
         let metadata = RepoMetadata::collect(project_root);
-        let all_packages = collect_package_names(project_root);
+        let all_packages = collect_package_names_with_nested(project_root, &nested_dirs);
 
         let mut detections = Vec::new();
 
-        // Phase 2: Evaluate each technology's rules
+        // Phase 1: Evaluate root project
         for (tech_id, compiled) in &self.rules {
             if let Some(detection) =
                 evaluate_rules(project_root, tech_id, compiled, &all_packages, &metadata)
             {
                 detections.push(detection);
+            }
+        }
+
+        // Phase 2: Scan nested projects (issue #409)
+        for nested_dir in &nested_dirs {
+            let nested_meta = RepoMetadata::collect(nested_dir);
+            let nested_pkgs = collect_package_names(nested_dir);
+
+            // Compute offset for path adjustment
+            let offset = nested_dir
+                .strip_prefix(project_root)
+                .ok()
+                .map(|p| p.to_path_buf());
+
+            for (tech_id, compiled) in &self.rules {
+                // Skip if already detected at root
+                if detections.iter().any(|d| d.technology == *tech_id) {
+                    continue;
+                }
+
+                if let Some(detection) =
+                    evaluate_rules(nested_dir, tech_id, compiled, &nested_pkgs, &nested_meta)
+                {
+                    // Adjust paths: detections are relative to nested_dir, need to prepend offset
+                    let adjusted = TechnologyDetection {
+                        technology: detection.technology,
+                        confidence: detection.confidence,
+                        root_relative_paths: detection
+                            .root_relative_paths
+                            .iter()
+                            .map(|p| {
+                                if let Some(ref off) = offset {
+                                    off.join(p)
+                                } else {
+                                    p.clone()
+                                }
+                            })
+                            .collect(),
+                        evidence: detection
+                            .evidence
+                            .iter()
+                            .map(|e| DetectionEvidence {
+                                marker: e.marker.clone(),
+                                path: if let Some(ref off) = offset {
+                                    off.join(&e.path)
+                                } else {
+                                    e.path.clone()
+                                },
+                                notes: e.notes.clone(),
+                            })
+                            .collect(),
+                    };
+                    detections.push(adjusted);
+                }
             }
         }
 
@@ -781,6 +864,75 @@ fn expand_workspace_patterns(project_root: &Path, patterns: &[String]) -> Vec<Pa
     dirs
 }
 
+/// Discovers standalone projects in subdirectories (issue #409)
+fn discover_nested_projects(project_root: &Path) -> Vec<PathBuf> {
+    use std::collections::BTreeSet;
+
+    let mut projects_set = BTreeSet::new();
+
+    // Directory names that indicate test/fixture content, not standalone projects
+    // Note: these are at the project root level, not nested (e.g., `tests/e2e/app` is still a valid project)
+    const TEST_DIR_NAMES: &[&str] = &["tests", "test", "__tests__", "fixtures", "examples"];
+
+    for entry in WalkDir::new(project_root)
+        .max_depth(MAX_DISCOVER_DEPTH)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|e| !should_ignore_entry(project_root, e))
+        .flatten()
+    {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+
+        if !PROJECT_MANIFEST_FILES.contains(&name) {
+            continue;
+        }
+
+        let Some(dir) = path.parent() else {
+            continue;
+        };
+
+        // Skip if the DIRECTORY itself (not parent) is a test/fixture directory
+        if dir != project_root {
+            let dir_name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if TEST_DIR_NAMES.contains(&dir_name) {
+                continue;
+            }
+        }
+
+        if dir != project_root {
+            projects_set.insert(dir.to_path_buf());
+        }
+    }
+
+    projects_set.into_iter().collect()
+}
+
+/// Collects package names including from nested projects.
+///
+/// NOTE: At root-phase (Phase 1), only package.json deps are merged from nested projects
+/// because they're needed for package_patterns detection (e.g., "@azure/*" matches).
+/// Other ecosystems (Python, Java, etc.) are handled later in Phase 2
+/// where each nested project gets full `collect_package_names()` processing.
+fn collect_package_names_with_nested(
+    project_root: &Path,
+    nested_dirs: &[PathBuf],
+) -> BTreeSet<String> {
+    let mut pkgs = collect_package_names(project_root);
+    for nested in nested_dirs {
+        if let Some(deps) = parse_package_json_deps(&nested.join("package.json")) {
+            pkgs.extend(deps);
+        }
+    }
+    pkgs
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -894,5 +1046,51 @@ pytest = "*"
         assert!(packages.contains("flask"));
         assert!(packages.contains("celery"));
         assert!(packages.contains("pytest"));
+    }
+
+    #[test]
+    fn discover_nested_projects_finds_dockerfile_in_subdirectory() {
+        let temp = TempDir::new().unwrap();
+        fs::create_dir_all(temp.path().join("services/api")).unwrap();
+        fs::write(temp.path().join("services/api/Dockerfile"), "FROM node:20").unwrap();
+
+        let projects = discover_nested_projects(temp.path());
+
+        assert!(projects.iter().any(|p| p.ends_with("services/api")));
+    }
+
+    #[test]
+    fn discover_nested_projects_finds_multiple_manifests() {
+        let temp = TempDir::new().unwrap();
+        fs::create_dir_all(temp.path().join("backend")).unwrap();
+        fs::create_dir_all(temp.path().join("frontend")).unwrap();
+        fs::write(temp.path().join("backend/pom.xml"), "<project/>").unwrap();
+        fs::write(temp.path().join("frontend/package.json"), "{}").unwrap();
+
+        let projects = discover_nested_projects(temp.path());
+
+        assert_eq!(projects.len(), 2);
+    }
+
+    #[test]
+    fn collect_package_names_with_nested_includes_nested_packages() {
+        let temp = TempDir::new().unwrap();
+        fs::write(
+            temp.path().join("package.json"),
+            r#"{"dependencies": {"express": "^4.0"}}"#,
+        )
+        .unwrap();
+        fs::create_dir_all(temp.path().join("services/api")).unwrap();
+        fs::write(
+            temp.path().join("services/api/package.json"),
+            r#"{"dependencies": {"axios": "^1.0"}}"#,
+        )
+        .unwrap();
+
+        let nested_dirs = discover_nested_projects(temp.path());
+        let packages = collect_package_names_with_nested(temp.path(), &nested_dirs);
+
+        assert!(packages.contains("express"));
+        assert!(packages.contains("axios"));
     }
 }
