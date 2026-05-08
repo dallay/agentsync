@@ -362,7 +362,11 @@ fn skill_suggest_detects_technologies_from_nested_projects() {
         .output()
         .expect("failed to run agentsync skill suggest --json");
 
-    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 
     let value: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("invalid JSON output");

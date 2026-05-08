@@ -26,11 +26,24 @@ const IGNORED_DIRS: &[&str] = &[
 
 /// Known project manifest files for nested project discovery (issue #409)
 const PROJECT_MANIFEST_FILES: &[&str] = &[
-    "pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle",
-    "settings.gradle.kts", "Cargo.toml", "go.mod", "package.json",
-    "pyproject.toml", "Pipfile", "requirements.txt", "setup.py",
-    "composer.json", "Gemfile", "mix.exs", "pubspec.yaml",
-    "Package.swift", "Dockerfile",
+    "pom.xml",
+    "build.gradle",
+    "build.gradle.kts",
+    "settings.gradle",
+    "settings.gradle.kts",
+    "Cargo.toml",
+    "go.mod",
+    "package.json",
+    "pyproject.toml",
+    "Pipfile",
+    "requirements.txt",
+    "setup.py",
+    "composer.json",
+    "Gemfile",
+    "mix.exs",
+    "pubspec.yaml",
+    "Package.swift",
+    "Dockerfile",
 ];
 
 /// Detection rules parsed from the catalog's `[technologies.detect]` block.
