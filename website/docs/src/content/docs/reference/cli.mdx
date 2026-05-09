@@ -23,6 +23,7 @@ agentsync init [OPTIONS]
 - `-p, --path <PATH>`: Project root directory (defaults to current dir). Also aliased as `--project-root`.
 - `-f, --force`: Overwrite existing configuration without prompting.
 - `-w, --wizard`: Run interactive configuration wizard to migrate existing files.
+- `--experimental-tui`: Run the init wizard with an experimental full-screen TUI intro. Requires `--wizard`.
 
 **Actions**:
 - Creates the `.agents/` directory if it doesn't exist.
@@ -250,7 +251,7 @@ agentsync doctor [OPTIONS]
 
 ---
 
-### `version`
+### `--version`
 
 Shows the current version of the AgentSync CLI.
 
