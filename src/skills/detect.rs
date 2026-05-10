@@ -50,6 +50,9 @@ const PROJECT_MANIFEST_FILES: &[&str] = &[
 /// Limit to 4 levels to avoid scanning too deep and hitting test/fixture directories.
 const MAX_DISCOVER_DEPTH: usize = 4;
 
+/// Directory names that indicate test/fixture content, not standalone projects
+const TEST_DIR_NAMES: &[&str] = &["tests", "test", "__tests__", "fixtures", "examples"];
+
 /// Detection rules parsed from the catalog's `[technologies.detect]` block.
 #[derive(Debug, Clone, Default, Deserialize, PartialEq)]
 pub struct DetectionRules {
@@ -72,7 +75,7 @@ pub struct DetectionRules {
 
 /// Metadata about the repository collected in a single pass to optimize detection.
 struct RepoMetadata {
-    /// All relative paths found during a single-pass walk (max depth 3).
+    /// All relative paths found during a single-pass walk (max depth MAX_DISCOVER_DEPTH).
     /// Uses HashSet for O(1) existence checks during rule evaluation.
     paths: HashSet<PathBuf>,
     /// Set of relative paths that are directories.
@@ -82,6 +85,8 @@ struct RepoMetadata {
     /// Map of file extension (e.g., ".rs") to the first relative path found with it.
     /// Used to quickly evaluate file_extensions rules.
     extensions: HashMap<String, PathBuf>,
+    /// Relative paths to subdirectories that appear to be standalone projects (issue #409).
+    nested_projects: Vec<PathBuf>,
 }
 
 impl RepoMetadata {
@@ -90,9 +95,10 @@ impl RepoMetadata {
         let mut dirs = HashSet::new();
         let mut root_dirs = Vec::new();
         let mut extensions = HashMap::new();
+        let mut nested_projects = BTreeSet::new();
 
         for entry in WalkDir::new(project_root)
-            .max_depth(3)
+            .max_depth(MAX_DISCOVER_DEPTH)
             .follow_links(false)
             .sort_by_file_name()
             .into_iter()
@@ -117,16 +123,30 @@ impl RepoMetadata {
                 dirs.insert(relative_buf.clone());
             }
 
-            if entry.file_type().is_file()
-                && let Some(ext) = relative.extension().and_then(|e| e.to_str())
-            {
-                let dot_ext = format!(".{ext}");
-                // Store first occurrence for deterministic evidence.
-                // Note: WalkDir sort_by_file_name() ensures deterministic choice if multiple exist.
-                extensions
-                    .entry(dot_ext)
-                    .or_insert_with(|| relative_buf.clone());
-                extensions.entry(ext.to_string()).or_insert(relative_buf);
+            if entry.file_type().is_file() {
+                let file_name = entry.file_name().to_str().unwrap_or("");
+
+                // Integrated Nested Project Discovery (issue #409)
+                if PROJECT_MANIFEST_FILES.contains(&file_name) {
+                    if let Some(dir) = relative.parent() {
+                        if !dir.as_os_str().is_empty() {
+                            let dir_name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                            if !TEST_DIR_NAMES.contains(&dir_name) {
+                                nested_projects.insert(dir.to_path_buf());
+                            }
+                        }
+                    }
+                }
+
+                if let Some(ext) = relative.extension().and_then(|e| e.to_str()) {
+                    let dot_ext = format!(".{ext}");
+                    // Store first occurrence for deterministic evidence.
+                    // Note: WalkDir sort_by_file_name() ensures deterministic choice if multiple exist.
+                    extensions
+                        .entry(dot_ext)
+                        .or_insert_with(|| relative_buf.clone());
+                    extensions.entry(ext.to_string()).or_insert(relative_buf);
+                }
             }
         }
 
@@ -135,6 +155,7 @@ impl RepoMetadata {
             dirs,
             root_dirs,
             extensions,
+            nested_projects: nested_projects.into_iter().collect(),
         }
     }
 }
@@ -290,12 +311,10 @@ impl RepoDetector for CatalogDrivenDetector {
             return Ok(Vec::new());
         }
 
-        // Collect nested projects once to avoid double WalkDir traversal (issue #409)
-        let nested_dirs = discover_nested_projects(project_root);
-
-        // Collect metadata and packages (including nested projects for issue #409)
+        // Optimization: Perform a single metadata collection for the root project.
+        // This metadata now includes integrated discovery of nested projects.
         let metadata = RepoMetadata::collect(project_root);
-        let all_packages = collect_package_names_with_nested(project_root, &nested_dirs);
+        let all_packages = collect_package_names_with_nested(project_root, &metadata);
 
         let mut detections = Vec::new();
 
@@ -309,15 +328,12 @@ impl RepoDetector for CatalogDrivenDetector {
         }
 
         // Phase 2: Scan nested projects (issue #409)
-        for nested_dir in &nested_dirs {
-            let nested_meta = RepoMetadata::collect(nested_dir);
-            let nested_pkgs = collect_package_names(nested_dir, &nested_meta);
+        for rel_nested_dir in &metadata.nested_projects {
+            let nested_dir = project_root.join(rel_nested_dir);
+            let nested_meta = RepoMetadata::collect(&nested_dir);
+            let nested_pkgs = collect_package_names(&nested_dir, &nested_meta);
 
-            // Compute offset for path adjustment
-            let offset = nested_dir
-                .strip_prefix(project_root)
-                .ok()
-                .map(|p| p.to_path_buf());
+            let offset = Some(rel_nested_dir.to_path_buf());
 
             for (tech_id, compiled) in &self.rules {
                 // Skip if already detected at root
@@ -326,7 +342,7 @@ impl RepoDetector for CatalogDrivenDetector {
                 }
 
                 if let Some(detection) =
-                    evaluate_rules(nested_dir, tech_id, compiled, &nested_pkgs, &nested_meta)
+                    evaluate_rules(&nested_dir, tech_id, compiled, &nested_pkgs, &nested_meta)
                 {
                     // Adjust paths: detections are relative to nested_dir, need to prepend offset
                     let adjusted = TechnologyDetection {
@@ -890,55 +906,6 @@ fn expand_workspace_patterns(
     dirs
 }
 
-/// Discovers standalone projects in subdirectories (issue #409)
-fn discover_nested_projects(project_root: &Path) -> Vec<PathBuf> {
-    use std::collections::BTreeSet;
-
-    let mut projects_set = BTreeSet::new();
-
-    // Directory names that indicate test/fixture content, not standalone projects
-    // Note: these are at the project root level, not nested (e.g., `tests/e2e/app` is still a valid project)
-    const TEST_DIR_NAMES: &[&str] = &["tests", "test", "__tests__", "fixtures", "examples"];
-
-    for entry in WalkDir::new(project_root)
-        .max_depth(MAX_DISCOVER_DEPTH)
-        .follow_links(false)
-        .into_iter()
-        .filter_entry(|e| !should_ignore_entry(project_root, e))
-        .flatten()
-    {
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-
-        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
-            continue;
-        };
-
-        if !PROJECT_MANIFEST_FILES.contains(&name) {
-            continue;
-        }
-
-        let Some(dir) = path.parent() else {
-            continue;
-        };
-
-        // Skip if the DIRECTORY itself (not parent) is a test/fixture directory
-        if dir != project_root {
-            let dir_name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            if TEST_DIR_NAMES.contains(&dir_name) {
-                continue;
-            }
-        }
-
-        if dir != project_root {
-            projects_set.insert(dir.to_path_buf());
-        }
-    }
-
-    projects_set.into_iter().collect()
-}
 
 /// Collects package names including from nested projects.
 ///
@@ -948,12 +915,11 @@ fn discover_nested_projects(project_root: &Path) -> Vec<PathBuf> {
 /// where each nested project gets full `collect_package_names()` processing.
 fn collect_package_names_with_nested(
     project_root: &Path,
-    nested_dirs: &[PathBuf],
+    metadata: &RepoMetadata,
 ) -> BTreeSet<String> {
-    let metadata = RepoMetadata::collect(project_root);
-    let mut pkgs = collect_package_names(project_root, &metadata);
-    for nested in nested_dirs {
-        if let Some(deps) = parse_package_json_deps(&nested.join("package.json")) {
+    let mut pkgs = collect_package_names(project_root, metadata);
+    for rel_nested in &metadata.nested_projects {
+        if let Some(deps) = parse_package_json_deps(&project_root.join(rel_nested).join("package.json")) {
             pkgs.extend(deps);
         }
     }
@@ -1085,9 +1051,12 @@ pytest = "*"
         fs::create_dir_all(temp.path().join("services/api")).unwrap();
         fs::write(temp.path().join("services/api/Dockerfile"), "FROM node:20").unwrap();
 
-        let projects = discover_nested_projects(temp.path());
+        let metadata = RepoMetadata::collect(temp.path());
 
-        assert!(projects.iter().any(|p| p.ends_with("services/api")));
+        assert!(metadata
+            .nested_projects
+            .iter()
+            .any(|p| p.ends_with("services/api")));
     }
 
     #[test]
@@ -1098,9 +1067,9 @@ pytest = "*"
         fs::write(temp.path().join("backend/pom.xml"), "<project/>").unwrap();
         fs::write(temp.path().join("frontend/package.json"), "{}").unwrap();
 
-        let projects = discover_nested_projects(temp.path());
+        let metadata = RepoMetadata::collect(temp.path());
 
-        assert_eq!(projects.len(), 2);
+        assert_eq!(metadata.nested_projects.len(), 2);
     }
 
     #[test]
@@ -1118,8 +1087,8 @@ pytest = "*"
         )
         .unwrap();
 
-        let nested_dirs = discover_nested_projects(temp.path());
-        let packages = collect_package_names_with_nested(temp.path(), &nested_dirs);
+        let metadata = RepoMetadata::collect(temp.path());
+        let packages = collect_package_names_with_nested(temp.path(), &metadata);
 
         assert!(packages.contains("express"));
         assert!(packages.contains("axios"));
