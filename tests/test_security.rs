@@ -61,6 +61,8 @@ fn test_nested_glob_search_root_traversal() {
     );
 
     // Absolute paths should also be rejected.
+    // Use replace to escape backslashes so the path is valid in a TOML basic string on Windows.
+    let path_str = outside_dir.display().to_string().replace('\\', "\\\\");
     let absolute_toml = format!(
         r#"
         source_dir = "."
@@ -71,7 +73,7 @@ fn test_nested_glob_search_root_traversal() {
         destination = "leaked/{{file_name}}"
         type = "nested-glob"
     "#,
-        outside_dir.display()
+        path_str
     );
     fs::write(&config_path, absolute_toml).unwrap();
 
