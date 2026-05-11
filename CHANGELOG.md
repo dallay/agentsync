@@ -21,6 +21,28 @@
 * **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
 * **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
 
+## [1.45.2](https://github.com/dallay/agentsync/compare/v1.45.1...v1.45.2) (2026-05-11)
+
+
+### Bug Fixes
+
+* **ci:** run required checks in merge queue ([e307f4b](https://github.com/dallay/agentsync/commit/e307f4b2aef3d70cdfa4ab80f50dca06ff3a88c7))
+* remove legacy OPENCODE.md support ([a4896a2](https://github.com/dallay/agentsync/commit/a4896a2037fc3d95d80d0f8ba5e7cc7a3717dc8b))
+* use AGENTS.md for OpenCode instructions ([d2352e6](https://github.com/dallay/agentsync/commit/d2352e63972772dc24fef73fe8560373033affc4))
+* use AGENTS.md for OpenCode instructions ([de4271c](https://github.com/dallay/agentsync/commit/de4271c845ef920efcd6b12b9faa9653c5cda4ff))
+
+
+### Documentation
+
+* clarify OPENCODE.md (legacy) in wizard scan lists ([25a6ba8](https://github.com/dallay/agentsync/commit/25a6ba8aea78d64c84b93ae53679895cc7b171aa))
+
+
+### Chores
+
+* **deps:** update pnpm/action-setup action to v6.0.6 ([261d90f](https://github.com/dallay/agentsync/commit/261d90ffd0e44617142c38b362e6003f7066a175))
+* **deps:** update pnpm/action-setup action to v6.0.6 ([da0b383](https://github.com/dallay/agentsync/commit/da0b3838688d610d1ac8a11a9f3c7bafb6018d27))
+* rules ([f65a496](https://github.com/dallay/agentsync/commit/f65a49616e75a8cad384e4fc17d21ed68d7259f4))
+
 ## [1.45.1](https://github.com/dallay/agentsync/compare/v1.45.0...v1.45.1) (2026-05-08)
 
 

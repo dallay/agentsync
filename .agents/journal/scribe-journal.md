@@ -7,6 +7,11 @@
 - [ ] Add architecture diagrams for the Rust core.
 - [ ] Create a "Known Issues" page for edge cases in symlink creation on Windows.
 
+## 2025-05-20 - CLI Flag Inaccuracies
+
+**Learning:** The `version` command was documented as a standalone subcommand in the CLI reference, but it is actually a root-level flag (`-V, --version`). Additionally, the `--experimental-tui` flag for `agentsync init` was missing from the documentation despite being implemented in the code.
+**Action:** Always verify command structure (subcommand vs flag) against `src/main.rs` and the output of `cargo run -- --help`. Ensure all flags for each command are documented.
+
 ## Planned Improvements
 
 - [ ] Automate synchronization between `CONTRIBUTING.md` and Starlight docs.

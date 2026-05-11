@@ -144,7 +144,7 @@ description = "OpenCode - Open-source AI coding assistant"
 
 [agents.opencode.targets.instructions]
 source = "AGENTS.md"
-destination = "OPENCODE.md"
+destination = "AGENTS.md"
 type = "symlink"
 
 [agents.opencode.targets.skills]
@@ -302,7 +302,6 @@ enum AgentFileType {
     VibeDirectory,
     JetBrainsRules,
     GeminiInstructions,
-    OpenCodeInstructions,
     // Skill directories (contents merged into .agents/skills/ on migration)
     ClaudeSkills,
     CursorSkills,
@@ -475,16 +474,6 @@ fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
                 display_name: "Gemini commands (.gemini/commands/)".to_string(),
             });
         }
-    }
-
-    // OpenCode: OPENCODE.md
-    let opencode_path = project_root.join("OPENCODE.md");
-    if opencode_path.exists() {
-        discovered.push(DiscoveredFile {
-            path: "OPENCODE.md".into(),
-            file_type: AgentFileType::OpenCodeInstructions,
-            display_name: "OPENCODE.md (OpenCode instructions)".to_string(),
-        });
     }
 
     // OpenCode: .opencode/skills/ directory
@@ -1769,7 +1758,6 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
                     | AgentFileType::GooseHints
                     | AgentFileType::WarpInstructions
                     | AgentFileType::GeminiInstructions
-                    | AgentFileType::OpenCodeInstructions
             )
         })
         .collect();
@@ -1825,8 +1813,7 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
             | AgentFileType::AmpInstructions
             | AgentFileType::GooseHints
             | AgentFileType::WarpInstructions
-            | AgentFileType::GeminiInstructions
-            | AgentFileType::OpenCodeInstructions => {
+            | AgentFileType::GeminiInstructions => {
                 // Already handled above — content merged into AGENTS.md
                 continue;
             }
@@ -3271,18 +3258,17 @@ mod tests {
     }
 
     #[test]
-    fn test_scan_agent_files_finds_opencode_instructions() {
+    fn test_scan_agent_files_ignores_opencode_md() {
         let temp_dir = TempDir::new().unwrap();
         fs::write(temp_dir.path().join("OPENCODE.md"), "# OpenCode").unwrap();
 
         let discovered = scan_agent_files(temp_dir.path()).unwrap();
 
-        let entry: Vec<_> = discovered
-            .iter()
-            .filter(|f| f.file_type == AgentFileType::OpenCodeInstructions)
-            .collect();
-        assert_eq!(entry.len(), 1);
-        assert_eq!(entry[0].path.to_str().unwrap(), "OPENCODE.md");
+        assert!(
+            discovered
+                .iter()
+                .all(|f| f.path.to_str().unwrap() != "OPENCODE.md")
+        );
     }
 
     #[test]
@@ -3770,11 +3756,7 @@ mod tests {
         assert!(opencode.targets.contains_key("instructions"));
         assert!(opencode.targets.contains_key("skills"));
         assert!(opencode.targets.contains_key("commands"));
-        assert!(
-            opencode.targets["instructions"]
-                .destination
-                .contains("OPENCODE.md")
-        );
+        assert_eq!(opencode.targets["instructions"].destination, "AGENTS.md");
         assert!(
             opencode.targets["skills"]
                 .destination
@@ -4020,7 +4002,7 @@ mod tests {
             facts
                 .instructions
                 .iter()
-                .any(|target| target.destination == "OPENCODE.md")
+                .any(|target| target.destination == "AGENTS.md")
         );
         assert!(
             facts

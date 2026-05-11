@@ -78,7 +78,7 @@ pub fn agent_convention_filename(agent_name: &str) -> Option<&'static str> {
         "gemini" => Some("GEMINI.md"),
         "cursor" => Some(".cursor/rules/agentsync.mdc"),
         "windsurf" => Some(".windsurfrules"),
-        "opencode" => Some("OPENCODE.md"),
+        "opencode" => Some("AGENTS.md"),
         "crush" => Some("CRUSH.md"),
         "warp" => Some("WARP.md"),
         "amp" => Some("AMPCODE.md"),
@@ -487,7 +487,7 @@ mod tests {
             agent_convention_filename("windsurf"),
             Some(".windsurfrules")
         );
-        assert_eq!(agent_convention_filename("opencode"), Some("OPENCODE.md"));
+        assert_eq!(agent_convention_filename("opencode"), Some("AGENTS.md"));
         assert_eq!(agent_convention_filename("crush"), Some("CRUSH.md"));
         assert_eq!(agent_convention_filename("warp"), Some("WARP.md"));
         assert_eq!(agent_convention_filename("amp"), Some("AMPCODE.md"));
@@ -504,7 +504,7 @@ mod tests {
         );
         assert_eq!(agent_convention_filename("codex-cli"), Some("AGENTS.md"));
         assert_eq!(agent_convention_filename("gemini-cli"), Some("GEMINI.md"));
-        assert_eq!(agent_convention_filename("open-code"), Some("OPENCODE.md"));
+        assert_eq!(agent_convention_filename("open-code"), Some("AGENTS.md"));
     }
 
     #[test]
