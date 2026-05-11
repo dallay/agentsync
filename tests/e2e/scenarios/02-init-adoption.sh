@@ -27,18 +27,16 @@ for command_name in review.md analyze.md fix.md; do
 done
 
 assert_file_contains ".agents/AGENTS.md" "# Instructions from GEMINI.md"
-assert_file_contains ".agents/AGENTS.md" "# Instructions from OPENCODE.md"
 assert_file_contains ".agents/AGENTS.md" "# Instructions from .github/copilot-instructions.md"
 
 log_step "Removing original agent files to verify apply recreates them"
 rm -rf .claude .gemini .codex .cursor .opencode .github .vscode
-rm -f CLAUDE.md GEMINI.md OPENCODE.md AGENTS.md opencode.json
+rm -f CLAUDE.md GEMINI.md AGENTS.md opencode.json
 
 agentsync apply --verbose
 
 assert_symlink_exists "CLAUDE.md"
 assert_symlink_exists "GEMINI.md"
-assert_symlink_exists "OPENCODE.md"
 assert_symlink_exists "AGENTS.md"
 assert_symlink_exists ".claude/skills"
 assert_symlink_exists ".gemini/skills"
