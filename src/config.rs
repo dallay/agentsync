@@ -1629,6 +1629,23 @@ mod tests {
     }
 
     #[test]
+    fn test_resolve_module_map_filename_convention_opencode() {
+        let mapping = ModuleMapping {
+            source: "api-context.md".to_string(),
+            destination: "src/api".to_string(),
+            filename_override: None,
+        };
+        assert_eq!(
+            resolve_module_map_filename(&mapping, "opencode"),
+            "AGENTS.md"
+        );
+        assert_eq!(
+            resolve_module_map_filename(&mapping, "open-code"),
+            "AGENTS.md"
+        );
+    }
+
+    #[test]
     fn test_resolve_module_map_filename_fallback_unknown_agent() {
         let mapping = ModuleMapping {
             source: "api-context.md".to_string(),

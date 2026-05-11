@@ -87,7 +87,7 @@ Different AI coding tools expect configuration files in various locations:
 | **Gemini CLI**     | `GEMINI.md`                       | `.gemini/commands/`  | `.gemini/skills/`  |
 | **Cursor**         | `.cursor/rules/agentsync.mdc`     | -                    | `.cursor/skills/`  |
 | **VS Code**        | -                                 | -                    | -                  |
-| **OpenCode**       | `OPENCODE.md`                     | `.opencode/command/` | `.opencode/skills/` |
+| **OpenCode**       | `AGENTS.md`                       | `.opencode/command/` | `.opencode/skills/` |
 | **OpenAI Codex**   | `AGENTS.md`                       | -                    | `.codex/skills/`   |
 
 AgentSync maintains a **single source of truth** in `.agents/` and creates symlinks to all required

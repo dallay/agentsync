@@ -144,7 +144,7 @@ description = "OpenCode - Open-source AI coding assistant"
 
 [agents.opencode.targets.instructions]
 source = "AGENTS.md"
-destination = "OPENCODE.md"
+destination = "AGENTS.md"
 type = "symlink"
 
 [agents.opencode.targets.skills]
@@ -3770,11 +3770,7 @@ mod tests {
         assert!(opencode.targets.contains_key("instructions"));
         assert!(opencode.targets.contains_key("skills"));
         assert!(opencode.targets.contains_key("commands"));
-        assert!(
-            opencode.targets["instructions"]
-                .destination
-                .contains("OPENCODE.md")
-        );
+        assert_eq!(opencode.targets["instructions"].destination, "AGENTS.md");
         assert!(
             opencode.targets["skills"]
                 .destination
@@ -4020,7 +4016,7 @@ mod tests {
             facts
                 .instructions
                 .iter()
-                .any(|target| target.destination == "OPENCODE.md")
+                .any(|target| target.destination == "AGENTS.md")
         );
         assert!(
             facts

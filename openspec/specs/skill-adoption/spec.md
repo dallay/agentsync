@@ -545,7 +545,7 @@ The `scan_agent_files()` function MUST detect the following instruction files wh
 project root:
 
 - `.windsurfrules` → `AgentFileType::WindsurfRules`
-- `OPENCODE.md` → a new `AgentFileType::OpenCodeInstructions` variant
+- `OPENCODE.md` → `AgentFileType::OpenCodeInstructions` for migration of legacy OpenCode instruction files
 - `AMPCODE.md` → `AgentFileType::AmpInstructions` (already in enum, wire scan)
 
 These instruction files, when detected, MUST be included in the merged `AGENTS.md` during wizard
@@ -559,13 +559,14 @@ migration, following the same pattern as existing instruction file types.
   `AgentFileType::WindsurfRules`
 - AND the `path` field MUST be `.windsurfrules`
 
-#### Scenario: Scan detects OPENCODE.md file
+#### Scenario: Scan detects legacy OPENCODE.md file
 
 - GIVEN a project directory containing an `OPENCODE.md` file with content
 - WHEN `scan_agent_files()` is called on that project root
 - THEN the result MUST include a `DiscoveredFile` with `file_type` equal to
   `AgentFileType::OpenCodeInstructions`
 - AND the `path` field MUST be `OPENCODE.md`
+- AND the wizard MAY merge that legacy file into `.agents/AGENTS.md` during migration
 
 #### Scenario: Scan detects AMPCODE.md file
 
