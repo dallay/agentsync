@@ -146,3 +146,9 @@ reuse results within the same sync run.
 
 **Learning:** Technology detection was performing redundant filesystem existence checks and repetitive `PathBuf` allocations for each of the 111+ technologies in the catalog. Even with a 3-depth limit, the (T \times N)$ overhead was significant. By enhancing `RepoMetadata` with `HashSet` for (1)$ lookups, caching immediate `root_dirs`, and pre-compiling `config_files` markers into `PathBuf`s during rule compilation, we moved almost all detection logic from disk to memory.
 **Action:** Centralize repository metadata collection into optimized data structures and pre-compile static configuration markers to eliminate redundant I/O and heap allocations in large-scale rule evaluation loops.
+
+## 2026-05-22 - Unifying High-Level Discovery Phases in Tech Detection
+
+**Learning:** Even after optimizing individual detection rules with in-memory metadata, the overall detection process remained inefficient due to multiple high-level discovery phases. `discover_nested_projects`, `RepoMetadata::collect`, and `collect_package_names_with_nested` were each triggering independent, redundant WalkDir traversals or redundant metadata builds. Integrating nested project discovery directly into the primary metadata collection pass eliminated these redundant O(N) operations.
+
+**Action:** Look for "layered" discovery logic where one phase finds sub-targets and subsequent phases re-scan them. Consolidate these into a single "collect once, use everywhere" pass at the highest possible level to maximize I/O efficiency.
