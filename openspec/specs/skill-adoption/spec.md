@@ -548,8 +548,10 @@ project root:
 - `OPENCODE.md` → `AgentFileType::OpenCodeInstructions` for migration of legacy OpenCode instruction files
 - `AMPCODE.md` → `AgentFileType::AmpInstructions` (already in enum, wire scan)
 
-These instruction files, when detected, MUST be included in the merged `AGENTS.md` during wizard
-migration, following the same pattern as existing instruction file types.
+Detected modern instruction files, when selected for migration, MUST be included in the merged
+`AGENTS.md` during wizard migration, following the same pattern as existing instruction file
+types. Legacy `OPENCODE.md` detection remains optional migration input and MAY be merged by the
+wizard into `.agents/AGENTS.md`.
 
 #### Scenario: Scan detects .windsurfrules file
 
