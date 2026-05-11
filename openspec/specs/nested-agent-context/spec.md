@@ -50,7 +50,7 @@ A new function `agent_convention_filename(agent_name: &str) -> Option<&'static s
 | `gemini`   | `GEMINI.md`                                                  |
 | `cursor`   | `.cursor/rules/agentsync.mdc`                                |
 | `windsurf` | `.windsurfrules`                                             |
-| `opencode` | `OPENCODE.md`                                                |
+| `opencode` | `AGENTS.md`                                                  |
 | (unknown)  | `None` (fallback handled by `resolve_module_map_filename()`) |
 
 ---

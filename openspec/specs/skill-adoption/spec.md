@@ -545,11 +545,11 @@ The `scan_agent_files()` function MUST detect the following instruction files wh
 project root:
 
 - `.windsurfrules` → `AgentFileType::WindsurfRules`
-- `OPENCODE.md` → a new `AgentFileType::OpenCodeInstructions` variant
 - `AMPCODE.md` → `AgentFileType::AmpInstructions` (already in enum, wire scan)
 
-These instruction files, when detected, MUST be included in the merged `AGENTS.md` during wizard
-migration, following the same pattern as existing instruction file types.
+Detected instruction files, when selected for migration, MUST be included in the merged
+`AGENTS.md` during wizard migration, following the same pattern as existing instruction file
+types.
 
 #### Scenario: Scan detects .windsurfrules file
 
@@ -558,14 +558,6 @@ migration, following the same pattern as existing instruction file types.
 - THEN the result MUST include a `DiscoveredFile` with `file_type` equal to
   `AgentFileType::WindsurfRules`
 - AND the `path` field MUST be `.windsurfrules`
-
-#### Scenario: Scan detects OPENCODE.md file
-
-- GIVEN a project directory containing an `OPENCODE.md` file with content
-- WHEN `scan_agent_files()` is called on that project root
-- THEN the result MUST include a `DiscoveredFile` with `file_type` equal to
-  `AgentFileType::OpenCodeInstructions`
-- AND the `path` field MUST be `OPENCODE.md`
 
 #### Scenario: Scan detects AMPCODE.md file
 
@@ -585,10 +577,10 @@ migration, following the same pattern as existing instruction file types.
 
 #### Scenario: Scan finds instruction files alongside existing detections
 
-- GIVEN a project with `CLAUDE.md`, `.windsurfrules`, and `OPENCODE.md`
+- GIVEN a project with `CLAUDE.md`, `.windsurfrules`, and `AMPCODE.md`
 - WHEN `scan_agent_files()` is called on that project root
 - THEN the result MUST include entries for `ClaudeInstructions`, `WindsurfRules`, and
-  `OpenCodeInstructions`
+  `AmpInstructions`
 
 ---
 
@@ -714,7 +706,7 @@ The `DEFAULT_CONFIG` MUST remain valid TOML that parses into a `Config` struct w
 - WHEN it is parsed as TOML into a `Config` struct
 - THEN there MUST be an `agents` entry keyed `"opencode"`
 - AND the `opencode` agent MUST have an `instructions` target with `destination` containing
-  `"OPENCODE.md"`
+  `"AGENTS.md"`
 - AND the `opencode` agent MUST have a `skills` target with `destination` containing
   `".opencode/skills"`
 
@@ -1163,7 +1155,7 @@ rerunning `agentsync apply`.
 - THEN the managed `Agent config layout` section MUST describe `.agents/AGENTS.md` as the canonical
   instructions source
 - AND the section MUST include the generated instruction destinations `CLAUDE.md`,
-  `.github/copilot-instructions.md`, `GEMINI.md`, `OPENCODE.md`, and `AGENTS.md`
+  `.github/copilot-instructions.md`, `GEMINI.md`, and `AGENTS.md`
 - AND the section MUST include the generated skills destinations `.claude/skills`, `.codex/skills`,
   `.gemini/skills`, and `.opencode/skills`
 - AND the section MUST include the generated commands destinations `.claude/commands`,
@@ -1276,8 +1268,7 @@ as the public contract.
     empty or absent.
 16. `scan_agent_files()` detects command directories for Claude, Gemini, and OpenCode when they
     exist with content.
-17. `scan_agent_files()` detects `.windsurfrules`, `OPENCODE.md`, and `AMPCODE.md` as instruction
-    files.
+17. `scan_agent_files()` detects `.windsurfrules` and `AMPCODE.md` as instruction files.
 18. `scan_agent_files()` detects the presence of 10 agent-specific MCP configuration files/settings
     paths (e.g., `.cursor/mcp.json`, `.vscode/mcp.json`) when present.
 19. The wizard migrates command directories into `.agents/commands/` with collision detection.
