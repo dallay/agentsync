@@ -127,14 +127,13 @@ impl RepoMetadata {
                 let file_name = entry.file_name().to_str().unwrap_or("");
 
                 // Integrated Nested Project Discovery (issue #409)
-                if PROJECT_MANIFEST_FILES.contains(&file_name) {
-                    if let Some(dir) = relative.parent() {
-                        if !dir.as_os_str().is_empty() {
-                            let dir_name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                            if !TEST_DIR_NAMES.contains(&dir_name) {
-                                nested_projects.insert(dir.to_path_buf());
-                            }
-                        }
+                if PROJECT_MANIFEST_FILES.contains(&file_name)
+                    && let Some(dir) = relative.parent()
+                    && !dir.as_os_str().is_empty()
+                {
+                    let dir_name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                    if !TEST_DIR_NAMES.contains(&dir_name) {
+                        nested_projects.insert(dir.to_path_buf());
                     }
                 }
 
@@ -906,7 +905,6 @@ fn expand_workspace_patterns(
     dirs
 }
 
-
 /// Collects package names including from nested projects.
 ///
 /// NOTE: At root-phase (Phase 1), only package.json deps are merged from nested projects
@@ -919,7 +917,9 @@ fn collect_package_names_with_nested(
 ) -> BTreeSet<String> {
     let mut pkgs = collect_package_names(project_root, metadata);
     for rel_nested in &metadata.nested_projects {
-        if let Some(deps) = parse_package_json_deps(&project_root.join(rel_nested).join("package.json")) {
+        if let Some(deps) =
+            parse_package_json_deps(&project_root.join(rel_nested).join("package.json"))
+        {
             pkgs.extend(deps);
         }
     }
@@ -1053,10 +1053,12 @@ pytest = "*"
 
         let metadata = RepoMetadata::collect(temp.path());
 
-        assert!(metadata
-            .nested_projects
-            .iter()
-            .any(|p| p.ends_with("services/api")));
+        assert!(
+            metadata
+                .nested_projects
+                .iter()
+                .any(|p| p.ends_with("services/api"))
+        );
     }
 
     #[test]
