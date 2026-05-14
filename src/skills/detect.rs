@@ -138,13 +138,14 @@ impl RepoMetadata {
                 }
 
                 if let Some(ext) = relative.extension().and_then(|e| e.to_str()) {
-                    let dot_ext = format!(".{ext}");
-                    // Store first occurrence for deterministic evidence.
-                    // Note: WalkDir sort_by_file_name() ensures deterministic choice if multiple exist.
-                    extensions
-                        .entry(dot_ext)
-                        .or_insert_with(|| relative_buf.clone());
-                    extensions.entry(ext.to_string()).or_insert(relative_buf);
+                    // Optimization: Skip string formatting and map insertions if extension already recorded.
+                    if !extensions.contains_key(ext) {
+                        let dot_ext = format!(".{ext}");
+                        // Store first occurrence for deterministic evidence.
+                        // Note: WalkDir sort_by_file_name() ensures deterministic choice if multiple exist.
+                        extensions.insert(dot_ext, relative_buf.clone());
+                        extensions.insert(ext.to_string(), relative_buf);
+                    }
                 }
             }
         }
