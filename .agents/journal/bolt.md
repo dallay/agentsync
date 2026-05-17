@@ -152,3 +152,7 @@ reuse results within the same sync run.
 **Learning:** Even after optimizing individual detection rules with in-memory metadata, the overall detection process remained inefficient due to multiple high-level discovery phases. `discover_nested_projects`, `RepoMetadata::collect`, and `collect_package_names_with_nested` were each triggering independent, redundant WalkDir traversals or redundant metadata builds. Integrating nested project discovery directly into the primary metadata collection pass eliminated these redundant O(N) operations.
 
 **Action:** Look for "layered" discovery logic where one phase finds sub-targets and subsequent phases re-scan them. Consolidate these into a single "collect once, use everywhere" pass at the highest possible level to maximize I/O efficiency.
+
+## 2026-05-24 - Content Caching and Gradle Discovery for Tech Detection
+**Learning:** Even with single-pass metadata, technology detection was performing redundant I/O and allocations by re-reading shared configuration files (e.g., `setup.py`) and re-calculating Gradle layout paths for every matching rule. This created an \(O(T \times F)\) overhead in I/O and heap allocations.
+**Action:** Implement a per-project content cache to ensure each configuration file is read from disk at most once. Pre-discover layout-specific markers (like Gradle files) during the primary `WalkDir` to eliminate redundant filesystem checks and dynamic path constructions in the rule evaluation loop.

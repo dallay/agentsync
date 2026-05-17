@@ -80,22 +80,22 @@ struct RepoMetadata {
     paths: HashSet<PathBuf>,
     /// Set of relative paths that are directories.
     dirs: HashSet<PathBuf>,
-    /// Immediate subdirectories of the project root (depth 1), cached for fast Gradle scanning.
-    root_dirs: Vec<PathBuf>,
     /// Map of file extension (e.g., ".rs") to the first relative path found with it.
     /// Used to quickly evaluate file_extensions rules.
     extensions: HashMap<String, PathBuf>,
     /// Relative paths to subdirectories that appear to be standalone projects (issue #409).
     nested_projects: Vec<PathBuf>,
+    /// Relevant Gradle build files discovered during the walk.
+    gradle_files: Vec<PathBuf>,
 }
 
 impl RepoMetadata {
     fn collect(project_root: &Path) -> Self {
         let mut paths = HashSet::new();
         let mut dirs = HashSet::new();
-        let mut root_dirs = Vec::new();
         let mut extensions = HashMap::new();
         let mut nested_projects = BTreeSet::new();
+        let mut gradle_files = Vec::new();
 
         for entry in WalkDir::new(project_root)
             .max_depth(MAX_DISCOVER_DEPTH)
@@ -116,15 +116,31 @@ impl RepoMetadata {
             let relative_buf = relative.to_path_buf();
             paths.insert(relative_buf.clone());
 
-            if entry.file_type().is_dir() && entry.depth() == 1 {
-                root_dirs.push(relative_buf.clone());
-            }
             if entry.file_type().is_dir() {
                 dirs.insert(relative_buf.clone());
             }
 
             if entry.file_type().is_file() {
                 let file_name = entry.file_name().to_str().unwrap_or("");
+                let depth = entry.depth();
+
+                // Gradle file discovery for scan_gradle_layout
+                if depth == 1 {
+                    if matches!(
+                        file_name,
+                        "build.gradle.kts"
+                            | "build.gradle"
+                            | "settings.gradle.kts"
+                            | "settings.gradle"
+                    ) {
+                        gradle_files.push(relative_buf.clone());
+                    }
+                } else if depth == 2
+                    && ((relative.starts_with("gradle") && file_name == "libs.versions.toml")
+                        || matches!(file_name, "build.gradle.kts" | "build.gradle"))
+                {
+                    gradle_files.push(relative_buf.clone());
+                }
 
                 // Integrated Nested Project Discovery (issue #409)
                 if PROJECT_MANIFEST_FILES.contains(&file_name)
@@ -153,9 +169,9 @@ impl RepoMetadata {
         Self {
             paths,
             dirs,
-            root_dirs,
             extensions,
             nested_projects: nested_projects.into_iter().collect(),
+            gradle_files,
         }
     }
 }
@@ -208,7 +224,7 @@ struct CompiledDetectionRules {
 }
 
 struct CompiledConfigFileContentRules {
-    files: Option<Vec<String>>,
+    files: Option<Vec<PathBuf>>,
     patterns: Vec<Regex>,
     scan_gradle_layout: bool,
 }
@@ -283,7 +299,10 @@ impl CatalogDrivenDetector {
                     .collect::<Result<Vec<_>>>()?;
 
                 Ok::<_, anyhow::Error>(CompiledConfigFileContentRules {
-                    files: content_rules.files.clone(),
+                    files: content_rules
+                        .files
+                        .as_ref()
+                        .map(|files| files.iter().map(PathBuf::from).collect()),
                     patterns,
                     scan_gradle_layout: content_rules.scan_gradle_layout.unwrap_or(false),
                 })
@@ -318,11 +337,19 @@ impl RepoDetector for CatalogDrivenDetector {
 
         let mut detections = Vec::new();
 
+        // Optimization: Cache file content to avoid redundant I/O for shared config files (e.g. setup.py).
+        let mut content_cache = HashMap::new();
+
         // Phase 1: Evaluate root project
         for (tech_id, compiled) in &self.rules {
-            if let Some(detection) =
-                evaluate_rules(project_root, tech_id, compiled, &all_packages, &metadata)
-            {
+            if let Some(detection) = evaluate_rules(
+                project_root,
+                tech_id,
+                compiled,
+                &all_packages,
+                &metadata,
+                &mut content_cache,
+            ) {
                 detections.push(detection);
             }
         }
@@ -332,6 +359,9 @@ impl RepoDetector for CatalogDrivenDetector {
             let nested_dir = project_root.join(rel_nested_dir);
             let nested_meta = RepoMetadata::collect(&nested_dir);
             let nested_pkgs = collect_package_names(&nested_dir, &nested_meta);
+            // Clear content cache between projects because config files like setup.py
+            // will have different content in different sub-projects.
+            content_cache.clear();
 
             let offset = Some(rel_nested_dir.to_path_buf());
 
@@ -341,9 +371,14 @@ impl RepoDetector for CatalogDrivenDetector {
                     continue;
                 }
 
-                if let Some(detection) =
-                    evaluate_rules(&nested_dir, tech_id, compiled, &nested_pkgs, &nested_meta)
-                {
+                if let Some(detection) = evaluate_rules(
+                    &nested_dir,
+                    tech_id,
+                    compiled,
+                    &nested_pkgs,
+                    &nested_meta,
+                    &mut content_cache,
+                ) {
                     // Adjust paths: detections are relative to nested_dir, need to prepend offset
                     let adjusted = TechnologyDetection {
                         technology: detection.technology,
@@ -388,6 +423,7 @@ fn evaluate_rules(
     rules: &CompiledDetectionRules,
     all_packages: &BTreeSet<String>,
     metadata: &RepoMetadata,
+    content_cache: &mut HashMap<PathBuf, String>,
 ) -> Option<TechnologyDetection> {
     // Check packages (exact match)
     if let Some(packages) = &rules.packages {
@@ -439,10 +475,22 @@ fn evaluate_rules(
     if let Some(content_rules) = &rules.config_file_content {
         let files_to_scan = gather_content_scan_files(project_root, content_rules, metadata);
         for file_path in &files_to_scan {
-            let absolute = project_root.join(file_path);
-            if let Ok(content) = fs::read_to_string(&absolute) {
+            // Optimization: Use content cache to avoid redundant I/O for shared config files.
+            let content = if let Some(cached) = content_cache.get(file_path) {
+                Some(cached)
+            } else {
+                let absolute = project_root.join(file_path);
+                if let Ok(content) = fs::read_to_string(absolute) {
+                    content_cache.insert(file_path.clone(), content);
+                    content_cache.get(file_path)
+                } else {
+                    None
+                }
+            };
+
+            if let Some(content) = content {
                 for pattern in &content_rules.patterns {
-                    if pattern.is_match(&content) {
+                    if pattern.is_match(content) {
                         let display = file_path.display().to_string();
                         return Some(make_detection(
                             tech_id,
@@ -501,39 +549,19 @@ fn gather_content_scan_files(
     let mut files = Vec::new();
 
     if rules.scan_gradle_layout {
-        // Root-level Gradle files
-        for name in &[
-            "build.gradle.kts",
-            "build.gradle",
-            "settings.gradle.kts",
-            "settings.gradle",
-            "gradle/libs.versions.toml",
-        ] {
-            let path = PathBuf::from(name);
-            if metadata.paths.contains(&path) {
-                files.push(path);
-            }
-        }
-
-        // Optimization: Use pre-calculated root_dirs from metadata to avoid
-        // re-filtering the entire directory set on every tech rule evaluation.
-        for dir in &metadata.root_dirs {
-            for build_file in &["build.gradle.kts", "build.gradle"] {
-                let path = dir.join(build_file);
-                if metadata.paths.contains(&path) {
-                    files.push(path);
-                }
-            }
-        }
+        // Optimization: Use pre-discovered Gradle files from metadata to avoid
+        // dynamic path construction and repeated lookups in the path set.
+        files.extend(metadata.gradle_files.iter().cloned());
     }
 
     if let Some(explicit_files) = &rules.files {
-        for file in explicit_files {
-            let path = PathBuf::from(file);
-            if (metadata.paths.contains(&path) || project_root.join(&path).exists())
-                && !files.contains(&path)
+        for path in explicit_files {
+            // Optimization: check metadata.paths first (O(1)), only fallback to fs for deep matches.
+            // Avoid duplicate entries if explicit files overlap with Gradle files.
+            if (metadata.paths.contains(path) || project_root.join(path).exists())
+                && !files.contains(path)
             {
-                files.push(path);
+                files.push(path.clone());
             }
         }
     }
