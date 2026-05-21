@@ -8,6 +8,7 @@ use serde::Deserialize;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use tracing::warn;
 use walkdir::{DirEntry, WalkDir};
 
@@ -71,6 +72,22 @@ pub struct DetectionRules {
     /// File extensions to scan for (e.g., [".html", ".css", ".tsx"] for web frontend detection)
     #[serde(default)]
     pub file_extensions: Option<Vec<String>>,
+}
+
+pub type ContentCache = HashMap<PathBuf, Rc<str>>;
+
+pub(crate) fn get_file_content(path: &Path, cache: &mut ContentCache) -> Option<Rc<str>> {
+    if let Some(content) = cache.get(path) {
+        return Some(Rc::clone(content));
+    }
+
+    if let Ok(content) = fs::read_to_string(path) {
+        let rc_content: Rc<str> = Rc::from(content);
+        cache.insert(path.to_path_buf(), Rc::clone(&rc_content));
+        return Some(rc_content);
+    }
+
+    None
 }
 
 /// Metadata about the repository collected in a single pass to optimize detection.
@@ -174,7 +191,11 @@ pub struct ConfigFileContentRules {
 }
 
 pub trait RepoDetector {
-    fn detect(&self, project_root: &Path) -> Result<Vec<TechnologyDetection>>;
+    fn detect(
+        &self,
+        project_root: &Path,
+        cache: &mut ContentCache,
+    ) -> Result<Vec<TechnologyDetection>>;
 }
 
 fn should_ignore_entry(_project_root: &Path, entry: &DirEntry) -> bool {
@@ -306,7 +327,11 @@ impl CatalogDrivenDetector {
 }
 
 impl RepoDetector for CatalogDrivenDetector {
-    fn detect(&self, project_root: &Path) -> Result<Vec<TechnologyDetection>> {
+    fn detect(
+        &self,
+        project_root: &Path,
+        cache: &mut ContentCache,
+    ) -> Result<Vec<TechnologyDetection>> {
         if self.rules.is_empty() {
             return Ok(Vec::new());
         }
@@ -314,15 +339,20 @@ impl RepoDetector for CatalogDrivenDetector {
         // Optimization: Perform a single metadata collection for the root project.
         // This metadata now includes integrated discovery of nested projects.
         let metadata = RepoMetadata::collect(project_root);
-        let all_packages = collect_package_names_with_nested(project_root, &metadata);
+        let all_packages = collect_package_names_with_nested(project_root, &metadata, cache);
 
         let mut detections = Vec::new();
 
         // Phase 1: Evaluate root project
         for (tech_id, compiled) in &self.rules {
-            if let Some(detection) =
-                evaluate_rules(project_root, tech_id, compiled, &all_packages, &metadata)
-            {
+            if let Some(detection) = evaluate_rules(
+                project_root,
+                tech_id,
+                compiled,
+                &all_packages,
+                &metadata,
+                cache,
+            ) {
                 detections.push(detection);
             }
         }
@@ -331,7 +361,7 @@ impl RepoDetector for CatalogDrivenDetector {
         for rel_nested_dir in &metadata.nested_projects {
             let nested_dir = project_root.join(rel_nested_dir);
             let nested_meta = RepoMetadata::collect(&nested_dir);
-            let nested_pkgs = collect_package_names(&nested_dir, &nested_meta);
+            let nested_pkgs = collect_package_names(&nested_dir, &nested_meta, cache);
 
             let offset = Some(rel_nested_dir.to_path_buf());
 
@@ -341,9 +371,14 @@ impl RepoDetector for CatalogDrivenDetector {
                     continue;
                 }
 
-                if let Some(detection) =
-                    evaluate_rules(&nested_dir, tech_id, compiled, &nested_pkgs, &nested_meta)
-                {
+                if let Some(detection) = evaluate_rules(
+                    &nested_dir,
+                    tech_id,
+                    compiled,
+                    &nested_pkgs,
+                    &nested_meta,
+                    cache,
+                ) {
                     // Adjust paths: detections are relative to nested_dir, need to prepend offset
                     let adjusted = TechnologyDetection {
                         technology: detection.technology,
@@ -388,6 +423,7 @@ fn evaluate_rules(
     rules: &CompiledDetectionRules,
     all_packages: &BTreeSet<String>,
     metadata: &RepoMetadata,
+    cache: &mut ContentCache,
 ) -> Option<TechnologyDetection> {
     // Check packages (exact match)
     if let Some(packages) = &rules.packages {
@@ -440,7 +476,7 @@ fn evaluate_rules(
         let files_to_scan = gather_content_scan_files(project_root, content_rules, metadata);
         for file_path in &files_to_scan {
             let absolute = project_root.join(file_path);
-            if let Ok(content) = fs::read_to_string(&absolute) {
+            if let Some(content) = get_file_content(&absolute, cache) {
                 for pattern in &content_rules.patterns {
                     if pattern.is_match(&content) {
                         let display = file_path.display().to_string();
@@ -545,45 +581,50 @@ fn gather_content_scan_files(
 // Package.json parsing and workspace resolution
 // ---------------------------------------------------------------------------
 
-fn collect_package_names(project_root: &Path, metadata: &RepoMetadata) -> BTreeSet<String> {
+fn collect_package_names(
+    project_root: &Path,
+    metadata: &RepoMetadata,
+    cache: &mut ContentCache,
+) -> BTreeSet<String> {
     let mut all_packages = BTreeSet::new();
 
     // Parse root package.json
     let root_pkg_path = Path::new("package.json");
     if metadata.paths.contains(root_pkg_path)
-        && let Some(deps) = parse_package_json_deps(&project_root.join(root_pkg_path))
+        && let Some(deps) = parse_package_json_deps(&project_root.join(root_pkg_path), cache)
     {
         all_packages.extend(deps);
     }
 
     // Resolve workspaces and parse each workspace's package.json
-    let workspace_dirs = resolve_workspaces(project_root, metadata);
+    let workspace_dirs = resolve_workspaces(project_root, metadata, cache);
     for workspace_dir in workspace_dirs {
         let pkg_path = workspace_dir.join("package.json");
         // We still check existence here because resolve_workspaces ensures they existed,
         // but parse_package_json_deps does its own read.
-        if let Some(deps) = parse_package_json_deps(&pkg_path) {
+        if let Some(deps) = parse_package_json_deps(&pkg_path, cache) {
             all_packages.extend(deps);
         }
     }
 
     let requirements_path = Path::new("requirements.txt");
     if metadata.paths.contains(requirements_path)
-        && let Some(deps) = parse_requirements_txt_deps(&project_root.join(requirements_path))
+        && let Some(deps) =
+            parse_requirements_txt_deps(&project_root.join(requirements_path), cache)
     {
         all_packages.extend(deps);
     }
 
     let pyproject_path = Path::new("pyproject.toml");
     if metadata.paths.contains(pyproject_path)
-        && let Some(deps) = parse_pyproject_toml_deps(&project_root.join(pyproject_path))
+        && let Some(deps) = parse_pyproject_toml_deps(&project_root.join(pyproject_path), cache)
     {
         all_packages.extend(deps);
     }
 
     let pipfile_path = Path::new("Pipfile");
     if metadata.paths.contains(pipfile_path)
-        && let Some(deps) = parse_pipfile_deps(&project_root.join(pipfile_path))
+        && let Some(deps) = parse_pipfile_deps(&project_root.join(pipfile_path), cache)
     {
         all_packages.extend(deps);
     }
@@ -591,8 +632,8 @@ fn collect_package_names(project_root: &Path, metadata: &RepoMetadata) -> BTreeS
     all_packages
 }
 
-fn parse_package_json_deps(path: &Path) -> Option<BTreeSet<String>> {
-    let content = fs::read_to_string(path).ok()?;
+fn parse_package_json_deps(path: &Path, cache: &mut ContentCache) -> Option<BTreeSet<String>> {
+    let content = get_file_content(path, cache)?;
     let json: serde_json::Value = serde_json::from_str(&content).ok()?;
     let obj = json.as_object()?;
 
@@ -608,11 +649,11 @@ fn parse_package_json_deps(path: &Path) -> Option<BTreeSet<String>> {
     Some(deps)
 }
 
-fn parse_requirements_txt_deps(path: &Path) -> Option<BTreeSet<String>> {
+fn parse_requirements_txt_deps(path: &Path, cache: &mut ContentCache) -> Option<BTreeSet<String>> {
     let mut deps = BTreeSet::new();
     let mut visited = HashSet::new();
     let root = path.parent().unwrap_or_else(|| Path::new("."));
-    parse_requirements_file(path, root, &mut deps, &mut visited).ok()?;
+    parse_requirements_file(path, root, &mut deps, &mut visited, cache).ok()?;
     Some(deps)
 }
 
@@ -621,6 +662,7 @@ fn parse_requirements_file(
     root: &Path,
     deps: &mut BTreeSet<String>,
     visited: &mut HashSet<PathBuf>,
+    cache: &mut ContentCache,
 ) -> Result<()> {
     let path = canonical_existing_path(path)?;
     let root = canonical_existing_path(root)?;
@@ -631,10 +673,11 @@ fn parse_requirements_file(
         return Ok(());
     }
 
-    let content = fs::read_to_string(&path)?;
+    let content = get_file_content(&path, cache)
+        .with_context(|| format!("Failed to read requirements file: {}", path.display()))?;
     let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
     for raw_line in content.lines() {
-        parse_requirement_line(raw_line, &root, base_dir, deps, visited)?;
+        parse_requirement_line(raw_line, &root, base_dir, deps, visited, cache)?;
     }
 
     Ok(())
@@ -646,6 +689,7 @@ fn parse_requirement_line(
     base_dir: &Path,
     deps: &mut BTreeSet<String>,
     visited: &mut HashSet<PathBuf>,
+    cache: &mut ContentCache,
 ) -> Result<()> {
     let raw_line = raw_line.trim();
     if raw_line.starts_with('#') {
@@ -666,7 +710,7 @@ fn parse_requirement_line(
 
     if let Some(include_path) = requirement_include_path(line) {
         let include_path = known_child_path(base_dir, include_path);
-        parse_requirements_file(&include_path, root, deps, visited)?;
+        parse_requirements_file(&include_path, root, deps, visited, cache)?;
         return Ok(());
     }
 
@@ -705,9 +749,9 @@ fn canonical_existing_path(path: &Path) -> Result<PathBuf> {
         .with_context(|| format!("failed to resolve path {}", path.display()))
 }
 
-fn parse_pyproject_toml_deps(path: &Path) -> Option<BTreeSet<String>> {
+fn parse_pyproject_toml_deps(path: &Path, cache: &mut ContentCache) -> Option<BTreeSet<String>> {
     let path = canonical_existing_path(path).ok()?;
-    let content = fs::read_to_string(path).ok()?;
+    let content = get_file_content(&path, cache)?;
     let value: toml::Value = toml::from_str(&content).ok()?;
     let mut deps = BTreeSet::new();
 
@@ -750,9 +794,9 @@ fn parse_pyproject_toml_deps(path: &Path) -> Option<BTreeSet<String>> {
     Some(deps)
 }
 
-fn parse_pipfile_deps(path: &Path) -> Option<BTreeSet<String>> {
+fn parse_pipfile_deps(path: &Path, cache: &mut ContentCache) -> Option<BTreeSet<String>> {
     let path = canonical_existing_path(path).ok()?;
-    let content = fs::read_to_string(path).ok()?;
+    let content = get_file_content(&path, cache)?;
     let value: toml::Value = toml::from_str(&content).ok()?;
     let mut deps = BTreeSet::new();
 
@@ -804,11 +848,15 @@ fn normalize_python_requirement_name(requirement: &str) -> Option<String> {
     }
 }
 
-fn resolve_workspaces(project_root: &Path, metadata: &RepoMetadata) -> Vec<PathBuf> {
+fn resolve_workspaces(
+    project_root: &Path,
+    metadata: &RepoMetadata,
+    cache: &mut ContentCache,
+) -> Vec<PathBuf> {
     // Try pnpm-workspace.yaml first
     let pnpm_rel = Path::new("pnpm-workspace.yaml");
     if metadata.paths.contains(pnpm_rel)
-        && let Ok(content) = fs::read_to_string(project_root.join(pnpm_rel))
+        && let Some(content) = get_file_content(&project_root.join(pnpm_rel), cache)
     {
         let patterns = parse_pnpm_workspace_yaml(&content);
         if !patterns.is_empty() {
@@ -819,7 +867,7 @@ fn resolve_workspaces(project_root: &Path, metadata: &RepoMetadata) -> Vec<PathB
     // Try package.json workspaces field
     let pkg_rel = Path::new("package.json");
     if metadata.paths.contains(pkg_rel)
-        && let Ok(content) = fs::read_to_string(project_root.join(pkg_rel))
+        && let Some(content) = get_file_content(&project_root.join(pkg_rel), cache)
         && let Ok(json) = serde_json::from_str::<serde_json::Value>(&content)
         && let Some(workspaces) = json.get("workspaces")
     {
@@ -915,11 +963,12 @@ fn expand_workspace_patterns(
 fn collect_package_names_with_nested(
     project_root: &Path,
     metadata: &RepoMetadata,
+    cache: &mut ContentCache,
 ) -> BTreeSet<String> {
-    let mut pkgs = collect_package_names(project_root, metadata);
+    let mut pkgs = collect_package_names(project_root, metadata, cache);
     for rel_nested in &metadata.nested_projects {
         if let Some(deps) =
-            parse_package_json_deps(&project_root.join(rel_nested).join("package.json"))
+            parse_package_json_deps(&project_root.join(rel_nested).join("package.json"), cache)
         {
             pkgs.extend(deps);
         }
@@ -941,8 +990,9 @@ mod tests {
         )
         .unwrap();
 
+        let mut cache = ContentCache::new();
         let metadata = RepoMetadata::collect(temp.path());
-        let packages = collect_package_names(temp.path(), &metadata);
+        let packages = collect_package_names(temp.path(), &metadata, &mut cache);
 
         assert!(packages.contains("django"));
         assert!(packages.contains("fastapi"));
@@ -951,6 +1001,7 @@ mod tests {
 
     #[test]
     fn collect_package_names_reads_nested_requirements_txt_dependencies() {
+        let mut cache = ContentCache::new();
         let temp = TempDir::new().unwrap();
         fs::create_dir_all(temp.path().join("requirements")).unwrap();
         fs::write(
@@ -971,7 +1022,7 @@ mod tests {
         .unwrap();
 
         let metadata = RepoMetadata::collect(temp.path());
-        let packages = collect_package_names(temp.path(), &metadata);
+        let packages = collect_package_names(temp.path(), &metadata, &mut cache);
 
         assert!(packages.contains("django"));
         assert!(packages.contains("pytest"));
@@ -979,6 +1030,7 @@ mod tests {
 
     #[test]
     fn collect_package_names_reads_pyproject_dependencies() {
+        let mut cache = ContentCache::new();
         let temp = TempDir::new().unwrap();
         fs::write(
             temp.path().join("pyproject.toml"),
@@ -1004,7 +1056,7 @@ pandas = "^2"
         .unwrap();
 
         let metadata = RepoMetadata::collect(temp.path());
-        let packages = collect_package_names(temp.path(), &metadata);
+        let packages = collect_package_names(temp.path(), &metadata, &mut cache);
 
         for package in [
             "django",
@@ -1024,6 +1076,7 @@ pandas = "^2"
 
     #[test]
     fn collect_package_names_reads_pipfile_dependencies() {
+        let mut cache = ContentCache::new();
         let temp = TempDir::new().unwrap();
         fs::write(
             temp.path().join("Pipfile"),
@@ -1039,7 +1092,7 @@ pytest = "*"
         .unwrap();
 
         let metadata = RepoMetadata::collect(temp.path());
-        let packages = collect_package_names(temp.path(), &metadata);
+        let packages = collect_package_names(temp.path(), &metadata, &mut cache);
 
         assert!(packages.contains("flask"));
         assert!(packages.contains("celery"));
@@ -1077,6 +1130,7 @@ pytest = "*"
 
     #[test]
     fn collect_package_names_with_nested_includes_nested_packages() {
+        let mut cache = ContentCache::new();
         let temp = TempDir::new().unwrap();
         fs::write(
             temp.path().join("package.json"),
@@ -1091,7 +1145,7 @@ pytest = "*"
         .unwrap();
 
         let metadata = RepoMetadata::collect(temp.path());
-        let packages = collect_package_names_with_nested(temp.path(), &metadata);
+        let packages = collect_package_names_with_nested(temp.path(), &metadata, &mut cache);
 
         assert!(packages.contains("express"));
         assert!(packages.contains("axios"));

@@ -38,7 +38,9 @@ fn detects_supported_phase_one_technologies() {
     fs::write(root.join("pyproject.toml"), "[project]\nname='demo'\n").unwrap();
 
     let detector = catalog_detector();
-    let detections = detector.detect(root).unwrap();
+    let detections = detector
+        .detect(root, &mut agentsync::skills::detect::ContentCache::new())
+        .unwrap();
     let technologies = detections
         .iter()
         .map(|detection| detection.technology.clone())
@@ -90,7 +92,9 @@ fn prunes_ignored_directories_and_does_not_detect_nested_config_files() {
     fs::write(root.join("tests/e2e/Dockerfile"), "FROM scratch\n").unwrap();
 
     let detector = catalog_detector();
-    let detections = detector.detect(root).unwrap();
+    let detections = detector
+        .detect(root, &mut agentsync::skills::detect::ContentCache::new())
+        .unwrap();
 
     assert!(
         detections
@@ -131,7 +135,9 @@ fn skips_unreadable_nested_directories_without_failing_detection() {
     fs::set_permissions(&unreadable_dir, unreadable_permissions).unwrap();
 
     let detector = catalog_detector();
-    let detections = detector.detect(root).unwrap();
+    let detections = detector
+        .detect(root, &mut agentsync::skills::detect::ContentCache::new())
+        .unwrap();
 
     // Rust must still be detected from root Cargo.toml
     assert!(
@@ -179,7 +185,9 @@ fn catalog_driven_detects_packages_from_package_json() {
     .unwrap();
 
     let detector = catalog_detector();
-    let detections = detector.detect(root).unwrap();
+    let detections = detector
+        .detect(root, &mut agentsync::skills::detect::ContentCache::new())
+        .unwrap();
     let ids = detected_technology_ids(&detections);
 
     assert!(
@@ -200,7 +208,9 @@ fn catalog_driven_detects_config_file_existence() {
     fs::write(root.join("next.config.mjs"), "export default {};\n").unwrap();
 
     let detector = catalog_detector();
-    let detections = detector.detect(root).unwrap();
+    let detections = detector
+        .detect(root, &mut agentsync::skills::detect::ContentCache::new())
+        .unwrap();
     let ids = detected_technology_ids(&detections);
 
     assert!(
@@ -221,7 +231,9 @@ fn catalog_driven_detects_config_file_content() {
     .unwrap();
 
     let detector = catalog_detector();
-    let detections = detector.detect(root).unwrap();
+    let detections = detector
+        .detect(root, &mut agentsync::skills::detect::ContentCache::new())
+        .unwrap();
     let ids = detected_technology_ids(&detections);
 
     assert!(
@@ -242,7 +254,9 @@ fn catalog_driven_detects_gradle_layout() {
     .unwrap();
 
     let detector = catalog_detector();
-    let detections = detector.detect(root).unwrap();
+    let detections = detector
+        .detect(root, &mut agentsync::skills::detect::ContentCache::new())
+        .unwrap();
     let ids = detected_technology_ids(&detections);
 
     assert!(
@@ -263,7 +277,9 @@ fn catalog_driven_detects_package_patterns() {
     .unwrap();
 
     let detector = catalog_detector();
-    let detections = detector.detect(root).unwrap();
+    let detections = detector
+        .detect(root, &mut agentsync::skills::detect::ContentCache::new())
+        .unwrap();
     let ids = detected_technology_ids(&detections);
     let azure = detections
         .iter()
@@ -290,7 +306,9 @@ fn catalog_driven_detects_file_extensions() {
     .unwrap();
 
     let detector = catalog_detector();
-    let detections = detector.detect(root).unwrap();
+    let detections = detector
+        .detect(root, &mut agentsync::skills::detect::ContentCache::new())
+        .unwrap();
     let ids = detected_technology_ids(&detections);
 
     assert!(
@@ -317,7 +335,9 @@ fn catalog_driven_detects_workspace_packages() {
     .unwrap();
 
     let detector = catalog_detector();
-    let detections = detector.detect(root).unwrap();
+    let detections = detector
+        .detect(root, &mut agentsync::skills::detect::ContentCache::new())
+        .unwrap();
     let ids = detected_technology_ids(&detections);
 
     assert!(
@@ -332,7 +352,9 @@ fn catalog_driven_empty_project_has_no_detections() {
     let root = temp_dir.path();
 
     let detector = catalog_detector();
-    let detections = detector.detect(root).unwrap();
+    let detections = detector
+        .detect(root, &mut agentsync::skills::detect::ContentCache::new())
+        .unwrap();
 
     assert!(
         detections.is_empty(),
@@ -362,7 +384,9 @@ fn file_extensions_detection_in_incidental_dirs_yields_medium_confidence() {
     .unwrap();
 
     let detector = catalog_detector();
-    let detections = detector.detect(root).unwrap();
+    let detections = detector
+        .detect(root, &mut agentsync::skills::detect::ContentCache::new())
+        .unwrap();
 
     let web_frontend = detections
         .iter()
@@ -409,7 +433,9 @@ fn detects_packages_from_package_json_workspace_array() {
     .unwrap();
 
     let detector = catalog_detector();
-    let detections = detector.detect(root).unwrap();
+    let detections = detector
+        .detect(root, &mut agentsync::skills::detect::ContentCache::new())
+        .unwrap();
     let ids = detected_technology_ids(&detections);
 
     assert!(
@@ -441,7 +467,9 @@ fn detects_packages_from_exact_workspace_path() {
     .unwrap();
 
     let detector = catalog_detector();
-    let detections = detector.detect(root).unwrap();
+    let detections = detector
+        .detect(root, &mut agentsync::skills::detect::ContentCache::new())
+        .unwrap();
     let ids = detected_technology_ids(&detections);
 
     assert!(

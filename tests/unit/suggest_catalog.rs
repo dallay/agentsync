@@ -818,7 +818,11 @@ impl StaticDetector {
 }
 
 impl agentsync::skills::detect::RepoDetector for StaticDetector {
-    fn detect(&self, _project_root: &Path) -> Result<Vec<TechnologyDetection>> {
+    fn detect(
+        &self,
+        _project_root: &Path,
+        _cache: &mut agentsync::skills::detect::ContentCache,
+    ) -> Result<Vec<TechnologyDetection>> {
         Ok(self.detections.clone())
     }
 }

@@ -152,3 +152,9 @@ reuse results within the same sync run.
 **Learning:** Even after optimizing individual detection rules with in-memory metadata, the overall detection process remained inefficient due to multiple high-level discovery phases. `discover_nested_projects`, `RepoMetadata::collect`, and `collect_package_names_with_nested` were each triggering independent, redundant WalkDir traversals or redundant metadata builds. Integrating nested project discovery directly into the primary metadata collection pass eliminated these redundant O(N) operations.
 
 **Action:** Look for "layered" discovery logic where one phase finds sub-targets and subsequent phases re-scan them. Consolidate these into a single "collect once, use everywhere" pass at the highest possible level to maximize I/O efficiency.
+
+## 2025-05-23 - Scoped In-Memory Content Caching for Technology Detection
+
+**Learning:** Technology detection was performing redundant disk I/O by reading the same configuration files (like `package.json`, `setup.py`, or `pyproject.toml`) multiple times across different detection rules and during nested project discovery. Projects with complex structures or many technologies were particularly affected by this O(N * T) I/O overhead.
+
+**Action:** Implement a scoped `HashMap<PathBuf, Rc<str>>` content cache passed through the detection and parsing logic. By ensuring each file is read exactly once per detection pass and shared via reference-counted pointers, we eliminate redundant syscalls and minimize heap allocations in high-frequency detection paths.
