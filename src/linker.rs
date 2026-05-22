@@ -116,6 +116,25 @@ impl Linker {
             .with_context(|| format!("Failed to canonicalize path: {}", path.display()))
     }
 
+    /// Get or compute the canonical project root path, using cache.
+    fn get_canonical_project_root(&self) -> Result<PathBuf> {
+        let mut root_cache = self.canonical_project_root.borrow_mut();
+        if let Some(ref root) = *root_cache {
+            return Ok(root.clone());
+        }
+
+        let root = self
+            .canonicalize_uncached(&self.project_root)
+            .with_context(|| {
+                format!(
+                    "Failed to canonicalize project root: {}",
+                    self.project_root.display()
+                )
+            })?;
+        *root_cache = Some(root.clone());
+        Ok(root)
+    }
+
     /// Validate that a path resolves within the project root and contains no traversal.
     fn ensure_safe_path(&self, joined: &Path, display_path: &str) -> Result<PathBuf> {
         // SECURITY: Check for traversal components before canonicalization to prevent bypasses.
@@ -133,21 +152,7 @@ impl Linker {
             )
         })?;
 
-        let mut root_cache = self.canonical_project_root.borrow_mut();
-        let canonical_project_root = if let Some(ref root) = *root_cache {
-            root.clone()
-        } else {
-            let root = self
-                .canonicalize_uncached(&self.project_root)
-                .with_context(|| {
-                    format!(
-                        "Failed to canonicalize project root: {}",
-                        self.project_root.display()
-                    )
-                })?;
-            *root_cache = Some(root.clone());
-            root
-        };
+        let canonical_project_root = self.get_canonical_project_root()?;
 
         let canonical_ancestor =
             self.canonicalize_uncached(existing_ancestor)
@@ -224,23 +229,7 @@ impl Linker {
                     format!("Failed to canonicalize parent: {}", parent.display())
                 })?;
 
-                let canonical_root = {
-                    let mut root_cache = self.canonical_project_root.borrow_mut();
-                    if let Some(ref root) = *root_cache {
-                        root.clone()
-                    } else {
-                        let root = self
-                            .canonicalize_uncached(&self.project_root)
-                            .with_context(|| {
-                                format!(
-                                    "Failed to canonicalize project root: {}",
-                                    self.project_root.display()
-                                )
-                            })?;
-                        *root_cache = Some(root.clone());
-                        root
-                    }
-                };
+                let canonical_root = self.get_canonical_project_root()?;
 
                 if !canonical_parent.starts_with(&canonical_root) {
                     anyhow::bail!(
@@ -287,23 +276,7 @@ impl Linker {
                             )
                         })?;
 
-                let canonical_root = {
-                    let mut root_cache = self.canonical_project_root.borrow_mut();
-                    if let Some(ref root) = *root_cache {
-                        root.clone()
-                    } else {
-                        let root = self
-                            .canonicalize_uncached(&self.project_root)
-                            .with_context(|| {
-                                format!(
-                                    "Failed to canonicalize project root: {}",
-                                    self.project_root.display()
-                                )
-                            })?;
-                        *root_cache = Some(root.clone());
-                        root
-                    }
-                };
+                let canonical_root = self.get_canonical_project_root()?;
 
                 if !canonical_parent.starts_with(&canonical_root) {
                     anyhow::bail!(

@@ -9,3 +9,9 @@ mod suggest_detector;
 
 #[cfg(test)]
 mod suggest_install;
+
+#[cfg(test)]
+mod linker_security;
+
+#[cfg(test)]
+mod detect_coverage;
