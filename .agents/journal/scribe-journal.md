@@ -27,3 +27,8 @@
 
 **Learning:** The `agentsync skill suggest` command's technology detection shifted from a small hard-coded set to a data-driven catalog (`src/skills/catalog.v1.toml`) now supporting 73+ technologies. The documentation had drifted significantly (claiming only 7 supported).
 **Action:** When documenting "supported" lists that are data-driven, use "N+" terminology and refer to the source-of-truth catalog file to ensure long-term accuracy.
+
+## 2026-05-20 - Implemented Combo Evaluation Documented as Deferred
+
+**Learning:** Both the CLI reference and the Skills guide claimed that active evaluation of multi-technology "combo" entries was deferred. However, Phase 2 of `recommend_skills` in `src/skills/suggest.rs` already implements this logic, providing specific recommendations for combinations like `react-hook-form` + `zod`.
+**Action:** Before claiming a feature is "deferred" or "planned," verify the relevant logic phases in the implementation (e.g., Phase 2 evaluation loops).

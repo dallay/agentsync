@@ -183,7 +183,7 @@ Recommendation metadata now comes from a hybrid catalog model:
 - Providers may expose an **optional catalog overlay**. Valid provider entries extend or override matching embedded entries by stable ids.
 - Invalid provider entries are ignored individually; if provider metadata is missing, unreadable, or invalid at the top level, AgentSync falls back to the embedded catalog.
 - A single technology can recommend **multiple skills**. For example, the embedded catalog currently maps `astro` to `frontend-design`, `accessibility`, `performance`, `core-web-vitals`, and `seo`, and maps `github_actions` to both `github-actions` and `pinned-tag`.
-- The schema also supports explicit **combo** entries (multi-technology recommendations). Those entries are loaded and preserved now, but active combo evaluation is currently deferred.
+- The schema also supports explicit **combo** entries (multi-technology recommendations). Phase 2 combo evaluation is functional and used to recommend specific skills when multiple technologies (e.g., `react-hook-form` + `zod`) are detected.
 
 ### Compatibility bridge: canonical ids vs current runtime ids
 

@@ -173,7 +173,7 @@ Behavior:
 - Recommendations are opinionated, not exhaustive.
 - The runtime loads an embedded declarative catalog first, then optionally overlays valid provider metadata.
 - One detected technology may map to multiple recommended skills.
-- Combo catalog entries are supported in schema and loading, but active combo evaluation is currently deferred.
+- Combo catalog entries allow recommending specific skills when a combination of technologies is detected (e.g., React + shadcn/ui).
 - `--install` opens an interactive selector in a TTY.
 - `--install --all` is the explicit non-interactive path and installs every not-yet-installed recommendation.
 - Recommendation-driven installs reuse the same install pipeline and registry updates as `skill install`, and they skip recommendations that are already installed.
