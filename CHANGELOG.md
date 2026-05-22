@@ -21,6 +21,53 @@
 * **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
 * **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
 
+## [1.46.0](https://github.com/dallay/agentsync/compare/v1.45.2...v1.46.0) (2026-05-22)
+
+
+### Features
+
+* **ci:** add npm provenance to release workflow ([c82cf2c](https://github.com/dallay/agentsync/commit/c82cf2ceecff026531f253b2c84934d2666b56d4))
+* **ci:** add npm provenance to release workflow ([f66ddc1](https://github.com/dallay/agentsync/commit/f66ddc121f4534d3968f1f8473637ff1860ad4f5))
+
+
+### Bug Fixes
+
+* cache file read failures to avoid redundant filesystem access ([a4f4299](https://github.com/dallay/agentsync/commit/a4f4299a352c89a1acf4ec2fa88bd5ad166b1f3c))
+* **security:** address CodeRabbit review comments ([1b1a637](https://github.com/dallay/agentsync/commit/1b1a63796f8997b88f44e4436b71ce7c811395ec))
+* **security:** address CodeRabbit review comments ([58c7f12](https://github.com/dallay/agentsync/commit/58c7f12dbe844843c121af244d52bc5e5c65502d))
+* **security:** harden path traversal validation and validate sources ([22dbafd](https://github.com/dallay/agentsync/commit/22dbafd110ecee640c277694e613d6d1711a4ba2))
+* **security:** harden path traversal validation and validate sources ([60811c7](https://github.com/dallay/agentsync/commit/60811c73ff72b999b9265e76a66b2abb7616825a))
+* **security:** prevent path traversal in NestedGlob search root ([4ab7550](https://github.com/dallay/agentsync/commit/4ab75508f1353d831cb86b75c7c89da2088ac5c3))
+* **test:** escape backslashes in absolute path TOML string for Windows compatibility ([b20a90f](https://github.com/dallay/agentsync/commit/b20a90f69501a437f96ee330c129ae31094c780a))
+
+
+### Performance
+
+* optimize file extension discovery in technology detection ([623a3e8](https://github.com/dallay/agentsync/commit/623a3e85f2daaab49f56c05e2ade70817fc87c7e))
+* optimize technology detection with in-memory content caching ([7cd33fe](https://github.com/dallay/agentsync/commit/7cd33fe6df903b21750222e4ccca06c2e97b31b4))
+* optimized technology detection with in-memory content caching ([111e0a7](https://github.com/dallay/agentsync/commit/111e0a78d6b5d5e9d16c99e381a5d9950fefd273))
+* unify nested project discovery and metadata collection in technology detection ([b2248eb](https://github.com/dallay/agentsync/commit/b2248ebcf3b56b1e24f2f3e6480296593f811929))
+
+
+### Documentation
+
+* fix CLI reference drift and missing flags ([dafd051](https://github.com/dallay/agentsync/commit/dafd051d368cb2ba4c111b41191dba49339e5dde))
+* update combo evaluation status from deferred to active ([5f8aed5](https://github.com/dallay/agentsync/commit/5f8aed5fe44281af4c6bcde17219ffb76caa59eb))
+* Update combo evaluation status from deferred to active ([eee9b07](https://github.com/dallay/agentsync/commit/eee9b0709d7fc8258674221c98769149d0ad4e94))
+
+
+### Tests
+
+* add unit tests for path validation and detect coverage ([0b28ba9](https://github.com/dallay/agentsync/commit/0b28ba9d4fa2de04a9a0c29c1eab1cbb19200f89))
+
+
+### Chores
+
+* **deps:** lock file maintenance ([0492434](https://github.com/dallay/agentsync/commit/04924344b1db6a388ef7b17a4da98cc371aecdc1))
+* **deps:** update dependency @dallay/agentsync to v1.45.2 ([d11678a](https://github.com/dallay/agentsync/commit/d11678af10c6340f0a29951ef19e815fbb3a40a6))
+* **deps:** update dependency @dallay/agentsync to v1.45.2 ([73c95d2](https://github.com/dallay/agentsync/commit/73c95d286275a4b00a12373381dcb1f926025b60))
+* Use revalidate_unlink_path for symlink removal ([de50e8d](https://github.com/dallay/agentsync/commit/de50e8d259d98eee4de2b3d44eb29175c218a1c8))
+
 ## [1.45.2](https://github.com/dallay/agentsync/compare/v1.45.1...v1.45.2) (2026-05-11)
 
 
