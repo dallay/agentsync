@@ -25,23 +25,23 @@ importers:
         version: 6.0.3
     optionalDependencies:
       '@dallay/agentsync-darwin-arm64':
-        specifier: 1.45.0
-        version: 1.45.0
+        specifier: 1.45.2
+        version: 1.45.2
       '@dallay/agentsync-darwin-x64':
-        specifier: 1.45.0
-        version: 1.45.0
+        specifier: 1.45.2
+        version: 1.45.2
       '@dallay/agentsync-linux-arm64':
-        specifier: 1.45.0
-        version: 1.45.0
+        specifier: 1.45.2
+        version: 1.45.2
       '@dallay/agentsync-linux-x64':
-        specifier: 1.45.0
-        version: 1.45.0
+        specifier: 1.45.2
+        version: 1.45.2
       '@dallay/agentsync-windows-arm64':
-        specifier: 1.45.0
-        version: 1.45.0
+        specifier: 1.45.2
+        version: 1.45.2
       '@dallay/agentsync-windows-x64':
-        specifier: 1.45.0
-        version: 1.45.0
+        specifier: 1.45.2
+        version: 1.45.2
 
   website/docs:
     dependencies:
@@ -204,43 +204,43 @@ packages:
     resolution: {integrity: sha512-kzyuwOAQnXJNLS9PSyrk0CWk35nWJW/zl/6KvnTBMFK65gm7U1/Z5BqjxeapjZCIhQcM/DsrEmcbRwDyXyXK4A==}
     engines: {node: '>=14'}
 
-  '@dallay/agentsync-darwin-arm64@1.45.0':
-    resolution: {integrity: sha512-iqjQLZ286plkf9OSG+wHCr1nBEhV6lVsIzfQyCUrl8newR6i7RJ5jYopqqkk32mw3I3t/BOiAqC3S6A62s3PdA==}
+  '@dallay/agentsync-darwin-arm64@1.45.2':
+    resolution: {integrity: sha512-0RKr55yO8rMbvF8Rh1n8yjqNWC9VWn04kgMJFbCliwd4fu1dth7pO/yO2CG6wJpKJWgoRuPElxhKwSla7gvF+A==}
     engines: {node: '>=18'}
     cpu: [arm64]
     os: [darwin]
     hasBin: true
 
-  '@dallay/agentsync-darwin-x64@1.45.0':
-    resolution: {integrity: sha512-sAd3GS6k0GRCloZwjKIcH3SXNfAxCagp0rINyFN8ESUq62TUAq87f1BpeDonfMCmew2NwVvTvVLzal77N7IQ6Q==}
+  '@dallay/agentsync-darwin-x64@1.45.2':
+    resolution: {integrity: sha512-Lp/4vFxjeHMcENBQmDaA5RB8N1kgKCjqQ/8DiQ46Etnw3orKW8oz91bKXU6KuIdb1eWEfSNLTF7zuYMrUlMB0A==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [darwin]
     hasBin: true
 
-  '@dallay/agentsync-linux-arm64@1.45.0':
-    resolution: {integrity: sha512-E+hloyRHEFl21EChal43mHDptjViFNg9BvGc1dn6dJ/kiRhJP5HBec7danrzIJooYmvATPYke1iyTZAtdjNc6g==}
+  '@dallay/agentsync-linux-arm64@1.45.2':
+    resolution: {integrity: sha512-xNpKLVgJ/PAgDnp+TRwlMQX2pBs6wQ8d9RTF6/xwSmc9J/LIQ+ioDfvvJFxZfx2SeF+0eQY5dtUGmcELqdfR5g==}
     engines: {node: '>=18'}
     cpu: [arm64]
     os: [linux]
     hasBin: true
 
-  '@dallay/agentsync-linux-x64@1.45.0':
-    resolution: {integrity: sha512-E+yfIqy7L5LlrrMRT5wgbtP6Xq5oh9u0m0Tw+j9TAdmBl5IUR+E4DBDiw2tRAR7hp9KLrD2taQwBpF7sPM/wGw==}
+  '@dallay/agentsync-linux-x64@1.45.2':
+    resolution: {integrity: sha512-wIe0bcWHfYXRJxlKxjfMWRjvCG3kZ0Dnrzm90lSSpSdsI+4QHB3LBL2miNvpWQV96PmZtcgu3dgIf3RP9N/eiw==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [linux]
     hasBin: true
 
-  '@dallay/agentsync-windows-arm64@1.45.0':
-    resolution: {integrity: sha512-SF7bsY6yBZJdID4pdlk53tg3WYGfM7KUTQ8ZPFBaxVU4XpZLz4HS9eO532KjHYrJjPLFuZQOvmXc4NICVnuA5g==}
+  '@dallay/agentsync-windows-arm64@1.45.2':
+    resolution: {integrity: sha512-msK4bnn+eD5Y4VzQ6Oyk40AV7H/eJFX7tZ41NravYFlYSWhJAfPoR/G5mSOxt4MESN122FUCzT6zizz9MtNzAg==}
     engines: {node: '>=18'}
     cpu: [arm64]
     os: [win32]
     hasBin: true
 
-  '@dallay/agentsync-windows-x64@1.45.0':
-    resolution: {integrity: sha512-0q20lvVLliKG6MaC3A4NRQiF9e5NlDGAKTWKcHs7cb98k9nCZqqXISd8yaNpN5IK0wct/svDYkttpCnE6RnWOg==}
+  '@dallay/agentsync-windows-x64@1.45.2':
+    resolution: {integrity: sha512-YZiqsuzuNuTbJMW/kIhcz646TzaWa/s0u5086NGNMtCExhpkVWF0B+V7HnR2kE+5lWH6GP40/o6iLI3toWrKTA==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
@@ -2314,22 +2314,22 @@ snapshots:
 
   '@ctrl/tinycolor@4.2.0': {}
 
-  '@dallay/agentsync-darwin-arm64@1.45.0':
+  '@dallay/agentsync-darwin-arm64@1.45.2':
     optional: true
 
-  '@dallay/agentsync-darwin-x64@1.45.0':
+  '@dallay/agentsync-darwin-x64@1.45.2':
     optional: true
 
-  '@dallay/agentsync-linux-arm64@1.45.0':
+  '@dallay/agentsync-linux-arm64@1.45.2':
     optional: true
 
-  '@dallay/agentsync-linux-x64@1.45.0':
+  '@dallay/agentsync-linux-x64@1.45.2':
     optional: true
 
-  '@dallay/agentsync-windows-arm64@1.45.0':
+  '@dallay/agentsync-windows-arm64@1.45.2':
     optional: true
 
-  '@dallay/agentsync-windows-x64@1.45.0':
+  '@dallay/agentsync-windows-x64@1.45.2':
     optional: true
 
   '@emnapi/runtime@1.9.2':
