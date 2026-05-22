@@ -92,3 +92,102 @@ fn test_nested_glob_search_root_traversal() {
         "Clean should not remove anything for an invalid search root"
     );
 }
+
+#[test]
+fn test_symlink_source_traversal() {
+    let temp_dir = TempDir::new().unwrap();
+    let project_root = temp_dir.path().join("project");
+    let agents_dir = project_root.join(".agents");
+    fs::create_dir_all(&agents_dir).unwrap();
+
+    // Create a sensitive file OUTSIDE the project root
+    let root_parent = temp_dir.path();
+    let sensitive_file = root_parent.join("sensitive.txt");
+    fs::write(&sensitive_file, "SENSITIVE CONTENT").unwrap();
+
+    let config_path = agents_dir.join("agentsync.toml");
+
+    // Malicious source pointing outside project root using relative path
+    let malicious_source = "../../sensitive.txt";
+
+    let toml = format!(
+        r#"
+        source_dir = "."
+        [agents.attacker]
+        enabled = true
+        [agents.attacker.targets.malicious]
+        source = "{}"
+        destination = "linked_sensitive"
+        type = "symlink"
+    "#,
+        malicious_source
+    );
+    fs::write(&config_path, toml).unwrap();
+
+    let config = Config::load(&config_path).unwrap();
+    let linker = Linker::new(config, config_path);
+    let options = SyncOptions {
+        verbose: true,
+        ..Default::default()
+    };
+
+    // The target should now fail due to unsafe source path
+    let result = linker.sync(&options).unwrap();
+    assert_eq!(result.errors, 1);
+
+    let linked_file = project_root.join("linked_sensitive");
+    assert!(!linked_file.exists());
+}
+
+#[test]
+fn test_path_traversal_bypass_attempt() {
+    let temp_dir = TempDir::new().unwrap();
+    let project_root = temp_dir.path().join("project");
+    let agents_dir = project_root.join(".agents");
+    fs::create_dir_all(&agents_dir).unwrap();
+
+    // Create a dummy dir and valid source file inside project root
+    let dummy_dir = project_root.join("dummy");
+    fs::create_dir_all(&dummy_dir).unwrap();
+    fs::write(project_root.join("AGENTS.md"), "safe source").unwrap();
+
+    let config_path = agents_dir.join("agentsync.toml");
+
+    // Attempt to bypass check using non-existent directory + ParentDir components
+    // Escape to a writable location outside project root so we can assert no mutation.
+    let bypass_path = "../escaped/linked_outside";
+
+    let toml = format!(
+        r#"
+        source_dir = "."
+        [agents.attacker]
+        enabled = true
+        [agents.attacker.targets.bypass]
+        source = "AGENTS.md"
+        destination = "{}"
+        type = "symlink"
+    "#,
+        bypass_path
+    );
+    fs::write(&config_path, toml).unwrap();
+
+    let config = Config::load(&config_path).unwrap();
+    let linker = Linker::new(config, config_path);
+    let options = SyncOptions {
+        verbose: true,
+        ..Default::default()
+    };
+
+    let result = linker.sync(&options).unwrap();
+    assert_eq!(
+        result.errors, 1,
+        "Sync should have errors for bypass path traversal attempt"
+    );
+
+    // Verify that no file or symlink was created outside project root
+    let escaped_path = temp_dir.path().join("escaped").join("linked_outside");
+    assert!(
+        !escaped_path.exists(),
+        "Sync must not create links/files outside project root"
+    );
+}
