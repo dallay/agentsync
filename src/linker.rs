@@ -659,7 +659,10 @@ impl Linker {
                         relative_source.display()
                     );
                 } else {
-                    self.revalidate_path(dest)?;
+                    // SECURITY: Use revalidate_unlink_path here (not revalidate_path) so that a
+                    // symlink whose target points outside project_root can still be safely removed.
+                    // revalidate_path would canonicalize through the symlink and reject the path.
+                    self.revalidate_unlink_path(dest)?;
                     remove_symlink(dest)?;
                     self.invalidate_discovery_caches();
                     if options.verbose {
@@ -1343,7 +1346,9 @@ impl Linker {
                             if options.dry_run {
                                 println!("  {} Would remove: {}", "→".cyan(), dest.display());
                             } else {
-                                self.revalidate_path(&dest)?;
+                                // SECURITY: Use revalidate_unlink_path so a symlink whose target
+                                // points outside project_root can still be removed safely.
+                                self.revalidate_unlink_path(&dest)?;
                                 remove_symlink(&dest)?;
                                 self.invalidate_discovery_caches();
                                 println!("  {} Removed: {}", "✔".green(), dest.display());

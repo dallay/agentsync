@@ -236,10 +236,13 @@ fn test_detect_with_empty_project() {
     let mut cache = ContentCache::new();
     let detections = detector.detect(project_root, &mut cache).unwrap();
 
-    // Should return empty or minimal detections
+    // An empty project has no files, so no technology should be detected.
+    // Up to 2 detections are tolerated in case future catalog rules add baseline
+    // markers that fire on an empty tree (known noise); zero is the expected case.
     assert!(
-        detections.is_empty() || detections.len() < 3,
-        "Empty project should have few/no detections"
+        detections.len() < 3,
+        "Empty project should have 0 detections (tolerance ≤2 for baseline catalog noise), got {}",
+        detections.len()
     );
 }
 
@@ -248,25 +251,39 @@ fn test_cache_stores_failed_reads() {
     let temp = TempDir::new().unwrap();
     let project_root = temp.path();
 
-    // Create a project with a reference to a non-existent file
-    fs::write(
-        project_root.join("Cargo.toml"),
-        "[package]\nname = \"test\"",
-    )
-    .unwrap();
+    // Write requirements.txt so detect will call get_file_content on it.
+    // get_file_content caches None for any path it cannot read; here the file
+    // exists, so the cache entry will be Some.  A separate missing path is
+    // never even attempted by detect (collect_package_names guards on
+    // metadata.paths first), so we assert its absence from the cache to
+    // confirm detect does not speculatively read non-existent paths.
+    let requirements_path = project_root.join("requirements.txt");
+    fs::write(&requirements_path, "requests\n").unwrap();
 
     let detector = catalog_detector();
     let mut cache = ContentCache::new();
-
-    // First detection - will try to read various files
     let _detections = detector.detect(project_root, &mut cache).unwrap();
 
-    // Cache should contain entries after detection
-    // The detector reads files during detection, so cache will have entries
-    // even if some reads fail (they're cached as None)
-    // We just verify the detection completes without error
-    let _ = cache.is_empty(); // Use the cache to avoid unused warning
+    // The requirements.txt that was read must be present in the cache.
+    // get_file_content stores entries under the canonicalized path, so resolve
+    // it the same way before asserting.
+    let canonical_requirements = requirements_path
+        .canonicalize()
+        .expect("requirements.txt should be canonicalizable");
+    assert!(
+        cache.contains_key(&canonical_requirements),
+        "ContentCache should contain an entry for requirements.txt after detect"
+    );
+    assert!(
+        cache[&canonical_requirements].is_some(),
+        "Cache entry for requirements.txt should be Some (file was readable)"
+    );
 
-    // The important thing is that the detection completes without error
-    // This exercises the cache logic for both successful and failed reads
+    // A path that was never attempted must be absent (detect does not
+    // speculatively populate None entries for files it never reads).
+    let missing_path = project_root.join("nonexistent_dep_file.txt");
+    assert!(
+        !cache.contains_key(&missing_path),
+        "ContentCache must not contain an entry for a path detect never attempted"
+    );
 }

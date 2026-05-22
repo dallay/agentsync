@@ -158,7 +158,7 @@ fn test_ensure_safe_destination_accepts_valid_relative_path() {
 }
 
 #[test]
-fn test_canonicalize_cached_returns_cached_value() {
+fn test_repeated_sync_succeeds() {
     let temp = TempDir::new().unwrap();
     let project_root = temp.path();
 
@@ -300,7 +300,7 @@ fn test_nested_glob_error_handling_with_verbose() {
     let config_path = project_root.join("agentsync.toml");
     let linker = Linker::new(config, config_path);
 
-    // Run with verbose to trigger error path logging (lines 1070-1080)
+    // Run with verbose to trigger the error-path logging section in the implementation
     let result = linker.sync(&agentsync::linker::SyncOptions {
         clean: false,
         dry_run: false,
@@ -334,7 +334,7 @@ fn test_relative_path_with_missing_source() {
         agents: Some(vec!["test".to_string()]),
     });
 
-    // Should report error with source not found (lines 1238-1247)
+    // Should report error with source not found
     let sync_result = result.unwrap();
     assert!(
         sync_result.errors > 0 || sync_result.skipped > 0,
