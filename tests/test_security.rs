@@ -146,16 +146,16 @@ fn test_path_traversal_bypass_attempt() {
     let agents_dir = project_root.join(".agents");
     fs::create_dir_all(&agents_dir).unwrap();
 
-    // Create a dummy dir inside project root
+    // Create a dummy dir and valid source file inside project root
     let dummy_dir = project_root.join("dummy");
     fs::create_dir_all(&dummy_dir).unwrap();
+    fs::write(project_root.join("AGENTS.md"), "safe source").unwrap();
 
     let config_path = agents_dir.join("agentsync.toml");
 
     // Attempt to bypass check using non-existent directory + ParentDir components
-    // "dummy/../../etc/passwd" -> Joined with project_root it used to pass because
-    // "project/dummy" exists and is inside project_root.
-    let bypass_path = "dummy/../../../../../../../../etc/passwd";
+    // Escape to a writable location outside project root so we can assert no mutation.
+    let bypass_path = "../escaped/linked_outside";
 
     let toml = format!(
         r#"
@@ -182,5 +182,12 @@ fn test_path_traversal_bypass_attempt() {
     assert_eq!(
         result.errors, 1,
         "Sync should have errors for bypass path traversal attempt"
+    );
+
+    // Verify that no file or symlink was created outside project root
+    let escaped_path = temp_dir.path().join("escaped").join("linked_outside");
+    assert!(
+        !escaped_path.exists(),
+        "Sync must not create links/files outside project root"
     );
 }
