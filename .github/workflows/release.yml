@@ -15,6 +15,7 @@ permissions:
   issues: write
   pull-requests: write
   packages: write
+  id-token: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -255,6 +256,9 @@ jobs:
     needs: [release-please, build-binaries]
     if: needs.release-please.outputs.new_release_created == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -438,7 +442,7 @@ jobs:
           cd "../npm/${node_pkg}"
           echo "Publishing ${node_pkg}@${node_version}..."
           cat package.json
-          pnpm publish --access public --no-git-checks
+          pnpm publish --provenance --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -450,6 +454,9 @@ jobs:
     needs: [release-please, publish-npm-binaries]
     if: needs.publish-npm-binaries.result == 'success'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -509,7 +516,7 @@ jobs:
       - name: Publish base package to NPM
         run: |
           cd npm/agentsync
-          pnpm publish --access public --no-git-checks
+          pnpm publish --provenance --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
