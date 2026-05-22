@@ -153,7 +153,7 @@ reuse results within the same sync run.
 
 **Action:** Look for "layered" discovery logic where one phase finds sub-targets and subsequent phases re-scan them. Consolidate these into a single "collect once, use everywhere" pass at the highest possible level to maximize I/O efficiency.
 
-## 2025-05-23 - Scoped In-Memory Content Caching for Technology Detection
+## 2026-05-21 - Scoped In-Memory Content Caching for Technology Detection
 
 **Learning:** Technology detection was performing redundant disk I/O by reading the same configuration files (like `package.json`, `setup.py`, or `pyproject.toml`) multiple times across different detection rules and during nested project discovery. Projects with complex structures or many technologies were particularly affected by this O(N * T) I/O overhead.
 

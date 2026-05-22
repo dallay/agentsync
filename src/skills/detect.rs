@@ -74,20 +74,20 @@ pub struct DetectionRules {
     pub file_extensions: Option<Vec<String>>,
 }
 
-pub type ContentCache = HashMap<PathBuf, Rc<str>>;
+pub type ContentCache = HashMap<PathBuf, Option<Rc<str>>>;
 
 pub(crate) fn get_file_content(path: &Path, cache: &mut ContentCache) -> Option<Rc<str>> {
-    if let Some(content) = cache.get(path) {
-        return Some(Rc::clone(content));
+    if let Some(cached) = cache.get(path) {
+        return cached.as_ref().map(Rc::clone);
     }
 
-    if let Ok(content) = fs::read_to_string(path) {
+    let result = fs::read_to_string(path).ok().map(|content| {
         let rc_content: Rc<str> = Rc::from(content);
-        cache.insert(path.to_path_buf(), Rc::clone(&rc_content));
-        return Some(rc_content);
-    }
+        Rc::clone(&rc_content)
+    });
 
-    None
+    cache.insert(path.to_path_buf(), result.clone());
+    result
 }
 
 /// Metadata about the repository collected in a single pass to optimize detection.
