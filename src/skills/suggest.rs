@@ -1,7 +1,7 @@
 use crate::skills::catalog::{
     CatalogSkillMetadata, ResolvedSkillCatalog, load_catalog, recommend_skills,
 };
-use crate::skills::detect::{CatalogDrivenDetector, RepoDetector};
+use crate::skills::detect::{CatalogDrivenDetector, ContentCache, RepoDetector};
 use crate::skills::install::blocking_fetch_and_install_skill;
 use crate::skills::provider::{Provider, SkillsShProvider};
 use crate::skills::registry::{InstalledSkillState, read_installed_skill_states};
@@ -314,8 +314,9 @@ impl SuggestionService {
         let provider = SkillsShProvider;
         let catalog = load_catalog(Some(&provider))?;
 
+        let mut cache = ContentCache::new();
         let detector = CatalogDrivenDetector::new(&catalog)?;
-        let detections = detector.detect(project_root)?;
+        let detections = detector.detect(project_root, &mut cache)?;
 
         self.build_response(project_root, &catalog, detections)
     }
@@ -327,7 +328,8 @@ impl SuggestionService {
         provider: Option<&dyn Provider>,
     ) -> Result<SuggestResponse> {
         let catalog = load_catalog(provider)?;
-        let detections = detector.detect(project_root)?;
+        let mut cache = ContentCache::new();
+        let detections = detector.detect(project_root, &mut cache)?;
         self.build_response(project_root, &catalog, detections)
     }
 

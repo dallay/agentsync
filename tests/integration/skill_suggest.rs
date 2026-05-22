@@ -869,7 +869,11 @@ fn create_skill_source(source_root: &std::path::Path, skill_id: &str) {
 struct StaticDetector;
 
 impl agentsync::skills::detect::RepoDetector for StaticDetector {
-    fn detect(&self, _project_root: &std::path::Path) -> Result<Vec<TechnologyDetection>> {
+    fn detect(
+        &self,
+        _project_root: &std::path::Path,
+        _cache: &mut agentsync::skills::detect::ContentCache,
+    ) -> Result<Vec<TechnologyDetection>> {
         Ok(vec![TechnologyDetection {
             technology: TechnologyId::new(TechnologyId::RUST),
             confidence: DetectionConfidence::High,
