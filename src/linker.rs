@@ -205,6 +205,118 @@ impl Linker {
             .map(|_| ())
     }
 
+    /// Re-validate a path before unlinking (remove_file/remove_dir).
+    /// Unlike revalidate_path, this does NOT canonicalize the final component,
+    /// allowing safe removal of symlinks that point outside project_root.
+    /// The symlink entry itself must be within project_root, but its target can be anywhere.
+    fn revalidate_unlink_path(&self, path: &Path) -> Result<()> {
+        let display_path = path.display().to_string();
+
+        // SECURITY: Reject absolute paths
+        if path.is_absolute() {
+            // If path is already absolute and under project_root, validate parent only
+            if !path.starts_with(&self.project_root) {
+                anyhow::bail!("Path is outside project root: {}", display_path);
+            }
+            // For absolute paths under project_root, validate the parent directory
+            if let Some(parent) = path.parent() {
+                let canonical_parent = self.canonicalize_uncached(parent).with_context(|| {
+                    format!("Failed to canonicalize parent: {}", parent.display())
+                })?;
+
+                let canonical_root = {
+                    let mut root_cache = self.canonical_project_root.borrow_mut();
+                    if let Some(ref root) = *root_cache {
+                        root.clone()
+                    } else {
+                        let root = self
+                            .canonicalize_uncached(&self.project_root)
+                            .with_context(|| {
+                                format!(
+                                    "Failed to canonicalize project root: {}",
+                                    self.project_root.display()
+                                )
+                            })?;
+                        *root_cache = Some(root.clone());
+                        root
+                    }
+                };
+
+                if !canonical_parent.starts_with(&canonical_root) {
+                    anyhow::bail!(
+                        "Path parent resolves outside project root: {}",
+                        display_path
+                    );
+                }
+            }
+            return Ok(());
+        }
+
+        // SECURITY: Reject paths with ParentDir components before resolution
+        for component in path.components() {
+            if matches!(component, Component::ParentDir) {
+                anyhow::bail!(
+                    "Path contains parent directory (..) component: {}",
+                    display_path
+                );
+            }
+        }
+
+        // Validate that the parent directory (if any) is within project_root
+        // We canonicalize the parent but NOT the final component (which might be a symlink)
+        if let Some(parent) = path.parent() {
+            if parent.as_os_str().is_empty() {
+                // Path has no parent (e.g., just a filename), it's relative to project_root
+                return Ok(());
+            }
+
+            let parent_absolute = if parent.is_absolute() {
+                parent.to_path_buf()
+            } else {
+                self.project_root.join(parent)
+            };
+
+            // Only canonicalize if the parent exists; for cleanup operations the parent might not exist yet
+            if parent_absolute.exists() {
+                let canonical_parent =
+                    self.canonicalize_uncached(&parent_absolute)
+                        .with_context(|| {
+                            format!(
+                                "Failed to canonicalize parent: {}",
+                                parent_absolute.display()
+                            )
+                        })?;
+
+                let canonical_root = {
+                    let mut root_cache = self.canonical_project_root.borrow_mut();
+                    if let Some(ref root) = *root_cache {
+                        root.clone()
+                    } else {
+                        let root = self
+                            .canonicalize_uncached(&self.project_root)
+                            .with_context(|| {
+                                format!(
+                                    "Failed to canonicalize project root: {}",
+                                    self.project_root.display()
+                                )
+                            })?;
+                        *root_cache = Some(root.clone());
+                        root
+                    }
+                };
+
+                if !canonical_parent.starts_with(&canonical_root) {
+                    anyhow::bail!(
+                        "Path parent resolves outside project root: {}",
+                        display_path
+                    );
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Resolve the expected source path for status checks.
     pub fn expected_source_path(&self, source: &Path, target: &TargetConfig) -> Option<PathBuf> {
         // expected_source_path feeds status/entry_is_problematic; when should_compress_agents_md
@@ -501,6 +613,9 @@ impl Linker {
             }
         };
 
+        // SECURITY: Validate destination path before any filesystem operation
+        self.revalidate_path(dest)?;
+
         if let Ok(existing) = fs::read_to_string(dest)
             && existing.as_str() == compressed.as_ref()
         {
@@ -513,8 +628,6 @@ impl Linker {
         if let Some(parent) = dest.parent() {
             self.ensure_directory(parent, options)?;
         }
-
-        self.revalidate_path(dest)?;
         fs::write(dest, compressed.as_bytes())
             .with_context(|| format!("Failed to write compressed AGENTS.md: {}", dest.display()))?;
         self.invalidate_discovery_caches();
@@ -731,6 +844,8 @@ impl Linker {
             let dest_path = dest_dir.join(entry.file_name());
 
             let resolved = self.resolve_source_path(&source_path, target, options)?;
+            // SECURITY: Validate each child source entry before creating symlink
+            self.revalidate_path(&resolved.path)?;
             let item_result = self.create_symlink(&resolved, &dest_path, options)?;
             result.created += item_result.created;
             result.updated += item_result.updated;
@@ -1194,7 +1309,7 @@ impl Linker {
                                             dest.display()
                                         );
                                     } else {
-                                        self.revalidate_path(&dest)?;
+                                        self.revalidate_unlink_path(&dest)?;
                                         fs::remove_file(&dest)?;
                                         self.invalidate_discovery_caches();
                                         println!("  {} Removed: {}", "✔".green(), dest.display());
@@ -1227,7 +1342,7 @@ impl Linker {
                                             entry.path().display()
                                         );
                                     } else {
-                                        self.revalidate_path(&entry.path())?;
+                                        self.revalidate_unlink_path(&entry.path())?;
                                         fs::remove_file(entry.path())?;
                                         self.invalidate_discovery_caches();
                                         println!(
@@ -1241,7 +1356,7 @@ impl Linker {
                             }
                             // Try to remove the directory if empty
                             if !options.dry_run {
-                                self.revalidate_path(&dest)?;
+                                self.revalidate_unlink_path(&dest)?;
                                 let _ = fs::remove_dir(&dest);
                             }
                         }
@@ -1289,7 +1404,7 @@ impl Linker {
                                 if options.dry_run {
                                     println!("  {} Would remove: {}", "→".cyan(), dest.display());
                                 } else {
-                                    self.revalidate_path(&dest)?;
+                                    self.revalidate_unlink_path(&dest)?;
                                     fs::remove_file(&dest)?;
                                     self.invalidate_discovery_caches();
                                     println!("  {} Removed: {}", "✔".green(), dest.display());
