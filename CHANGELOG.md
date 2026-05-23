@@ -21,6 +21,31 @@
 * **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
 * **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
 
+## [1.46.1](https://github.com/dallay/agentsync/compare/v1.46.0...v1.46.1) (2026-05-23)
+
+
+### Documentation
+
+* fix technology marker inaccuracies and update agent matrix ([33dcb7d](https://github.com/dallay/agentsync/commit/33dcb7dd9f9b292a7f70939cbf5a7cf4e2cac8e7))
+* fix technology marker inaccuracies and update agent matrix ([195f13a](https://github.com/dallay/agentsync/commit/195f13ac1e2ee1e2448aeea5b214e6014f0e45c9))
+
+
+### Continuous Integration
+
+* allow cargo cache to fail on Windows runners ([83f986d](https://github.com/dallay/agentsync/commit/83f986dbd46a911b031e8dd779aa43eaa0b800a4))
+* allow cargo cache to fail on Windows runners ([a6d6a10](https://github.com/dallay/agentsync/commit/a6d6a109c84dfb64a5db70f7103462560c9aefaa))
+* standardize workflows using common-actions v2.0.0 ([fb9b98c](https://github.com/dallay/agentsync/commit/fb9b98c18a81a47fafc89214bacb69ed453aa20c))
+* standardize workflows using common-actions v2.0.0 ([36d58a8](https://github.com/dallay/agentsync/commit/36d58a8bd73bd1ec90f20f2d36a962ed25cf2d8a))
+
+
+### Chores
+
+* Delete spec.patch ([3b443c8](https://github.com/dallay/agentsync/commit/3b443c805d2d0266cb7f204ae7b3a4b679814668))
+* **deps:** bump devalue from 5.7.1 to 5.8.1 in the npm_and_yarn group across 1 directory ([02b93f9](https://github.com/dallay/agentsync/commit/02b93f9859f183795d71a43a3042622035df986f))
+* **deps:** bump devalue in the npm_and_yarn group across 1 directory ([fc62a2c](https://github.com/dallay/agentsync/commit/fc62a2c319816e9e97e27cfe5ef9a584e53edb1e))
+* **deps:** update devdependencies ([96d945d](https://github.com/dallay/agentsync/commit/96d945dccea66a5448b41b77ce8eee2ea6b270b5))
+* **deps:** update devdependencies ([c88f49e](https://github.com/dallay/agentsync/commit/c88f49e1bba7327841202fbf5bda559a0e7def5a))
+
 ## [1.46.0](https://github.com/dallay/agentsync/compare/v1.45.2...v1.46.0) (2026-05-22)
 
 
