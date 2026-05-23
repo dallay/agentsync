@@ -323,6 +323,14 @@ jobs:
         with:
           version: 10
 
+      - name: Verify npm authentication
+        run: |
+          echo "Checking npm authentication..."
+          npm whoami
+          npm config get registry
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
       - name: Publish platform package to NPM
         shell: bash
         run: |
@@ -486,6 +494,14 @@ jobs:
         uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788 # v6.0.6
         with:
           version: 10
+
+      - name: Verify npm authentication
+        run: |
+          echo "Checking npm authentication..."
+          npm whoami
+          npm config get registry
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Update package.json version
         run: |
