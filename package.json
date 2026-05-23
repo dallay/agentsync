@@ -27,7 +27,7 @@
 		"docs:astro": "pnpm --filter agentsync-docs run astro"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.4.13",
+		"@biomejs/biome": "2.4.15",
 		"lefthook": "^2.1.6"
 	},
 	"version": "1.46.0"
