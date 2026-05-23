@@ -154,19 +154,19 @@ A representative set of supported technologies and markers includes:
 |---|---|---|
 | `rust` | Rust | `Cargo.toml` |
 | `node_typescript` | Node/TypeScript | `package.json`, `tsconfig.json` |
-| `astro` | Astro | `astro.config.*`, `package.json` (astro) |
+| `astro` | Astro | `astro.config.mjs`, `astro.config.js`, `astro.config.ts`, `package.json` |
 | `react` | React | `package.json` (react, react-dom) |
-| `nextjs` | Next.js | `next.config.*`, `package.json` (next) |
+| `nextjs` | Next.js | `next.config.js`, `next.config.mjs`, `next.config.ts`, `package.json` |
 | `vue` | Vue | `package.json` (vue) |
 | `svelte` | Svelte | `svelte.config.js`, `package.json` (svelte) |
-| `python` | Python | `pyproject.toml`, `uv.lock`, `poetry.lock`, `requirements*.txt` |
-| `github_actions` | GitHub Actions | `.github/workflows/*.yml`, `.github/workflows/*.yaml` |
-| `docker` | Docker | `Dockerfile*`, `compose.yml`, `docker-compose*.yml` |
+| `python` | Python | `pyproject.toml`, `uv.lock`, `poetry.lock`, `requirements.txt`, `Pipfile`, `setup.py` |
+| `github_actions` | GitHub Actions | `.github/workflows/` directory |
+| `docker` | Docker | `Dockerfile`, `compose.yml`, `compose.yaml`, `docker-compose.yml` |
 | `postgresql` | PostgreSQL | `package.json` (pg, postgres, @vercel/postgres) |
-| `eslint` | ESLint | `eslint.config.*`, `.eslintrc.*` |
-| `prettier` | Prettier | `.prettierrc.*`, `prettier.config.*` |
-| `vitest` | Vitest | `vitest.config.*`, `package.json` (vitest) |
-| `playwright` | Playwright | `playwright.config.*`, `package.json` (playwright) |
+| `eslint` | ESLint | `eslint.config.js`, `.eslintrc.json`, `.eslintrc.js`, `.eslintrc.yml` |
+| `prettier` | Prettier | `.prettierrc`, `.prettierrc.json`, `.prettierrc.js`, `prettier.config.js` |
+| `vitest` | Vitest | `vitest.config.ts`, `vitest.config.js`, `vitest.config.mts` |
+| `playwright` | Playwright | `playwright.config.ts`, `playwright.config.js`, `playwright.config.mjs` |
 | `make` | Make | `Makefile`, `GNUmakefile` |
 
 Notes:
