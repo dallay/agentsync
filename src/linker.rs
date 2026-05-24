@@ -330,7 +330,7 @@ impl Linker {
             let entry = entry
                 .with_context(|| format!("Failed to read entry in: {}", source_dir.display()))?;
             let file_name = entry.file_name();
-            let item_name = file_name.to_string_lossy().into_owned();
+            let item_name = file_name.to_string_lossy();
 
             if let Some(pat) = target.pattern.as_deref()
                 && !matches_pattern(&item_name, pat)
@@ -346,7 +346,7 @@ impl Linker {
             let source_path = entry.path();
             if let Some(expected_source_path) = self.expected_source_path(&source_path, target) {
                 children.push(SymlinkContentsChildExpectation {
-                    name: item_name,
+                    name: item_name.into_owned(),
                     source_path,
                     expected_source_path,
                 });
@@ -1081,13 +1081,9 @@ impl Linker {
                 continue;
             }
 
-            // Performance: Split the relative path once per file to avoid repeated allocations
-            // in every exclusion and pattern match call.
-            let rel_parts: Vec<&str> = rel_str.split('/').collect();
-
             if let Some(idx) = split_excludes
                 .iter()
-                .position(|exclude_parts| path_glob_match(&rel_parts, exclude_parts))
+                .position(|exclude_parts| path_glob_match_iter(rel_str.split('/'), exclude_parts))
             {
                 let matched_exclude = &excludes[idx];
                 if options.verbose {
@@ -1109,7 +1105,7 @@ impl Linker {
                 continue;
             }
 
-            if !path_glob_match(&rel_parts, &split_pattern) {
+            if !path_glob_match_iter(rel_str.split('/'), &split_pattern) {
                 continue;
             }
 
@@ -1626,52 +1622,56 @@ fn matches_pattern(name: &str, pattern: &str) -> bool {
 /// [`matches_pattern`] for single-segment (filename-only) matching.
 #[cfg(test)]
 fn matches_path_glob(path: &str, pattern: &str) -> bool {
-    let path_parts: Vec<&str> = path.split('/').collect();
     let pattern_parts: Vec<&str> = pattern.split('/').collect();
-    path_glob_match(&path_parts, &pattern_parts)
+    path_glob_match_iter(path.split('/'), &pattern_parts)
 }
 
-/// Helper for [`matches_path_glob`].
-/// This implementation uses a backtracking algorithm which is more performant than the previous
+/// Core path-aware glob matching logic using iterators to avoid allocations.
+/// This implementation uses a backtracking algorithm which is more performant than a
 /// recursive one, especially for patterns with '**' since it avoids stack overhead.
 /// It provides O(N*M) complexity in typical cases.
-fn path_glob_match(path: &[&str], pattern: &[&str]) -> bool {
-    let mut path_idx = 0;
+fn path_glob_match_iter<'a, I>(mut path_it: I, pattern: &[&str]) -> bool
+where
+    I: Iterator<Item = &'a str> + Clone,
+{
     let mut pat_idx = 0;
-    let mut backtrack_path_idx = None;
+    let mut backtrack_path_it: Option<I> = None;
     let mut backtrack_pat_idx = None;
 
-    while path_idx < path.len() {
-        if pat_idx < pattern.len() && pattern[pat_idx] == "**" {
-            // ** matches zero or more segments
-            backtrack_pat_idx = Some(pat_idx);
-            backtrack_path_idx = Some(path_idx);
-            pat_idx += 1;
-        } else if pat_idx < pattern.len() && matches_pattern(path[path_idx], pattern[pat_idx]) {
-            path_idx += 1;
-            pat_idx += 1;
-        } else if let Some(b_pat_idx) = backtrack_pat_idx {
-            // Backtrack: last ** matches one more segment
-            let b_path_idx = backtrack_path_idx
-                .expect("Invariant violated: backtrack_path_idx should be Some when backtrack_pat_idx is Some")
-                + 1;
-            if b_path_idx > path.len() {
-                return false;
+    loop {
+        let mut path_it_peek = path_it.clone();
+        match path_it_peek.next() {
+            Some(s) => {
+                if pat_idx < pattern.len() && pattern[pat_idx] == "**" {
+                    // ** matches zero or more segments
+                    backtrack_pat_idx = Some(pat_idx);
+                    backtrack_path_it = Some(path_it.clone());
+                    pat_idx += 1;
+                } else if pat_idx < pattern.len() && matches_pattern(s, pattern[pat_idx]) {
+                    path_it.next(); // Consume segment
+                    pat_idx += 1;
+                } else if let (Some(b_pat_idx), Some(b_path_it)) =
+                    (backtrack_pat_idx, backtrack_path_it.as_mut())
+                {
+                    // Backtrack: last ** matches one more segment
+                    if b_path_it.next().is_none() {
+                        return false;
+                    }
+                    path_it = b_path_it.clone();
+                    pat_idx = b_pat_idx + 1;
+                } else {
+                    return false;
+                }
             }
-            backtrack_path_idx = Some(b_path_idx);
-            path_idx = b_path_idx;
-            pat_idx = b_pat_idx + 1;
-        } else {
-            return false;
+            None => {
+                // Path is exhausted. Remaining pattern must be all "**"
+                while pat_idx < pattern.len() && pattern[pat_idx] == "**" {
+                    pat_idx += 1;
+                }
+                return pat_idx == pattern.len();
+            }
         }
     }
-
-    // Check if remaining pattern segments are all "**"
-    while pat_idx < pattern.len() && pattern[pat_idx] == "**" {
-        pat_idx += 1;
-    }
-
-    pat_idx == pattern.len()
 }
 
 fn backup_path_for_destination(dest: &Path) -> PathBuf {
