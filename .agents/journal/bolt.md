@@ -158,3 +158,13 @@ reuse results within the same sync run.
 **Learning:** Technology detection was performing redundant disk I/O by reading the same configuration files (like `package.json`, `setup.py`, or `pyproject.toml`) multiple times across different detection rules and during nested project discovery. Projects with complex structures or many technologies were particularly affected by this O(N * T) I/O overhead.
 
 **Action:** Implement a scoped `HashMap<PathBuf, Rc<str>>` content cache passed through the detection and parsing logic. By ensuring each file is read exactly once per detection pass and shared via reference-counted pointers, we eliminate redundant syscalls and minimize heap allocations in high-frequency detection paths.
+
+## 2025-05-24 - Allocation-Free Path Glob Matching
+
+**Learning:** During `NestedGlob` traversal, the CLI was allocating a new `Vec<&str>` for every file
+visited to perform glob matching. In large projects with thousands of files, this resulted in
+significant heap pressure. By refactoring the matching logic to use cloning iterators directly
+from the path string (`split('/')`), we eliminated this per-file allocation entirely.
+
+**Action:** Prefer iterator-based pattern matching over `Vec` collection when processing large numbers
+of items in a loop. Use `Clone` bounds on iterators to support backtracking without re-allocation.
