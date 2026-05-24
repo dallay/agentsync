@@ -321,7 +321,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788 # v6.0.6
         with:
-          version: 10
+          version: 11
 
       - name: Verify npm authentication
         run: |
@@ -493,7 +493,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788 # v6.0.6
         with:
-          version: 10
+          version: 11
 
       - name: Verify npm authentication
         run: |
