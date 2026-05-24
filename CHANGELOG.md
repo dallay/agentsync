@@ -21,6 +21,20 @@
 * **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
 * **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
 
+## [1.46.2](https://github.com/dallay/agentsync/compare/v1.46.1...v1.46.2) (2026-05-24)
+
+
+### Performance
+
+* allocation-free path glob matching ([06305a8](https://github.com/dallay/agentsync/commit/06305a80497b72b73a35330a4507b17df6bd7541))
+* allocation-free path glob matching and lazy string processing ([89ce192](https://github.com/dallay/agentsync/commit/89ce192afbbc9e9671bdbec5346ee96add11696b))
+
+
+### Chores
+
+* **deps:** update dependency pnpm to v11 ([e961e6a](https://github.com/dallay/agentsync/commit/e961e6a4bd3e0a1fa1f41bfc1bcb67208c574e80))
+* **deps:** update dependency pnpm to v11 ([92967df](https://github.com/dallay/agentsync/commit/92967df457017f9e21d64213b394b8188728fe7a))
+
 ## [1.46.1](https://github.com/dallay/agentsync/compare/v1.46.0...v1.46.1) (2026-05-23)
 
 
