@@ -86,3 +86,4 @@ tmp
 /GEMINI.md.bak
 /opencode.json
 # END AI Agent Symlinks
+.opencode/package-lock.json
