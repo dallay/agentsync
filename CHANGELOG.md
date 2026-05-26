@@ -21,6 +21,28 @@
 * **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
 * **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
 
+## [1.46.3](https://github.com/dallay/agentsync/compare/v1.46.2...v1.46.3) (2026-05-26)
+
+
+### Bug Fixes
+
+* remove audit dependency from e2e jobs to unblock merge queue ([b864f09](https://github.com/dallay/agentsync/commit/b864f0945edb67701c1a2ff9057c3cfc45edfe97))
+* remove audit dependency from e2e jobs to unblock merge queue ([897bd06](https://github.com/dallay/agentsync/commit/897bd06944623b64cc9e28e58a60a482af781b78))
+
+
+### Chores
+
+* **deps:** update actions/create-github-app-token digest to bcd2ba4 ([3feb9aa](https://github.com/dallay/agentsync/commit/3feb9aa05ad459edbeb8bc68f3e71091d87a4caf))
+* **deps:** update actions/create-github-app-token digest to bcd2ba4 ([dfa7aa1](https://github.com/dallay/agentsync/commit/dfa7aa1ce1493fc1c97d3f650c4aa36538de17cb))
+* **deps:** update codecov/codecov-action digest to e79a696 ([304cae4](https://github.com/dallay/agentsync/commit/304cae479e37e6035b88dc6f51a7c21129a4923c))
+* **deps:** update codecov/codecov-action digest to e79a696 ([a9669bb](https://github.com/dallay/agentsync/commit/a9669bbd0dab92862c10daa94abd2bb5c6e7793e))
+* **deps:** update dependency @fontsource/geist-mono to v5.2.8 ([04cf39f](https://github.com/dallay/agentsync/commit/04cf39f34bb4647fd5525aeca9e383dad48d75ad))
+* **deps:** update dependency @fontsource/geist-mono to v5.2.8 ([2f9ac4b](https://github.com/dallay/agentsync/commit/2f9ac4b10a966ace8f9eed784c22c8a69d23e890))
+* **deps:** update dependency @iconify/json to v2.2.479 ([a0f1e7d](https://github.com/dallay/agentsync/commit/a0f1e7d9c4688833866e0bdaef67b10927d54e7f))
+* **deps:** update dependency @iconify/json to v2.2.479 ([701fe43](https://github.com/dallay/agentsync/commit/701fe431d585d89d20721f68944a7b9cbcb1edd2))
+* **deps:** update github actions ([ff04573](https://github.com/dallay/agentsync/commit/ff04573b202ddd08666b8a0295a83c08f05c6b1b))
+* **deps:** update github actions ([071be3a](https://github.com/dallay/agentsync/commit/071be3afa9cc096e21f0d8f2fbc68b42a7b7e9f8))
+
 ## [1.46.2](https://github.com/dallay/agentsync/compare/v1.46.1...v1.46.2) (2026-05-24)
 
 
