@@ -212,7 +212,6 @@ jobs:
   # ==========================================================================
   e2e:
     name: E2E Tests (${{ matrix.distro }})
-    needs: audit
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
