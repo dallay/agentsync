@@ -8,5 +8,11 @@ permissions:
 
 jobs:
   greet:
+    if: |
+      github.actor != 'renovate[bot]' &&
+      github.actor != 'dependabot[bot]' &&
+      github.actor != 'dallay-bot' &&
+      !contains(github.actor, '[bot]') &&
+      github.event.pull_request.user.type != 'Bot'
     uses: dallay/common-actions/.github/workflows/greetings.yml@v2.1.0
     secrets: inherit
