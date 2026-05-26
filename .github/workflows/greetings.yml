@@ -8,5 +8,5 @@ permissions:
 
 jobs:
   greet:
-    uses: dallay/common-actions/.github/workflows/greetings.yml@v2.0.0
+    uses: dallay/common-actions/.github/workflows/greetings.yml@v2.1.0
     secrets: inherit
