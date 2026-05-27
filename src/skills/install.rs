@@ -77,6 +77,19 @@ pub fn install_from_dir(
     src_dir: &std::path::Path,
     target_root: &std::path::Path,
 ) -> Result<(), SkillInstallError> {
+    // SECURITY: Validate skill_id is a single safe component to prevent path traversal
+    // if it were to escape the target_root via malicious input like "../escape".
+    let mut components = Path::new(skill_id).components();
+    match (components.next(), components.next()) {
+        (Some(std::path::Component::Normal(_)), None) => {}
+        _ => {
+            return Err(SkillInstallError::Validation(format!(
+                "invalid skill id: {}",
+                skill_id
+            )));
+        }
+    }
+
     let skill_dir = target_root.join(skill_id);
 
     // Create a temporary directory for rollback if anything fails
