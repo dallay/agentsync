@@ -168,3 +168,15 @@ from the path string (`split('/')`), we eliminated this per-file allocation enti
 
 **Action:** Prefer iterator-based pattern matching over `Vec` collection when processing large numbers
 of items in a loop. Use `Clone` bounds on iterators to support backtracking without re-allocation.
+
+## 2026-05-28 - Pre-compiled PathBufs for Technology Detection
+
+**Learning:** Technology detection was performing redundant `PathBuf` allocations from strings for
+every configuration file marker across all 111+ technologies. In a mono-repo with many projects,
+this resulted in $O(N \times T \times M)$ allocations (Projects $\times$ Techs $\times$ Markers). By
+pre-converting these strings to `PathBuf` during detection rule compilation and using `Path::new` for
+lazy allocation in the scan loop, we moved these costs to a one-time initialization phase.
+
+**Action:** Move all path-related string parsing and `PathBuf` creation out of high-frequency inner
+loops (like directory traversal or multi-rule evaluation) and into a compilation or initialization
+phase. Use `&Path` or `Path::new` for existence checks to avoid temporary allocations.

@@ -229,7 +229,8 @@ struct CompiledDetectionRules {
 }
 
 struct CompiledConfigFileContentRules {
-    files: Option<Vec<String>>,
+    /// Pre-converted PathBufs to avoid repeated heap allocations during detection.
+    files: Option<Vec<PathBuf>>,
     patterns: Vec<Regex>,
     scan_gradle_layout: bool,
 }
@@ -303,8 +304,13 @@ impl CatalogDrivenDetector {
                     })
                     .collect::<Result<Vec<_>>>()?;
 
+                let files = content_rules
+                    .files
+                    .as_ref()
+                    .map(|f| f.iter().map(PathBuf::from).collect());
+
                 Ok::<_, anyhow::Error>(CompiledConfigFileContentRules {
-                    files: content_rules.files.clone(),
+                    files,
                     patterns,
                     scan_gradle_layout: content_rules.scan_gradle_layout.unwrap_or(false),
                 })
@@ -545,9 +551,9 @@ fn gather_content_scan_files(
             "settings.gradle",
             "gradle/libs.versions.toml",
         ] {
-            let path = PathBuf::from(name);
-            if metadata.paths.contains(&path) {
-                files.push(path);
+            let path = Path::new(name);
+            if metadata.paths.contains(path) {
+                files.push(path.to_path_buf());
             }
         }
 
@@ -564,12 +570,11 @@ fn gather_content_scan_files(
     }
 
     if let Some(explicit_files) = &rules.files {
-        for file in explicit_files {
-            let path = PathBuf::from(file);
-            if (metadata.paths.contains(&path) || project_root.join(&path).exists())
-                && !files.contains(&path)
+        for path in explicit_files {
+            if (metadata.paths.contains(path) || project_root.join(path).exists())
+                && !files.contains(path)
             {
-                files.push(path);
+                files.push(path.clone());
             }
         }
     }
