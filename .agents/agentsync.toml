@@ -1,6 +1,5 @@
 # AgentSync Configuration
 # This file defines how AI agent configurations are synchronized via symbolic links.
-# Configuration reference: https://dallay.github.io/agentsync/reference/configuration
 #
 # Source directory (relative to this config file)
 source_dir = "."
@@ -98,7 +97,7 @@ description = "OpenAI Codex CLI - OpenAI's AI coding agent"
 
 [agents.codex.targets.instructions]
 source = "AGENTS.md"
-destination = ".codex/instructions.md"
+destination = ".codex/AGENTS.md"
 type = "symlink"
 
 [agents.codex.targets.skills]
@@ -159,14 +158,13 @@ pattern = "*"
 # -----------------------------------------------------------------------------
 # Antigravity - High-performance AI coding CLI
 # -----------------------------------------------------------------------------
+# NOTE: Antigravity does not use a project-level AGENTS.md like Codex or Claude.
+# It works primarily with skills (SKILL.md playbooks) in .agent/skills/.
+# No instructions target is configured for Antigravity.
+# -----------------------------------------------------------------------------
 [agents.antigravity]
 enabled = true
 description = "Antigravity - High-performance AI coding CLI"
-
-[agents.antigravity.targets.instructions]
-source = "AGENTS.md"
-destination = ".agent/rules/instructions.md"
-type = "symlink"
 
 [agents.antigravity.targets.skills]
 source = "skills"
@@ -191,19 +189,3 @@ description = "Root AGENTS.md for tools that look for it in repo root (e.g., Jul
 source = "AGENTS.md"
 destination = "AGENTS.md"
 type = "symlink"
-
-
-
-# -----------------------------------------------------------------------------
-# Model Context Protocol (MCP) Configuration
-# -----------------------------------------------------------------------------
-[mcp]
-enabled = true
-# Strategy for existing files: "merge" (default) or "overwrite"
-# "merge" preserves existing servers but overwrites conflicts with TOML config
-merge_strategy = "merge"
-
-# Define servers once
-[mcp_servers.filesystem]
-command = "npx"
-args = ["-y", "@modelcontextprotocol/server-filesystem", "."]
