@@ -126,9 +126,13 @@ AgentSync automatically adds the following patterns to `.gitignore` based on whi
 | **jetbrains** | `.aiassistant/rules/` |
 
 **Notes:**
-- The `entries` field in your config is only needed for additional files not covered by the patterns above
-- All symlink destination paths are also automatically added to `.gitignore`
-- Duplicate entries are automatically deduplicated
+- The `entries` field in your config is only needed for additional files not covered by the patterns above.
+- All literal symlink destination paths (e.g., from `type = "symlink"` or `type = "symlink-contents"`) are automatically added to `.gitignore`.
+- For every managed destination, AgentSync also adds a corresponding `.bak` pattern (e.g., `/CLAUDE.md.bak`) to ignore temporary backup files created during sync.
+- `module-map` targets expand each individual mapping into its own `.gitignore` entries (including `.bak` versions).
+- `nested-glob` destinations are **not** automatically added to `.gitignore` because they are template strings, not literal paths.
+- AgentSync always adds `.agents/skills/*.bak` as a defensive pattern to ignore skill backup files.
+- Duplicate entries are automatically deduplicated.
 
 ## Agent Definitions
 

@@ -32,3 +32,8 @@
 
 **Learning:** Both the CLI reference and the Skills guide claimed that active evaluation of multi-technology "combo" entries was deferred. However, Phase 2 of `recommend_skills` in `src/skills/suggest.rs` already implements this logic, providing specific recommendations for combinations like `react-hook-form` + `zod`.
 **Action:** Before claiming a feature is "deferred" or "planned," verify the relevant logic phases in the implementation (e.g., Phase 2 evaluation loops).
+
+## 2026-05-21 - Gitignore Management Drift
+
+**Learning:** The configuration reference claimed that "all symlink destination paths" are added to .gitignore. In reality, the logic in `src/config.rs` is more nuanced: it includes `.bak` versions for all literal destinations, expands `module-map` entries into individual patterns, always adds a defensive `.agents/skills/*.bak` pattern, and explicitly *skips* `nested-glob` destinations because they are templates.
+**Action:** Document the specific behavior for different sync types and the automatic inclusion of backup patterns to avoid user confusion about why certain files are or aren't ignored.
