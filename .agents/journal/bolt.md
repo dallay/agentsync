@@ -168,3 +168,16 @@ from the path string (`split('/')`), we eliminated this per-file allocation enti
 
 **Action:** Prefer iterator-based pattern matching over `Vec` collection when processing large numbers
 of items in a loop. Use `Clone` bounds on iterators to support backtracking without re-allocation.
+
+## 2025-05-25 - Eliminating Redundant Path Display Allocations
+
+**Learning:** The core `Linker` was performing pre-emptive `String` allocations via
+`.display().to_string()` during every path validation step, even on the "happy path" where no errors
+occurred. In a project with many targets and files, these cumulative allocations added measurable
+pressure to the heap. By refactoring validation helpers to take `&Path` and deferring string
+formatting to the error-reporting sites using `anyhow!`'s lazy evaluation, we eliminated these
+allocations entirely for successful runs.
+
+**Action:** Avoid pre-emptive string conversion of paths or metadata in high-frequency validation
+logic. Pass references and only perform expensive formatting or allocation inside error paths or
+when actually needed for output.

@@ -136,13 +136,20 @@ impl Linker {
     }
 
     /// Validate that a path resolves within the project root and contains no traversal.
-    fn ensure_safe_path(&self, joined: &Path, display_path: &str) -> Result<PathBuf> {
+    /// Returns Ok(()) if safe, or an error if the path escapes the project root.
+    ///
+    /// Performance: Takes display_path as &Path to avoid redundant string allocations
+    /// in the happy path where no error is generated.
+    fn ensure_safe_path(&self, joined: &Path, display_path: &Path) -> Result<()> {
         // SECURITY: Check for traversal components before canonicalization to prevent bypasses.
         if joined
             .components()
             .any(|c| matches!(c, Component::ParentDir))
         {
-            anyhow::bail!("Path resolves outside project root: {}", display_path);
+            anyhow::bail!(
+                "Path resolves outside project root: {}",
+                display_path.display()
+            );
         }
 
         let existing_ancestor = joined.ancestors().find(|a| a.exists()).with_context(|| {
@@ -164,10 +171,13 @@ impl Linker {
                 })?;
 
         if !canonical_ancestor.starts_with(&canonical_project_root) {
-            anyhow::bail!("Path resolves outside project root: {}", display_path);
+            anyhow::bail!(
+                "Path resolves outside project root: {}",
+                display_path.display()
+            );
         }
 
-        Ok(joined.to_path_buf())
+        Ok(())
     }
 
     /// Validate that a destination path is safe (relative and no traversal).
@@ -201,13 +211,14 @@ impl Linker {
         }
 
         let joined = self.project_root.join(path);
-        self.ensure_safe_path(&joined, dest_path)
+        self.ensure_safe_path(&joined, path)?;
+        Ok(joined)
     }
 
     /// Re-validate a previously joined path immediately before filesystem mutation.
     fn revalidate_path(&self, dest: &Path) -> Result<()> {
-        self.ensure_safe_path(dest, &dest.display().to_string())
-            .map(|_| ())
+        // Optimization: pass Path directly to avoid redundant .display().to_string() allocations.
+        self.ensure_safe_path(dest, dest)
     }
 
     /// Re-validate a path before unlinking (remove_file/remove_dir).
@@ -215,13 +226,11 @@ impl Linker {
     /// allowing safe removal of symlinks that point outside project_root.
     /// The symlink entry itself must be within project_root, but its target can be anywhere.
     fn revalidate_unlink_path(&self, path: &Path) -> Result<()> {
-        let display_path = path.display().to_string();
-
         // SECURITY: Reject absolute paths
         if path.is_absolute() {
             // If path is already absolute and under project_root, validate parent only
             if !path.starts_with(&self.project_root) {
-                anyhow::bail!("Path is outside project root: {}", display_path);
+                anyhow::bail!("Path is outside project root: {}", path.display());
             }
             // For absolute paths under project_root, validate the parent directory
             if let Some(parent) = path.parent() {
@@ -234,7 +243,7 @@ impl Linker {
                 if !canonical_parent.starts_with(&canonical_root) {
                     anyhow::bail!(
                         "Path parent resolves outside project root: {}",
-                        display_path
+                        path.display()
                     );
                 }
             }
@@ -246,7 +255,7 @@ impl Linker {
             if matches!(component, Component::ParentDir) {
                 anyhow::bail!(
                     "Path contains parent directory (..) component: {}",
-                    display_path
+                    path.display()
                 );
             }
         }
@@ -281,7 +290,7 @@ impl Linker {
                 if !canonical_parent.starts_with(&canonical_root) {
                     anyhow::bail!(
                         "Path parent resolves outside project root: {}",
-                        display_path
+                        path.display()
                     );
                 }
             }
