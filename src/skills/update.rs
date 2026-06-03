@@ -186,6 +186,39 @@ pub async fn update_skill_async(
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[tokio::test]
+    async fn test_update_skill_skips_symlinks() {
+        let temp = tempfile::tempdir().unwrap();
+        let target_root = temp.path().join("skills");
+        fs::create_dir_all(&target_root).unwrap();
+        let skill_path = target_root.join("test-skill");
+        fs::create_dir_all(&skill_path).unwrap();
+        fs::write(
+            skill_path.join("SKILL.md"),
+            "---\nname: test-skill\nversion: 1.0.0\n---",
+        )
+        .unwrap();
+        let update_source = temp.path().join("update");
+        fs::create_dir_all(&update_source).unwrap();
+        fs::write(
+            update_source.join("SKILL.md"),
+            "---\nname: test-skill\nversion: 1.1.0\n---",
+        )
+        .unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(temp.path().join("root"), update_source.join("leaked")).unwrap();
+        update_skill_async("test-skill", &target_root, &update_source)
+            .await
+            .unwrap();
+        assert!(!skill_path.join("leaked").exists());
+    }
+}
+
 /// Recursively copies a directory (src) to dst.
 fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
     use std::fs;
@@ -195,6 +228,13 @@ fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
     for entry in fs::read_dir(src)? {
         let entry = entry?;
         let ty = entry.file_type()?;
+
+        // SECURITY: Skip symbolic links to prevent following them and disclosing
+        // sensitive information from outside the update source.
+        if ty.is_symlink() {
+            continue;
+        }
+
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
         if ty.is_dir() {
