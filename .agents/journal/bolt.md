@@ -168,3 +168,9 @@ from the path string (`split('/')`), we eliminated this per-file allocation enti
 
 **Action:** Prefer iterator-based pattern matching over `Vec` collection when processing large numbers
 of items in a loop. Use `Clone` bounds on iterators to support backtracking without re-allocation.
+
+## 2024-05-25 - Extending Pre-compilation to Content Scan Markers
+
+**Learning:** While top-level configuration markers were already pre-compiled, nested markers in `config_file_content` were still being converted from `String` to `PathBuf` on every detection run. In a project with many technologies, this redundant allocation adds up.
+
+**Action:** Ensure all filesystem-related markers (files, directories, globs) are converted to their native path types (`PathBuf`) during the compilation phase of rules, not during evaluation.

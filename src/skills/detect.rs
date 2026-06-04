@@ -131,12 +131,11 @@ impl RepoMetadata {
             }
 
             let relative_buf = relative.to_path_buf();
-            paths.insert(relative_buf.clone());
 
-            if entry.file_type().is_dir() && entry.depth() == 1 {
-                root_dirs.push(relative_buf.clone());
-            }
             if entry.file_type().is_dir() {
+                if entry.depth() == 1 {
+                    root_dirs.push(relative_buf.clone());
+                }
                 dirs.insert(relative_buf.clone());
             }
 
@@ -161,10 +160,12 @@ impl RepoMetadata {
                         // Store first occurrence for deterministic evidence.
                         // Note: WalkDir sort_by_file_name() ensures deterministic choice if multiple exist.
                         extensions.insert(dot_ext, relative_buf.clone());
-                        extensions.insert(ext.to_string(), relative_buf);
+                        extensions.insert(ext.to_string(), relative_buf.clone());
                     }
                 }
             }
+
+            paths.insert(relative_buf);
         }
 
         Self {
@@ -229,7 +230,7 @@ struct CompiledDetectionRules {
 }
 
 struct CompiledConfigFileContentRules {
-    files: Option<Vec<String>>,
+    files: Option<Vec<PathBuf>>,
     patterns: Vec<Regex>,
     scan_gradle_layout: bool,
 }
@@ -304,7 +305,10 @@ impl CatalogDrivenDetector {
                     .collect::<Result<Vec<_>>>()?;
 
                 Ok::<_, anyhow::Error>(CompiledConfigFileContentRules {
-                    files: content_rules.files.clone(),
+                    files: content_rules
+                        .files
+                        .as_ref()
+                        .map(|files| files.iter().map(PathBuf::from).collect()),
                     patterns,
                     scan_gradle_layout: content_rules.scan_gradle_layout.unwrap_or(false),
                 })
@@ -545,9 +549,8 @@ fn gather_content_scan_files(
             "settings.gradle",
             "gradle/libs.versions.toml",
         ] {
-            let path = PathBuf::from(name);
-            if metadata.paths.contains(&path) {
-                files.push(path);
+            if metadata.paths.contains(Path::new(name)) {
+                files.push(PathBuf::from(name));
             }
         }
 
@@ -564,12 +567,11 @@ fn gather_content_scan_files(
     }
 
     if let Some(explicit_files) = &rules.files {
-        for file in explicit_files {
-            let path = PathBuf::from(file);
-            if (metadata.paths.contains(&path) || project_root.join(&path).exists())
-                && !files.contains(&path)
+        for path in explicit_files {
+            if (metadata.paths.contains(path) || project_root.join(path).exists())
+                && !files.contains(path)
             {
-                files.push(path);
+                files.push(path.clone());
             }
         }
     }
