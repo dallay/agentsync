@@ -158,13 +158,13 @@ A representative set of supported technologies and markers includes:
 | `react` | React | `package.json` (react, react-dom) |
 | `nextjs` | Next.js | `next.config.js`, `next.config.mjs`, `next.config.ts`, `package.json` |
 | `vue` | Vue | `package.json` (vue) |
-| `svelte` | Svelte | `svelte.config.js`, `package.json` (svelte) |
-| `python` | Python | `pyproject.toml`, `uv.lock`, `poetry.lock`, `requirements.txt`, `Pipfile`, `setup.py` |
+| `svelte` | Svelte | `svelte.config.js`, `package.json` (svelte, @sveltejs/kit) |
+| `python` | Python | `pyproject.toml`, `uv.lock`, `poetry.lock`, `requirements.txt`, `Pipfile`, `setup.py`, `setup.cfg` |
 | `github_actions` | GitHub Actions | `.github/workflows/` directory |
-| `docker` | Docker | `Dockerfile`, `compose.yml`, `compose.yaml`, `docker-compose.yml` |
+| `docker` | Docker | `Dockerfile`, `compose.yml`, `compose.yaml`, `docker-compose.yml`, `docker-compose.yaml` |
 | `postgresql` | PostgreSQL | `package.json` (pg, postgres, @vercel/postgres) |
-| `eslint` | ESLint | `eslint.config.js`, `.eslintrc.json`, `.eslintrc.js`, `.eslintrc.yml` |
-| `prettier` | Prettier | `.prettierrc`, `.prettierrc.json`, `.prettierrc.js`, `prettier.config.js` |
+| `eslint` | ESLint | `eslint.config.js`, `eslint.config.mjs`, `eslint.config.cjs`, `.eslintrc.json`, `.eslintrc.js`, `.eslintrc.yml` |
+| `prettier` | Prettier | `.prettierrc`, `.prettierrc.json`, `.prettierrc.yml`, `.prettierrc.js`, `prettier.config.js`, `prettier.config.mjs` |
 | `vitest` | Vitest | `vitest.config.ts`, `vitest.config.js`, `vitest.config.mts` |
 | `playwright` | Playwright | `playwright.config.ts`, `playwright.config.js`, `playwright.config.mjs` |
 | `make` | Make | `Makefile`, `GNUmakefile` |
@@ -172,9 +172,8 @@ A representative set of supported technologies and markers includes:
 Notes:
 
 - Detection uses repository contents only; recommendation metadata does **not** decide what technologies are detected.
-- Root-level canonical markers yield `high` confidence.
-- Nested markers generally yield `medium` confidence.
-- Markers under test/example-style paths yield `low` confidence.
+- `high` confidence detections are triggered by exact package matches in dependencies or the existence of specific configuration files.
+- `medium` confidence detections are triggered by package name regex patterns, search patterns within file content, or the presence of specific file extensions.
 - AgentSync ignores common generated/vendor directories like `.git`, `.agents`, `node_modules`, `target`, `dist`, `build`, `.astro`, `.next`, `.turbo`, and `.pnpm-store` while scanning.
 
 Recommendation metadata now comes from a hybrid catalog model:
