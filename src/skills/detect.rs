@@ -131,16 +131,13 @@ impl RepoMetadata {
             }
 
             let relative_buf = relative.to_path_buf();
-            paths.insert(relative_buf.clone());
 
-            if entry.file_type().is_dir() && entry.depth() == 1 {
-                root_dirs.push(relative_buf.clone());
-            }
             if entry.file_type().is_dir() {
+                if entry.depth() == 1 {
+                    root_dirs.push(relative_buf.clone());
+                }
                 dirs.insert(relative_buf.clone());
-            }
-
-            if entry.file_type().is_file() {
+            } else if entry.file_type().is_file() {
                 let file_name = entry.file_name().to_str().unwrap_or("");
 
                 // Integrated Nested Project Discovery (issue #409)
@@ -161,10 +158,14 @@ impl RepoMetadata {
                         // Store first occurrence for deterministic evidence.
                         // Note: WalkDir sort_by_file_name() ensures deterministic choice if multiple exist.
                         extensions.insert(dot_ext, relative_buf.clone());
-                        extensions.insert(ext.to_string(), relative_buf);
+                        extensions.insert(ext.to_string(), relative_buf.clone());
                     }
                 }
             }
+
+            // Optimization: Move the owned relative_buf into the paths set at the end of the
+            // iteration to avoid one mandatory clone per file/directory encountered during the walk.
+            paths.insert(relative_buf);
         }
 
         Self {
@@ -229,7 +230,7 @@ struct CompiledDetectionRules {
 }
 
 struct CompiledConfigFileContentRules {
-    files: Option<Vec<String>>,
+    files: Option<Vec<PathBuf>>,
     patterns: Vec<Regex>,
     scan_gradle_layout: bool,
 }
@@ -303,8 +304,13 @@ impl CatalogDrivenDetector {
                     })
                     .collect::<Result<Vec<_>>>()?;
 
+                let files = content_rules
+                    .files
+                    .as_ref()
+                    .map(|files| files.iter().map(PathBuf::from).collect());
+
                 Ok::<_, anyhow::Error>(CompiledConfigFileContentRules {
-                    files: content_rules.files.clone(),
+                    files,
                     patterns,
                     scan_gradle_layout: content_rules.scan_gradle_layout.unwrap_or(false),
                 })
@@ -529,11 +535,11 @@ fn make_detection(
     }
 }
 
-fn gather_content_scan_files(
+fn gather_content_scan_files<'a>(
     project_root: &Path,
-    rules: &CompiledConfigFileContentRules,
-    metadata: &RepoMetadata,
-) -> Vec<PathBuf> {
+    rules: &'a CompiledConfigFileContentRules,
+    metadata: &'a RepoMetadata,
+) -> Vec<&'a Path> {
     let mut files = Vec::new();
 
     if rules.scan_gradle_layout {
@@ -545,9 +551,9 @@ fn gather_content_scan_files(
             "settings.gradle",
             "gradle/libs.versions.toml",
         ] {
-            let path = PathBuf::from(name);
-            if metadata.paths.contains(&path) {
-                files.push(path);
+            // Optimization: check existence via Path::new and retrieval via get() to avoid PathBuf allocations.
+            if let Some(p) = metadata.paths.get(Path::new(name)) {
+                files.push(p.as_path());
             }
         }
 
@@ -556,20 +562,20 @@ fn gather_content_scan_files(
         for dir in &metadata.root_dirs {
             for build_file in &["build.gradle.kts", "build.gradle"] {
                 let path = dir.join(build_file);
-                if metadata.paths.contains(&path) {
-                    files.push(path);
+                if let Some(p) = metadata.paths.get(&path) {
+                    files.push(p.as_path());
                 }
             }
         }
     }
 
     if let Some(explicit_files) = &rules.files {
-        for file in explicit_files {
-            let path = PathBuf::from(file);
-            if (metadata.paths.contains(&path) || project_root.join(&path).exists())
-                && !files.contains(&path)
-            {
-                files.push(path);
+        for path in explicit_files {
+            if metadata.paths.contains(path) || project_root.join(path).exists() {
+                // Optimization: avoid O(N) Vec::contains check for typical small file sets.
+                if !files.iter().any(|f| *f == path) {
+                    files.push(path);
+                }
             }
         }
     }

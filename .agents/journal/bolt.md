@@ -168,3 +168,9 @@ from the path string (`split('/')`), we eliminated this per-file allocation enti
 
 **Action:** Prefer iterator-based pattern matching over `Vec` collection when processing large numbers
 of items in a loop. Use `Clone` bounds on iterators to support backtracking without re-allocation.
+
+## 2025-05-25 - Zero-Allocation Content Scan File Gathering
+
+**Learning:** Even with pre-compiled rule markers, the technology detection system was allocating a new `Vec<PathBuf>` for every technology being evaluated to aggregate candidate files (Gradle files + explicit files). By refactoring `gather_content_scan_files` to return `Vec<&Path>` and retrieving existing `PathBuf` references from the `RepoMetadata` set via `get()`, we eliminated these per-rule heap allocations.
+
+**Action:** When aggregating file lists for processing, prefer returning a vector of borrowed `&Path` references from long-lived metadata structures instead of creating new owned `PathBuf`s. Use `HashSet::get()` or `BTreeSet::get()` to retrieve the original reference for existence checks.
