@@ -168,3 +168,9 @@ from the path string (`split('/')`), we eliminated this per-file allocation enti
 
 **Action:** Prefer iterator-based pattern matching over `Vec` collection when processing large numbers
 of items in a loop. Use `Clone` bounds on iterators to support backtracking without re-allocation.
+
+## 2025-05-27 - Depth-Aware Existence Checks and Rule Pre-Compilation
+
+**Learning:** Technology detection involves evaluating 111+ technologies, many of which specify multiple config markers. Even with a single-pass WalkDir, the system was performing redundant `fs::exists` syscalls for markers that were already indexed in `metadata.paths` (depth <= 4). Furthermore, `ConfigFileContentRules` was storing file markers as `String`, forcing a `PathBuf` allocation for every rule evaluation.
+
+**Action:** Leverage the `MAX_DISCOVER_DEPTH` constant to skip `fs::exists` syscalls for any path within the discovery depth that isn't in the `paths` cache. Pre-compile all file markers into `PathBuf` during rule initialization to move allocation costs from the hot evaluation loop to the cold initialization phase.

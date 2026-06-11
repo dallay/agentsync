@@ -229,7 +229,7 @@ struct CompiledDetectionRules {
 }
 
 struct CompiledConfigFileContentRules {
-    files: Option<Vec<String>>,
+    files: Option<Vec<PathBuf>>,
     patterns: Vec<Regex>,
     scan_gradle_layout: bool,
 }
@@ -303,8 +303,13 @@ impl CatalogDrivenDetector {
                     })
                     .collect::<Result<Vec<_>>>()?;
 
+                let files = content_rules
+                    .files
+                    .as_ref()
+                    .map(|files| files.iter().map(PathBuf::from).collect());
+
                 Ok::<_, anyhow::Error>(CompiledConfigFileContentRules {
-                    files: content_rules.files.clone(),
+                    files,
                     patterns,
                     scan_gradle_layout: content_rules.scan_gradle_layout.unwrap_or(false),
                 })
@@ -459,7 +464,10 @@ fn evaluate_rules(
     if let Some(config_files) = &rules.config_files {
         for path in config_files {
             // Check cache first (hot path for shallow markers), fallback to fs for deeply nested ones
-            if metadata.paths.contains(path) || project_root.join(path).exists() {
+            if metadata.paths.contains(path)
+                || (path.components().count() > MAX_DISCOVER_DEPTH
+                    && project_root.join(path).exists())
+            {
                 let display = path.display().to_string();
                 return Some(make_detection(
                     tech_id,
@@ -545,9 +553,9 @@ fn gather_content_scan_files(
             "settings.gradle",
             "gradle/libs.versions.toml",
         ] {
-            let path = PathBuf::from(name);
-            if metadata.paths.contains(&path) {
-                files.push(path);
+            let path = Path::new(name);
+            if metadata.paths.contains(path) {
+                files.push(path.to_path_buf());
             }
         }
 
@@ -564,12 +572,13 @@ fn gather_content_scan_files(
     }
 
     if let Some(explicit_files) = &rules.files {
-        for file in explicit_files {
-            let path = PathBuf::from(file);
-            if (metadata.paths.contains(&path) || project_root.join(&path).exists())
-                && !files.contains(&path)
+        for path in explicit_files {
+            if (metadata.paths.contains(path)
+                || (path.components().count() > MAX_DISCOVER_DEPTH
+                    && project_root.join(path).exists()))
+                && !files.contains(path)
             {
-                files.push(path);
+                files.push(path.clone());
             }
         }
     }
@@ -937,7 +946,9 @@ fn expand_workspace_patterns(
             for dir_rel in &metadata.dirs {
                 let manifest = dir_rel.join("package.json");
                 if dir_rel.parent() == Some(base_rel)
-                    && (metadata.paths.contains(&manifest) || project_root.join(&manifest).exists())
+                    && (metadata.paths.contains(&manifest)
+                        || (manifest.components().count() > MAX_DISCOVER_DEPTH
+                            && project_root.join(&manifest).exists()))
                 {
                     dirs.push(project_root.join(dir_rel));
                 }
@@ -945,7 +956,10 @@ fn expand_workspace_patterns(
         } else {
             // Exact path: check cache first, then fall back to filesystem existence.
             let manifest = base_rel.join("package.json");
-            if metadata.paths.contains(&manifest) || project_root.join(&manifest).exists() {
+            if metadata.paths.contains(&manifest)
+                || (manifest.components().count() > MAX_DISCOVER_DEPTH
+                    && project_root.join(&manifest).exists())
+            {
                 dirs.push(project_root.join(base_rel));
             }
         }
