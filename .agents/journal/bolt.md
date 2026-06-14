@@ -168,3 +168,7 @@ from the path string (`split('/')`), we eliminated this per-file allocation enti
 
 **Action:** Prefer iterator-based pattern matching over `Vec` collection when processing large numbers
 of items in a loop. Use `Clone` bounds on iterators to support backtracking without re-allocation.
+
+## 2025-06-01 - Ownership-Based Allocation Reduction in Discovery
+**Learning:** High-frequency directory walking and manifest parsing (like `RepoMetadata::collect` and `parse_package_json_deps`) can be significantly slowed down by redundant heap allocations. Moving owned `PathBuf`s into collections at the end of loops, and using `serde_json::Map::remove` to take ownership of strings from parsed manifests, eliminates O(N) allocations.
+**Action:** Always defer ownership transfer to the end of a loop to avoid clones, and use destructive parsing (`remove`, `std::mem::take`) when extracting data from temporary configuration objects.
