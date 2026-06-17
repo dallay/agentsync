@@ -195,6 +195,13 @@ fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
     for entry in fs::read_dir(src)? {
         let entry = entry?;
         let ty = entry.file_type()?;
+
+        // SECURITY: Skip symbolic links to prevent information disclosure if the source
+        // contains a link pointing to a sensitive file outside the update source.
+        if ty.is_symlink() {
+            continue;
+        }
+
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
         if ty.is_dir() {
