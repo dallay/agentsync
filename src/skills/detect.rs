@@ -131,7 +131,6 @@ impl RepoMetadata {
             }
 
             let relative_buf = relative.to_path_buf();
-            paths.insert(relative_buf.clone());
 
             if entry.file_type().is_dir() && entry.depth() == 1 {
                 root_dirs.push(relative_buf.clone());
@@ -161,10 +160,12 @@ impl RepoMetadata {
                         // Store first occurrence for deterministic evidence.
                         // Note: WalkDir sort_by_file_name() ensures deterministic choice if multiple exist.
                         extensions.insert(dot_ext, relative_buf.clone());
-                        extensions.insert(ext.to_string(), relative_buf);
+                        extensions.insert(ext.to_string(), relative_buf.clone());
                     }
                 }
             }
+
+            paths.insert(relative_buf);
         }
 
         Self {
@@ -634,14 +635,20 @@ fn collect_package_names(
 
 fn parse_package_json_deps(path: &Path, cache: &mut ContentCache) -> Option<BTreeSet<String>> {
     let content = get_file_content(path, cache)?;
-    let json: serde_json::Value = serde_json::from_str(&content).ok()?;
-    let obj = json.as_object()?;
+    let mut json: serde_json::Value = serde_json::from_str(&content).ok()?;
+    let obj = json.as_object_mut()?;
 
     let mut deps = BTreeSet::new();
     for key in &["dependencies", "devDependencies", "peerDependencies"] {
-        if let Some(section) = obj.get(*key).and_then(|v| v.as_object()) {
-            for dep_name in section.keys() {
-                deps.insert(dep_name.clone());
+        if let Some(section) = obj.remove(*key).and_then(|v| {
+            if let serde_json::Value::Object(map) = v {
+                Some(map)
+            } else {
+                None
+            }
+        }) {
+            for (dep_name, _) in section {
+                deps.insert(dep_name);
             }
         }
     }
@@ -935,11 +942,11 @@ fn expand_workspace_patterns(
             // Glob: use cached directories from metadata to find workspace members
             // avoiding redundant O(N) filesystem walks.
             for dir_rel in &metadata.dirs {
-                let manifest = dir_rel.join("package.json");
-                if dir_rel.parent() == Some(base_rel)
-                    && (metadata.paths.contains(&manifest) || project_root.join(&manifest).exists())
-                {
-                    dirs.push(project_root.join(dir_rel));
+                if dir_rel.parent() == Some(base_rel) {
+                    let manifest = dir_rel.join("package.json");
+                    if metadata.paths.contains(&manifest) || project_root.join(&manifest).exists() {
+                        dirs.push(project_root.join(dir_rel));
+                    }
                 }
             }
         } else {

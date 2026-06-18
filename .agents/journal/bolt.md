@@ -168,3 +168,12 @@ from the path string (`split('/')`), we eliminated this per-file allocation enti
 
 **Action:** Prefer iterator-based pattern matching over `Vec` collection when processing large numbers
 of items in a loop. Use `Clone` bounds on iterators to support backtracking without re-allocation.
+
+## 2025-05-26 - Targeted Allocation Reduction in Tech Detection
+
+**Learning:** Technology detection involves deep repository walks and repeated parsing of manifest files. We identified three specific hotspots for optimization:
+1. **WalkDir Loop:** Moving the final `paths.insert(relative_buf)` to the end of the loop iteration allowed consuming the `PathBuf` instead of cloning it on every single iteration, saving thousands of allocations in large projects.
+2. **Workspace Resolution:** Deferring `PathBuf` joins until after basic filtering (e.g., parent directory checks) avoids redundant heap allocations for directories that are guaranteed to be irrelevant.
+3. **Manifest Parsing:** Refactoring `parse_package_json_deps` to consume the parsed JSON value (`Value::Object`) allowed moving dependency name strings directly into the result set, making the manifest extraction effectively zero-clone.
+
+**Action:** Always look for the "final usage" of an owned buffer in a loop and move it to the end to leverage ownership transfer. Defer expensive path manipulations behind cheap filters. Prefer consuming parsed structures over referencing/cloning when the original is no longer needed.
