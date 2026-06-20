@@ -172,9 +172,10 @@ A representative set of supported technologies and markers includes:
 Notes:
 
 - Detection uses repository contents only; recommendation metadata does **not** decide what technologies are detected.
-- Root-level canonical markers yield `high` confidence.
-- Nested markers generally yield `medium` confidence.
-- Markers under test/example-style paths yield `low` confidence.
+- Technology detection confidence is rule-based:
+  - **`High` confidence** is assigned to exact package matches (`packages`) and configuration file existence (`config_files`).
+  - **`Medium` confidence** is assigned to package regex patterns (`package_patterns`), file content matches (`config_file_content`), and file extensions (`file_extensions`).
+  - File location (root vs nested) does not influence the assigned confidence level.
 - AgentSync ignores common generated/vendor directories like `.git`, `.agents`, `node_modules`, `target`, `dist`, `build`, `.astro`, `.next`, `.turbo`, and `.pnpm-store` while scanning.
 
 Recommendation metadata now comes from a hybrid catalog model:
