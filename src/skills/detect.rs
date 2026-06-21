@@ -131,7 +131,6 @@ impl RepoMetadata {
             }
 
             let relative_buf = relative.to_path_buf();
-            paths.insert(relative_buf.clone());
 
             if entry.file_type().is_dir() && entry.depth() == 1 {
                 root_dirs.push(relative_buf.clone());
@@ -149,7 +148,8 @@ impl RepoMetadata {
                     && !dir.as_os_str().is_empty()
                 {
                     let dir_name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                    if !TEST_DIR_NAMES.contains(&dir_name) {
+                    // Optimization: skip PathBuf allocation if directory already identified as a project.
+                    if !TEST_DIR_NAMES.contains(&dir_name) && !nested_projects.contains(dir) {
                         nested_projects.insert(dir.to_path_buf());
                     }
                 }
@@ -161,10 +161,14 @@ impl RepoMetadata {
                         // Store first occurrence for deterministic evidence.
                         // Note: WalkDir sort_by_file_name() ensures deterministic choice if multiple exist.
                         extensions.insert(dot_ext, relative_buf.clone());
-                        extensions.insert(ext.to_string(), relative_buf);
+                        extensions.insert(ext.to_string(), relative_buf.clone());
                     }
                 }
             }
+
+            // Optimization: Move the owned relative_buf into the paths set at the end of the walk
+            // iteration, avoiding an O(N) clone() call for every file and directory encountered.
+            paths.insert(relative_buf);
         }
 
         Self {
@@ -935,11 +939,13 @@ fn expand_workspace_patterns(
             // Glob: use cached directories from metadata to find workspace members
             // avoiding redundant O(N) filesystem walks.
             for dir_rel in &metadata.dirs {
-                let manifest = dir_rel.join("package.json");
-                if dir_rel.parent() == Some(base_rel)
-                    && (metadata.paths.contains(&manifest) || project_root.join(&manifest).exists())
-                {
-                    dirs.push(project_root.join(dir_rel));
+                // Optimization: skip the PathBuf join of "package.json" until after the parent is
+                // verified, reducing heap allocations during workspace discovery.
+                if dir_rel.parent() == Some(base_rel) {
+                    let manifest = dir_rel.join("package.json");
+                    if metadata.paths.contains(&manifest) || project_root.join(&manifest).exists() {
+                        dirs.push(project_root.join(dir_rel));
+                    }
                 }
             }
         } else {

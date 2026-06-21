@@ -168,3 +168,15 @@ from the path string (`split('/')`), we eliminated this per-file allocation enti
 
 **Action:** Prefer iterator-based pattern matching over `Vec` collection when processing large numbers
 of items in a loop. Use `Clone` bounds on iterators to support backtracking without re-allocation.
+
+## 2025-05-25 - Eliminating Short-Lived PathBuf Allocations in Hot Loops
+
+**Learning:** During technology detection and workspace expansion, the CLI was performing many
+short-lived `PathBuf` allocations (e.g., `clone()` for insertion, `join("package.json")` for existence
+checks). In large projects, these add up to significant heap pressure. By moving ownership into
+collections at the end of loops and deferring join operations until after preliminary filtering, we
+eliminated O(N) unnecessary allocations.
+
+**Action:** Prefer moving ownership into collections at the loop's end to avoid `clone()`. Defer
+expensive path operations (like `join` or `canonicalize`) until after cheaper filtering checks
+(like `parent() == Some(...)`) to minimize short-lived heap allocations in hot paths.
