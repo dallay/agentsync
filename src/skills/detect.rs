@@ -131,7 +131,6 @@ impl RepoMetadata {
             }
 
             let relative_buf = relative.to_path_buf();
-            paths.insert(relative_buf.clone());
 
             if entry.file_type().is_dir() && entry.depth() == 1 {
                 root_dirs.push(relative_buf.clone());
@@ -161,10 +160,14 @@ impl RepoMetadata {
                         // Store first occurrence for deterministic evidence.
                         // Note: WalkDir sort_by_file_name() ensures deterministic choice if multiple exist.
                         extensions.insert(dot_ext, relative_buf.clone());
-                        extensions.insert(ext.to_string(), relative_buf);
+                        extensions.insert(ext.to_string(), relative_buf.clone());
                     }
                 }
             }
+
+            // Optimization: Move the owned relative_buf into the paths set at the end
+            // of the iteration to avoid a clone() call for every file and directory.
+            paths.insert(relative_buf);
         }
 
         Self {
@@ -229,7 +232,8 @@ struct CompiledDetectionRules {
 }
 
 struct CompiledConfigFileContentRules {
-    files: Option<Vec<String>>,
+    /// Pre-converted PathBufs to avoid repeated heap allocations during detection.
+    files: Option<Vec<PathBuf>>,
     patterns: Vec<Regex>,
     scan_gradle_layout: bool,
 }
@@ -303,8 +307,13 @@ impl CatalogDrivenDetector {
                     })
                     .collect::<Result<Vec<_>>>()?;
 
+                let files = content_rules
+                    .files
+                    .as_ref()
+                    .map(|files| files.iter().map(PathBuf::from).collect());
+
                 Ok::<_, anyhow::Error>(CompiledConfigFileContentRules {
-                    files: content_rules.files.clone(),
+                    files,
                     patterns,
                     scan_gradle_layout: content_rules.scan_gradle_layout.unwrap_or(false),
                 })
@@ -564,12 +573,11 @@ fn gather_content_scan_files(
     }
 
     if let Some(explicit_files) = &rules.files {
-        for file in explicit_files {
-            let path = PathBuf::from(file);
-            if (metadata.paths.contains(&path) || project_root.join(&path).exists())
-                && !files.contains(&path)
+        for path in explicit_files {
+            if (metadata.paths.contains(path) || project_root.join(path).exists())
+                && !files.contains(path)
             {
-                files.push(path);
+                files.push(path.clone());
             }
         }
     }
@@ -634,13 +642,15 @@ fn collect_package_names(
 
 fn parse_package_json_deps(path: &Path, cache: &mut ContentCache) -> Option<BTreeSet<String>> {
     let content = get_file_content(path, cache)?;
-    let mut json: serde_json::Value = serde_json::from_str(&content).ok()?;
-    let obj = json.as_object_mut()?;
+    let json: serde_json::Value = serde_json::from_str(&content).ok()?;
+    let serde_json::Value::Object(mut obj) = json else {
+        return None;
+    };
 
     let mut deps = BTreeSet::new();
     for key in &["dependencies", "devDependencies", "peerDependencies"] {
-        // Optimization: Use remove() to take ownership of the section and its keys,
-        // eliminating redundant String clones for every dependency name.
+        // Optimization: Use obj.remove() to take ownership of the dependency section
+        // and iterate over owned keys to avoid cloning dependency names.
         if let Some(serde_json::Value::Object(section)) = obj.remove(*key) {
             for (dep_name, _) in section {
                 deps.insert(dep_name);
@@ -937,11 +947,13 @@ fn expand_workspace_patterns(
             // Glob: use cached directories from metadata to find workspace members
             // avoiding redundant O(N) filesystem walks.
             for dir_rel in &metadata.dirs {
-                let manifest = dir_rel.join("package.json");
-                if dir_rel.parent() == Some(base_rel)
-                    && (metadata.paths.contains(&manifest) || project_root.join(&manifest).exists())
-                {
-                    dirs.push(project_root.join(dir_rel));
+                if dir_rel.parent() == Some(base_rel) {
+                    // Optimization: Defer the PathBuf join of "package.json" until after
+                    // verifying the directory is a child of the workspace base.
+                    let manifest = dir_rel.join("package.json");
+                    if metadata.paths.contains(&manifest) || project_root.join(&manifest).exists() {
+                        dirs.push(project_root.join(dir_rel));
+                    }
                 }
             }
         } else {
