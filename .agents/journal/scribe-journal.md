@@ -32,3 +32,8 @@
 
 **Learning:** Both the CLI reference and the Skills guide claimed that active evaluation of multi-technology "combo" entries was deferred. However, Phase 2 of `recommend_skills` in `src/skills/suggest.rs` already implements this logic, providing specific recommendations for combinations like `react-hook-form` + `zod`.
 **Action:** Before claiming a feature is "deferred" or "planned," verify the relevant logic phases in the implementation (e.g., Phase 2 evaluation loops).
+
+## 2025-05-22 - Technology Detection Confidence and Validation Drift
+
+**Learning:** The Skills guide inaccurately described technology detection confidence as being location-based (attributing "low" confidence to markers in test/fixture directories). In reality, `src/skills/detect.rs` implements rule-based confidence (High for exact matches, Medium for patterns) and ignores test/generated directories entirely. Additionally, skill ID validation logic is implemented in `src/commands/skill.rs`, not `src/skills/catalog.rs` as previously documented.
+**Action:** Always cross-reference heuristic descriptions against the specific implementation file (e.g., `detect.rs` for detection logic) and verify the exact location of shared validation functions before documenting them as reference points.
