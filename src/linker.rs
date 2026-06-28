@@ -70,7 +70,7 @@ pub struct Linker {
     glob_cache: RefCell<HashMap<NestedGlobKey, NestedGlobMatches>>,
     ensured_dirs: RefCell<HashSet<PathBuf>>,
     ensured_compressed: RefCell<HashSet<PathBuf>>,
-    canonical_project_root: RefCell<Option<PathBuf>>,
+    canonical_project_root: RefCell<Option<Rc<PathBuf>>>,
 }
 
 impl Linker {
@@ -103,12 +103,23 @@ impl Linker {
         &self.config
     }
 
+    /// Clear the path resolution cache. Should be called after any symlink
+    /// mutation to ensure later safety checks use fresh state.
+    fn invalidate_path_cache(&self) {
+        self.path_cache.borrow_mut().clear();
+    }
+
+    /// Clear the glob discovery cache. Should be called after regular file or
+    /// directory mutations that could affect NestedGlob results.
+    fn invalidate_glob_cache(&self) {
+        self.glob_cache.borrow_mut().clear();
+    }
+
     /// Drop discovery caches after filesystem mutations that can affect later
     /// nested-glob walks or destination safety checks in the same run.
     fn invalidate_discovery_caches(&self) {
-        self.glob_cache.borrow_mut().clear();
-        self.path_cache.borrow_mut().clear();
-        self.canonical_project_root.borrow_mut().take();
+        self.invalidate_glob_cache();
+        self.invalidate_path_cache();
     }
 
     fn canonicalize_uncached(&self, path: &Path) -> Result<PathBuf> {
@@ -117,10 +128,10 @@ impl Linker {
     }
 
     /// Get or compute the canonical project root path, using cache.
-    fn get_canonical_project_root(&self) -> Result<PathBuf> {
+    fn get_canonical_project_root(&self) -> Result<Rc<PathBuf>> {
         let mut root_cache = self.canonical_project_root.borrow_mut();
         if let Some(ref root) = *root_cache {
-            return Ok(root.clone());
+            return Ok(Rc::clone(root));
         }
 
         let root = self
@@ -131,12 +142,17 @@ impl Linker {
                     self.project_root.display()
                 )
             })?;
-        *root_cache = Some(root.clone());
-        Ok(root)
+        let root_rc = Rc::new(root);
+        *root_cache = Some(Rc::clone(&root_rc));
+        Ok(root_rc)
     }
 
     /// Validate that a path resolves within the project root and contains no traversal.
-    fn ensure_safe_path(&self, joined: &Path, display_path: &str) -> Result<PathBuf> {
+    fn ensure_safe_path(
+        &self,
+        joined: &Path,
+        display_path: &dyn std::fmt::Display,
+    ) -> Result<PathBuf> {
         // SECURITY: Check for traversal components before canonicalization to prevent bypasses.
         if joined
             .components()
@@ -163,7 +179,7 @@ impl Linker {
                     )
                 })?;
 
-        if !canonical_ancestor.starts_with(&canonical_project_root) {
+        if !canonical_ancestor.starts_with(canonical_project_root.as_ref()) {
             anyhow::bail!("Path resolves outside project root: {}", display_path);
         }
 
@@ -201,13 +217,12 @@ impl Linker {
         }
 
         let joined = self.project_root.join(path);
-        self.ensure_safe_path(&joined, dest_path)
+        self.ensure_safe_path(&joined, &dest_path)
     }
 
     /// Re-validate a previously joined path immediately before filesystem mutation.
     fn revalidate_path(&self, dest: &Path) -> Result<()> {
-        self.ensure_safe_path(dest, &dest.display().to_string())
-            .map(|_| ())
+        self.ensure_safe_path(dest, &dest.display()).map(|_| ())
     }
 
     /// Re-validate a path before unlinking (remove_file/remove_dir).
@@ -231,7 +246,7 @@ impl Linker {
 
                 let canonical_root = self.get_canonical_project_root()?;
 
-                if !canonical_parent.starts_with(&canonical_root) {
+                if !canonical_parent.starts_with(canonical_root.as_ref()) {
                     anyhow::bail!(
                         "Path parent resolves outside project root: {}",
                         display_path
@@ -278,7 +293,7 @@ impl Linker {
 
                 let canonical_root = self.get_canonical_project_root()?;
 
-                if !canonical_parent.starts_with(&canonical_root) {
+                if !canonical_parent.starts_with(canonical_root.as_ref()) {
                     anyhow::bail!(
                         "Path parent resolves outside project root: {}",
                         display_path
@@ -664,7 +679,7 @@ impl Linker {
                     // revalidate_path would canonicalize through the symlink and reject the path.
                     self.revalidate_unlink_path(dest)?;
                     remove_symlink(dest)?;
-                    self.invalidate_discovery_caches();
+                    self.invalidate_path_cache();
                     if options.verbose {
                         println!(
                             "  {} Removed old symlink: {} (was -> {})",
@@ -690,7 +705,7 @@ impl Linker {
                 self.revalidate_path(&backup)?;
                 remove_existing_path(&backup)?;
                 fs::rename(dest, &backup)?;
-                self.invalidate_discovery_caches();
+                self.invalidate_discovery_caches(); // Mutates regular files/dirs
                 println!(
                     "  {} Backed up: {} -> {}",
                     "!".yellow(),
@@ -728,7 +743,7 @@ impl Linker {
                 }
             }
 
-            self.invalidate_discovery_caches();
+            self.invalidate_path_cache();
 
             println!(
                 "  {} Linked: {} -> {}",
@@ -1283,7 +1298,7 @@ impl Linker {
                                     } else {
                                         self.revalidate_unlink_path(&dest)?;
                                         fs::remove_file(&dest)?;
-                                        self.invalidate_discovery_caches();
+                                        self.invalidate_path_cache();
                                         println!("  {} Removed: {}", "✔".green(), dest.display());
                                     }
                                     result.removed += 1;
@@ -1316,7 +1331,7 @@ impl Linker {
                                     } else {
                                         self.revalidate_unlink_path(&entry.path())?;
                                         fs::remove_file(entry.path())?;
-                                        self.invalidate_discovery_caches();
+                                        self.invalidate_path_cache();
                                         println!(
                                             "  {} Removed: {}",
                                             "✔".green(),
@@ -1346,7 +1361,7 @@ impl Linker {
                                 // points outside project_root can still be removed safely.
                                 self.revalidate_unlink_path(&dest)?;
                                 remove_symlink(&dest)?;
-                                self.invalidate_discovery_caches();
+                                self.invalidate_path_cache();
                                 println!("  {} Removed: {}", "✔".green(), dest.display());
                             }
                             result.removed += 1;
@@ -1380,7 +1395,7 @@ impl Linker {
                                 } else {
                                     self.revalidate_unlink_path(&dest)?;
                                     fs::remove_file(&dest)?;
-                                    self.invalidate_discovery_caches();
+                                    self.invalidate_path_cache();
                                     println!("  {} Removed: {}", "✔".green(), dest.display());
                                 }
                                 result.removed += 1;
