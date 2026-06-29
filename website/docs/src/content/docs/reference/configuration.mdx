@@ -96,6 +96,7 @@ AgentSync automatically adds the following patterns to `.gitignore` based on whi
 | Agent | Automatically Added Patterns |
 | :--- | :--- |
 | **claude** | `.mcp.json`, `.claude/commands/`, `.claude/skills/` |
+| **claude-desktop** | _(none -- writes to global config outside project)_ |
 | **copilot** | `.vscode/mcp.json` |
 | **codex** | `.codex/config.toml` |
 | **gemini** | `GEMINI.md`, `.gemini/settings.json`, `.gemini/commands/`, `.gemini/skills/` |
@@ -189,7 +190,7 @@ Those destinations stay as real directories:
 
 AgentSync has two support levels:
 
-- **Native MCP generation** (built-in formatter + merge behavior): `claude`, `copilot`, `codex`, `gemini`, `cursor`, `vscode`, `opencode`.
+- **Native MCP generation** (built-in formatter + merge behavior): `claude`, `claude-desktop`, `copilot`, `codex`, `gemini`, `cursor`, `vscode`, `opencode`.
 - **Configurable sync targets** (rules/skills via symlink): any agent as long as you declare `[agents.<name>.targets.*]` entries.
 
 The matrix below documents common agent locations and whether AgentSync can handle them today.
@@ -199,6 +200,7 @@ The matrix below documents common agent locations and whether AgentSync can hand
 | AGENTS.md | `AGENTS.md` | Pseudo-agent pattern via `[agents.root]` target | - |
 | GitHub Copilot | `.github/copilot-instructions.md` | `.vscode/mcp.json` (native MCP) | Configurable |
 | Claude Code | `CLAUDE.md` | `.mcp.json` (native MCP) | Configurable; `.claude/skills/` |
+| Claude Desktop | - | Global config (native MCP); disabled by default | - |
 | OpenAI Codex CLI | `AGENTS.md` | `.codex/config.toml` (native MCP) | Configurable; `.codex/skills/` |
 | VS Code | - | `.vscode/mcp.json` (native MCP) | Configurable |
 | Pi Coding Agent | - | No native MCP formatter | Configurable |

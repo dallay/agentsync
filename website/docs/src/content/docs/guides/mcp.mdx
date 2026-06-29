@@ -55,12 +55,33 @@ AgentSync automatically knows where to place the MCP configuration for these ass
 | Assistant | Destination File | Notes |
 | :--- | :--- | :--- |
 | **Claude Code** | `.mcp.json` | Standard format |
+| **Claude Desktop** | `~/Library/Application Support/Claude/claude_desktop_config.json` | Global config; preserves non-MCP settings; disabled by default |
 | **GitHub Copilot** | `.vscode/mcp.json` | Shared with VS Code |
 | **OpenAI Codex CLI** | `.codex/config.toml` | TOML format (`[mcp_servers.<name>]`); AgentSync maps `headers` to `http_headers` |
 | **Gemini CLI** | `.gemini/settings.json` | Automatically adds `"trust": true` |
 | **VS Code** | `.vscode/mcp.json` | For VS Code extensions |
 | **Cursor** | `.cursor/mcp.json` | Standard format |
 | **OpenCode** | `opencode.json` | |
+
+## Global Agents
+
+Some agents store their MCP configuration in a global (user-level) location rather than in the project directory. AgentSync calls these **global agents**.
+
+Currently supported global agents:
+
+| Agent | Config Location |
+| :--- | :--- |
+| **Claude Desktop** | macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`<br/>Linux: `~/.config/Claude/claude_desktop_config.json`<br/>Windows: `%APPDATA%\Claude\claude_desktop_config.json` |
+
+Global agents are **disabled by default** because they write outside your project directory. To enable:
+
+```toml
+[agents.claude-desktop]
+enabled = true
+description = "Claude Desktop"
+```
+
+No symlink targets are needed for global agents. They only participate in MCP server syncing. When `agentsync apply` runs, the MCP servers defined in your `[mcp_servers]` config are merged into the global config file, preserving any existing non-MCP settings (keyboard shortcuts, theme, etc.).
 
 ## How it works
 
