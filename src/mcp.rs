@@ -1572,7 +1572,9 @@ mod tests {
             assert!(p.ends_with("claude_desktop_config.json"));
         }
         // Non-global agents resolve under project_root
-        let claude_path = McpAgent::ClaudeCode.resolved_config_path(project_root).unwrap();
+        let claude_path = McpAgent::ClaudeCode
+            .resolved_config_path(project_root)
+            .unwrap();
         assert_eq!(claude_path, project_root.join(".mcp.json"));
     }
 
