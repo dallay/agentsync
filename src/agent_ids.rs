@@ -10,6 +10,7 @@
 pub fn canonical_mcp_agent_id(id: &str) -> Option<&'static str> {
     match id.to_lowercase().as_str() {
         "claude" | "claude-code" | "claude_code" => Some("claude"),
+        "claude-desktop" | "claude_desktop" | "claudedesktop" => Some("claude-desktop"),
         "copilot" | "github-copilot" | "github_copilot" => Some("copilot"),
         "codex" | "codex-cli" | "codex_cli" => Some("codex"),
         "gemini" | "gemini-cli" | "gemini_cli" => Some("gemini"),
@@ -95,6 +96,7 @@ pub fn known_ignore_patterns(agent_name: &str) -> &'static [&'static str] {
     if let Some(canonical) = canonical_mcp_agent_id(agent_name) {
         return match canonical {
             "claude" => &[".mcp.json", ".claude/commands/", ".claude/skills/"],
+            "claude-desktop" => &[],
             "copilot" => &[".vscode/mcp.json"],
             "codex" => &[".codex/config.toml"],
             "gemini" => &[
@@ -190,6 +192,18 @@ mod tests {
     fn test_canonical_mcp_agent_id_aliases() {
         assert_eq!(canonical_mcp_agent_id("claude"), Some("claude"));
         assert_eq!(canonical_mcp_agent_id("claude-code"), Some("claude"));
+        assert_eq!(
+            canonical_mcp_agent_id("claude-desktop"),
+            Some("claude-desktop")
+        );
+        assert_eq!(
+            canonical_mcp_agent_id("claude_desktop"),
+            Some("claude-desktop")
+        );
+        assert_eq!(
+            canonical_mcp_agent_id("claudedesktop"),
+            Some("claude-desktop")
+        );
         assert_eq!(canonical_mcp_agent_id("github-copilot"), Some("copilot"));
         assert_eq!(canonical_mcp_agent_id("codex_cli"), Some("codex"));
         assert_eq!(canonical_mcp_agent_id("gemini-cli"), Some("gemini"));
