@@ -32,3 +32,8 @@
 
 **Learning:** Both the CLI reference and the Skills guide claimed that active evaluation of multi-technology "combo" entries was deferred. However, Phase 2 of `recommend_skills` in `src/skills/suggest.rs` already implements this logic, providing specific recommendations for combinations like `react-hook-form` + `zod`.
 **Action:** Before claiming a feature is "deferred" or "planned," verify the relevant logic phases in the implementation (e.g., Phase 2 evaluation loops).
+
+## 2026-05-24 - Agent Compatibility Matrix Drift
+
+**Learning:** The `Agent Compatibility Matrix` in the configuration reference had drifted significantly from `src/agent_ids.rs` and `src/mcp.rs`. Several agents had missing or incorrect skill directory mappings, and a Markdown formatting error (a note breaking the table) had made the table disjointed and hard to maintain.
+**Action:** Treat the Compatibility Matrix as a living map of `src/agent_ids.rs`. Periodically verify that every agent canonicalized in Rust is present in the table, alphabetized for maintainability, and that skill paths are correctly categorized in "Skills Support" rather than "Notes".
