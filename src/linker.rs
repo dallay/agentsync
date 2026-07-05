@@ -64,13 +64,13 @@ pub struct Linker {
     config_path: PathBuf,
     project_root: PathBuf,
     source_dir: PathBuf,
-    path_cache: RefCell<HashMap<PathBuf, PathBuf>>,
+    path_cache: RefCell<HashMap<PathBuf, Rc<PathBuf>>>,
     compression_cache: RefCell<HashMap<PathBuf, Rc<str>>>,
     /// Cache for NestedGlob discovery results: (search_root, pattern, excludes) -> [(full_path, rel_path)]
     glob_cache: RefCell<HashMap<NestedGlobKey, NestedGlobMatches>>,
     ensured_dirs: RefCell<HashSet<PathBuf>>,
     ensured_compressed: RefCell<HashSet<PathBuf>>,
-    canonical_project_root: RefCell<Option<PathBuf>>,
+    canonical_project_root: RefCell<Option<Rc<PathBuf>>>,
 }
 
 impl Linker {
@@ -103,12 +103,17 @@ impl Linker {
         &self.config
     }
 
-    /// Drop discovery caches after filesystem mutations that can affect later
-    /// nested-glob walks or destination safety checks in the same run.
-    fn invalidate_discovery_caches(&self) {
-        self.glob_cache.borrow_mut().clear();
+    /// Drop path canonicalization cache after filesystem mutations that can affect
+    /// destination safety checks in the same run.
+    fn invalidate_path_cache(&self) {
         self.path_cache.borrow_mut().clear();
-        self.canonical_project_root.borrow_mut().take();
+    }
+
+    /// Drop discovery caches after filesystem mutations that can affect later
+    /// nested-glob walks. Symlink mutations do NOT require this as NestedGlob
+    /// discovery uses follow_links(false).
+    fn invalidate_glob_cache(&self) {
+        self.glob_cache.borrow_mut().clear();
     }
 
     fn canonicalize_uncached(&self, path: &Path) -> Result<PathBuf> {
@@ -117,26 +122,31 @@ impl Linker {
     }
 
     /// Get or compute the canonical project root path, using cache.
-    fn get_canonical_project_root(&self) -> Result<PathBuf> {
+    fn get_canonical_project_root(&self) -> Result<Rc<PathBuf>> {
         let mut root_cache = self.canonical_project_root.borrow_mut();
         if let Some(ref root) = *root_cache {
-            return Ok(root.clone());
+            return Ok(Rc::clone(root));
         }
 
-        let root = self
-            .canonicalize_uncached(&self.project_root)
-            .with_context(|| {
-                format!(
-                    "Failed to canonicalize project root: {}",
-                    self.project_root.display()
-                )
-            })?;
-        *root_cache = Some(root.clone());
+        let root = Rc::new(
+            self.canonicalize_uncached(&self.project_root)
+                .with_context(|| {
+                    format!(
+                        "Failed to canonicalize project root: {}",
+                        self.project_root.display()
+                    )
+                })?,
+        );
+        *root_cache = Some(Rc::clone(&root));
         Ok(root)
     }
 
     /// Validate that a path resolves within the project root and contains no traversal.
-    fn ensure_safe_path(&self, joined: &Path, display_path: &str) -> Result<PathBuf> {
+    fn ensure_safe_path(
+        &self,
+        joined: &Path,
+        display_path: &dyn std::fmt::Display,
+    ) -> Result<PathBuf> {
         // SECURITY: Check for traversal components before canonicalization to prevent bypasses.
         if joined
             .components()
@@ -163,7 +173,7 @@ impl Linker {
                     )
                 })?;
 
-        if !canonical_ancestor.starts_with(&canonical_project_root) {
+        if !canonical_ancestor.starts_with(&*canonical_project_root) {
             anyhow::bail!("Path resolves outside project root: {}", display_path);
         }
 
@@ -201,13 +211,12 @@ impl Linker {
         }
 
         let joined = self.project_root.join(path);
-        self.ensure_safe_path(&joined, dest_path)
+        self.ensure_safe_path(&joined, &dest_path)
     }
 
     /// Re-validate a previously joined path immediately before filesystem mutation.
     fn revalidate_path(&self, dest: &Path) -> Result<()> {
-        self.ensure_safe_path(dest, &dest.display().to_string())
-            .map(|_| ())
+        self.ensure_safe_path(dest, &dest.display()).map(|_| ())
     }
 
     /// Re-validate a path before unlinking (remove_file/remove_dir).
@@ -231,7 +240,7 @@ impl Linker {
 
                 let canonical_root = self.get_canonical_project_root()?;
 
-                if !canonical_parent.starts_with(&canonical_root) {
+                if !canonical_parent.starts_with(&*canonical_root) {
                     anyhow::bail!(
                         "Path parent resolves outside project root: {}",
                         display_path
@@ -278,7 +287,7 @@ impl Linker {
 
                 let canonical_root = self.get_canonical_project_root()?;
 
-                if !canonical_parent.starts_with(&canonical_root) {
+                if !canonical_parent.starts_with(&*canonical_root) {
                     anyhow::bail!(
                         "Path parent resolves outside project root: {}",
                         display_path
@@ -364,8 +373,9 @@ impl Linker {
         self.compression_cache.borrow_mut().clear();
         self.ensured_dirs.borrow_mut().clear();
         self.ensured_compressed.borrow_mut().clear();
-        self.path_cache.borrow_mut().clear();
-        self.invalidate_discovery_caches();
+        self.invalidate_path_cache();
+        self.invalidate_glob_cache();
+        self.canonical_project_root.borrow_mut().take();
 
         let mut result = SyncResult::default();
 
@@ -603,7 +613,8 @@ impl Linker {
         }
         fs::write(dest, compressed.as_bytes())
             .with_context(|| format!("Failed to write compressed AGENTS.md: {}", dest.display()))?;
-        self.invalidate_discovery_caches();
+        self.invalidate_path_cache();
+        self.invalidate_glob_cache();
 
         self.ensured_compressed
             .borrow_mut()
@@ -664,7 +675,7 @@ impl Linker {
                     // revalidate_path would canonicalize through the symlink and reject the path.
                     self.revalidate_unlink_path(dest)?;
                     remove_symlink(dest)?;
-                    self.invalidate_discovery_caches();
+                    self.invalidate_path_cache();
                     if options.verbose {
                         println!(
                             "  {} Removed old symlink: {} (was -> {})",
@@ -690,7 +701,8 @@ impl Linker {
                 self.revalidate_path(&backup)?;
                 remove_existing_path(&backup)?;
                 fs::rename(dest, &backup)?;
-                self.invalidate_discovery_caches();
+                self.invalidate_path_cache();
+                self.invalidate_glob_cache();
                 println!(
                     "  {} Backed up: {} -> {}",
                     "!".yellow(),
@@ -728,7 +740,7 @@ impl Linker {
                 }
             }
 
-            self.invalidate_discovery_caches();
+            self.invalidate_path_cache();
 
             println!(
                 "  {} Linked: {} -> {}",
@@ -930,6 +942,42 @@ impl Linker {
     /// # Performance Considerations
     /// - Uses `find()` instead of `any()` for exclusion checks to enable early-exit
     /// - Avoids exclusion iteration when `excludes` list is empty
+    ///
+    /// Internal helper to get cached nested-glob discovery results.
+    fn get_nested_glob_matches(
+        &self,
+        search_root: &Path,
+        glob_pattern: &str,
+        excludes: &[String],
+        options: &SyncOptions,
+    ) -> Result<NestedGlobMatches> {
+        let key = (
+            search_root.to_path_buf(),
+            glob_pattern.to_string(),
+            excludes.to_vec(),
+        );
+
+        let mut cache = self.glob_cache.borrow_mut();
+        if let Some(cached) = cache.get(&key) {
+            return Ok(Rc::clone(cached));
+        }
+
+        let mut found = Vec::new();
+        self.for_each_nested_glob_match(
+            search_root,
+            glob_pattern,
+            excludes,
+            options,
+            |full_path, rel_path| {
+                found.push((full_path.to_path_buf(), rel_path.to_path_buf()));
+                Ok(())
+            },
+        )?;
+        let rc_found = Rc::new(found);
+        cache.insert(key, Rc::clone(&rc_found));
+        Ok(rc_found)
+    }
+
     fn process_nested_glob(
         &self,
         search_root: &Path,
@@ -950,33 +998,7 @@ impl Linker {
             return Ok(result);
         }
 
-        let key = (
-            search_root.to_path_buf(),
-            glob_pattern.to_string(),
-            excludes.to_vec(),
-        );
-
-        let matches = {
-            let mut cache = self.glob_cache.borrow_mut();
-            if let Some(cached) = cache.get(&key) {
-                Rc::clone(cached)
-            } else {
-                let mut found = Vec::new();
-                self.for_each_nested_glob_match(
-                    search_root,
-                    glob_pattern,
-                    excludes,
-                    options,
-                    |full_path, rel_path| {
-                        found.push((full_path.to_path_buf(), rel_path.to_path_buf()));
-                        Ok(())
-                    },
-                )?;
-                let rc_found = Rc::new(found);
-                cache.insert(key, Rc::clone(&rc_found));
-                rc_found
-            }
-        };
+        let matches = self.get_nested_glob_matches(search_root, glob_pattern, excludes, options)?;
 
         for (full_path, rel_path) in matches.iter() {
             let dest_str = Self::expand_destination_template(dest_template, rel_path);
@@ -1081,9 +1103,10 @@ impl Linker {
                 continue;
             }
 
+            let path_it = rel_str.split('/');
             if let Some(idx) = split_excludes
                 .iter()
-                .position(|exclude_parts| path_glob_match_iter(rel_str.split('/'), exclude_parts))
+                .position(|exclude_parts| path_glob_match_iter(path_it.clone(), exclude_parts))
             {
                 let matched_exclude = &excludes[idx];
                 if options.verbose {
@@ -1105,7 +1128,7 @@ impl Linker {
                 continue;
             }
 
-            if !path_glob_match_iter(rel_str.split('/'), &split_pattern) {
+            if !path_glob_match_iter(path_it, &split_pattern) {
                 continue;
             }
 
@@ -1179,14 +1202,14 @@ impl Linker {
 
     /// Get the canonical path for a given path, using a cache to avoid
     /// redundant I/O operations.
-    fn canonicalize_cached(&self, path: &Path) -> Result<PathBuf> {
+    fn canonicalize_cached(&self, path: &Path) -> Result<Rc<PathBuf>> {
         let mut cache = self.path_cache.borrow_mut();
         if let Some(cached) = cache.get(path) {
-            return Ok(cached.clone());
+            return Ok(Rc::clone(cached));
         }
 
-        let canonical = fs::canonicalize(path)?;
-        cache.insert(path.to_path_buf(), canonical.clone());
+        let canonical = Rc::new(fs::canonicalize(path)?);
+        cache.insert(path.to_path_buf(), Rc::clone(&canonical));
         Ok(canonical)
     }
 
@@ -1202,16 +1225,16 @@ impl Linker {
             let relative = from_dir
                 .strip_prefix(&self.project_root)
                 .unwrap_or(from_dir);
-            self.project_root.join(relative)
+            Rc::new(self.project_root.join(relative))
         };
 
         let to_abs = match self.canonicalize_cached(to) {
             Ok(path) => path,
             Err(_) if allow_missing => {
                 if to.is_absolute() {
-                    to.to_path_buf()
+                    Rc::new(to.to_path_buf())
                 } else {
-                    self.project_root.join(to)
+                    Rc::new(self.project_root.join(to))
                 }
             }
             Err(err) => {
@@ -1221,7 +1244,7 @@ impl Linker {
         };
 
         // Use pathdiff to calculate relative path
-        pathdiff::diff_paths(&to_abs, &from_abs)
+        pathdiff::diff_paths(&*to_abs, &*from_abs)
             .ok_or_else(|| anyhow::anyhow!("Cannot calculate relative path"))
     }
 
@@ -1257,41 +1280,36 @@ impl Linker {
                         let dest_template = &target_config.destination;
                         let excludes = &target_config.exclude;
 
-                        self.for_each_nested_glob_match(
+                        let matches = self.get_nested_glob_matches(
                             &search_root,
                             glob_pattern,
                             excludes,
                             options,
-                            |_, rel_path| {
-                                let dest_str =
-                                    Self::expand_destination_template(dest_template, rel_path);
-                                if dest_str.is_empty() {
-                                    return Ok(());
-                                }
-
-                                let dest = match self.ensure_safe_destination(&dest_str) {
-                                    Ok(dest) => dest,
-                                    Err(_) => return Ok(()),
-                                };
-                                if dest.is_symlink() {
-                                    if options.dry_run {
-                                        println!(
-                                            "  {} Would remove: {}",
-                                            "→".cyan(),
-                                            dest.display()
-                                        );
-                                    } else {
-                                        self.revalidate_unlink_path(&dest)?;
-                                        fs::remove_file(&dest)?;
-                                        self.invalidate_discovery_caches();
-                                        println!("  {} Removed: {}", "✔".green(), dest.display());
-                                    }
-                                    result.removed += 1;
-                                }
-
-                                Ok(())
-                            },
                         )?;
+
+                        for (_, rel_path) in matches.iter() {
+                            let dest_str =
+                                Self::expand_destination_template(dest_template, rel_path);
+                            if dest_str.is_empty() {
+                                continue;
+                            }
+
+                            let dest = match self.ensure_safe_destination(&dest_str) {
+                                Ok(dest) => dest,
+                                Err(_) => continue,
+                            };
+                            if dest.is_symlink() {
+                                if options.dry_run {
+                                    println!("  {} Would remove: {}", "→".cyan(), dest.display());
+                                } else {
+                                    self.revalidate_unlink_path(&dest)?;
+                                    fs::remove_file(&dest)?;
+                                    self.invalidate_path_cache();
+                                    println!("  {} Removed: {}", "✔".green(), dest.display());
+                                }
+                                result.removed += 1;
+                            }
+                        }
                     }
                     SyncType::SymlinkContents => {
                         let dest = match self.ensure_safe_destination(&target_config.destination) {
@@ -1316,7 +1334,7 @@ impl Linker {
                                     } else {
                                         self.revalidate_unlink_path(&entry.path())?;
                                         fs::remove_file(entry.path())?;
-                                        self.invalidate_discovery_caches();
+                                        self.invalidate_path_cache();
                                         println!(
                                             "  {} Removed: {}",
                                             "✔".green(),
@@ -1346,7 +1364,7 @@ impl Linker {
                                 // points outside project_root can still be removed safely.
                                 self.revalidate_unlink_path(&dest)?;
                                 remove_symlink(&dest)?;
-                                self.invalidate_discovery_caches();
+                                self.invalidate_path_cache();
                                 println!("  {} Removed: {}", "✔".green(), dest.display());
                             }
                             result.removed += 1;
@@ -1380,7 +1398,7 @@ impl Linker {
                                 } else {
                                     self.revalidate_unlink_path(&dest)?;
                                     fs::remove_file(&dest)?;
-                                    self.invalidate_discovery_caches();
+                                    self.invalidate_path_cache();
                                     println!("  {} Removed: {}", "✔".green(), dest.display());
                                 }
                                 result.removed += 1;
