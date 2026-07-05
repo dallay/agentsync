@@ -32,3 +32,8 @@
 
 **Learning:** Both the CLI reference and the Skills guide claimed that active evaluation of multi-technology "combo" entries was deferred. However, Phase 2 of `recommend_skills` in `src/skills/suggest.rs` already implements this logic, providing specific recommendations for combinations like `react-hook-form` + `zod`.
 **Action:** Before claiming a feature is "deferred" or "planned," verify the relevant logic phases in the implementation (e.g., Phase 2 evaluation loops).
+
+## 2026-07-05 - Fragmented and Inaccurate Agent Matrix
+
+**Learning:** The Agent Compatibility Matrix was split into two separate tables and lacked technical details for specific agent mappings (e.g., OpenAI Codex CLI's `headers` to `http_headers` conversion). This fragmentation made it harder for users to find their agent and obscured important MCP generation behavior.
+**Action:** Keep agent-related technical details in a unified, alphabetized matrix. When documenting MCP generation for a specific agent, cross-reference both `src/agent_ids.rs` and `src/mcp.rs` to capture any agent-specific field renames or merge strategies.
