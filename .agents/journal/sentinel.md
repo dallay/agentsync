@@ -33,6 +33,7 @@ tool that are known to contain user-provided credentials or sensitive environmen
 **Prevention:** Use `Path::components()` to explicitly reject `RootDir`, `Prefix`, and `ParentDir` components. For cross-platform safety on Unix, also manually check for Windows drive letter patterns (e.g., `filename.as_bytes()[1] == b':'`) in untrusted archive entry paths.
 
 ## 2025-05-19 - Information Disclosure via Symlink Following in Skill Update
+
 **Vulnerability:** The `copy_dir_all` function used during local skill updates followed symbolic links. A malicious update source could include a symlink to a sensitive file (e.g., `~/.ssh/id_rsa`), causing its content to be copied into the project.
 **Learning:** This was a regression of the pattern fixed in `install.rs` (2025-05-17), but in the `update.rs` module which used its own `copy_dir_all` implementation. Recursive copy logic must always be hardened against symlinks in this codebase.
 **Prevention:** Always check `entry.file_type()?.is_symlink()` and skip symlinks in any recursive directory copy operation used for untrusted content.
