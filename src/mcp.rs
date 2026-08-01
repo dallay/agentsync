@@ -56,6 +56,8 @@ impl McpOutput {
 pub enum McpAgent {
     /// Claude Code (.mcp.json)
     ClaudeCode,
+    /// Claude Desktop (global: ~/Library/Application Support/Claude/claude_desktop_config.json)
+    ClaudeDesktop,
     /// GitHub Copilot (.vscode/mcp.json)
     GithubCopilot,
     /// OpenAI Codex CLI (.codex/config.toml)
@@ -75,6 +77,7 @@ impl McpAgent {
     pub fn all() -> &'static [McpAgent] {
         &[
             McpAgent::ClaudeCode,
+            McpAgent::ClaudeDesktop,
             McpAgent::GithubCopilot,
             McpAgent::CodexCli,
             McpAgent::GeminiCli,
@@ -88,6 +91,7 @@ impl McpAgent {
     pub fn id(&self) -> &'static str {
         match self {
             McpAgent::ClaudeCode => "claude",
+            McpAgent::ClaudeDesktop => "claude-desktop",
             McpAgent::GithubCopilot => "copilot",
             McpAgent::CodexCli => "codex",
             McpAgent::GeminiCli => "gemini",
@@ -101,6 +105,7 @@ impl McpAgent {
     pub fn name(&self) -> &'static str {
         match self {
             McpAgent::ClaudeCode => "Claude Code",
+            McpAgent::ClaudeDesktop => "Claude Desktop",
             McpAgent::GithubCopilot => "GitHub Copilot",
             McpAgent::CodexCli => "OpenAI Codex CLI",
             McpAgent::GeminiCli => "Gemini CLI",
@@ -110,10 +115,22 @@ impl McpAgent {
         }
     }
 
-    /// Get the project-level config file path (relative to project root)
+    /// Get the project-level config file path (relative to project root).
+    ///
+    /// # Panics
+    ///
+    /// Panics in debug builds for global agents (e.g. Claude Desktop) which
+    /// have no project-relative path.  Always use [`resolved_config_path()`]
+    /// instead when the result will touch the filesystem.
     pub fn config_path(&self) -> &'static str {
+        debug_assert!(
+            !self.is_global(),
+            "config_path() must not be called on global agent {:?}; use resolved_config_path()",
+            self
+        );
         match self {
             McpAgent::ClaudeCode => ".mcp.json",
+            McpAgent::ClaudeDesktop => "<global:claude-desktop>",
             McpAgent::GithubCopilot => ".vscode/mcp.json",
             McpAgent::CodexCli => ".codex/config.toml",
             McpAgent::GeminiCli => ".gemini/settings.json",
@@ -123,10 +140,30 @@ impl McpAgent {
         }
     }
 
+    /// Resolve the actual config file path for this agent.
+    /// For project-level agents, joins with `project_root`.
+    /// For global agents (e.g. Claude Desktop), returns the OS-specific
+    /// absolute path. Returns `None` if the path cannot be determined.
+    pub fn resolved_config_path(&self, project_root: &Path) -> Option<PathBuf> {
+        match self {
+            McpAgent::ClaudeDesktop => {
+                dirs::config_dir().map(|d| d.join("Claude").join("claude_desktop_config.json"))
+            }
+            _ => Some(project_root.join(self.config_path())),
+        }
+    }
+
+    /// Whether this agent writes to a global (user-level) config path
+    /// rather than a project-relative path.
+    pub fn is_global(&self) -> bool {
+        matches!(self, McpAgent::ClaudeDesktop)
+    }
+
     /// Get the formatter for this agent
     pub fn formatter(&self) -> Box<dyn McpFormatter> {
         match self {
             McpAgent::ClaudeCode => Box::new(ClaudeCodeFormatter),
+            McpAgent::ClaudeDesktop => Box::new(ClaudeDesktopFormatter),
             McpAgent::GithubCopilot => Box::new(GithubCopilotFormatter),
             McpAgent::CodexCli => Box::new(CodexCliFormatter),
             McpAgent::GeminiCli => Box::new(GeminiCliFormatter),
@@ -140,6 +177,7 @@ impl McpAgent {
     pub fn from_id(id: &str) -> Option<McpAgent> {
         match agent_ids::canonical_mcp_agent_id(id)? {
             "claude" => Some(McpAgent::ClaudeCode),
+            "claude-desktop" => Some(McpAgent::ClaudeDesktop),
             "copilot" => Some(McpAgent::GithubCopilot),
             "codex" => Some(McpAgent::CodexCli),
             "gemini" => Some(McpAgent::GeminiCli),
@@ -353,6 +391,100 @@ impl McpFormatter for ClaudeCodeFormatter {
             new_servers,
             "Failed to parse existing MCP config as JSON",
         )
+    }
+}
+
+// =============================================================================
+// Claude Desktop Formatter
+// =============================================================================
+
+/// Formatter for Claude Desktop (global config)
+/// Format: { "mcpServers": { ... } } with other top-level keys preserved
+#[derive(Debug)]
+pub struct ClaudeDesktopFormatter;
+
+impl McpFormatter for ClaudeDesktopFormatter {
+    fn format(&self, servers: &BTreeMap<&str, &McpServerConfig>) -> Value {
+        format_standard_mcp(servers)
+    }
+
+    fn parse_existing(&self, content: &str) -> Result<BTreeMap<String, Value>> {
+        parse_standard_mcp(
+            content,
+            "Failed to parse existing Claude Desktop config as JSON",
+        )
+    }
+
+    fn merge(
+        &self,
+        existing_content: &str,
+        new_servers: &BTreeMap<&str, &McpServerConfig>,
+    ) -> Result<String> {
+        let mut existing_doc: Value =
+            serde_json::from_str(existing_content).unwrap_or_else(|_| json!({}));
+
+        let mut existing_servers = if let Some(obj) = existing_doc
+            .get_mut("mcpServers")
+            .and_then(|v| v.as_object_mut())
+        {
+            std::mem::take(obj).into_iter().collect()
+        } else {
+            BTreeMap::new()
+        };
+
+        for (name, config) in new_servers {
+            existing_servers.insert((*name).to_string(), server_to_json(config));
+        }
+
+        if let Some(doc_obj) = existing_doc.as_object_mut() {
+            doc_obj.insert(
+                "mcpServers".to_string(),
+                Value::Object(json_map_from_values(existing_servers)),
+            );
+        }
+
+        serde_json::to_string_pretty(&existing_doc).context("Failed to serialize merged config")
+    }
+
+    fn cleanup_removed_servers(
+        &self,
+        existing_content: &str,
+        new_servers: &BTreeMap<&str, &McpServerConfig>,
+    ) -> Result<String> {
+        let mut existing_doc: Value =
+            serde_json::from_str(existing_content).unwrap_or_else(|_| json!({}));
+
+        let existing_servers = if let Some(obj) = existing_doc
+            .get_mut("mcpServers")
+            .and_then(|v| v.as_object_mut())
+        {
+            std::mem::take(obj).into_iter().collect()
+        } else {
+            BTreeMap::new()
+        };
+
+        let filtered_existing: BTreeMap<String, Value> = existing_servers
+            .into_iter()
+            .filter(|(name, _)| new_servers.contains_key(name.as_str()))
+            .collect();
+
+        let mut final_servers = filtered_existing;
+        for (name, config) in new_servers {
+            final_servers.insert((*name).to_string(), server_to_json(config));
+        }
+
+        if let Some(doc_obj) = existing_doc.as_object_mut() {
+            doc_obj.insert(
+                "mcpServers".to_string(),
+                Value::Object(json_map_from_values(final_servers)),
+            );
+        }
+
+        serde_json::to_string_pretty(&existing_doc).context("Failed to serialize cleaned config")
+    }
+
+    fn preserve_on_overwrite(&self) -> bool {
+        true
     }
 }
 
@@ -1115,7 +1247,13 @@ impl McpGenerator {
     ) -> Result<McpSyncResult> {
         let mut result = McpSyncResult::default();
         let formatter = agent.formatter();
-        let config_path = project_root.join(agent.config_path());
+        let config_path = match agent.resolved_config_path(project_root) {
+            Some(path) => path,
+            None => {
+                result.skipped += 1;
+                return Ok(result);
+            }
+        };
 
         if enabled_servers.is_empty() {
             result.skipped += 1;
@@ -1262,18 +1400,20 @@ impl McpGenerator {
     ) -> Result<McpSyncResult> {
         let mut total_result = McpSyncResult::default();
         let enabled_servers = self.get_enabled_servers();
-        let mut handled_paths = BTreeSet::new();
+        let mut handled_paths: BTreeSet<PathBuf> = BTreeSet::new();
 
         if enabled_servers.is_empty() {
             return Ok(total_result);
         }
 
         for agent in enabled_agents {
-            let path = agent.config_path();
-            if handled_paths.contains(path) {
+            let path = match agent.resolved_config_path(project_root) {
+                Some(p) => p,
+                None => continue,
+            };
+            if !handled_paths.insert(path) {
                 continue;
             }
-            handled_paths.insert(path);
 
             match self.generate_for_agent_with_servers(
                 *agent,
@@ -1351,9 +1491,10 @@ impl McpGenerator {
     }
 }
 
-/// Get the path where MCP config would be written for an agent
-pub fn get_mcp_config_path(agent: McpAgent, project_root: &Path) -> PathBuf {
-    project_root.join(agent.config_path())
+/// Get the path where MCP config would be written for an agent.
+/// Returns `None` for global agents whose path cannot be resolved.
+pub fn get_mcp_config_path(agent: McpAgent, project_root: &Path) -> Option<PathBuf> {
+    agent.resolved_config_path(project_root)
 }
 
 // =============================================================================
@@ -1372,8 +1513,9 @@ mod tests {
     #[test]
     fn test_agent_all_returns_all_agents() {
         let agents = McpAgent::all();
-        assert_eq!(agents.len(), 7);
+        assert_eq!(agents.len(), 8);
         assert!(agents.contains(&McpAgent::ClaudeCode));
+        assert!(agents.contains(&McpAgent::ClaudeDesktop));
         assert!(agents.contains(&McpAgent::GithubCopilot));
         assert!(agents.contains(&McpAgent::CodexCli));
         assert!(agents.contains(&McpAgent::GeminiCli));
@@ -1387,6 +1529,14 @@ mod tests {
         assert_eq!(McpAgent::from_id("claude"), Some(McpAgent::ClaudeCode));
         assert_eq!(McpAgent::from_id("CLAUDE"), Some(McpAgent::ClaudeCode));
         assert_eq!(McpAgent::from_id("claude-code"), Some(McpAgent::ClaudeCode));
+        assert_eq!(
+            McpAgent::from_id("claude-desktop"),
+            Some(McpAgent::ClaudeDesktop)
+        );
+        assert_eq!(
+            McpAgent::from_id("claude_desktop"),
+            Some(McpAgent::ClaudeDesktop)
+        );
         assert_eq!(McpAgent::from_id("copilot"), Some(McpAgent::GithubCopilot));
         assert_eq!(
             McpAgent::from_id("github-copilot"),
@@ -1412,6 +1562,135 @@ mod tests {
         assert_eq!(McpAgent::VsCode.config_path(), ".vscode/mcp.json");
         assert_eq!(McpAgent::Cursor.config_path(), ".cursor/mcp.json");
         assert_eq!(McpAgent::OpenCode.config_path(), "opencode.json");
+    }
+
+    #[test]
+    fn test_claude_desktop_is_global() {
+        assert!(McpAgent::ClaudeDesktop.is_global());
+        assert!(!McpAgent::ClaudeCode.is_global());
+        assert!(!McpAgent::GithubCopilot.is_global());
+    }
+
+    #[test]
+    fn test_claude_desktop_resolved_config_path() {
+        let project_root = Path::new("/tmp/test-project");
+        let path = McpAgent::ClaudeDesktop.resolved_config_path(project_root);
+        // Should resolve to a global path, not under project_root
+        if let Some(ref p) = path {
+            assert!(!p.starts_with(project_root));
+            assert!(p.ends_with("claude_desktop_config.json"));
+        }
+        // Non-global agents resolve under project_root
+        let claude_path = McpAgent::ClaudeCode
+            .resolved_config_path(project_root)
+            .unwrap();
+        assert_eq!(claude_path, project_root.join(".mcp.json"));
+    }
+
+    // ==========================================================================
+    // FORMATTER TESTS - Claude Desktop
+    // ==========================================================================
+
+    #[test]
+    fn test_claude_desktop_formatter_basic() {
+        let formatter = ClaudeDesktopFormatter;
+        let server = create_test_server();
+        let servers: BTreeMap<&str, &McpServerConfig> = BTreeMap::from([("filesystem", &server)]);
+
+        let output = formatter.format(&servers);
+
+        assert!(output.get("mcpServers").is_some());
+        let mcp_servers = output.get("mcpServers").unwrap();
+        assert!(mcp_servers.get("filesystem").is_some());
+    }
+
+    #[test]
+    fn test_claude_desktop_formatter_preserves_other_settings() {
+        let formatter = ClaudeDesktopFormatter;
+        let existing = r#"{
+            "globalShortcut": "Ctrl+Space",
+            "theme": "dark",
+            "mcpServers": {
+                "existing": {
+                    "command": "node",
+                    "args": ["server.js"]
+                }
+            }
+        }"#;
+
+        let new_server = create_test_server();
+        let servers: BTreeMap<&str, &McpServerConfig> =
+            BTreeMap::from([("filesystem", &new_server)]);
+
+        let merged = formatter.merge(existing, &servers).unwrap();
+        let parsed: Value = serde_json::from_str(&merged).unwrap();
+
+        // Should preserve other settings
+        assert_eq!(
+            parsed.get("globalShortcut").unwrap().as_str().unwrap(),
+            "Ctrl+Space"
+        );
+        assert_eq!(parsed.get("theme").unwrap().as_str().unwrap(), "dark");
+        // And have both servers
+        assert!(parsed.get("mcpServers").unwrap().get("existing").is_some());
+        assert!(
+            parsed
+                .get("mcpServers")
+                .unwrap()
+                .get("filesystem")
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn test_claude_desktop_formatter_cleanup_preserves_settings() {
+        let formatter = ClaudeDesktopFormatter;
+        let existing = r#"{
+            "globalShortcut": "Ctrl+Space",
+            "mcpServers": {
+                "keep": {
+                    "command": "node"
+                },
+                "remove": {
+                    "command": "old-server"
+                }
+            }
+        }"#;
+
+        let mut server = create_test_server();
+        server.command = Some("node".to_string());
+
+        let servers = BTreeMap::from([("keep".to_string(), server)]);
+        let refs = servers.iter().map(|(k, v)| (k.as_str(), v)).collect();
+
+        let result = formatter.cleanup_removed_servers(existing, &refs).unwrap();
+        let parsed: Value = serde_json::from_str(&result).unwrap();
+
+        assert_eq!(
+            parsed.get("globalShortcut").unwrap().as_str().unwrap(),
+            "Ctrl+Space"
+        );
+        let mcp_servers = parsed.get("mcpServers").unwrap();
+        assert!(mcp_servers.get("keep").is_some());
+        assert!(mcp_servers.get("remove").is_none());
+    }
+
+    #[test]
+    fn test_claude_desktop_formatter_creates_from_empty() {
+        let formatter = ClaudeDesktopFormatter;
+        let server = create_test_server();
+        let servers: BTreeMap<&str, &McpServerConfig> = BTreeMap::from([("filesystem", &server)]);
+
+        let output = formatter.format_to_string(&servers).unwrap();
+        let parsed: Value = serde_json::from_str(&output).unwrap();
+
+        assert!(
+            parsed
+                .get("mcpServers")
+                .unwrap()
+                .get("filesystem")
+                .is_some()
+        );
     }
 
     // ==========================================================================

@@ -220,6 +220,13 @@ destination = ".claude/commands"
 type = "symlink-contents"
 
 # -----------------------------------------------------------------------------
+# Claude Desktop (MCP servers only - syncs to global config)
+# -----------------------------------------------------------------------------
+[agents.claude-desktop]
+enabled = false
+description = "Claude Desktop - Anthropic's desktop AI assistant"
+
+# -----------------------------------------------------------------------------
 # GitHub Copilot
 # -----------------------------------------------------------------------------
 [agents.copilot]
