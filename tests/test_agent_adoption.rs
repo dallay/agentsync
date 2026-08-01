@@ -86,7 +86,7 @@ fn test_adoption_claude_with_skills_and_instructions() -> Result<()> {
     );
 
     // 2. Run init (creates .agents/ structure)
-    agentsync::init::init(root, false)?;
+    agentsync::init::init(root, false, agentsync::init::DEFAULT_CONFIG)?;
 
     // 3. Simulate wizard migration: copy skills and commands into .agents/
     let agents_skills = root.join(".agents/skills");
@@ -182,7 +182,7 @@ fn test_adoption_gemini_with_skills_and_commands() -> Result<()> {
     create_file(root, ".gemini/commands/analyze.md", "# Analyze command");
 
     // 2. Init
-    agentsync::init::init(root, false)?;
+    agentsync::init::init(root, false, agentsync::init::DEFAULT_CONFIG)?;
 
     // 3. Simulate wizard migration
     let agents_skills = root.join(".agents/skills");
@@ -257,7 +257,7 @@ fn test_adoption_codex_with_skills() -> Result<()> {
     );
 
     // 2. Init
-    agentsync::init::init(root, false)?;
+    agentsync::init::init(root, false, agentsync::init::DEFAULT_CONFIG)?;
 
     // 3. Simulate wizard migration
     let agents_skills = root.join(".agents/skills");
@@ -325,7 +325,7 @@ fn test_adoption_multi_agent_claude_gemini_codex() -> Result<()> {
     );
 
     // 2. Init
-    agentsync::init::init(root, false)?;
+    agentsync::init::init(root, false, agentsync::init::DEFAULT_CONFIG)?;
 
     // 3. Simulate wizard migration — merge all skills into .agents/skills/
     let agents_skills = root.join(".agents/skills");
@@ -455,7 +455,7 @@ fn test_adoption_dry_run_no_side_effects() -> Result<()> {
     let root = tmp.path();
 
     // 1. Init and set up skills
-    agentsync::init::init(root, false)?;
+    agentsync::init::init(root, false, agentsync::init::DEFAULT_CONFIG)?;
     create_file(
         root,
         ".agents/skills/my-skill/SKILL.md",
@@ -502,7 +502,7 @@ fn test_adoption_preserves_existing_claude_skills_symlink_default() -> Result<()
     let tmp = TempDir::new()?;
     let root = tmp.path();
 
-    agentsync::init::init(root, false)?;
+    agentsync::init::init(root, false, agentsync::init::DEFAULT_CONFIG)?;
     create_file(
         root,
         ".agents/skills/debugging/SKILL.md",

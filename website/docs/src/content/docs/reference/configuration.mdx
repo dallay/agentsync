@@ -52,6 +52,20 @@ enabled = true  # Enabled, but won't run unless explicitly specified with --agen
 - If `--agents` flag is provided → uses CLI filter (overrides `default_agents`)
 - If `default_agents` is empty → runs all enabled agents (backward compatible)
 
+### User-level Config Template
+
+You can define a personal configuration template that `agentsync init` uses instead of the built-in default. This avoids editing the generated config every time you start a new project.
+
+**Discovery order:**
+1. `--template <path>` flag (explicit, always wins)
+2. `$XDG_CONFIG_HOME/agentsync/config.toml`
+3. `~/.config/agentsync/config.toml`
+4. Built-in default (all agents enabled)
+
+The template file is a **complete replacement** — it uses the same `agentsync.toml` schema but only needs to include the agents and settings you want. There is no merging with the built-in default.
+
+If a user-level config file exists but contains invalid TOML, AgentSync prints a warning and falls back to the built-in default. If `--template` points to an invalid file, initialization fails with a clear error.
+
 ## Gitignore Management
 
 AgentSync can automatically manage your `.gitignore` file to ensure that generated symbolic links and agent-specific files are not accidentally committed to version control.
