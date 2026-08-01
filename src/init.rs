@@ -29,18 +29,36 @@ pub enum TemplateSource {
 /// 2. `$HOME/.config/agentsync/config.toml`
 ///
 /// Returns `None` if neither path exists.
+///
+/// This wrapper reads the process environment and delegates to
+/// [`resolve_user_config_path_from`], which is the pure, testable logic.
 pub fn resolve_user_config_path() -> Option<PathBuf> {
-    if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
-        let p = PathBuf::from(xdg).join("agentsync").join("config.toml");
+    resolve_user_config_path_from(
+        std::env::var("XDG_CONFIG_HOME")
+            .ok()
+            .map(PathBuf::from)
+            .as_deref(),
+        std::env::var("HOME").ok().map(PathBuf::from).as_deref(),
+    )
+}
+
+/// Pure resolution of the user-level config template path.
+///
+/// Takes the XDG config home and the home directory as explicit parameters so
+/// tests can exercise the logic without mutating the process environment
+/// (parallel tests must never race on `std::env`).
+pub fn resolve_user_config_path_from(
+    xdg_config_home: Option<&Path>,
+    home: Option<&Path>,
+) -> Option<PathBuf> {
+    if let Some(xdg) = xdg_config_home {
+        let p = xdg.join("agentsync").join("config.toml");
         if p.exists() {
             return Some(p);
         }
     }
-    if let Ok(home) = std::env::var("HOME") {
-        let p = PathBuf::from(home)
-            .join(".config")
-            .join("agentsync")
-            .join("config.toml");
+    if let Some(home) = home {
+        let p = home.join(".config").join("agentsync").join("config.toml");
         if p.exists() {
             return Some(p);
         }
@@ -4622,17 +4640,12 @@ type = "symlink"
 "#;
         fs::write(&flag_template, flag_content).unwrap();
 
-        let orig_xdg = std::env::var("XDG_CONFIG_HOME").ok();
-        unsafe {
-            std::env::set_var("XDG_CONFIG_HOME", temp_dir.path().join("xdg"));
-        }
+        // NOTE: no XDG/HOME env mutation here — `resolve_config_template` with
+        // an explicit flag returns before consulting user config, so the flag
+        // wins regardless of the environment. Mutating process env in parallel
+        // tests causes data races (see test_resolve_user_config_path_* below).
 
         let (content, source) = resolve_config_template(Some(&flag_template)).unwrap();
-
-        match orig_xdg {
-            Some(v) => unsafe { std::env::set_var("XDG_CONFIG_HOME", v) },
-            None => unsafe { std::env::remove_var("XDG_CONFIG_HOME") },
-        }
 
         assert_eq!(content, flag_content);
         assert_eq!(source, TemplateSource::Flag(flag_template));
@@ -4646,17 +4659,8 @@ type = "symlink"
         let config_path = xdg_dir.join("config.toml");
         fs::write(&config_path, "placeholder").unwrap();
 
-        let orig = std::env::var("XDG_CONFIG_HOME").ok();
-        unsafe {
-            std::env::set_var("XDG_CONFIG_HOME", temp_dir.path());
-        }
-
-        let result = resolve_user_config_path();
-
-        match orig {
-            Some(v) => unsafe { std::env::set_var("XDG_CONFIG_HOME", v) },
-            None => unsafe { std::env::remove_var("XDG_CONFIG_HOME") },
-        }
+        // Pure function — no process env mutation, no cross-test races.
+        let result = resolve_user_config_path_from(Some(temp_dir.path()), None);
 
         assert_eq!(result, Some(config_path));
     }
@@ -4669,48 +4673,27 @@ type = "symlink"
         let config_path = config_dir.join("config.toml");
         fs::write(&config_path, "placeholder").unwrap();
 
-        let orig_xdg = std::env::var("XDG_CONFIG_HOME").ok();
-        let orig_home = std::env::var("HOME").ok();
-        unsafe {
-            std::env::set_var("XDG_CONFIG_HOME", "/nonexistent-xdg-path-for-test");
-            std::env::set_var("HOME", temp_dir.path());
-        }
-
-        let result = resolve_user_config_path();
-
-        match orig_xdg {
-            Some(v) => unsafe { std::env::set_var("XDG_CONFIG_HOME", v) },
-            None => unsafe { std::env::remove_var("XDG_CONFIG_HOME") },
-        }
-        match orig_home {
-            Some(v) => unsafe { std::env::set_var("HOME", v) },
-            None => unsafe { std::env::remove_var("HOME") },
-        }
+        // XDG path does not exist → falls back to HOME.
+        let result = resolve_user_config_path_from(
+            Some(Path::new("/nonexistent-xdg-path-for-test")),
+            Some(temp_dir.path()),
+        );
 
         assert_eq!(result, Some(config_path));
     }
 
     #[test]
-    fn test_resolve_user_config_path_none_when_no_env() {
-        let orig_xdg = std::env::var("XDG_CONFIG_HOME").ok();
-        let orig_home = std::env::var("HOME").ok();
-        unsafe {
-            std::env::set_var("XDG_CONFIG_HOME", "/nonexistent-xdg-path-for-test");
-            std::env::set_var("HOME", "/nonexistent-home-path-for-test");
-        }
-
-        let result = resolve_user_config_path();
-
-        match orig_xdg {
-            Some(v) => unsafe { std::env::set_var("XDG_CONFIG_HOME", v) },
-            None => unsafe { std::env::remove_var("XDG_CONFIG_HOME") },
-        }
-        match orig_home {
-            Some(v) => unsafe { std::env::set_var("HOME", v) },
-            None => unsafe { std::env::remove_var("HOME") },
-        }
+    fn test_resolve_user_config_path_none_when_no_paths_exist() {
+        // Neither XDG nor HOME contain a config file → None.
+        let result = resolve_user_config_path_from(
+            Some(Path::new("/nonexistent-xdg-path-for-test")),
+            Some(Path::new("/nonexistent-home-path-for-test")),
+        );
 
         assert_eq!(result, None);
+
+        // No paths at all → None.
+        assert_eq!(resolve_user_config_path_from(None, None), None);
     }
 
     #[test]
