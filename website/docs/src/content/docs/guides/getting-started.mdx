@@ -103,6 +103,23 @@ Run `init` in your project root to create the default structure:
 
 This creates a `.agents/` directory with an initial `agentsync.toml` and an `AGENTS.md` file.
 
+**Tip: Personal defaults**
+
+If you regularly use only a subset of agents, create a user-level template so `init` generates a leaner config every time:
+
+```bash
+mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/agentsync"
+# Copy and edit the default config, keeping only the agents you need
+agentsync init && cp .agents/agentsync.toml "${XDG_CONFIG_HOME:-$HOME/.config}/agentsync/config.toml"
+# Edit the config to keep only your preferred agents
+```
+
+Or use `--template` to point to any TOML file:
+
+<CommandTabs command="init --template ~/my-template.toml" />
+
+See <BaseLink href="/reference/cli/">CLI Reference</BaseLink> for details.
+
 #### Existing Projects with Agent Files
 
 If you already have agent configuration files (like `CLAUDE.md`, `.cursor/`, or `.github/copilot-instructions.md`), use the interactive wizard:
