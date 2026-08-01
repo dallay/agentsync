@@ -108,10 +108,10 @@ This creates a `.agents/` directory with an initial `agentsync.toml` and an `AGE
 If you regularly use only a subset of agents, create a user-level template so `init` generates a leaner config every time:
 
 ```bash
-mkdir -p ~/.config/agentsync
+mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/agentsync"
 # Copy and edit the default config, keeping only the agents you need
-agentsync init && cp .agents/agentsync.toml ~/.config/agentsync/config.toml
-# Edit ~/.config/agentsync/config.toml to keep only your preferred agents
+agentsync init && cp .agents/agentsync.toml "${XDG_CONFIG_HOME:-$HOME/.config}/agentsync/config.toml"
+# Edit the config to keep only your preferred agents
 ```
 
 Or use `--template` to point to any TOML file:

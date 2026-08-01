@@ -338,6 +338,7 @@ enum Commands {
         )]
         experimental_tui: bool,
         #[arg(
+            short = 't',
             long,
             help = "Path to a TOML config template to use instead of the built-in default"
         )]
@@ -422,20 +423,9 @@ fn main() -> Result<()> {
             } else {
                 println!("{}", "Initializing agentsync configuration...\n".cyan());
                 let (config_content, source) = init::resolve_config_template(template.as_deref())?;
-                match &source {
-                    init::TemplateSource::Flag(p) => {
-                        use colored::Colorize;
-                        println!("  {} Using template: {}", "✔".green(), p.display());
-                    }
-                    init::TemplateSource::UserConfig(p) => {
-                        use colored::Colorize;
-                        println!(
-                            "  {} Using user config template: {}",
-                            "✔".green(),
-                            p.display()
-                        );
-                    }
-                    init::TemplateSource::Default => {}
+                if let Some(notice) = source.notice() {
+                    use colored::Colorize;
+                    println!("  {} {notice}", "✔".green());
                 }
                 init::init(&project_root, force, &config_content)?;
             }

@@ -22,6 +22,18 @@ pub enum TemplateSource {
     Default,
 }
 
+impl TemplateSource {
+    /// Returns a human-readable provenance notice for the template source,
+    /// or `None` for the built-in default (which needs no announcement).
+    pub fn notice(&self) -> Option<String> {
+        match self {
+            Self::Flag(p) => Some(format!("Using template: {}", p.display())),
+            Self::UserConfig(p) => Some(format!("Using user config template: {}", p.display())),
+            Self::Default => None,
+        }
+    }
+}
+
 /// Check XDG paths for a user-level config template.
 ///
 /// Resolution order:
@@ -72,24 +84,47 @@ pub fn resolve_user_config_path_from(
 /// 2. XDG user config → read file, validate, warn + fallback on failure
 /// 3. `DEFAULT_CONFIG`
 pub fn resolve_config_template(template_path: Option<&Path>) -> Result<(String, TemplateSource)> {
+    resolve_config_template_with(template_path, resolve_user_config_path())
+}
+
+/// Testable inner function that accepts the user config path explicitly so tests
+/// don't race on `std::env`.
+pub(crate) fn resolve_config_template_with(
+    template_path: Option<&Path>,
+    user_config_path: Option<PathBuf>,
+) -> Result<(String, TemplateSource)> {
     // 1. Explicit --template flag
     if let Some(path) = template_path {
         let content = fs::read_to_string(path)
             .with_context(|| format!("Failed to read template file: {}", path.display()))?;
 
         // Validate as Config (full deserialization)
-        toml::from_str::<Config>(&content)
+        let config: Config = toml::from_str(&content)
             .with_context(|| format!("Invalid template file: {}", path.display()))?;
+
+        if config.agents.is_empty() {
+            anyhow::bail!(
+                "Template file defines no agents: {}. \
+                 Add at least one [agents.<name>] section.",
+                path.display()
+            );
+        }
 
         return Ok((content, TemplateSource::Flag(path.to_path_buf())));
     }
 
     // 2. XDG auto-discovery
-    if let Some(user_path) = resolve_user_config_path() {
+    if let Some(user_path) = user_config_path {
         match fs::read_to_string(&user_path) {
             Ok(content) => match toml::from_str::<Config>(&content) {
-                Ok(_) => {
+                Ok(config) if !config.agents.is_empty() => {
                     return Ok((content, TemplateSource::UserConfig(user_path)));
+                }
+                Ok(_) => {
+                    tracing::warn!(
+                        path = %user_path.display(),
+                        "User config template defines no agents; falling back to default"
+                    );
                 }
                 Err(e) => {
                     tracing::warn!(
@@ -1765,18 +1800,8 @@ pub fn init_wizard(project_root: &Path, force: bool, template_path: Option<&Path
 
     // Resolve template content once for all code paths
     let (resolved_content, resolved_source) = resolve_config_template(template_path)?;
-    match &resolved_source {
-        TemplateSource::Flag(p) => {
-            println!("  {} Using template: {}", "✔".green(), p.display());
-        }
-        TemplateSource::UserConfig(p) => {
-            println!(
-                "  {} Using user config template: {}",
-                "✔".green(),
-                p.display()
-            );
-        }
-        TemplateSource::Default => {}
+    if let Some(notice) = resolved_source.notice() {
+        println!("  {} {notice}", "✔".green());
     }
 
     // Scan for existing agent files
@@ -4503,6 +4528,29 @@ type = "symlink"
     }
 
     #[test]
+    fn test_resolve_config_template_explicit_no_agents_errors() {
+        let temp_dir = TempDir::new().unwrap();
+        let template_path = temp_dir.path().join("empty.toml");
+        fs::write(&template_path, "source_dir = \".agents\"\n").unwrap();
+
+        let result = resolve_config_template(Some(&template_path));
+        assert!(result.is_err());
+        let err_msg = format!("{:#}", result.unwrap_err());
+        assert!(err_msg.contains("defines no agents"));
+    }
+
+    #[test]
+    fn test_resolve_config_template_user_config_no_agents_falls_back() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.toml");
+        fs::write(&config_path, "source_dir = \".agents\"\n").unwrap();
+
+        let (content, source) = resolve_config_template_with(None, Some(config_path)).unwrap();
+        assert_eq!(content, DEFAULT_CONFIG);
+        assert_eq!(source, TemplateSource::Default);
+    }
+
+    #[test]
     fn test_resolve_config_template_explicit_invalid_toml() {
         let temp_dir = TempDir::new().unwrap();
         let template_path = temp_dir.path().join("bad.toml");
@@ -4516,25 +4564,8 @@ type = "symlink"
 
     #[test]
     fn test_resolve_config_template_no_flag_no_xdg_returns_default() {
-        // Temporarily override env to ensure no XDG/HOME discovery
-        let orig_xdg = std::env::var("XDG_CONFIG_HOME").ok();
-        let orig_home = std::env::var("HOME").ok();
-        unsafe {
-            std::env::set_var("XDG_CONFIG_HOME", "/nonexistent-xdg-test-path");
-            std::env::set_var("HOME", "/nonexistent-home-test-path");
-        }
-
-        let (content, source) = resolve_config_template(None).unwrap();
-
-        // Restore
-        match orig_xdg {
-            Some(v) => unsafe { std::env::set_var("XDG_CONFIG_HOME", v) },
-            None => unsafe { std::env::remove_var("XDG_CONFIG_HOME") },
-        }
-        match orig_home {
-            Some(v) => unsafe { std::env::set_var("HOME", v) },
-            None => unsafe { std::env::remove_var("HOME") },
-        }
+        // No flag, no user config → built-in default
+        let (content, source) = resolve_config_template_with(None, None).unwrap();
 
         assert_eq!(content, DEFAULT_CONFIG);
         assert_eq!(source, TemplateSource::Default);
@@ -4559,17 +4590,9 @@ type = "symlink"
 "#;
         fs::write(&config_path, template_content).unwrap();
 
-        let orig_xdg = std::env::var("XDG_CONFIG_HOME").ok();
-        unsafe {
-            std::env::set_var("XDG_CONFIG_HOME", temp_dir.path());
-        }
-
-        let (content, source) = resolve_config_template(None).unwrap();
-
-        match orig_xdg {
-            Some(v) => unsafe { std::env::set_var("XDG_CONFIG_HOME", v) },
-            None => unsafe { std::env::remove_var("XDG_CONFIG_HOME") },
-        }
+        // Pure DI — pass the discovered path directly, no env mutation.
+        let (content, source) =
+            resolve_config_template_with(None, Some(config_path.clone())).unwrap();
 
         assert_eq!(content, template_content);
         assert_eq!(source, TemplateSource::UserConfig(config_path));
@@ -4583,23 +4606,8 @@ type = "symlink"
         let config_path = xdg_dir.join("config.toml");
         fs::write(&config_path, "this is not { valid toml").unwrap();
 
-        let orig_xdg = std::env::var("XDG_CONFIG_HOME").ok();
-        let orig_home = std::env::var("HOME").ok();
-        unsafe {
-            std::env::set_var("XDG_CONFIG_HOME", temp_dir.path());
-            std::env::set_var("HOME", "/nonexistent-home-test-path");
-        }
-
-        let (content, source) = resolve_config_template(None).unwrap();
-
-        match orig_xdg {
-            Some(v) => unsafe { std::env::set_var("XDG_CONFIG_HOME", v) },
-            None => unsafe { std::env::remove_var("XDG_CONFIG_HOME") },
-        }
-        match orig_home {
-            Some(v) => unsafe { std::env::set_var("HOME", v) },
-            None => unsafe { std::env::remove_var("HOME") },
-        }
+        // Pass invalid file directly — no env mutation needed.
+        let (content, source) = resolve_config_template_with(None, Some(config_path)).unwrap();
 
         assert_eq!(content, DEFAULT_CONFIG);
         assert_eq!(source, TemplateSource::Default);
