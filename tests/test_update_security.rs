@@ -41,18 +41,18 @@ async fn test_update_skill_skips_symlinks() {
             .await
             .expect("Update should succeed");
 
-        // 5. Verify if the sensitive content was copied (VULNERABILITY)
+        // 5. Verify the symlink was NOT followed — the leaked file must not exist
         let leaked_path = skill_dir.join("leaked.txt");
+        assert!(
+            !leaked_path.exists(),
+            "SECURITY VULNERABILITY: Symlink target was copied into the skill directory!"
+        );
 
-        if leaked_path.exists() {
-            let metadata = fs::symlink_metadata(&leaked_path).expect("Failed to get metadata");
-            // If the vulnerability exists, copy_dir_all will follow the symlink and create a regular file.
-            // We want it to either NOT exist or still be a (non-followed) symlink if we chose to copy links.
-            // But the hardening goal is to skip them entirely.
-            assert!(
-                metadata.file_type().is_symlink(),
-                "SECURITY VULNERABILITY: Symlink was followed and content was copied into the project!"
-            );
-        }
+        // Also verify the skill itself was updated (SKILL.md content changed)
+        let skill_content = fs::read_to_string(skill_dir.join("SKILL.md")).unwrap();
+        assert!(
+            skill_content.contains("2.0.0"),
+            "Skill should have been updated to v2.0.0"
+        );
     }
 }
