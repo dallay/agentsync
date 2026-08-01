@@ -6,10 +6,94 @@ use anyhow::{Context, Result};
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::{self, IsTerminal};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::config::{Config, SyncType, TargetConfig};
 use crate::skills_layout::{detect_skills_layout_match, detect_skills_mode_mismatch};
+
+/// Indicates where the config template content was resolved from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TemplateSource {
+    /// Explicit `--template <path>` flag.
+    Flag(PathBuf),
+    /// Auto-discovered from XDG config path.
+    UserConfig(PathBuf),
+    /// Built-in `DEFAULT_CONFIG` constant.
+    Default,
+}
+
+/// Check XDG paths for a user-level config template.
+///
+/// Resolution order:
+/// 1. `$XDG_CONFIG_HOME/agentsync/config.toml`
+/// 2. `$HOME/.config/agentsync/config.toml`
+///
+/// Returns `None` if neither path exists.
+pub fn resolve_user_config_path() -> Option<PathBuf> {
+    if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
+        let p = PathBuf::from(xdg).join("agentsync").join("config.toml");
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        let p = PathBuf::from(home)
+            .join(".config")
+            .join("agentsync")
+            .join("config.toml");
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    None
+}
+
+/// Resolve config template content by precedence:
+///
+/// 1. Explicit `--template` path → read file, validate as Config, hard-error on failure
+/// 2. XDG user config → read file, validate, warn + fallback on failure
+/// 3. `DEFAULT_CONFIG`
+pub fn resolve_config_template(template_path: Option<&Path>) -> Result<(String, TemplateSource)> {
+    // 1. Explicit --template flag
+    if let Some(path) = template_path {
+        let content = fs::read_to_string(path)
+            .with_context(|| format!("Failed to read template file: {}", path.display()))?;
+
+        // Validate as Config (full deserialization)
+        toml::from_str::<Config>(&content)
+            .with_context(|| format!("Invalid template file: {}", path.display()))?;
+
+        return Ok((content, TemplateSource::Flag(path.to_path_buf())));
+    }
+
+    // 2. XDG auto-discovery
+    if let Some(user_path) = resolve_user_config_path() {
+        match fs::read_to_string(&user_path) {
+            Ok(content) => match toml::from_str::<Config>(&content) {
+                Ok(_) => {
+                    return Ok((content, TemplateSource::UserConfig(user_path)));
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        path = %user_path.display(),
+                        error = %e,
+                        "User config template is invalid TOML; falling back to default"
+                    );
+                }
+            },
+            Err(e) => {
+                tracing::warn!(
+                    path = %user_path.display(),
+                    error = %e,
+                    "Could not read user config template; falling back to default"
+                );
+            }
+        }
+    }
+
+    // 3. Default
+    Ok((DEFAULT_CONFIG.to_string(), TemplateSource::Default))
+}
 
 /// Default configuration template
 pub const DEFAULT_CONFIG: &str = r#"# AgentSync Configuration
@@ -194,7 +278,7 @@ pub const DEFAULT_AGENTS_MD: &str = r#"# AI Agent Instructions
 "#;
 
 /// Initialize a new configuration in the given directory
-pub fn init(project_root: &Path, force: bool) -> Result<()> {
+pub fn init(project_root: &Path, force: bool, config_content: &str) -> Result<()> {
     use colored::Colorize;
 
     let agents_dir = project_root.join(".agents");
@@ -241,7 +325,7 @@ pub fn init(project_root: &Path, force: bool) -> Result<()> {
             config_path.display()
         );
     } else {
-        fs::write(&config_path, DEFAULT_CONFIG)?;
+        fs::write(&config_path, config_content)?;
         println!("  {} Created: {}", "✔".green(), config_path.display());
     }
 
@@ -1072,11 +1156,14 @@ fn select_wizard_skills_modes<R: InitWizardRenderer>(
     Ok(skills_modes)
 }
 
-fn build_default_config_with_skills_modes(modes: &BTreeMap<String, SyncType>) -> String {
+fn build_default_config_with_skills_modes(
+    base_config: &str,
+    modes: &BTreeMap<String, SyncType>,
+) -> String {
     let mut rendered = Vec::new();
     let mut current_skills_agent: Option<String> = None;
 
-    for line in DEFAULT_CONFIG.lines() {
+    for line in base_config.lines() {
         if let Some(agent_name) = parse_skills_section_agent(line) {
             current_skills_agent = Some(agent_name.to_string());
             rendered.push(line.to_string());
@@ -1100,7 +1187,7 @@ fn build_default_config_with_skills_modes(modes: &BTreeMap<String, SyncType>) ->
     }
 
     let mut output = rendered.join("\n");
-    if DEFAULT_CONFIG.ends_with('\n') {
+    if base_config.ends_with('\n') {
         output.push('\n');
     }
     output
@@ -1460,7 +1547,11 @@ fn missing_terminal_tui_error(reason: &str) -> Option<String> {
     }
 }
 
-pub fn init_wizard_experimental_tui(project_root: &Path, force: bool) -> Result<()> {
+pub fn init_wizard_experimental_tui(
+    project_root: &Path,
+    force: bool,
+    template_path: Option<&Path>,
+) -> Result<()> {
     use colored::Colorize;
 
     match experimental_tui_context_from_env() {
@@ -1493,7 +1584,7 @@ pub fn init_wizard_experimental_tui(project_root: &Path, force: bool) -> Result<
         }
     }
 
-    init_wizard(project_root, force)
+    init_wizard(project_root, force, template_path)
 }
 
 fn render_experimental_tui_intro_frame(frame: &mut ratatui::Frame<'_>) {
@@ -1580,7 +1671,7 @@ fn run_experimental_tui_intro() -> Result<ExperimentalTuiIntroOutcome> {
 }
 
 /// Interactive wizard for initializing agentsync with file migration
-pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
+pub fn init_wizard(project_root: &Path, force: bool, template_path: Option<&Path>) -> Result<()> {
     use colored::Colorize;
     use dialoguer::{Confirm, MultiSelect, Select, theme::ColorfulTheme};
 
@@ -1654,6 +1745,22 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
         }
     }
 
+    // Resolve template content once for all code paths
+    let (resolved_content, resolved_source) = resolve_config_template(template_path)?;
+    match &resolved_source {
+        TemplateSource::Flag(p) => {
+            println!("  {} Using template: {}", "✔".green(), p.display());
+        }
+        TemplateSource::UserConfig(p) => {
+            println!(
+                "  {} Using user config template: {}",
+                "✔".green(),
+                p.display()
+            );
+        }
+        TemplateSource::Default => {}
+    }
+
     // Scan for existing agent files
     println!("{}", "🔍 Scanning for existing agent files...".cyan());
     let discovered_files = scan_agent_files(project_root)?;
@@ -1664,7 +1771,7 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
             "{}",
             "  Proceeding with standard initialization...".dimmed()
         );
-        return init(project_root, force);
+        return init(project_root, force, &resolved_content);
     }
 
     println!("  {} Found {} file(s)", "✔".green(), discovered_files.len());
@@ -1683,7 +1790,7 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
             "{}",
             "  Skipping migration. Creating standard configuration...".dimmed()
         );
-        return init(project_root, force);
+        return init(project_root, force, &resolved_content);
     };
 
     if files_to_migrate.is_empty() {
@@ -1692,7 +1799,7 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
             "{}",
             "  Proceeding with standard initialization...".dimmed()
         );
-        return init(project_root, force);
+        return init(project_root, force, &resolved_content);
     }
 
     // Create .agents directory structure
@@ -1735,7 +1842,7 @@ pub fn init_wizard(project_root: &Path, force: bool) -> Result<()> {
     let skills_modes =
         select_wizard_skills_modes(&mut renderer, &skills_choices, can_write_config)?;
 
-    let rendered_config = build_default_config_with_skills_modes(&skills_modes);
+    let rendered_config = build_default_config_with_skills_modes(&resolved_content, &skills_modes);
     let layout_facts = build_wizard_layout_facts(&rendered_config)?;
     let layout_block = render_agent_config_layout_section(&layout_facts);
 
@@ -2250,7 +2357,7 @@ mod tests {
     fn test_init_creates_agents_directory() {
         let temp_dir = TempDir::new().unwrap();
 
-        init(temp_dir.path(), false).unwrap();
+        init(temp_dir.path(), false, DEFAULT_CONFIG).unwrap();
 
         let agents_dir = temp_dir.path().join(".agents");
         assert!(agents_dir.exists());
@@ -2261,7 +2368,7 @@ mod tests {
     fn test_init_creates_skills_directory() {
         let temp_dir = TempDir::new().unwrap();
 
-        init(temp_dir.path(), false).unwrap();
+        init(temp_dir.path(), false, DEFAULT_CONFIG).unwrap();
 
         let skills_dir = temp_dir.path().join(".agents").join("skills");
         assert!(skills_dir.exists());
@@ -2272,7 +2379,7 @@ mod tests {
     fn test_init_creates_config_file() {
         let temp_dir = TempDir::new().unwrap();
 
-        init(temp_dir.path(), false).unwrap();
+        init(temp_dir.path(), false, DEFAULT_CONFIG).unwrap();
 
         let config_path = temp_dir.path().join(".agents").join("agentsync.toml");
         assert!(config_path.exists());
@@ -2288,7 +2395,7 @@ mod tests {
     fn test_init_creates_agents_md() {
         let temp_dir = TempDir::new().unwrap();
 
-        init(temp_dir.path(), false).unwrap();
+        init(temp_dir.path(), false, DEFAULT_CONFIG).unwrap();
 
         let agents_md_path = temp_dir.path().join(".agents").join("AGENTS.md");
         assert!(agents_md_path.exists());
@@ -2314,7 +2421,7 @@ mod tests {
         fs::write(&agents_md_path, original_agents).unwrap();
 
         // Init without force
-        init(temp_dir.path(), false).unwrap();
+        init(temp_dir.path(), false, DEFAULT_CONFIG).unwrap();
 
         // Files should NOT be overwritten
         assert_eq!(fs::read_to_string(&config_path).unwrap(), original_config);
@@ -2338,7 +2445,7 @@ mod tests {
         fs::write(&agents_md_path, "# Old agents").unwrap();
 
         // Init WITH force
-        init(temp_dir.path(), true).unwrap();
+        init(temp_dir.path(), true, DEFAULT_CONFIG).unwrap();
 
         // Files SHOULD be overwritten with default content
         let config_content = fs::read_to_string(&config_path).unwrap();
@@ -2357,7 +2464,7 @@ mod tests {
         fs::create_dir_all(&agents_dir).unwrap();
 
         // Init should work even if .agents exists
-        let result = init(temp_dir.path(), false);
+        let result = init(temp_dir.path(), false, DEFAULT_CONFIG);
         assert!(result.is_ok());
 
         // Should still create files
@@ -2371,7 +2478,7 @@ mod tests {
         let nested_project = temp_dir.path().join("deep").join("nested").join("project");
         fs::create_dir_all(&nested_project).unwrap();
 
-        init(&nested_project, false).unwrap();
+        init(&nested_project, false, DEFAULT_CONFIG).unwrap();
 
         let agents_dir = nested_project.join(".agents");
         assert!(agents_dir.exists());
@@ -3954,7 +4061,7 @@ mod tests {
         let mut modes = BTreeMap::new();
         modes.insert("claude".to_string(), SyncType::SymlinkContents);
 
-        let rendered = build_default_config_with_skills_modes(&modes);
+        let rendered = build_default_config_with_skills_modes(DEFAULT_CONFIG, &modes);
         let config: crate::config::Config = toml::from_str(&rendered).unwrap();
 
         assert_eq!(
@@ -3976,7 +4083,7 @@ mod tests {
         let mut modes = BTreeMap::new();
         modes.insert("gemini".to_string(), SyncType::SymlinkContents);
 
-        let rendered = build_default_config_with_skills_modes(&modes);
+        let rendered = build_default_config_with_skills_modes(DEFAULT_CONFIG, &modes);
         let facts = build_wizard_layout_facts(&rendered).unwrap();
 
         assert_eq!(facts.instructions.len(), 5);
@@ -4086,7 +4193,7 @@ mod tests {
 
     #[test]
     fn test_agent_config_layout_omits_targets_not_present_in_generated_config() {
-        let rendered = build_default_config_with_skills_modes(&BTreeMap::new())
+        let rendered = build_default_config_with_skills_modes(DEFAULT_CONFIG, &BTreeMap::new())
             .replace(
                 r#"
 [agents.copilot.targets.instructions]
@@ -4151,8 +4258,11 @@ type = "symlink-contents"
     #[test]
     fn test_upsert_agent_config_layout_block_places_block_after_default_intro() {
         let layout_block = render_agent_config_layout_section(
-            &build_wizard_layout_facts(&build_default_config_with_skills_modes(&BTreeMap::new()))
-                .unwrap(),
+            &build_wizard_layout_facts(&build_default_config_with_skills_modes(
+                DEFAULT_CONFIG,
+                &BTreeMap::new(),
+            ))
+            .unwrap(),
         );
 
         let rendered = upsert_agent_config_layout_block(DEFAULT_AGENTS_MD, &layout_block);
@@ -4170,8 +4280,11 @@ type = "symlink-contents"
     fn test_upsert_agent_config_layout_block_places_block_after_migrated_header() {
         let base_content = "# Instructions from CLAUDE.md\n\nThis content was migrated.\n\n## Existing Section\n\nBody\n";
         let layout_block = render_agent_config_layout_section(
-            &build_wizard_layout_facts(&build_default_config_with_skills_modes(&BTreeMap::new()))
-                .unwrap(),
+            &build_wizard_layout_facts(&build_default_config_with_skills_modes(
+                DEFAULT_CONFIG,
+                &BTreeMap::new(),
+            ))
+            .unwrap(),
         );
 
         let rendered = upsert_agent_config_layout_block(base_content, &layout_block);
@@ -4191,8 +4304,11 @@ type = "symlink-contents"
         let base_content =
             format!("# AI Agent Instructions\n\n> Intro\n\n{old_layout}\n\n## Project Overview\n");
         let layout_block = render_agent_config_layout_section(
-            &build_wizard_layout_facts(&build_default_config_with_skills_modes(&BTreeMap::new()))
-                .unwrap(),
+            &build_wizard_layout_facts(&build_default_config_with_skills_modes(
+                DEFAULT_CONFIG,
+                &BTreeMap::new(),
+            ))
+            .unwrap(),
         );
 
         let rendered_once = upsert_agent_config_layout_block(&base_content, &layout_block);
@@ -4230,6 +4346,7 @@ type = "symlink-contents"
         } else {
             let layout_block = render_agent_config_layout_section(
                 &build_wizard_layout_facts(&build_default_config_with_skills_modes(
+                    DEFAULT_CONFIG,
                     &BTreeMap::new(),
                 ))
                 .unwrap(),
@@ -4247,14 +4364,18 @@ type = "symlink-contents"
         use std::os::unix::fs as unix_fs;
 
         let temp_dir = TempDir::new().unwrap();
-        init(temp_dir.path(), false).unwrap();
+        init(temp_dir.path(), false, DEFAULT_CONFIG).unwrap();
         fs::create_dir_all(temp_dir.path().join(".claude")).unwrap();
         unix_fs::symlink("../.agents/skills", temp_dir.path().join(".claude/skills")).unwrap();
 
         let mut modes = BTreeMap::new();
         modes.insert("claude".to_string(), SyncType::SymlinkContents);
         let config_path = temp_dir.path().join(".agents/agentsync.toml");
-        fs::write(&config_path, build_default_config_with_skills_modes(&modes)).unwrap();
+        fs::write(
+            &config_path,
+            build_default_config_with_skills_modes(DEFAULT_CONFIG, &modes),
+        )
+        .unwrap();
 
         let warnings = collect_post_init_skills_warnings(
             temp_dir.path(),
@@ -4274,14 +4395,14 @@ type = "symlink-contents"
         use std::os::unix::fs as unix_fs;
 
         let temp_dir = TempDir::new().unwrap();
-        init(temp_dir.path(), false).unwrap();
+        init(temp_dir.path(), false, DEFAULT_CONFIG).unwrap();
         fs::create_dir_all(temp_dir.path().join(".claude")).unwrap();
         unix_fs::symlink("../.agents/skills", temp_dir.path().join(".claude/skills")).unwrap();
 
         let config_path = temp_dir.path().join(".agents/agentsync.toml");
         fs::write(
             &config_path,
-            build_default_config_with_skills_modes(&BTreeMap::new()),
+            build_default_config_with_skills_modes(DEFAULT_CONFIG, &BTreeMap::new()),
         )
         .unwrap();
 
@@ -4299,7 +4420,7 @@ type = "symlink-contents"
     fn test_init_creates_commands_directory() {
         let temp_dir = TempDir::new().unwrap();
 
-        init(temp_dir.path(), false).unwrap();
+        init(temp_dir.path(), false, DEFAULT_CONFIG).unwrap();
 
         let commands_dir = temp_dir.path().join(".agents").join("commands");
         assert!(commands_dir.exists());
@@ -4327,5 +4448,367 @@ type = "symlink-contents"
             .any(|f| f.file_type == AgentFileType::CursorSkills);
         assert!(has_dir);
         assert!(has_skills);
+    }
+
+    // ==========================================================================
+    // TEMPLATE RESOLUTION TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_resolve_config_template_explicit_valid_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let template_path = temp_dir.path().join("custom.toml");
+        let template_content = r#"
+source_dir = ".agents"
+
+[agents.claude]
+enabled = true
+
+[agents.claude.targets.instructions]
+source = "AGENTS.md"
+destination = "CLAUDE.md"
+type = "symlink"
+"#;
+        fs::write(&template_path, template_content).unwrap();
+
+        let (content, source) = resolve_config_template(Some(&template_path)).unwrap();
+        assert_eq!(content, template_content);
+        assert_eq!(source, TemplateSource::Flag(template_path));
+    }
+
+    #[test]
+    fn test_resolve_config_template_explicit_missing_file() {
+        let result = resolve_config_template(Some(Path::new("/nonexistent/missing.toml")));
+        assert!(result.is_err());
+        let err_msg = format!("{:#}", result.unwrap_err());
+        assert!(err_msg.contains("/nonexistent/missing.toml"));
+    }
+
+    #[test]
+    fn test_resolve_config_template_explicit_invalid_toml() {
+        let temp_dir = TempDir::new().unwrap();
+        let template_path = temp_dir.path().join("bad.toml");
+        fs::write(&template_path, "this is not { valid toml").unwrap();
+
+        let result = resolve_config_template(Some(&template_path));
+        assert!(result.is_err());
+        let err_msg = format!("{:#}", result.unwrap_err());
+        assert!(err_msg.contains("bad.toml"));
+    }
+
+    #[test]
+    fn test_resolve_config_template_no_flag_no_xdg_returns_default() {
+        // Temporarily override env to ensure no XDG/HOME discovery
+        let orig_xdg = std::env::var("XDG_CONFIG_HOME").ok();
+        let orig_home = std::env::var("HOME").ok();
+        unsafe {
+            std::env::set_var("XDG_CONFIG_HOME", "/nonexistent-xdg-test-path");
+            std::env::set_var("HOME", "/nonexistent-home-test-path");
+        }
+
+        let (content, source) = resolve_config_template(None).unwrap();
+
+        // Restore
+        match orig_xdg {
+            Some(v) => unsafe { std::env::set_var("XDG_CONFIG_HOME", v) },
+            None => unsafe { std::env::remove_var("XDG_CONFIG_HOME") },
+        }
+        match orig_home {
+            Some(v) => unsafe { std::env::set_var("HOME", v) },
+            None => unsafe { std::env::remove_var("HOME") },
+        }
+
+        assert_eq!(content, DEFAULT_CONFIG);
+        assert_eq!(source, TemplateSource::Default);
+    }
+
+    #[test]
+    fn test_resolve_config_template_xdg_config_home_valid() {
+        let temp_dir = TempDir::new().unwrap();
+        let xdg_dir = temp_dir.path().join("agentsync");
+        fs::create_dir_all(&xdg_dir).unwrap();
+        let config_path = xdg_dir.join("config.toml");
+        let template_content = r#"
+source_dir = ".agents"
+
+[agents.claude]
+enabled = true
+
+[agents.claude.targets.instructions]
+source = "AGENTS.md"
+destination = "CLAUDE.md"
+type = "symlink"
+"#;
+        fs::write(&config_path, template_content).unwrap();
+
+        let orig_xdg = std::env::var("XDG_CONFIG_HOME").ok();
+        unsafe {
+            std::env::set_var("XDG_CONFIG_HOME", temp_dir.path());
+        }
+
+        let (content, source) = resolve_config_template(None).unwrap();
+
+        match orig_xdg {
+            Some(v) => unsafe { std::env::set_var("XDG_CONFIG_HOME", v) },
+            None => unsafe { std::env::remove_var("XDG_CONFIG_HOME") },
+        }
+
+        assert_eq!(content, template_content);
+        assert_eq!(source, TemplateSource::UserConfig(config_path));
+    }
+
+    #[test]
+    fn test_resolve_config_template_xdg_invalid_warns_and_falls_back() {
+        let temp_dir = TempDir::new().unwrap();
+        let xdg_dir = temp_dir.path().join("agentsync");
+        fs::create_dir_all(&xdg_dir).unwrap();
+        let config_path = xdg_dir.join("config.toml");
+        fs::write(&config_path, "this is not { valid toml").unwrap();
+
+        let orig_xdg = std::env::var("XDG_CONFIG_HOME").ok();
+        let orig_home = std::env::var("HOME").ok();
+        unsafe {
+            std::env::set_var("XDG_CONFIG_HOME", temp_dir.path());
+            std::env::set_var("HOME", "/nonexistent-home-test-path");
+        }
+
+        let (content, source) = resolve_config_template(None).unwrap();
+
+        match orig_xdg {
+            Some(v) => unsafe { std::env::set_var("XDG_CONFIG_HOME", v) },
+            None => unsafe { std::env::remove_var("XDG_CONFIG_HOME") },
+        }
+        match orig_home {
+            Some(v) => unsafe { std::env::set_var("HOME", v) },
+            None => unsafe { std::env::remove_var("HOME") },
+        }
+
+        assert_eq!(content, DEFAULT_CONFIG);
+        assert_eq!(source, TemplateSource::Default);
+    }
+
+    #[test]
+    fn test_resolve_config_template_flag_overrides_xdg() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Set up XDG config
+        let xdg_dir = temp_dir.path().join("xdg").join("agentsync");
+        fs::create_dir_all(&xdg_dir).unwrap();
+        let xdg_config = xdg_dir.join("config.toml");
+        fs::write(
+            &xdg_config,
+            r#"
+source_dir = ".agents"
+[agents.xdg_agent]
+enabled = true
+[agents.xdg_agent.targets.instructions]
+source = "AGENTS.md"
+destination = "XDG.md"
+type = "symlink"
+"#,
+        )
+        .unwrap();
+
+        // Set up explicit template
+        let flag_template = temp_dir.path().join("flag.toml");
+        let flag_content = r#"
+source_dir = ".agents"
+[agents.flag_agent]
+enabled = true
+[agents.flag_agent.targets.instructions]
+source = "AGENTS.md"
+destination = "FLAG.md"
+type = "symlink"
+"#;
+        fs::write(&flag_template, flag_content).unwrap();
+
+        let orig_xdg = std::env::var("XDG_CONFIG_HOME").ok();
+        unsafe {
+            std::env::set_var("XDG_CONFIG_HOME", temp_dir.path().join("xdg"));
+        }
+
+        let (content, source) = resolve_config_template(Some(&flag_template)).unwrap();
+
+        match orig_xdg {
+            Some(v) => unsafe { std::env::set_var("XDG_CONFIG_HOME", v) },
+            None => unsafe { std::env::remove_var("XDG_CONFIG_HOME") },
+        }
+
+        assert_eq!(content, flag_content);
+        assert_eq!(source, TemplateSource::Flag(flag_template));
+    }
+
+    #[test]
+    fn test_resolve_user_config_path_xdg_config_home() {
+        let temp_dir = TempDir::new().unwrap();
+        let xdg_dir = temp_dir.path().join("agentsync");
+        fs::create_dir_all(&xdg_dir).unwrap();
+        let config_path = xdg_dir.join("config.toml");
+        fs::write(&config_path, "placeholder").unwrap();
+
+        let orig = std::env::var("XDG_CONFIG_HOME").ok();
+        unsafe {
+            std::env::set_var("XDG_CONFIG_HOME", temp_dir.path());
+        }
+
+        let result = resolve_user_config_path();
+
+        match orig {
+            Some(v) => unsafe { std::env::set_var("XDG_CONFIG_HOME", v) },
+            None => unsafe { std::env::remove_var("XDG_CONFIG_HOME") },
+        }
+
+        assert_eq!(result, Some(config_path));
+    }
+
+    #[test]
+    fn test_resolve_user_config_path_home_fallback() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_dir = temp_dir.path().join(".config").join("agentsync");
+        fs::create_dir_all(&config_dir).unwrap();
+        let config_path = config_dir.join("config.toml");
+        fs::write(&config_path, "placeholder").unwrap();
+
+        let orig_xdg = std::env::var("XDG_CONFIG_HOME").ok();
+        let orig_home = std::env::var("HOME").ok();
+        unsafe {
+            std::env::set_var("XDG_CONFIG_HOME", "/nonexistent-xdg-path-for-test");
+            std::env::set_var("HOME", temp_dir.path());
+        }
+
+        let result = resolve_user_config_path();
+
+        match orig_xdg {
+            Some(v) => unsafe { std::env::set_var("XDG_CONFIG_HOME", v) },
+            None => unsafe { std::env::remove_var("XDG_CONFIG_HOME") },
+        }
+        match orig_home {
+            Some(v) => unsafe { std::env::set_var("HOME", v) },
+            None => unsafe { std::env::remove_var("HOME") },
+        }
+
+        assert_eq!(result, Some(config_path));
+    }
+
+    #[test]
+    fn test_resolve_user_config_path_none_when_no_env() {
+        let orig_xdg = std::env::var("XDG_CONFIG_HOME").ok();
+        let orig_home = std::env::var("HOME").ok();
+        unsafe {
+            std::env::set_var("XDG_CONFIG_HOME", "/nonexistent-xdg-path-for-test");
+            std::env::set_var("HOME", "/nonexistent-home-path-for-test");
+        }
+
+        let result = resolve_user_config_path();
+
+        match orig_xdg {
+            Some(v) => unsafe { std::env::set_var("XDG_CONFIG_HOME", v) },
+            None => unsafe { std::env::remove_var("XDG_CONFIG_HOME") },
+        }
+        match orig_home {
+            Some(v) => unsafe { std::env::set_var("HOME", v) },
+            None => unsafe { std::env::remove_var("HOME") },
+        }
+
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_build_default_config_with_skills_modes_custom_base() {
+        let base = r#"source_dir = ".agents"
+
+[agents.claude]
+enabled = true
+
+[agents.claude.targets.skills]
+source = "skills"
+destination = ".claude/skills"
+type = "symlink"
+"#;
+        let mut modes = BTreeMap::new();
+        modes.insert("claude".to_string(), SyncType::SymlinkContents);
+
+        let rendered = build_default_config_with_skills_modes(base, &modes);
+        assert!(rendered.contains("type = \"symlink-contents\""));
+        assert!(rendered.contains("[agents.claude]"));
+    }
+
+    #[test]
+    fn test_wizard_template_flow_end_to_end() {
+        // Integration: template resolution → wizard processing → init write
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path().join("project");
+        fs::create_dir_all(&project_root).unwrap();
+
+        // 1. Create a custom template with only claude agent and default_agents
+        let template_path = temp_dir.path().join("template.toml");
+        let template_content = r#"source_dir = ".agents"
+default_agents = ["claude"]
+
+[agents.claude]
+enabled = true
+
+[agents.claude.targets.instructions]
+source = "AGENTS.md"
+destination = "CLAUDE.md"
+type = "symlink"
+"#;
+        fs::write(&template_path, template_content).unwrap();
+
+        // 2. Resolve the template
+        let (resolved_content, source) = resolve_config_template(Some(&template_path)).unwrap();
+        assert_eq!(source, TemplateSource::Flag(template_path.clone()));
+
+        // 3. Simulate wizard processing (skills modes from wizard choices)
+        let skills_modes = BTreeMap::new();
+        let rendered = build_default_config_with_skills_modes(&resolved_content, &skills_modes);
+
+        // 4. Write via init()
+        init(&project_root, false, &rendered).unwrap();
+
+        // 5. Verify written config contains ONLY template agents
+        let config_path = project_root.join(".agents").join("agentsync.toml");
+        let written = fs::read_to_string(&config_path).unwrap();
+        assert!(
+            written.contains("[agents.claude]"),
+            "written config must contain claude agent"
+        );
+        assert!(
+            !written.contains("[agents.copilot]"),
+            "written config must NOT contain default copilot agent"
+        );
+        assert!(
+            !written.contains("[agents.cursor]"),
+            "written config must NOT contain default cursor agent"
+        );
+
+        // 6. Verify default_agents is preserved
+        assert!(
+            written.contains("default_agents"),
+            "default_agents key must be preserved from template"
+        );
+    }
+
+    #[test]
+    fn test_init_with_config_content() {
+        let temp_dir = TempDir::new().unwrap();
+        let custom_content = r#"source_dir = ".agents"
+
+[agents.claude]
+enabled = true
+
+[agents.claude.targets.instructions]
+source = "AGENTS.md"
+destination = "CLAUDE.md"
+type = "symlink"
+"#;
+
+        init(temp_dir.path(), false, custom_content).unwrap();
+
+        let config_path = temp_dir.path().join(".agents").join("agentsync.toml");
+        let written = fs::read_to_string(&config_path).unwrap();
+        assert_eq!(written, custom_content);
+        // Should NOT contain default agents like copilot
+        assert!(!written.contains("[agents.copilot]"));
     }
 }

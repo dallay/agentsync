@@ -337,6 +337,11 @@ enum Commands {
             help = "Run the init wizard with an experimental full-screen TUI intro"
         )]
         experimental_tui: bool,
+        #[arg(
+            long,
+            help = "Path to a TOML config template to use instead of the built-in default"
+        )]
+        template: Option<PathBuf>,
     },
     /// Apply the configuration from agentsync.toml
     Apply {
@@ -400,6 +405,7 @@ fn main() -> Result<()> {
             force,
             wizard,
             experimental_tui,
+            template,
         } => {
             let project_root = path.unwrap_or_else(|| env::current_dir().unwrap());
             print_header();
@@ -409,13 +415,29 @@ fn main() -> Result<()> {
                     "Starting interactive configuration wizard...\n".cyan()
                 );
                 if experimental_tui {
-                    init::init_wizard_experimental_tui(&project_root, force)?;
+                    init::init_wizard_experimental_tui(&project_root, force, template.as_deref())?;
                 } else {
-                    init::init_wizard(&project_root, force)?;
+                    init::init_wizard(&project_root, force, template.as_deref())?;
                 }
             } else {
                 println!("{}", "Initializing agentsync configuration...\n".cyan());
-                init::init(&project_root, force)?;
+                let (config_content, source) = init::resolve_config_template(template.as_deref())?;
+                match &source {
+                    init::TemplateSource::Flag(p) => {
+                        use colored::Colorize;
+                        println!("  {} Using template: {}", "✔".green(), p.display());
+                    }
+                    init::TemplateSource::UserConfig(p) => {
+                        use colored::Colorize;
+                        println!(
+                            "  {} Using user config template: {}",
+                            "✔".green(),
+                            p.display()
+                        );
+                    }
+                    init::TemplateSource::Default => {}
+                }
+                init::init(&project_root, force, &config_content)?;
             }
             println!("\n{}", "✨ Initialization complete!".green().bold());
             if let Some(lines) = init_next_steps_lines(wizard) {
