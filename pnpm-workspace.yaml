@@ -18,5 +18,5 @@ minimumReleaseAgeExclude:
   - '@dallay/*'
   - '@biomejs/*'
   - '@iconify/*'
-  # Renovate security update: astro@6.1.6
-  - astro@6.1.6
+  # Renovate security update: astro@6.1.6 || 7.1.0
+  - astro@6.1.6 || 7.1.0
