@@ -191,3 +191,29 @@ fn test_path_traversal_bypass_attempt() {
         "Sync must not create links/files outside project root"
     );
 }
+
+#[test]
+fn test_skill_install_id_traversal() {
+    let temp_dir = TempDir::new().unwrap();
+    let project_root = temp_dir.path().join("project");
+    let agents_dir = project_root.join(".agents");
+    let skills_dir = agents_dir.join("skills");
+    fs::create_dir_all(&skills_dir).unwrap();
+
+    let source_dir = temp_dir.path().join("source_skill");
+    fs::create_dir_all(&source_dir).unwrap();
+    fs::write(source_dir.join("SKILL.md"), "---\nname: test-skill\n---").unwrap();
+
+    // Malicious skill ID attempting traversal
+    let malicious_id = "../outside_skill";
+
+    let result =
+        agentsync::skills::install::install_from_dir(malicious_id, &source_dir, &skills_dir);
+
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(err.to_string().contains("invalid skill id"));
+
+    let outside_path = agents_dir.join("outside_skill");
+    assert!(!outside_path.exists());
+}

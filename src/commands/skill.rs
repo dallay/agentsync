@@ -1359,44 +1359,29 @@ fn validate_skill_id(skill_id: &str) -> Result<()> {
         return Err(anyhow::anyhow!("skill id must not be empty"));
     }
 
-    // Quick reject any obvious separators
-    if skill_id.contains('/') || skill_id.contains('\\') {
+    // SECURITY: Use a strict whitelist for skill IDs to prevent path traversal
+    // or other filesystem-related attacks. Only alphanumeric, hyphens, and underscores are allowed.
+    // This is more restrictive than standard filesystem rules but safe for our use case.
+    if !skill_id
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
         return Err(anyhow::anyhow!(
-            "invalid skill id: must be a single path segment without '/' or '\\'"
+            "invalid skill id: only alphanumeric characters, hyphens, and underscores are allowed: {}",
+            skill_id
         ));
     }
 
+    // Double check with component analysis for defense-in-depth
     let p = Path::new(skill_id);
-
-    // Reject absolute paths or paths that start with a prefix/root (drive letter on Windows)
-    if p.is_absolute() {
-        return Err(anyhow::anyhow!(
-            "invalid skill id: must not be an absolute path"
-        ));
+    let mut components = p.components();
+    match (components.next(), components.next()) {
+        (Some(Component::Normal(_)), None) => Ok(()),
+        _ => Err(anyhow::anyhow!(
+            "invalid skill id: must be a single safe path segment: {}",
+            skill_id
+        )),
     }
-
-    // Ensure components() yields exactly one Component::Normal
-    let mut count_normal = 0usize;
-    for comp in p.components() {
-        match comp {
-            Component::Normal(_) => count_normal += 1,
-            // Any other component is invalid (RootDir, Prefix, CurDir, ParentDir)
-            other => {
-                return Err(anyhow::anyhow!(
-                    "invalid skill id: contains invalid path component: {:?}",
-                    other
-                ));
-            }
-        }
-    }
-
-    if count_normal != 1 {
-        return Err(anyhow::anyhow!(
-            "invalid skill id: must be a single path segment"
-        ));
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]
@@ -1972,6 +1957,19 @@ mod tests {
     fn validate_skill_id_rejects_dot() {
         let result = validate_skill_id(".");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn validate_skill_id_rejects_triple_dot() {
+        let result = validate_skill_id("...");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn validate_skill_id_rejects_special_chars() {
+        assert!(validate_skill_id("skill@123").is_err());
+        assert!(validate_skill_id("skill!").is_err());
+        assert!(validate_skill_id("skill ").is_err());
     }
 
     // Tests for remediation_for_error
