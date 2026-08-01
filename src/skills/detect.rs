@@ -634,14 +634,16 @@ fn collect_package_names(
 
 fn parse_package_json_deps(path: &Path, cache: &mut ContentCache) -> Option<BTreeSet<String>> {
     let content = get_file_content(path, cache)?;
-    let json: serde_json::Value = serde_json::from_str(&content).ok()?;
-    let obj = json.as_object()?;
+    let mut json: serde_json::Value = serde_json::from_str(&content).ok()?;
+    let obj = json.as_object_mut()?;
 
     let mut deps = BTreeSet::new();
     for key in &["dependencies", "devDependencies", "peerDependencies"] {
-        if let Some(section) = obj.get(*key).and_then(|v| v.as_object()) {
-            for dep_name in section.keys() {
-                deps.insert(dep_name.clone());
+        // Optimization: Use remove() to take ownership of the section and its keys,
+        // eliminating redundant String clones for every dependency name.
+        if let Some(serde_json::Value::Object(section)) = obj.remove(*key) {
+            for (dep_name, _) in section {
+                deps.insert(dep_name);
             }
         }
     }
