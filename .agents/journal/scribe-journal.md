@@ -32,3 +32,8 @@
 
 **Learning:** Both the CLI reference and the Skills guide claimed that active evaluation of multi-technology "combo" entries was deferred. However, Phase 2 of `recommend_skills` in `src/skills/suggest.rs` already implements this logic, providing specific recommendations for combinations like `react-hook-form` + `zod`.
 **Action:** Before claiming a feature is "deferred" or "planned," verify the relevant logic phases in the implementation (e.g., Phase 2 evaluation loops).
+
+## 2026-05-20 - Inaccurate Technology Detection Confidence Logic
+
+**Learning:** The documentation for `skill suggest` incorrectly stated that detection confidence was determined by file location (root-level vs nested) or directory type (test/example). In reality, the `CatalogDrivenDetector` in `src/skills/detect.rs` assigns confidence based on the detection mechanism: `High` for exact package matches and configuration file existence, and `Medium` for regex patterns, content matches, and file extensions.
+**Action:** Always verify the mapping between internal enums (like `DetectionConfidence`) and detection rules in `src/skills/detect.rs` rather than assuming location-based heuristics.
