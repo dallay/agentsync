@@ -116,9 +116,18 @@ impl McpAgent {
     }
 
     /// Get the project-level config file path (relative to project root).
-    /// For global agents (e.g. Claude Desktop), returns a sentinel — use
-    /// `resolved_config_path()` to get the actual filesystem path.
+    ///
+    /// # Panics
+    ///
+    /// Panics in debug builds for global agents (e.g. Claude Desktop) which
+    /// have no project-relative path.  Always use [`resolved_config_path()`]
+    /// instead when the result will touch the filesystem.
     pub fn config_path(&self) -> &'static str {
+        debug_assert!(
+            !self.is_global(),
+            "config_path() must not be called on global agent {:?}; use resolved_config_path()",
+            self
+        );
         match self {
             McpAgent::ClaudeCode => ".mcp.json",
             McpAgent::ClaudeDesktop => "<global:claude-desktop>",
