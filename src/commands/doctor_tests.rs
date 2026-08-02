@@ -607,6 +607,69 @@ entry1
         assert!(result.is_none());
     }
 
+    // ==========================================================================
+    // PARSE_MARKERS TESTS
+    // ==========================================================================
+
+    use crate::commands::doctor::parse_markers;
+
+    #[test]
+    fn test_parse_markers_both_present() {
+        let content = "line1\n# START managed\nentry\n# END managed\nline2\n";
+        let (has_start, has_end) = parse_markers(content, "# START managed", "# END managed");
+        assert!(has_start);
+        assert!(has_end);
+    }
+
+    #[test]
+    fn test_parse_markers_only_start() {
+        let content = "line1\n# START managed\nentry\nline2\n";
+        let (has_start, has_end) = parse_markers(content, "# START managed", "# END managed");
+        assert!(has_start);
+        assert!(!has_end);
+    }
+
+    #[test]
+    fn test_parse_markers_only_end() {
+        let content = "line1\nentry\n# END managed\nline2\n";
+        let (has_start, has_end) = parse_markers(content, "# START managed", "# END managed");
+        assert!(!has_start);
+        assert!(has_end);
+    }
+
+    #[test]
+    fn test_parse_markers_neither_present() {
+        let content = "line1\nline2\nline3\n";
+        let (has_start, has_end) = parse_markers(content, "# START managed", "# END managed");
+        assert!(!has_start);
+        assert!(!has_end);
+    }
+
+    #[test]
+    fn test_parse_markers_with_surrounding_whitespace() {
+        // Markers with leading/trailing whitespace on the line should still match (trim)
+        let content = "  # START managed  \nentry\n  # END managed  \n";
+        let (has_start, has_end) = parse_markers(content, "# START managed", "# END managed");
+        assert!(has_start);
+        assert!(has_end);
+    }
+
+    #[test]
+    fn test_parse_markers_partial_match_not_counted() {
+        // A line containing the marker as substring but not the full trimmed line
+        let content = "prefix # START managed suffix\nentry\n# END managed\n";
+        let (has_start, has_end) = parse_markers(content, "# START managed", "# END managed");
+        assert!(!has_start); // not an exact trimmed match
+        assert!(has_end);
+    }
+
+    #[test]
+    fn test_parse_markers_empty_content() {
+        let (has_start, has_end) = parse_markers("", "# START", "# END");
+        assert!(!has_start);
+        assert!(!has_end);
+    }
+
     #[test]
     #[cfg(unix)]
     fn test_collect_skills_mode_mismatch_reports_directory_symlink_vs_symlink_contents() {

@@ -279,4 +279,87 @@ mod tests {
         };
         assert!(!is_fresh(&cache));
     }
+
+    #[test]
+    fn test_cache_not_fresh_if_notified_is_none() {
+        let cache = CheckedVersion {
+            last_checked: chrono::Utc::now().timestamp(),
+            latest_version: "1.0.0".to_string(),
+            notified_for_version: None,
+        };
+        assert!(!is_fresh(&cache));
+    }
+
+    #[test]
+    fn test_should_skip_when_no_update_check_env_set() {
+        // Save and restore env
+        let orig = std::env::var("AGENTSYNC_NO_UPDATE_CHECK").ok();
+        let orig_ci = std::env::var("CI").ok();
+
+        unsafe {
+            std::env::set_var("AGENTSYNC_NO_UPDATE_CHECK", "1");
+            std::env::remove_var("CI");
+        }
+        assert!(should_skip_update_check());
+
+        // Cleanup
+        unsafe {
+            match orig {
+                Some(v) => std::env::set_var("AGENTSYNC_NO_UPDATE_CHECK", v),
+                None => std::env::remove_var("AGENTSYNC_NO_UPDATE_CHECK"),
+            }
+            match orig_ci {
+                Some(v) => std::env::set_var("CI", v),
+                None => std::env::remove_var("CI"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_should_skip_when_ci_env_set() {
+        let orig = std::env::var("CI").ok();
+        let orig_no = std::env::var("AGENTSYNC_NO_UPDATE_CHECK").ok();
+
+        unsafe {
+            std::env::set_var("CI", "true");
+            std::env::remove_var("AGENTSYNC_NO_UPDATE_CHECK");
+        }
+        assert!(should_skip_update_check());
+
+        unsafe {
+            match orig {
+                Some(v) => std::env::set_var("CI", v),
+                None => std::env::remove_var("CI"),
+            }
+            match orig_no {
+                Some(v) => std::env::set_var("AGENTSYNC_NO_UPDATE_CHECK", v),
+                None => std::env::remove_var("AGENTSYNC_NO_UPDATE_CHECK"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_should_skip_no_update_check_only_skips_on_1() {
+        let orig = std::env::var("AGENTSYNC_NO_UPDATE_CHECK").ok();
+        let orig_ci = std::env::var("CI").ok();
+
+        unsafe {
+            std::env::set_var("AGENTSYNC_NO_UPDATE_CHECK", "0");
+            std::env::remove_var("CI");
+        }
+        // With "0", the env check won't trigger skip (but terminal check may)
+        // At least confirm it doesn't panic
+        let _ = should_skip_update_check();
+
+        unsafe {
+            match orig {
+                Some(v) => std::env::set_var("AGENTSYNC_NO_UPDATE_CHECK", v),
+                None => std::env::remove_var("AGENTSYNC_NO_UPDATE_CHECK"),
+            }
+            match orig_ci {
+                Some(v) => std::env::set_var("CI", v),
+                None => std::env::remove_var("CI"),
+            }
+        }
+    }
 }

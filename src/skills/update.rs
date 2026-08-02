@@ -244,3 +244,138 @@ fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_rollback_skill_dir_restores_backup() {
+        let tmp = TempDir::new().unwrap();
+        let skill_dir = tmp.path().join("my-skill");
+        let backup_dir = tmp.path().join("my-skill.bak");
+
+        // Create backup with content
+        std::fs::create_dir_all(&backup_dir).unwrap();
+        std::fs::write(backup_dir.join("SKILL.md"), "# Original").unwrap();
+
+        // Create a "broken" skill_dir
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("broken.txt"), "bad").unwrap();
+
+        rollback_skill_dir(&skill_dir, &backup_dir);
+
+        // skill_dir should now contain original content
+        assert!(skill_dir.join("SKILL.md").exists());
+        assert!(!skill_dir.join("broken.txt").exists());
+        assert!(!backup_dir.exists());
+    }
+
+    #[test]
+    fn test_rollback_skill_dir_no_backup_just_removes() {
+        let tmp = TempDir::new().unwrap();
+        let skill_dir = tmp.path().join("my-skill");
+        let backup_dir = tmp.path().join("my-skill.bak");
+
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("broken.txt"), "bad").unwrap();
+
+        rollback_skill_dir(&skill_dir, &backup_dir);
+
+        assert!(!skill_dir.exists());
+        assert!(!backup_dir.exists());
+    }
+
+    #[test]
+    fn test_rollback_skill_dir_nothing_exists() {
+        let tmp = TempDir::new().unwrap();
+        let skill_dir = tmp.path().join("my-skill");
+        let backup_dir = tmp.path().join("my-skill.bak");
+
+        // Should not panic
+        rollback_skill_dir(&skill_dir, &backup_dir);
+        assert!(!skill_dir.exists());
+    }
+
+    #[test]
+    fn test_create_backup_moves_skill_dir() {
+        let tmp = TempDir::new().unwrap();
+        let skill_dir = tmp.path().join("my-skill");
+        let backup_dir = tmp.path().join("my-skill.bak");
+
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# Test").unwrap();
+
+        create_backup(&skill_dir, &backup_dir).unwrap();
+
+        assert!(!skill_dir.exists());
+        assert!(backup_dir.join("SKILL.md").exists());
+    }
+
+    #[test]
+    fn test_create_backup_replaces_existing_backup() {
+        let tmp = TempDir::new().unwrap();
+        let skill_dir = tmp.path().join("my-skill");
+        let backup_dir = tmp.path().join("my-skill.bak");
+
+        // Old backup
+        std::fs::create_dir_all(&backup_dir).unwrap();
+        std::fs::write(backup_dir.join("old.md"), "old").unwrap();
+
+        // Current skill
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("new.md"), "new").unwrap();
+
+        create_backup(&skill_dir, &backup_dir).unwrap();
+
+        assert!(!backup_dir.join("old.md").exists());
+        assert!(backup_dir.join("new.md").exists());
+    }
+
+    #[test]
+    fn test_create_backup_noop_when_skill_dir_missing() {
+        let tmp = TempDir::new().unwrap();
+        let skill_dir = tmp.path().join("missing");
+        let backup_dir = tmp.path().join("missing.bak");
+
+        let result = create_backup(&skill_dir, &backup_dir);
+        assert!(result.is_ok());
+        assert!(!backup_dir.exists());
+    }
+
+    #[test]
+    fn test_copy_dir_all_copies_recursively() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("src");
+        let dst = tmp.path().join("dst");
+
+        std::fs::create_dir_all(src.join("sub")).unwrap();
+        std::fs::write(src.join("a.txt"), "a").unwrap();
+        std::fs::write(src.join("sub/b.txt"), "b").unwrap();
+
+        copy_dir_all(&src, &dst).unwrap();
+
+        assert_eq!(std::fs::read_to_string(dst.join("a.txt")).unwrap(), "a");
+        assert_eq!(std::fs::read_to_string(dst.join("sub/b.txt")).unwrap(), "b");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_copy_dir_all_skips_symlinks() {
+        use std::os::unix::fs as unix_fs;
+
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("src");
+        let dst = tmp.path().join("dst");
+
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("real.txt"), "real").unwrap();
+        unix_fs::symlink("/etc/passwd", src.join("evil-link")).unwrap();
+
+        copy_dir_all(&src, &dst).unwrap();
+
+        assert!(dst.join("real.txt").exists());
+        assert!(!dst.join("evil-link").exists());
+    }
+}

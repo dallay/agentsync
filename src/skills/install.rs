@@ -664,6 +664,216 @@ mod tests {
         }
     }
 
+    // --- zip_common_root tests ---
+
+    fn make_zip(entries: &[&str]) -> Vec<u8> {
+        let mut buf = Vec::new();
+        {
+            let mut zip = ZipWriter::new(Cursor::new(&mut buf));
+            for entry in entries {
+                zip.start_file(entry.to_string(), FileOptions::<()>::default())
+                    .unwrap();
+                zip.write_all(b"x").unwrap();
+            }
+            zip.finish().unwrap();
+        }
+        buf
+    }
+
+    #[test]
+    fn test_zip_common_root_single_prefix() {
+        let buf = make_zip(&["foo/a.txt", "foo/b.txt"]);
+        let mut zip = ZipArchive::new(Cursor::new(buf)).unwrap();
+        assert_eq!(zip_common_root(&mut zip).unwrap(), Some("foo".to_string()));
+    }
+
+    #[test]
+    fn test_zip_common_root_no_prefix() {
+        let buf = make_zip(&["a.txt", "b.txt"]);
+        let mut zip = ZipArchive::new(Cursor::new(buf)).unwrap();
+        assert_eq!(zip_common_root(&mut zip).unwrap(), None);
+    }
+
+    #[test]
+    fn test_zip_common_root_different_prefixes() {
+        let buf = make_zip(&["foo/a.txt", "bar/b.txt"]);
+        let mut zip = ZipArchive::new(Cursor::new(buf)).unwrap();
+        assert_eq!(zip_common_root(&mut zip).unwrap(), None);
+    }
+
+    // --- zip_entry_rel_path tests ---
+
+    #[test]
+    fn test_zip_entry_rel_path_strips_root() {
+        assert_eq!(
+            zip_entry_rel_path("foo/a.txt", Some("foo"), None),
+            Some("a.txt")
+        );
+    }
+
+    #[test]
+    fn test_zip_entry_rel_path_strips_subpath() {
+        assert_eq!(
+            zip_entry_rel_path("sub/file.txt", None, Some("sub")),
+            Some("file.txt")
+        );
+    }
+
+    #[test]
+    fn test_zip_entry_rel_path_strips_root_and_subpath() {
+        assert_eq!(
+            zip_entry_rel_path("foo/sub/file.txt", Some("foo"), Some("sub")),
+            Some("file.txt")
+        );
+    }
+
+    #[test]
+    fn test_zip_entry_rel_path_no_match_subpath() {
+        assert_eq!(
+            zip_entry_rel_path("other/file.txt", None, Some("sub")),
+            None
+        );
+    }
+
+    #[test]
+    fn test_zip_entry_rel_path_component_boundary_safety() {
+        // root="docs" should NOT strip from "docs2/file.txt"
+        assert_eq!(
+            zip_entry_rel_path("docs2/file.txt", Some("docs"), None),
+            Some("docs2/file.txt")
+        );
+    }
+
+    // --- tar_common_root tests ---
+
+    fn make_tar_gz(entries: &[&str]) -> Vec<u8> {
+        let mut buf = Vec::new();
+        {
+            let encoder = flate2::write::GzEncoder::new(&mut buf, flate2::Compression::default());
+            let mut builder = tar::Builder::new(encoder);
+            for entry in entries {
+                let content = b"x";
+                let mut header = tar::Header::new_gnu();
+                header.set_size(content.len() as u64);
+                header.set_mode(0o644);
+                header.set_cksum();
+                builder
+                    .append_data(&mut header, *entry, &content[..])
+                    .unwrap();
+            }
+            builder.finish().unwrap();
+        }
+        buf
+    }
+
+    #[test]
+    fn test_tar_common_root_single_prefix() {
+        let buf = make_tar_gz(&["foo/a.txt", "foo/b.txt"]);
+        let mut decompressed = Vec::new();
+        let mut gz = flate2::read::GzDecoder::new(Cursor::new(buf));
+        std::io::Read::read_to_end(&mut gz, &mut decompressed).unwrap();
+        let mut archive = tar::Archive::new(Cursor::new(&decompressed));
+        assert_eq!(
+            tar_common_root_from_archive(&mut archive).unwrap(),
+            Some("foo".to_string())
+        );
+    }
+
+    #[test]
+    fn test_tar_common_root_no_prefix() {
+        let buf = make_tar_gz(&["a.txt", "b.txt"]);
+        let mut decompressed = Vec::new();
+        let mut gz = flate2::read::GzDecoder::new(Cursor::new(buf));
+        std::io::Read::read_to_end(&mut gz, &mut decompressed).unwrap();
+        let mut archive = tar::Archive::new(Cursor::new(&decompressed));
+        assert_eq!(tar_common_root_from_archive(&mut archive).unwrap(), None);
+    }
+
+    #[test]
+    fn test_tar_common_root_different_prefixes() {
+        let buf = make_tar_gz(&["foo/a.txt", "bar/b.txt"]);
+        let mut decompressed = Vec::new();
+        let mut gz = flate2::read::GzDecoder::new(Cursor::new(buf));
+        std::io::Read::read_to_end(&mut gz, &mut decompressed).unwrap();
+        let mut archive = tar::Archive::new(Cursor::new(&decompressed));
+        assert_eq!(tar_common_root_from_archive(&mut archive).unwrap(), None);
+    }
+
+    // --- tar_entry_rel_path tests ---
+
+    #[test]
+    fn test_tar_entry_rel_path_strips_root() {
+        let p = Path::new("foo/a.txt");
+        assert_eq!(
+            tar_entry_rel_path(p, Some("foo"), None),
+            Some(PathBuf::from("a.txt"))
+        );
+    }
+
+    #[test]
+    fn test_tar_entry_rel_path_strips_subpath() {
+        let p = Path::new("sub/file.txt");
+        assert_eq!(
+            tar_entry_rel_path(p, None, Some("sub")),
+            Some(PathBuf::from("file.txt"))
+        );
+    }
+
+    #[test]
+    fn test_tar_entry_rel_path_strips_root_and_subpath() {
+        let p = Path::new("foo/sub/file.txt");
+        assert_eq!(
+            tar_entry_rel_path(p, Some("foo"), Some("sub")),
+            Some(PathBuf::from("file.txt"))
+        );
+    }
+
+    #[test]
+    fn test_tar_entry_rel_path_no_match_subpath() {
+        let p = Path::new("other/file.txt");
+        assert_eq!(tar_entry_rel_path(p, None, Some("sub")), None);
+    }
+
+    // --- fetch_local_data tests ---
+
+    #[test]
+    fn test_fetch_local_data_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file_path = tmp.path().join("test.zip");
+        std::fs::write(&file_path, b"fake zip data").unwrap();
+
+        let (source, ext) =
+            fetch_local_data(file_path.to_str().unwrap(), false, tmp.path()).unwrap();
+        assert!(matches!(source, FetchedSource::Archive(data) if data == b"fake zip data"));
+        assert_eq!(ext, "zip");
+    }
+
+    #[test]
+    fn test_fetch_local_data_directory() {
+        let src_dir = tempfile::tempdir().unwrap();
+        std::fs::write(src_dir.path().join("SKILL.md"), b"name: test").unwrap();
+
+        let dest_dir = tempfile::tempdir().unwrap();
+        let (source, ext) =
+            fetch_local_data(src_dir.path().to_str().unwrap(), false, dest_dir.path()).unwrap();
+        assert!(matches!(source, FetchedSource::DirectoryCopied));
+        assert_eq!(ext, "");
+        // Verify the file was copied
+        assert!(dest_dir.path().join("SKILL.md").exists());
+    }
+
+    #[test]
+    fn test_fetch_local_data_file_uri() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file_path = tmp.path().join("archive.tar.gz");
+        std::fs::write(&file_path, b"fake tar data").unwrap();
+
+        let uri = format!("file://{}", file_path.to_str().unwrap());
+        let (source, ext) = fetch_local_data(&uri, true, tmp.path()).unwrap();
+        assert!(matches!(source, FetchedSource::Archive(data) if data == b"fake tar data"));
+        assert_eq!(ext, "gz");
+    }
+
     #[tokio::test]
     async fn test_tar_windows_drive_path_rejection() {
         let temp_root = tempfile::tempdir().unwrap();

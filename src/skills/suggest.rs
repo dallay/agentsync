@@ -932,4 +932,154 @@ mod tests {
             [SuggestInstallProgressEvent::SkippedAlreadyInstalled { skill_id }] if skill_id == "accessibility"
         ));
     }
+
+    // --- render helpers coverage ---
+
+    #[test]
+    fn render_detections_section_empty() {
+        let mut lines = Vec::new();
+        render_detections_section(&[], &mut lines);
+        assert_eq!(lines, vec!["Detected technologies: none"]);
+    }
+
+    #[test]
+    fn render_detections_section_with_entries() {
+        let detections = vec![
+            SuggestJsonDetection {
+                technology: TechnologyId::new("rust"),
+                confidence: DetectionConfidence::High,
+                evidence: vec!["Cargo.toml".to_string()],
+            },
+            SuggestJsonDetection {
+                technology: TechnologyId::new("python"),
+                confidence: DetectionConfidence::Medium,
+                evidence: vec!["setup.py".to_string(), "requirements.txt".to_string()],
+            },
+        ];
+        let mut lines = Vec::new();
+        render_detections_section(&detections, &mut lines);
+        assert!(lines[0].contains("Detected technologies:"));
+        assert!(lines[1].contains("rust"));
+        assert!(lines[1].contains("high"));
+        assert!(lines[1].contains("Cargo.toml"));
+        assert!(lines[2].contains("python"));
+        assert!(lines[2].contains("setup.py, requirements.txt"));
+    }
+
+    #[test]
+    fn render_recommendations_section_empty() {
+        let mut lines = Vec::new();
+        render_recommendations_section(&[], &mut lines);
+        assert_eq!(lines, vec!["Recommended skills: none"]);
+    }
+
+    #[test]
+    fn render_recommendations_section_with_entries() {
+        let recs = vec![SuggestJsonRecommendation {
+            skill_id: "rust-async".to_string(),
+            provider_skill_id: "provider/rust-async".to_string(),
+            matched_technologies: vec![TechnologyId::new("rust")],
+            reasons: vec!["uses tokio".to_string()],
+            installed: false,
+        }];
+        let mut lines = Vec::new();
+        render_recommendations_section(&recs, &mut lines);
+        assert!(lines[0].contains("Recommended skills:"));
+        assert!(lines[1].contains("rust-async"));
+        assert!(lines[1].contains("not installed"));
+        assert!(lines[2].contains("reason: uses tokio"));
+    }
+
+    #[test]
+    fn render_recommendations_section_installed() {
+        let recs = vec![SuggestJsonRecommendation {
+            skill_id: "docker".to_string(),
+            provider_skill_id: "provider/docker".to_string(),
+            matched_technologies: vec![],
+            reasons: vec![],
+            installed: true,
+        }];
+        let mut lines = Vec::new();
+        render_recommendations_section(&recs, &mut lines);
+        assert!(lines[1].contains("installed"));
+        assert!(!lines[1].contains("not installed"));
+    }
+
+    #[test]
+    fn render_selected_skills_section_empty() {
+        let mut lines = Vec::new();
+        render_selected_skills_section(&[], &mut lines);
+        assert_eq!(lines, vec!["Selected skills: none"]);
+    }
+
+    #[test]
+    fn render_selected_skills_section_with_entries() {
+        let ids = vec!["foo".to_string(), "bar".to_string()];
+        let mut lines = Vec::new();
+        render_selected_skills_section(&ids, &mut lines);
+        assert_eq!(lines, vec!["Selected skills: foo, bar"]);
+    }
+
+    #[test]
+    fn render_install_results_section_empty() {
+        let mut lines = Vec::new();
+        render_install_results_section(&[], &mut lines);
+        assert_eq!(lines, vec!["Install results: none"]);
+    }
+
+    #[test]
+    fn render_install_results_section_with_entries() {
+        let results = vec![
+            SuggestInstallResult {
+                skill_id: "a".to_string(),
+                provider_skill_id: "p/a".to_string(),
+                status: SuggestInstallStatus::Installed,
+                error_message: None,
+            },
+            SuggestInstallResult {
+                skill_id: "b".to_string(),
+                provider_skill_id: "p/b".to_string(),
+                status: SuggestInstallStatus::Failed,
+                error_message: Some("network error".to_string()),
+            },
+        ];
+        let mut lines = Vec::new();
+        render_install_results_section(&results, &mut lines);
+        assert!(lines[0].contains("Install results:"));
+        assert!(lines[1].contains("a: installed"));
+        assert!(lines[2].contains("b: failed"));
+        assert!(lines[2].contains("network error"));
+    }
+
+    #[test]
+    fn suggest_install_json_response_render_human_integrates_all_sections() {
+        let response = SuggestInstallJsonResponse {
+            suggest: SuggestJsonResponse {
+                detections: vec![SuggestJsonDetection {
+                    technology: TechnologyId::new("rust"),
+                    confidence: DetectionConfidence::High,
+                    evidence: vec!["Cargo.toml".to_string()],
+                }],
+                recommendations: vec![],
+                summary: SuggestSummary {
+                    detected_count: 1,
+                    recommended_count: 0,
+                    installable_count: 0,
+                },
+            },
+            mode: SuggestInstallMode::InstallAll,
+            selected_skill_ids: vec!["skill-a".to_string()],
+            results: vec![SuggestInstallResult {
+                skill_id: "skill-a".to_string(),
+                provider_skill_id: "p/skill-a".to_string(),
+                status: SuggestInstallStatus::Installed,
+                error_message: None,
+            }],
+        };
+        let output = response.render_human();
+        assert!(output.contains("rust"));
+        assert!(output.contains("install-all"));
+        assert!(output.contains("Selected skills: skill-a"));
+        assert!(output.contains("skill-a: installed"));
+    }
 }
