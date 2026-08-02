@@ -1,7 +1,9 @@
 use flate2::read::GzDecoder;
 // futures_util::StreamExt is used locally where needed
+use crate::skills::registry::RegistryEntry;
 use anyhow::Error as AnyhowError;
 use reqwest::{Client, Error as ReqwestError};
+use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use tar::Archive;
 use tempfile::TempDir;
@@ -32,18 +34,14 @@ pub enum SkillInstallError {
 
 // Module-level helper to recursively copy directories
 fn archive_path_is_unsafe(path: &str) -> bool {
-    Path::new(path).components().any(|component| {
-        matches!(
-            component,
-            std::path::Component::ParentDir
-                | std::path::Component::RootDir
-                | std::path::Component::Prefix(_)
-        )
-    }) || path
-        .as_bytes()
-        .get(1)
-        .is_some_and(|second_byte| *second_byte == b':')
+    path.is_empty()
+        || path.starts_with('/')
         || path.starts_with('\\')
+        || path.contains(':')
+        || path
+            .trim_end_matches(['/', '\\'])
+            .split(['/', '\\'])
+            .any(|part| part.is_empty() || part == "." || part == "..")
 }
 
 fn copy_dir_recursively(
@@ -90,14 +88,21 @@ pub fn install_from_dir(
         }
     }
 
-    let skill_dir = target_root.join(skill_id);
-
     // Create a temporary directory for rollback if anything fails
     let temp_skill_dir = tempfile::TempDir::new().map_err(SkillInstallError::Io)?;
     let staging_dir = temp_skill_dir.path();
 
     copy_dir_recursively(src_dir, staging_dir)?;
+    install_staged(skill_id, staging_dir, target_root, src_dir)
+}
 
+fn install_staged(
+    skill_id: &str,
+    staging_dir: &Path,
+    target_root: &Path,
+    source: &Path,
+) -> Result<(), SkillInstallError> {
+    let skill_dir = target_root.join(skill_id);
     // Validate manifest
     let manifest_path = staging_dir.join("SKILL.md");
     let parsed = crate::skills::manifest::parse_skill_manifest(&manifest_path)?;
@@ -137,7 +142,7 @@ pub fn install_from_dir(
         description: parsed.description.clone(),
         version: parsed.version.clone(),
         provider: None,
-        source: Some(src_dir.to_string_lossy().into_owned()),
+        source: Some(source.to_string_lossy().into_owned()),
         installed_at: Some(chrono::Utc::now().to_rfc3339()),
         files: None,
         manifest_hash: None,
@@ -146,6 +151,63 @@ pub fn install_from_dir(
     crate::skills::registry::update_registry_entry(&registry_path, skill_id, entry)
         .map_err(SkillInstallError::Registry)?;
     Ok(())
+}
+
+/// Validate curated metadata in staging before invoking the existing atomic installer.
+pub fn install_from_dir_verified(
+    skill_id: &str,
+    src_dir: &Path,
+    target_root: &Path,
+    expected: &RegistryEntry,
+) -> Result<(), SkillInstallError> {
+    if expected.local_skill_id != skill_id {
+        return Err(SkillInstallError::Validation(format!(
+            "registry local_skill_id `{}` does not match requested skill `{skill_id}`",
+            expected.local_skill_id
+        )));
+    }
+    let staged = TempDir::new().map_err(SkillInstallError::Io)?;
+    copy_dir_recursively(src_dir, staged.path())?;
+    for file in &expected.files {
+        let relative = Path::new(&file.path);
+        if archive_path_is_unsafe(&file.path) {
+            return Err(SkillInstallError::Validation(format!(
+                "unsafe expected path: {}",
+                file.path
+            )));
+        }
+        let path = staged.path().join(relative);
+        let bytes = std::fs::read(&path)
+            .map_err(|e| SkillInstallError::Validation(format!("{}: {e}", file.path)))?;
+        let actual = Sha256::digest(bytes)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        if actual != file.sha256.to_ascii_lowercase() {
+            return Err(SkillInstallError::Validation(format!(
+                "{} sha256 mismatch: expected {}, got {}",
+                file.path, file.sha256, actual
+            )));
+        }
+    }
+    let manifest = crate::skills::manifest::parse_skill_manifest(&staged.path().join("SKILL.md"))?;
+    if manifest.name != expected.manifest.name
+        || manifest.version != expected.manifest.version
+        || manifest.description != expected.manifest.description
+    {
+        return Err(SkillInstallError::Validation(
+            "manifest does not match curated registry metadata".into(),
+        ));
+    }
+    if expected.license.spdx.is_empty()
+        || expected.license.spdx == "LicenseRef-Unknown"
+        || expected.validation.status != "approved"
+    {
+        return Err(SkillInstallError::Validation(
+            "curated registry license or validation policy rejected entry".into(),
+        ));
+    }
+    install_staged(skill_id, staged.path(), target_root, src_dir)
 }
 
 pub fn install_from_zip(

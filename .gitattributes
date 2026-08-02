@@ -1,0 +1,2 @@
+# Curated registry fixtures are hashed as raw bytes; preserve LF endings on every platform.
+tests/fixtures/curated-skills/** text eol=lf

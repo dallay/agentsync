@@ -642,6 +642,7 @@ fn provider_skill(provider_skill_id: &str, local_skill_id: &str) -> ProviderCata
         archive_subpath: None,
         legacy_local_skill_ids: Vec::new(),
         install_source: None,
+        registry_entry_id: None,
     }
 }
 

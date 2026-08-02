@@ -3,6 +3,7 @@ use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
 use crate::skills::catalog::EmbeddedSkillCatalog;
+use crate::skills::registry::{RegistryDocument, RegistryEntry};
 
 /// Provider trait for resolving skills
 pub trait Provider {
@@ -50,6 +51,8 @@ pub struct ProviderCatalogSkill {
     pub legacy_local_skill_ids: Vec<String>,
     #[serde(default)]
     pub install_source: Option<String>,
+    #[serde(default)]
+    pub registry_entry_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -90,6 +93,80 @@ struct SearchSkill {
 
 pub struct SkillsShProvider;
 
+/// Provider for curated entries. Local content is authoritative; remote fallback is opt-in and
+/// always points at the immutable commit recorded by the registry.
+pub struct PinnedProvider<'a> {
+    registry: RegistryDocument,
+    local_root: &'a Path,
+    allow_remote_fallback: bool,
+}
+
+impl<'a> PinnedProvider<'a> {
+    pub fn new(registry: RegistryDocument, local_root: &'a Path) -> Self {
+        Self {
+            registry,
+            local_root,
+            allow_remote_fallback: false,
+        }
+    }
+
+    pub fn without_remote_fallback(mut self) -> Self {
+        self.allow_remote_fallback = false;
+        self
+    }
+
+    pub fn allow_remote_fallback(mut self) -> Self {
+        self.allow_remote_fallback = true;
+        self
+    }
+
+    fn entry(&self, id: &str) -> Result<&RegistryEntry> {
+        let matches: Vec<_> = self
+            .registry
+            .entries
+            .values()
+            .filter(|entry| entry.provider_skill_id == id || entry.local_skill_id == id)
+            .collect();
+        match matches.as_slice() {
+            [] => anyhow::bail!("curated skill is not registered: {id}"),
+            [entry] => Ok(entry),
+            _ => anyhow::bail!("ambiguous curated skill identifier: {id}"),
+        }
+    }
+}
+
+impl Provider for PinnedProvider<'_> {
+    fn manifest(&self) -> Result<String> {
+        Ok("curated-registry".to_string())
+    }
+
+    fn resolve(&self, id: &str) -> Result<SkillInstallInfo> {
+        let entry = self.entry(id)?;
+        let local = self.local_root.join(&entry.local_skill_id);
+        if local.is_dir() {
+            return Ok(SkillInstallInfo {
+                download_url: local.display().to_string(),
+                format: "dir".to_string(),
+            });
+        }
+        if !self.allow_remote_fallback {
+            anyhow::bail!(
+                "curated skill `{id}` unavailable offline: no local content and remote fallback is disabled"
+            );
+        }
+        let repository = entry
+            .source
+            .repository
+            .trim_end_matches('/')
+            .trim_end_matches(".git");
+        let archive = format!("{repository}/archive/{}.zip", entry.source.commit);
+        Ok(SkillInstallInfo {
+            download_url: format!("{archive}#{}", entry.source.subpath),
+            format: "zip".to_string(),
+        })
+    }
+}
+
 pub const DALLAY_AGENTS_SKILLS_PREFIX: &str = "dallay/agents-skills/";
 
 /// Well-known repo names where skills live in a `skills/` subdirectory.
@@ -124,7 +201,7 @@ fn local_catalog_skill_source_dir(
 
     // Try AGENTSYNC_LOCAL_SKILLS_REPO/skills/local_skill_id
     if let Ok(path) = std::env::var("AGENTSYNC_LOCAL_SKILLS_REPO") {
-        return Some(PathBuf::from(path).join("skills").join(local_skill_id));
+        return local_skills_repo_source_dir(Path::new(&path), local_skill_id);
     }
 
     // Try project_parent/agents-skills/skills/local_skill_id
@@ -137,6 +214,11 @@ fn local_catalog_skill_source_dir(
                 .join(local_skill_id)
         })
         .filter(|path| path.exists())
+}
+
+fn local_skills_repo_source_dir(repo_root: &Path, local_skill_id: &str) -> Option<PathBuf> {
+    let candidate = repo_root.join("skills").join(local_skill_id);
+    candidate.exists().then_some(candidate)
 }
 
 pub fn resolve_catalog_install_source(
@@ -278,5 +360,22 @@ impl Provider for SkillsShProvider {
 
         // Fallback: use skills.sh search API for simple IDs (e.g., "rust-async-patterns")
         self.resolve_via_search(id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::local_skills_repo_source_dir;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn ignores_missing_skill_in_local_skills_repository() {
+        let repo = TempDir::new().expect("temporary repository should be created");
+        fs::create_dir_all(repo.path().join("skills")).expect("skills directory should be created");
+        assert_eq!(
+            local_skills_repo_source_dir(repo.path(), "missing-skill"),
+            None
+        );
     }
 }

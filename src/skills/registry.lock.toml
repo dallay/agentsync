@@ -1,0 +1,56 @@
+# Generated lockfile. Regenerate with `agentsync skill registry sync`.
+schema_version = "v1"
+
+[entries.accessibility]
+provider_skill_id = "dallay/agents-skills/accessibility"
+local_skill_id = "accessibility"
+
+[entries.accessibility.source]
+repository = "https://github.com/dallay/agents-skills"
+commit = "17db5a394732ae569392cf871c52d7df88de3a2d"
+subpath = "skills/accessibility"
+
+[entries.accessibility.manifest]
+name = "accessibility"
+version = "1.0.0"
+description = "Audit and improve web accessibility following WCAG 2.1 guidelines."
+
+[[entries.accessibility.files]]
+path = "SKILL.md"
+sha256 = "f52c5989f2dc8dec29d4ed0508fa6b297366e5c5c3ce9b19bba996255cf59425"
+
+[entries.accessibility.license]
+spdx = "MIT"
+source = "repository"
+attribution_required = false
+
+[entries.accessibility.validation]
+status = "approved"
+validator = "agentsync-maintainers"
+
+[entries.docker-expert]
+provider_skill_id = "dallay/agents-skills/docker-expert"
+local_skill_id = "docker-expert"
+
+[entries.docker-expert.source]
+repository = "https://github.com/dallay/agents-skills"
+commit = "17db5a394732ae569392cf871c52d7df88de3a2d"
+subpath = "skills/docker-expert"
+
+[entries.docker-expert.manifest]
+name = "docker-expert"
+version = "1.0.0"
+description = "Advanced Docker containerization expert for multi-stage builds, image optimization, security hardening, and Compose orchestration."
+
+[[entries.docker-expert.files]]
+path = "SKILL.md"
+sha256 = "718ae4f8ebf80cb2476a41064c0e73fbf63c6a96d2cf1cd491345fef4b5c1df3"
+
+[entries.docker-expert.license]
+spdx = "MIT"
+source = "repository"
+attribution_required = false
+
+[entries.docker-expert.validation]
+status = "approved"
+validator = "agentsync-maintainers"

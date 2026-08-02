@@ -1,0 +1,6 @@
+change: curated-skill-registry
+current_phase: archive
+completed: [init, explore, propose, spec, design, tasks, apply-unit-1, apply-unit-2, apply-unit-3, apply-critical-fixes, verify, archive]
+next: none
+verification: PASS WITH WARNINGS
+updated: 2026-08-02

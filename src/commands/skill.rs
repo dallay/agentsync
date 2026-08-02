@@ -592,6 +592,27 @@ pub enum SkillCommand {
     Suggest(SkillSuggestArgs),
     /// List installed skills
     List,
+    /// Validate and refresh the maintainer curated registry
+    Registry {
+        #[command(subcommand)]
+        command: SkillRegistryCommand,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum SkillRegistryCommand {
+    /// Validate a curated registry manifest
+    Validate(SkillRegistryArgs),
+    /// Validate a manifest and atomically regenerate its lockfile
+    Sync(SkillRegistryArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct SkillRegistryArgs {
+    #[arg(long, default_value = "src/skills/registry.v1.toml")]
+    pub manifest: PathBuf,
+    #[arg(long, default_value = "src/skills/registry.lock.toml")]
+    pub lock: PathBuf,
 }
 
 /// Arguments for installing a skill
@@ -740,7 +761,25 @@ pub fn run_skill(cmd: SkillCommand, project_root: PathBuf) -> Result<()> {
             // Signal failure until List is implemented so CLI exits non-zero
             bail!("list command not implemented")
         }
+        SkillCommand::Registry { command } => run_registry_command(command),
     }
+}
+
+fn run_registry_command(command: SkillRegistryCommand) -> Result<()> {
+    match command {
+        SkillRegistryCommand::Validate(args) => {
+            registry::load_curated_registry(&args.manifest)?;
+            println!("curated registry is valid: {}", args.manifest.display());
+        }
+        SkillRegistryCommand::Sync(args) => {
+            registry::sync_curated_registry(&args.manifest, &args.lock)?;
+            println!(
+                "curated registry lockfile refreshed: {}",
+                args.lock.display()
+            );
+        }
+    }
+    Ok(())
 }
 
 pub fn run_suggest(args: SkillSuggestArgs, project_root: PathBuf) -> Result<()> {

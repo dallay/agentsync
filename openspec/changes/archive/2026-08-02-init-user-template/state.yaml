@@ -1,8 +1,8 @@
 change: init-user-template
-current_phase: verify-clean
-completed: [explore, propose, spec, design, tasks, apply, verify, warning-fixes]
-next: archive
-updated: 2026-08-01
+current_phase: archive
+completed: [explore, propose, spec, design, tasks, apply, verify, warning-fixes, archive]
+next: none
+updated: 2026-08-02
 verify_verdict: PASS
 warnings_resolved:
   - wizard+template integration test added (test_wizard_template_flow_end_to_end)
