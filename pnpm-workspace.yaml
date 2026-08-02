@@ -2,6 +2,11 @@ packages:
   - npm/agentsync
   - website/docs
 
+onlyBuiltDependencies:
+  - esbuild
+  - lefthook
+  - sharp
+
 catalog:
   '@dallay/agentsync': 1.45.2
   '@semantic-release/changelog': ^6.0.3

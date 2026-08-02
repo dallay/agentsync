@@ -8,23 +8,36 @@
 	"platformAutomerge": true,
 	"prConcurrentLimit": 5,
 	"prHourlyLimit": 2,
+	"prCreation": "not-pending",
+	"internalChecksFilter": "strict",
+	"vulnerabilityAlerts": {
+		"enabled": true,
+		"minimumReleaseAge": null,
+		"automerge": true
+	},
 	"packageRules": [
 		{
+			"description": "Baseline rule enforcing 3-day minimum release age for supported package updates (dependencies, devDependencies, etc.). Note: pnpm-workspace.yaml controls release age validation for lockfile maintenance.",
+			"matchManagers": ["npm", "pnpm"],
+			"minimumReleaseAge": "3 days"
+		},
+		{
+			"description": "Ensure major upgrades remain manual and are not automerged.",
 			"matchUpdateTypes": ["major"],
-			"groupName": "major upgrades",
 			"automerge": false
 		},
 		{
+			"description": "Configure minor and patch updates for npm/pnpm devDependencies to automerge after the baseline release age threshold is met and CI passes, without restrictive schedules.",
 			"matchDepTypes": ["devDependencies"],
 			"groupName": "devDependencies",
 			"automerge": true,
 			"automergeType": "branch",
 			"semanticCommitType": "chore",
 			"matchUpdateTypes": ["minor", "patch"],
-			"matchManagers": ["npm", "pnpm"],
-			"schedule": ["after 5pm", "every weekend"]
+			"matchManagers": ["npm", "pnpm"]
 		},
 		{
+			"description": "Configure cargo dependencies minor and patch updates to automerge on schedule.",
 			"matchManagers": ["cargo"],
 			"groupName": "cargo dependencies",
 			"matchUpdateTypes": ["minor", "patch"],
@@ -34,46 +47,17 @@
 			"schedule": ["after 5pm", "every weekend"]
 		},
 		{
+			"description": "Configure GitHub Actions updates to automerge on schedule.",
 			"matchManagers": ["github-actions"],
 			"groupName": "GitHub Actions",
 			"automerge": true,
 			"matchUpdateTypes": ["minor", "patch"],
 			"schedule": ["after 5pm", "every weekend"]
-		},
-		{
-			"matchManagers": ["pnpm"],
-			"groupName": "runtime deps",
-			"matchDepTypes": ["dependencies"],
-			"automerge": false,
-			"matchUpdateTypes": ["patch"],
-			"minimumReleaseAge": "3 days"
-		},
-		{
-			"matchManagers": ["cargo"],
-			"groupName": "cargo major upgrades",
-			"matchUpdateTypes": ["major"],
-			"automerge": false
-		},
-		{
-			"matchManagers": ["pnpm"],
-			"groupName": "pnpm major upgrades",
-			"matchUpdateTypes": ["major"],
-			"automerge": false
-		},
-		{
-			"vulnerabilityAlerts": {
-				"enabled": true
-			},
-			"matchUpdateTypes": ["patch"],
-			"automerge": true,
-			"prPriority": 10,
-			"matchPackageNames": ["*"]
 		}
 	],
 	"lockFileMaintenance": {
 		"enabled": true,
-		"automerge": true,
-		"schedule": ["after 5pm", "every weekend"]
+		"automerge": true
 	},
 	"labels": ["dependencies", "renovate"],
 	"dependencyDashboardTitle": "🔗 Dependency Dashboard"
