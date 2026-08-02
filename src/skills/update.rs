@@ -25,66 +25,86 @@ pub async fn update_skill_async(
     target_root: &Path,
     update_source: &Path,
 ) -> Result<(), SkillUpdateError> {
-    use crate::skills::install::fetch_and_unpack_to_tempdir;
-    let use_remote = {
-        let s = update_source.to_string_lossy().to_string();
-        s.starts_with("http://")
-            || s.starts_with("https://")
-            || s.ends_with(".zip")
-            || s.ends_with(".tar.gz")
-    };
-    let local_dir: std::path::PathBuf;
-    let mut _temp_holder;
-    if use_remote {
-        // Download and unpack to temp (propagate SkillInstallError -> SkillUpdateError::Install)
-        let td = fetch_and_unpack_to_tempdir(&update_source.to_string_lossy()).await?;
-        local_dir = td.path().to_path_buf();
-        _temp_holder = Some(td);
-    } else {
-        local_dir = update_source.to_path_buf();
-        _temp_holder = None;
-    }
+    // _temp_guard must remain alive to prevent premature cleanup of temp directory
+    let (local_dir, _temp_guard) = resolve_update_source(update_source).await?;
 
-    use std::fs;
-    // use std::path::PathBuf; (unused)
-
-    // Paths
     let skill_dir = target_root.join(skill_id);
     let backup_dir = target_root.join(format!("{}.bak", skill_id));
     let registry_path = target_root.join("registry.json");
 
-    // Version resolution: only update if new version > current
-    // 1. Extract current version (from registry if present, else SKILL.md in skill_dir), or treat as "0.0.0" if not installed
-    debug!(registry_path = %registry_path.display(), exists = %registry_path.exists(), "update registry check");
-    if registry_path.exists() {
-        let reg_contents =
-            std::fs::read_to_string(&registry_path).unwrap_or_else(|_| "<read error>".to_string());
-        debug!(contents = %reg_contents, "registry contents after install");
+    let current_version = resolve_current_version(skill_id, &skill_dir, &registry_path);
+    validate_version_upgrade(&local_dir, &current_version)?;
+
+    create_backup(&skill_dir, &backup_dir)?;
+
+    install_updated_skill(
+        skill_id,
+        &local_dir,
+        &skill_dir,
+        &backup_dir,
+        &registry_path,
+    )
+}
+
+async fn resolve_update_source(
+    update_source: &Path,
+) -> Result<(std::path::PathBuf, Option<tempfile::TempDir>), SkillUpdateError> {
+    use crate::skills::install::fetch_and_unpack_to_tempdir;
+    let s = update_source.to_string_lossy().to_string();
+    let use_remote = s.starts_with("http://")
+        || s.starts_with("https://")
+        || s.ends_with(".zip")
+        || s.ends_with(".tar.gz");
+
+    if use_remote {
+        let td = fetch_and_unpack_to_tempdir(&s).await?;
+        let path = td.path().to_path_buf();
+        Ok((path, Some(td)))
+    } else {
+        Ok((update_source.to_path_buf(), None))
     }
-    let mut current_version: Option<String> = None;
+}
+
+fn resolve_current_version(
+    skill_id: &str,
+    skill_dir: &Path,
+    registry_path: &Path,
+) -> Option<String> {
+    debug!(registry_path = %registry_path.display(), exists = %registry_path.exists(), "update registry check");
+
     // Try registry first
     if registry_path.exists()
-        && let Ok(reg) = crate::skills::registry::read_registry(&registry_path)
-        && let Some(skills) = reg.skills
-        && let Some(entry) = skills.get(skill_id)
+        && let Some(version) = crate::skills::registry::read_registry(registry_path)
+            .ok()
+            .and_then(|reg| reg.skills)
+            .and_then(|skills| skills.get(skill_id).cloned())
+            .and_then(|entry| entry.version)
     {
-        current_version = entry.version.clone();
+        return Some(version);
     }
-    // Fallback: If not in registry, try SKILL.md in existing skill_dir
-    if current_version.is_none() && skill_dir.exists() {
+
+    // Fallback: try SKILL.md in existing skill_dir
+    if skill_dir.exists() {
         let manifest_path = skill_dir.join("SKILL.md");
-        if manifest_path.exists()
-            && let Ok(existing_manifest) =
-                crate::skills::manifest::parse_skill_manifest(&manifest_path)
+        if let Some(version) = manifest_path
+            .exists()
+            .then(|| crate::skills::manifest::parse_skill_manifest(&manifest_path).ok())
+            .flatten()
+            .and_then(|m| m.version.clone())
         {
-            // existing_manifest.version is Option<String>; propagate directly
-            current_version = existing_manifest.version.clone();
+            return Some(version);
         }
     }
-    // Parse update candidate version from local_dir/SKILL.md
+
+    None
+}
+
+fn validate_version_upgrade(
+    local_dir: &Path,
+    current_version: &Option<String>,
+) -> Result<(), SkillUpdateError> {
     let update_manifest_path = local_dir.join("SKILL.md");
     let update_manifest = crate::skills::manifest::parse_skill_manifest(&update_manifest_path)?;
-    // update_manifest.version is Option<String>; require it for update resolution
     let update_version_str = update_manifest
         .version
         .as_deref()
@@ -92,7 +112,7 @@ pub async fn update_skill_async(
     let new_version = semver::Version::parse(update_version_str)
         .map_err(|_| SkillUpdateError::Validation("invalid semver in SKILL.md".into()))?;
     let installed_version = match current_version {
-        Some(ref verstr) => {
+        Some(verstr) => {
             semver::Version::parse(verstr).unwrap_or_else(|_| semver::Version::new(0, 0, 0))
         }
         None => semver::Version::new(0, 0, 0),
@@ -105,85 +125,99 @@ pub async fn update_skill_async(
             new_version, installed_version
         )));
     }
+    Ok(())
+}
 
-    // Step 1: Atomically move skill_dir to backup_dir (if exists).
+fn create_backup(skill_dir: &Path, backup_dir: &Path) -> Result<(), SkillUpdateError> {
+    use std::fs;
     if skill_dir.exists() {
-        // Clean up previous backup if somehow it exists.
         if backup_dir.exists() {
-            fs::remove_dir_all(&backup_dir).map_err(|_| SkillUpdateError::Atomic)?;
+            fs::remove_dir_all(backup_dir).map_err(|_| SkillUpdateError::Atomic)?;
         }
-        fs::rename(&skill_dir, &backup_dir).map_err(|_| SkillUpdateError::Atomic)?;
+        fs::rename(skill_dir, backup_dir).map_err(|_| SkillUpdateError::Atomic)?;
     }
+    Ok(())
+}
 
-    // Step 2: Copy source dir to skill_dir.
-    // (We use copy to support cross-device; atomic rename if same device. Use copy_dir_recursively)
+/// Rolls back skill_dir by removing it and restoring from backup_dir if present.
+fn rollback_skill_dir(skill_dir: &Path, backup_dir: &Path) {
     if skill_dir.exists() {
-        fs::remove_dir_all(&skill_dir).map_err(|_| SkillUpdateError::Atomic)?;
+        let _ = std::fs::remove_dir_all(skill_dir);
     }
-    copy_dir_all(&local_dir, &skill_dir).map_err(SkillUpdateError::Io)?;
+    if backup_dir.exists() {
+        let _ = std::fs::rename(backup_dir, skill_dir);
+    }
+}
 
-    // Step 3: Validate the new skill manifest. On failure, remove the new dir, restore backup.
+fn install_updated_skill(
+    skill_id: &str,
+    local_dir: &Path,
+    skill_dir: &Path,
+    backup_dir: &Path,
+    registry_path: &Path,
+) -> Result<(), SkillUpdateError> {
+    use std::fs;
+
+    if skill_dir.exists() {
+        fs::remove_dir_all(skill_dir).map_err(|_| SkillUpdateError::Atomic)?;
+    }
+    if let Err(e) = copy_dir_all(local_dir, skill_dir) {
+        rollback_skill_dir(skill_dir, backup_dir);
+        return Err(SkillUpdateError::Io(e));
+    }
+
+    // Validate the new skill manifest
     let manifest_path = skill_dir.join("SKILL.md");
     let manifest = match crate::skills::manifest::parse_skill_manifest(&manifest_path) {
         Ok(manifest) => manifest,
         Err(e) => {
-            // Cleanup: remove failed new dir
-            let _ = fs::remove_dir_all(&skill_dir);
-            // Restore backup (if any) back to place
-            if backup_dir.exists() {
-                let _ = fs::rename(&backup_dir, &skill_dir);
-            }
+            rollback_skill_dir(skill_dir, backup_dir);
             return Err(SkillUpdateError::Install(e));
         }
     };
 
-    // Step 4: Registry update with rollback
-    // Save previous registry entry for this skill if exists
-    let mut old_registry_entry: Option<crate::skills::registry::SkillEntry> = None;
-    let registry_path = target_root.join("registry.json");
-    if registry_path.exists()
-        && let Ok(reg) = crate::skills::registry::read_registry(&registry_path)
-        && let Some(skills) = reg.skills
-        && let Some(entry) = skills.get(skill_id)
-    {
-        old_registry_entry = Some(entry.clone());
-    }
-    // Build a new skill entry for registry update
+    // Save previous registry entry for rollback
+    let old_registry_entry: Option<crate::skills::registry::SkillEntry> =
+        read_old_registry_entry(skill_id, registry_path);
+
     let new_entry = crate::skills::registry::SkillEntry {
         name: Some(manifest.name.clone()),
         description: manifest.description.clone(),
-        // registry expects Option<String> for version; propagate directly
         version: manifest.version.clone(),
         provider: None,
         source: None,
         installed_at: Some(chrono::Utc::now().to_rfc3339()),
-        files: None, // Could add list of files here if needed
+        files: None,
         manifest_hash: None,
     };
-    // Try registry update, rollback both skill dir and registry on failure
+
     if let Err(e) =
-        crate::skills::registry::update_registry_entry(&registry_path, skill_id, new_entry)
+        crate::skills::registry::update_registry_entry(registry_path, skill_id, new_entry)
     {
-        // Remove broken new dir
-        let _ = fs::remove_dir_all(&skill_dir);
-        // Restore backup if possible
-        if backup_dir.exists() {
-            let _ = fs::rename(&backup_dir, &skill_dir);
-        }
-        // Try to restore previous registry entry if there was one
+        rollback_skill_dir(skill_dir, backup_dir);
         if let Some(old_entry) = old_registry_entry {
             let _ =
-                crate::skills::registry::update_registry_entry(&registry_path, skill_id, old_entry);
+                crate::skills::registry::update_registry_entry(registry_path, skill_id, old_entry);
         }
         return Err(SkillUpdateError::Registry(e));
     }
 
-    // Step 5: All OK, clean up backup
     if backup_dir.exists() {
-        let _ = fs::remove_dir_all(&backup_dir);
+        let _ = fs::remove_dir_all(backup_dir);
     }
-    // temp_holder will cleanup tempdir (if present) when dropped
     Ok(())
+}
+
+fn read_old_registry_entry(
+    skill_id: &str,
+    registry_path: &Path,
+) -> Option<crate::skills::registry::SkillEntry> {
+    if !registry_path.exists() {
+        return None;
+    }
+    let reg = crate::skills::registry::read_registry(registry_path).ok()?;
+    let skills = reg.skills?;
+    skills.get(skill_id).cloned()
 }
 
 /// Recursively copies a directory (src) to dst.
@@ -212,4 +246,139 @@ fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_rollback_skill_dir_restores_backup() {
+        let tmp = TempDir::new().unwrap();
+        let skill_dir = tmp.path().join("my-skill");
+        let backup_dir = tmp.path().join("my-skill.bak");
+
+        // Create backup with content
+        std::fs::create_dir_all(&backup_dir).unwrap();
+        std::fs::write(backup_dir.join("SKILL.md"), "# Original").unwrap();
+
+        // Create a "broken" skill_dir
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("broken.txt"), "bad").unwrap();
+
+        rollback_skill_dir(&skill_dir, &backup_dir);
+
+        // skill_dir should now contain original content
+        assert!(skill_dir.join("SKILL.md").exists());
+        assert!(!skill_dir.join("broken.txt").exists());
+        assert!(!backup_dir.exists());
+    }
+
+    #[test]
+    fn test_rollback_skill_dir_no_backup_just_removes() {
+        let tmp = TempDir::new().unwrap();
+        let skill_dir = tmp.path().join("my-skill");
+        let backup_dir = tmp.path().join("my-skill.bak");
+
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("broken.txt"), "bad").unwrap();
+
+        rollback_skill_dir(&skill_dir, &backup_dir);
+
+        assert!(!skill_dir.exists());
+        assert!(!backup_dir.exists());
+    }
+
+    #[test]
+    fn test_rollback_skill_dir_nothing_exists() {
+        let tmp = TempDir::new().unwrap();
+        let skill_dir = tmp.path().join("my-skill");
+        let backup_dir = tmp.path().join("my-skill.bak");
+
+        // Should not panic
+        rollback_skill_dir(&skill_dir, &backup_dir);
+        assert!(!skill_dir.exists());
+    }
+
+    #[test]
+    fn test_create_backup_moves_skill_dir() {
+        let tmp = TempDir::new().unwrap();
+        let skill_dir = tmp.path().join("my-skill");
+        let backup_dir = tmp.path().join("my-skill.bak");
+
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# Test").unwrap();
+
+        create_backup(&skill_dir, &backup_dir).unwrap();
+
+        assert!(!skill_dir.exists());
+        assert!(backup_dir.join("SKILL.md").exists());
+    }
+
+    #[test]
+    fn test_create_backup_replaces_existing_backup() {
+        let tmp = TempDir::new().unwrap();
+        let skill_dir = tmp.path().join("my-skill");
+        let backup_dir = tmp.path().join("my-skill.bak");
+
+        // Old backup
+        std::fs::create_dir_all(&backup_dir).unwrap();
+        std::fs::write(backup_dir.join("old.md"), "old").unwrap();
+
+        // Current skill
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("new.md"), "new").unwrap();
+
+        create_backup(&skill_dir, &backup_dir).unwrap();
+
+        assert!(!backup_dir.join("old.md").exists());
+        assert!(backup_dir.join("new.md").exists());
+    }
+
+    #[test]
+    fn test_create_backup_noop_when_skill_dir_missing() {
+        let tmp = TempDir::new().unwrap();
+        let skill_dir = tmp.path().join("missing");
+        let backup_dir = tmp.path().join("missing.bak");
+
+        let result = create_backup(&skill_dir, &backup_dir);
+        assert!(result.is_ok());
+        assert!(!backup_dir.exists());
+    }
+
+    #[test]
+    fn test_copy_dir_all_copies_recursively() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("src");
+        let dst = tmp.path().join("dst");
+
+        std::fs::create_dir_all(src.join("sub")).unwrap();
+        std::fs::write(src.join("a.txt"), "a").unwrap();
+        std::fs::write(src.join("sub/b.txt"), "b").unwrap();
+
+        copy_dir_all(&src, &dst).unwrap();
+
+        assert_eq!(std::fs::read_to_string(dst.join("a.txt")).unwrap(), "a");
+        assert_eq!(std::fs::read_to_string(dst.join("sub/b.txt")).unwrap(), "b");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_copy_dir_all_skips_symlinks() {
+        use std::os::unix::fs as unix_fs;
+
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("src");
+        let dst = tmp.path().join("dst");
+
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("real.txt"), "real").unwrap();
+        unix_fs::symlink("/etc/passwd", src.join("evil-link")).unwrap();
+
+        copy_dir_all(&src, &dst).unwrap();
+
+        assert!(dst.join("real.txt").exists());
+        assert!(!dst.join("evil-link").exists());
+    }
 }
