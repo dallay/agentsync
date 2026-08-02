@@ -745,178 +745,197 @@ pub fn run_skill(cmd: SkillCommand, project_root: PathBuf) -> Result<()> {
 
 pub fn run_suggest(args: SkillSuggestArgs, project_root: PathBuf) -> Result<()> {
     let service = SuggestionService;
-    let result = (|| -> Result<()> {
-        let response = service.suggest(&project_root)?;
-        let output_mode = suggest_install_output_mode(args.json);
-
-        if !args.install {
-            if args.json {
-                println!("{}", serde_json::to_string(&response.to_json_response())?);
-            } else {
-                let use_color = match output::output_mode(false) {
-                    OutputMode::Human { use_color } => use_color,
-                    OutputMode::Json => false,
-                };
-                println!("{}", render_skill_suggest_human(&response, use_color));
-            }
-            return Ok(());
-        }
-
-        let provider = SuggestInstallProvider::default();
-        let install_response = match output_mode {
-            SuggestInstallOutputMode::Json => {
-                if args.all {
-                    service.install_all_with(&project_root, &response, &provider)
-                } else {
-                    ensure_interactive_install_supported()?;
-                    let selected_skill_ids = prompt_for_recommended_skills(&response)?;
-                    service.install_selected_with(
-                        &project_root,
-                        &response,
-                        &provider,
-                        SuggestInstallMode::Interactive,
-                        &selected_skill_ids,
-                        |skill_id, source, target_root| {
-                            agentsync::skills::install::blocking_fetch_and_install_skill(
-                                skill_id,
-                                source,
-                                target_root,
-                            )
-                            .map_err(|error| anyhow::anyhow!(error))
-                        },
-                    )
-                }
-            }
-            SuggestInstallOutputMode::HumanLine { use_color }
-            | SuggestInstallOutputMode::HumanLive { use_color } => {
-                let (mode, selected_skill_ids) = if args.all {
-                    (
-                        SuggestInstallMode::InstallAll,
-                        response
-                            .recommendations
-                            .iter()
-                            .map(|recommendation| recommendation.skill_id.clone())
-                            .collect::<Vec<_>>(),
-                    )
-                } else {
-                    ensure_interactive_install_supported()?;
-                    (
-                        SuggestInstallMode::Interactive,
-                        prompt_for_recommended_skills(&response)?,
-                    )
-                };
-
-                print_suggest_install_batch_start(mode, selected_skill_ids.len(), use_color);
-                match output_mode {
-                    SuggestInstallOutputMode::HumanLine { .. } => {
-                        let mut reporter = SuggestInstallLineReporter::new(use_color);
-                        service.install_selected_with_reporter(
-                            &project_root,
-                            &response,
-                            &provider,
-                            mode,
-                            &selected_skill_ids,
-                            &mut reporter,
-                            |skill_id, source, target_root| {
-                                agentsync::skills::install::blocking_fetch_and_install_skill(
-                                    skill_id,
-                                    source,
-                                    target_root,
-                                )
-                                .map_err(|error| anyhow::anyhow!(error))
-                            },
-                        )
-                    }
-                    SuggestInstallOutputMode::HumanLive { .. } => {
-                        let mut reporter = SuggestInstallLiveReporter::new(use_color);
-                        let result = service.install_selected_with_reporter(
-                            &project_root,
-                            &response,
-                            &provider,
-                            mode,
-                            &selected_skill_ids,
-                            &mut reporter,
-                            |skill_id, source, target_root| {
-                                agentsync::skills::install::blocking_fetch_and_install_skill(
-                                    skill_id,
-                                    source,
-                                    target_root,
-                                )
-                                .map_err(|error| anyhow::anyhow!(error))
-                            },
-                        );
-                        reporter.finalize();
-                        result
-                    }
-                    SuggestInstallOutputMode::Json => unreachable!(),
-                }
-            }
-        }?;
-
-        match output_mode {
-            SuggestInstallOutputMode::Json => {
-                // In JSON mode, include failure information in the output but don't fail the command
-                // since the response contains detailed results that consumers can inspect
-                println!("{}", serde_json::to_string(&install_response)?);
-            }
-            SuggestInstallOutputMode::HumanLine { use_color }
-            | SuggestInstallOutputMode::HumanLive { use_color } => {
-                println!(
-                    "{}",
-                    render_suggest_install_completion_summary(&install_response, use_color)
-                );
-            }
-        }
-
-        Ok(())
-    })();
+    let result = run_suggest_inner(&args, &project_root, &service);
 
     match result {
         Ok(()) => Ok(()),
-        Err(error) => {
-            let error_message = error.to_string();
-            let (code, remediation) = if error_message
-                .contains("not part of the current recommendation set")
-            {
-                (
-                    "invalid_suggestion_selection",
-                    "Run 'agentsync skill suggest --json' to inspect available recommended skill ids.",
-                )
-            } else if error_message.contains("interactive terminal") {
-                (
-                    "interactive_tty_required",
-                    "Run 'agentsync skill suggest --install --all' for a non-interactive install path.",
-                )
-            } else if args.install {
-                ("install_error", remediation_for_error(&error_message))
-            } else {
-                (
-                    "suggest_error",
-                    "Verify the project root is readable and try again. Use --project-root to point to the repository you want to inspect.",
-                )
-            };
+        Err(error) => handle_suggest_error(&args, error),
+    }
+}
 
-            if args.json {
-                let output = serde_json::json!({
-                    "error": error_message,
-                    "code": code,
-                    "remediation": remediation,
-                });
-                println!("{}", serde_json::to_string(&output)?);
-            } else {
-                error!(%code, error = %error_message, "Suggest failed");
-                let use_color = match output::output_mode(false) {
-                    OutputMode::Human { use_color } => use_color,
-                    OutputMode::Json => false,
-                };
-                for line in render_skill_command_error(&error_message, remediation, use_color) {
-                    println!("{line}");
-                }
-            }
+fn run_suggest_inner(
+    args: &SkillSuggestArgs,
+    project_root: &Path,
+    service: &SuggestionService,
+) -> Result<()> {
+    let response = service.suggest(project_root)?;
+    let output_mode = suggest_install_output_mode(args.json);
 
-            Err(error)
+    if !args.install {
+        return print_suggest_output(args.json, &response);
+    }
+
+    let provider = SuggestInstallProvider::default();
+    let install_response = run_suggest_install(
+        args,
+        project_root,
+        service,
+        &response,
+        &provider,
+        output_mode,
+    )?;
+
+    match output_mode {
+        SuggestInstallOutputMode::Json => {
+            println!("{}", serde_json::to_string(&install_response)?);
+        }
+        SuggestInstallOutputMode::HumanLine { use_color }
+        | SuggestInstallOutputMode::HumanLive { use_color } => {
+            println!(
+                "{}",
+                render_suggest_install_completion_summary(&install_response, use_color)
+            );
         }
     }
+
+    Ok(())
+}
+
+fn print_suggest_output(json: bool, response: &SuggestResponse) -> Result<()> {
+    if json {
+        println!("{}", serde_json::to_string(&response.to_json_response())?);
+    } else {
+        let use_color = match output::output_mode(false) {
+            OutputMode::Human { use_color } => use_color,
+            OutputMode::Json => false,
+        };
+        println!("{}", render_skill_suggest_human(response, use_color));
+    }
+    Ok(())
+}
+
+fn run_suggest_install(
+    args: &SkillSuggestArgs,
+    project_root: &Path,
+    service: &SuggestionService,
+    response: &SuggestResponse,
+    provider: &SuggestInstallProvider,
+    output_mode: SuggestInstallOutputMode,
+) -> Result<SuggestInstallJsonResponse> {
+    match output_mode {
+        SuggestInstallOutputMode::Json => {
+            let (mode, selected_skill_ids) = resolve_install_mode_and_ids(args, response)?;
+            let mut reporter = NoopInstallReporter;
+            service.install_selected_with_reporter(
+                project_root,
+                response,
+                provider,
+                mode,
+                &selected_skill_ids,
+                &mut reporter,
+                install_skill_callback,
+            )
+        }
+        SuggestInstallOutputMode::HumanLine { use_color } => {
+            let (mode, selected_skill_ids) = resolve_install_mode_and_ids(args, response)?;
+            print_suggest_install_batch_start(mode, selected_skill_ids.len(), use_color);
+            let mut reporter = SuggestInstallLineReporter::new(use_color);
+            service.install_selected_with_reporter(
+                project_root,
+                response,
+                provider,
+                mode,
+                &selected_skill_ids,
+                &mut reporter,
+                install_skill_callback,
+            )
+        }
+        SuggestInstallOutputMode::HumanLive { use_color } => {
+            let (mode, selected_skill_ids) = resolve_install_mode_and_ids(args, response)?;
+            print_suggest_install_batch_start(mode, selected_skill_ids.len(), use_color);
+            let mut reporter = SuggestInstallLiveReporter::new(use_color);
+            let result = service.install_selected_with_reporter(
+                project_root,
+                response,
+                provider,
+                mode,
+                &selected_skill_ids,
+                &mut reporter,
+                install_skill_callback,
+            );
+            reporter.finalize();
+            result
+        }
+    }
+}
+
+/// Reusable install callback that bridges into the blocking skill installer.
+fn install_skill_callback(skill_id: &str, source: &str, target_root: &Path) -> Result<()> {
+    agentsync::skills::install::blocking_fetch_and_install_skill(skill_id, source, target_root)
+        .map_err(|error| anyhow::anyhow!(error))
+}
+
+/// No-op reporter for JSON output mode (results collected, no progress display).
+struct NoopInstallReporter;
+
+impl SuggestInstallProgressReporter for NoopInstallReporter {
+    fn on_event(&mut self, _event: SuggestInstallProgressEvent) {}
+}
+
+fn resolve_install_mode_and_ids(
+    args: &SkillSuggestArgs,
+    response: &SuggestResponse,
+) -> Result<(SuggestInstallMode, Vec<String>)> {
+    if args.all {
+        Ok((
+            SuggestInstallMode::InstallAll,
+            response
+                .recommendations
+                .iter()
+                .map(|r| r.skill_id.clone())
+                .collect(),
+        ))
+    } else {
+        ensure_interactive_install_supported()?;
+        Ok((
+            SuggestInstallMode::Interactive,
+            prompt_for_recommended_skills(response)?,
+        ))
+    }
+}
+
+fn handle_suggest_error(args: &SkillSuggestArgs, error: anyhow::Error) -> Result<()> {
+    let error_message = error.to_string();
+    let (code, remediation) = if error_message
+        .contains("not part of the current recommendation set")
+    {
+        (
+            "invalid_suggestion_selection",
+            "Run 'agentsync skill suggest --json' to inspect available recommended skill ids.",
+        )
+    } else if error_message.contains("interactive terminal") {
+        (
+            "interactive_tty_required",
+            "Run 'agentsync skill suggest --install --all' for a non-interactive install path.",
+        )
+    } else if args.install {
+        ("install_error", remediation_for_error(&error_message))
+    } else {
+        (
+            "suggest_error",
+            "Verify the project root is readable and try again. Use --project-root to point to the repository you want to inspect.",
+        )
+    };
+
+    if args.json {
+        let output = serde_json::json!({
+            "error": error_message,
+            "code": code,
+            "remediation": remediation,
+        });
+        println!("{}", serde_json::to_string(&output)?);
+    } else {
+        error!(%code, error = %error_message, "Suggest failed");
+        let use_color = match output::output_mode(false) {
+            OutputMode::Human { use_color } => use_color,
+            OutputMode::Json => false,
+        };
+        for line in render_skill_command_error(&error_message, remediation, use_color) {
+            println!("{line}");
+        }
+    }
+
+    Err(error)
 }
 
 fn ensure_interactive_install_supported() -> Result<()> {
@@ -1252,27 +1271,22 @@ fn infer_install_source_format(source: &str) -> String {
 ///
 /// Returns `None` if the URL is not a GitHub URL or already points to an archive.
 fn try_convert_github_url(url: &str) -> Option<String> {
-    // Parse the URL to properly handle query strings and fragments
     let parsed = url::Url::parse(url).ok()?;
 
-    // Check if it's already an archive URL by examining the path component
     let path = parsed.path();
     if path.ends_with(".zip") || path.ends_with(".tar.gz") || path.ends_with(".tgz") {
         return None;
     }
 
-    // Only process github.com URLs
     if parsed.host_str() != Some("github.com") {
         return None;
     }
 
-    // Get the path segments
     let segments: Vec<&str> = parsed
         .path_segments()
         .map(|s| s.collect())
         .unwrap_or_default();
 
-    // Minimum: owner/repo (at least 2 segments)
     if segments.len() < 2 {
         return None;
     }
@@ -1280,55 +1294,11 @@ fn try_convert_github_url(url: &str) -> Option<String> {
     let owner = segments[0];
     let repo = segments[1];
 
-    // Check if it's a tree or blob URL with subpath
     if segments.len() >= 4 && (segments[2] == "tree" || segments[2] == "blob") {
-        let branch = segments[3];
-        // The rest is the path within the repo
-        let subpath = segments[4..].join("/");
-
-        // If it's a blob URL pointing to a file, get the parent directory
-        let final_subpath = if segments[2] == "blob" {
-            if subpath.contains('/') {
-                // Remove the filename to get the directory
-                let path_parts: Vec<&str> = subpath.split('/').collect();
-                if path_parts.len() > 1 {
-                    path_parts[..path_parts.len() - 1].join("/")
-                } else {
-                    subpath
-                }
-            } else {
-                // Blob pointing to a file at repo root (e.g., README.md)
-                // Return empty string so no fragment is added
-                String::new()
-            }
-        } else {
-            subpath
-        };
-
-        let mut zip_url = format!(
-            "https://github.com/{}/{}/archive/refs/heads/{}.zip",
-            owner, repo, branch
-        );
-
-        if !final_subpath.is_empty() {
-            zip_url.push('#');
-            zip_url.push_str(&final_subpath);
-        }
-
-        return Some(zip_url);
+        return convert_github_tree_blob_url(owner, repo, &segments);
     }
 
-    // Simple repo URL: github.com/owner/repo
-    if segments.len() == 2 {
-        return Some(format!(
-            "https://github.com/{}/{}/archive/HEAD.zip",
-            owner, repo
-        ));
-    }
-
-    // Repo URL with trailing segments but not tree/blob
-    // e.g., github.com/owner/repo/ (with trailing slash)
-    if segments.len() > 2 && segments[2].is_empty() {
+    if segments.len() == 2 || (segments.len() > 2 && segments[2].is_empty()) {
         return Some(format!(
             "https://github.com/{}/{}/archive/HEAD.zip",
             owner, repo
@@ -1336,6 +1306,42 @@ fn try_convert_github_url(url: &str) -> Option<String> {
     }
 
     None
+}
+
+fn convert_github_tree_blob_url(owner: &str, repo: &str, segments: &[&str]) -> Option<String> {
+    let branch = segments[3];
+    let subpath = segments[4..].join("/");
+
+    let final_subpath = if segments[2] == "blob" {
+        resolve_blob_subpath(&subpath)
+    } else {
+        subpath
+    };
+
+    let mut zip_url = format!(
+        "https://github.com/{}/{}/archive/refs/heads/{}.zip",
+        owner, repo, branch
+    );
+
+    if !final_subpath.is_empty() {
+        zip_url.push('#');
+        zip_url.push_str(&final_subpath);
+    }
+
+    Some(zip_url)
+}
+
+fn resolve_blob_subpath(subpath: &str) -> String {
+    if subpath.contains('/') {
+        let path_parts: Vec<&str> = subpath.split('/').collect();
+        if path_parts.len() > 1 {
+            path_parts[..path_parts.len() - 1].join("/")
+        } else {
+            subpath.to_string()
+        }
+    } else {
+        String::new()
+    }
 }
 
 fn remediation_for_error(msg: &str) -> &str {

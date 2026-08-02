@@ -351,45 +351,51 @@ impl Config {
     pub fn all_gitignore_entries(&self) -> Vec<String> {
         let mut entries: BTreeSet<String> = self.gitignore.entries.iter().cloned().collect();
 
-        entries.insert(".agents/skills/*.bak".to_string()); // Defensive pattern to ignore skill backup files even if skills aren't used yet
-        // Add destinations from all enabled agents and their known patterns
+        entries.insert(".agents/skills/*.bak".to_string());
         for (agent_name, agent) in &self.agents {
             if agent.enabled {
-                // Add target destinations
-                for target in agent.targets.values() {
-                    // NestedGlob destinations are templates, not literal paths –
-                    // skip them to avoid polluting .gitignore with raw template strings.
-                    if target.sync_type == SyncType::NestedGlob {
-                        continue;
-                    }
-                    // ModuleMap targets expand each mapping into its own gitignore entry
-                    if target.sync_type == SyncType::ModuleMap {
-                        for mapping in &target.mappings {
-                            let filename = resolve_module_map_filename(mapping, agent_name);
-                            let entry = format!("{}/{}", mapping.destination, filename);
-                            entries.insert(normalize_managed_gitignore_entry(&entry));
-                            entries.insert(normalize_managed_gitignore_entry(&format!(
-                                "{}.bak",
-                                entry
-                            )));
-                        }
-                        continue;
-                    }
-                    entries.insert(normalize_managed_gitignore_entry(&target.destination));
-                    entries.insert(normalize_managed_gitignore_entry(&format!(
-                        "{}.bak",
-                        target.destination
-                    )));
-                }
-
-                // Add known ignore patterns for this agent
-                for pattern in Self::known_ignore_patterns(agent_name) {
-                    entries.insert(normalize_managed_gitignore_entry(pattern));
-                }
+                Self::collect_agent_gitignore_entries(agent_name, agent, &mut entries);
             }
         }
 
         entries.into_iter().collect()
+    }
+
+    fn collect_agent_gitignore_entries(
+        agent_name: &str,
+        agent: &AgentConfig,
+        entries: &mut BTreeSet<String>,
+    ) {
+        for target in agent.targets.values() {
+            Self::collect_target_gitignore_entries(agent_name, target, entries);
+        }
+        for pattern in Self::known_ignore_patterns(agent_name) {
+            entries.insert(normalize_managed_gitignore_entry(pattern));
+        }
+    }
+
+    fn collect_target_gitignore_entries(
+        agent_name: &str,
+        target: &TargetConfig,
+        entries: &mut BTreeSet<String>,
+    ) {
+        if target.sync_type == SyncType::NestedGlob {
+            return;
+        }
+        if target.sync_type == SyncType::ModuleMap {
+            for mapping in &target.mappings {
+                let filename = resolve_module_map_filename(mapping, agent_name);
+                let entry = format!("{}/{}", mapping.destination, filename);
+                entries.insert(normalize_managed_gitignore_entry(&entry));
+                entries.insert(normalize_managed_gitignore_entry(&format!("{}.bak", entry)));
+            }
+            return;
+        }
+        entries.insert(normalize_managed_gitignore_entry(&target.destination));
+        entries.insert(normalize_managed_gitignore_entry(&format!(
+            "{}.bak",
+            target.destination
+        )));
     }
 
     /// Get known gitignore patterns for a specific agent.

@@ -1237,6 +1237,113 @@ impl McpGenerator {
         self.generate_for_agent_with_servers(agent, project_root, &enabled_servers, dry_run)
     }
 
+    /// Resolve the content to write for an MCP config file, returning (content, existing_content).
+    fn resolve_config_content(
+        &self,
+        formatter: &dyn McpFormatter,
+        config_path: &Path,
+        enabled_servers: &BTreeMap<&str, &McpServerConfig>,
+    ) -> Result<(String, Option<String>)> {
+        if config_path.exists() && self.merge_strategy == McpMergeStrategy::Merge {
+            let existing = fs::read_to_string(config_path).with_context(|| {
+                format!("Failed to read existing config: {}", config_path.display())
+            })?;
+
+            let existing_servers = formatter.parse_existing(&existing)?;
+            let removed_servers: Vec<&String> = existing_servers
+                .keys()
+                .filter(|name| !enabled_servers.contains_key(name.as_str()))
+                .collect();
+
+            let merged = if !removed_servers.is_empty() {
+                if existing_servers.len() != enabled_servers.len() {
+                    formatter.cleanup_removed_servers(&existing, enabled_servers)?
+                } else {
+                    formatter.merge(&existing, enabled_servers)?
+                }
+            } else {
+                formatter.merge(&existing, enabled_servers)?
+            };
+            Ok((merged, Some(existing)))
+        } else if config_path.exists()
+            && self.merge_strategy == McpMergeStrategy::Overwrite
+            && formatter.preserve_on_overwrite()
+        {
+            let existing = fs::read_to_string(config_path).with_context(|| {
+                format!("Failed to read existing config: {}", config_path.display())
+            })?;
+            let preserved = formatter.cleanup_removed_servers(&existing, enabled_servers)?;
+            Ok((preserved, Some(existing)))
+        } else {
+            Ok((formatter.format_to_string(enabled_servers)?, None))
+        }
+    }
+
+    /// Check if config content is identical to what's already on disk.
+    fn is_content_identical(
+        config_path: &Path,
+        content: &str,
+        existing_content: Option<String>,
+    ) -> bool {
+        if let Some(existing) = existing_content {
+            existing == content
+        } else {
+            fs::read_to_string(config_path).is_ok_and(|existing| existing == content)
+        }
+    }
+
+    /// Write config (or report what would be done in dry-run mode), returning result delta.
+    fn write_or_report_config(
+        &self,
+        config_path: &Path,
+        content: &str,
+        was_existing: bool,
+        dry_run: bool,
+    ) -> Result<McpSyncResult> {
+        let mut result = McpSyncResult::default();
+        if dry_run {
+            if was_existing {
+                println!(
+                    "  {} Would update MCP config: {}",
+                    "→".cyan(),
+                    config_path.display()
+                );
+                result.updated += 1;
+            } else {
+                println!(
+                    "  {} Would create MCP config: {}",
+                    "→".cyan(),
+                    config_path.display()
+                );
+                result.created += 1;
+            }
+        } else {
+            self.write_atomic_secure(config_path, content)?;
+            set_restricted_permissions(config_path).with_context(|| {
+                format!(
+                    "Failed to set restricted permissions on MCP config: {}",
+                    config_path.display()
+                )
+            })?;
+            if was_existing {
+                println!(
+                    "  {} Updated MCP config: {}",
+                    "✔".green(),
+                    config_path.display()
+                );
+                result.updated += 1;
+            } else {
+                println!(
+                    "  {} Created MCP config: {}",
+                    "✔".green(),
+                    config_path.display()
+                );
+                result.created += 1;
+            }
+        }
+        Ok(result)
+    }
+
     /// Internal method to generate config using pre-calculated enabled servers
     fn generate_for_agent_with_servers(
         &self,
@@ -1260,54 +1367,8 @@ impl McpGenerator {
             return Ok(result);
         }
 
-        let mut existing_content = None;
-
-        // Determine content to write
-        let content = if config_path.exists() && self.merge_strategy == McpMergeStrategy::Merge {
-            let existing = fs::read_to_string(&config_path).with_context(|| {
-                format!("Failed to read existing config: {}", config_path.display())
-            })?;
-
-            // Check if we need to clean up removed servers
-            let existing_servers = formatter.parse_existing(&existing)?;
-            let removed_servers: Vec<&String> = existing_servers
-                .keys()
-                .filter(|name| !enabled_servers.contains_key(name.as_str()))
-                .collect();
-
-            let merged = if !removed_servers.is_empty() {
-                // Only perform cleanup if the existing and enabled server counts differ.
-                // This prevents clobbering unrelated existing entries in simple merge cases
-                // where the counts match but names differ (keep existing entries).
-                if existing_servers.len() != enabled_servers.len() {
-                    // Use cleanup method to remove servers that are no longer in config
-                    formatter.cleanup_removed_servers(&existing, enabled_servers)?
-                } else {
-                    // Counts equal - prefer a simple merge to retain existing entries
-                    formatter.merge(&existing, enabled_servers)?
-                }
-            } else {
-                // No servers removed, use normal merge
-                formatter.merge(&existing, enabled_servers)?
-            };
-            existing_content = Some(existing);
-            merged
-        } else if config_path.exists()
-            && self.merge_strategy == McpMergeStrategy::Overwrite
-            && formatter.preserve_on_overwrite()
-        {
-            // Preserve unrelated top-level settings when overwriting for certain formatters
-            let existing = fs::read_to_string(&config_path).with_context(|| {
-                format!("Failed to read existing config: {}", config_path.display())
-            })?;
-
-            // Use cleanup_removed_servers to replace mcp sections while preserving other keys
-            let preserved = formatter.cleanup_removed_servers(&existing, enabled_servers)?;
-            existing_content = Some(existing);
-            preserved
-        } else {
-            formatter.format_to_string(enabled_servers)?
-        };
+        let (content, existing_content) =
+            self.resolve_config_content(formatter.as_ref(), &config_path, enabled_servers)?;
 
         // Create parent directories if needed
         if let Some(parent) = config_path.parent().filter(|p| !p.exists()) {
@@ -1324,69 +1385,18 @@ impl McpGenerator {
 
         // Check if content has changed before writing to avoid redundant I/O
         let was_existing = config_path.exists();
-        if was_existing {
-            let is_identical = if let Some(existing) = existing_content {
-                existing == content
-            } else {
-                fs::read_to_string(&config_path).is_ok_and(|existing| existing == content)
-            };
-
-            if is_identical {
-                // SECURITY: Even if content is identical, ensure permissions are correct (remediation).
-                if !dry_run && let Err(e) = set_restricted_permissions(&config_path) {
-                    tracing::warn!(error = %e, path = %config_path.display(), "Failed to remediate restricted permissions on existing MCP config");
-                }
-                result.skipped += 1;
-                return Ok(result);
+        if was_existing && Self::is_content_identical(&config_path, &content, existing_content) {
+            if !dry_run && let Err(e) = set_restricted_permissions(&config_path) {
+                tracing::warn!(error = %e, path = %config_path.display(), "Failed to remediate restricted permissions on existing MCP config");
             }
+            result.skipped += 1;
+            return Ok(result);
         }
 
-        // Write the file
-        if dry_run {
-            if was_existing {
-                println!(
-                    "  {} Would update MCP config: {}",
-                    "→".cyan(),
-                    config_path.display()
-                );
-                result.updated += 1;
-            } else {
-                println!(
-                    "  {} Would create MCP config: {}",
-                    "→".cyan(),
-                    config_path.display()
-                );
-                result.created += 1;
-            }
-        } else {
-            // SECURITY: Perform atomic write with restricted permissions to avoid a race condition
-            // where sensitive data is world-readable between creation and chmod.
-            self.write_atomic_secure(&config_path, &content)?;
-
-            // Repair step for pre-existing files or if atomic write didn't set permissions (non-unix)
-            set_restricted_permissions(&config_path).with_context(|| {
-                format!(
-                    "Failed to set restricted permissions on MCP config: {}",
-                    config_path.display()
-                )
-            })?;
-
-            if was_existing {
-                println!(
-                    "  {} Updated MCP config: {}",
-                    "✔".green(),
-                    config_path.display()
-                );
-                result.updated += 1;
-            } else {
-                println!(
-                    "  {} Created MCP config: {}",
-                    "✔".green(),
-                    config_path.display()
-                );
-                result.created += 1;
-            }
-        }
+        let write_result =
+            self.write_or_report_config(&config_path, &content, was_existing, dry_run)?;
+        result.created += write_result.created;
+        result.updated += write_result.updated;
 
         Ok(result)
     }

@@ -62,105 +62,101 @@ fn is_fresh(cache: &CheckedVersion) -> bool {
     true
 }
 
+/// Pure logic for determining whether to skip the update check, given the
+/// relevant environment values and terminal state.
+fn should_skip(no_update_check: Option<&str>, ci: Option<&str>, is_terminal: bool) -> bool {
+    if no_update_check.is_some_and(|v| v.eq_ignore_ascii_case("1")) {
+        return true;
+    }
+    if ci.is_some_and(|v| v.eq_ignore_ascii_case("true")) {
+        return true;
+    }
+    !is_terminal
+}
+
+fn should_skip_update_check() -> bool {
+    let no_check = std::env::var("AGENTSYNC_NO_UPDATE_CHECK").ok();
+    let ci = std::env::var("CI").ok();
+    let is_terminal = std::io::stderr().is_terminal();
+    should_skip(no_check.as_deref(), ci.as_deref(), is_terminal)
+}
+
+fn fetch_latest_version() -> Option<String> {
+    #[derive(Deserialize)]
+    struct CratesIoResponse {
+        #[serde(rename = "crate")]
+        krate: CrateInfo,
+    }
+
+    #[derive(Deserialize)]
+    struct CrateInfo {
+        #[serde(rename = "newest_version")]
+        newest_version: String,
+    }
+
+    let client = reqwest::blocking::Client::builder()
+        .user_agent(concat!("agentsync/", env!("CARGO_PKG_VERSION")))
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+        .ok()?;
+
+    let response = client.get(CRATES_IO_URL).send().ok()?;
+    let info: CratesIoResponse = response.json().ok()?;
+    Some(info.krate.newest_version)
+}
+
+fn check_and_notify() {
+    let cache = Cache { path: cache_path() };
+
+    if cache.load().is_some_and(|c| is_fresh(&c)) {
+        return;
+    }
+
+    let Some(newest_version) = fetch_latest_version() else {
+        return;
+    };
+
+    let Ok(current) = Version::parse(env!("CARGO_PKG_VERSION")) else {
+        return;
+    };
+
+    let Ok(latest) = Version::parse(&newest_version) else {
+        return;
+    };
+
+    if !latest.pre.is_empty() || latest <= current {
+        return;
+    }
+
+    let new_cache = CheckedVersion {
+        last_checked: chrono::Utc::now().timestamp(),
+        latest_version: newest_version.clone(),
+        notified_for_version: Some(newest_version.clone()),
+    };
+
+    eprintln!(
+        "{} {}",
+        "💡".yellow().bold(),
+        format!(
+            "A new version of agentsync is available: {} (you have {}). Run cargo install agentsync to update.",
+            newest_version.yellow().bold(),
+            env!("CARGO_PKG_VERSION").dimmed()
+        )
+        .yellow()
+        .bold()
+    );
+
+    let _ = cache.save(&new_cache);
+}
+
 pub fn spawn() {
-    let no_check = std::env::var("AGENTSYNC_NO_UPDATE_CHECK")
-        .map(|v| v.eq_ignore_ascii_case("1"))
-        .unwrap_or(false);
-    if no_check {
-        return;
-    }
-
-    let ci = std::env::var("CI")
-        .map(|v| v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
-    if ci {
-        return;
-    }
-
-    if !std::io::stderr().is_terminal() {
+    if should_skip_update_check() {
         return;
     }
 
     let _ = thread::Builder::new()
         .name("agentsync-update-check".to_string())
-        .spawn(|| {
-            let path = cache_path();
-            let cache = Cache { path };
-
-            if cache.load().is_some_and(|c| is_fresh(&c)) {
-                return;
-            }
-
-            let client = match reqwest::blocking::Client::builder()
-                .timeout(std::time::Duration::from_secs(3))
-                .build()
-            {
-                Ok(c) => c,
-                Err(_) => return,
-            };
-
-            let response = match client.get(CRATES_IO_URL).send() {
-                Ok(r) => r,
-                Err(_) => return,
-            };
-
-            #[derive(Deserialize)]
-            struct CratesIoResponse {
-                #[serde(rename = "crate")]
-                krate: CrateInfo,
-            }
-
-            #[derive(Deserialize)]
-            struct CrateInfo {
-                #[serde(rename = "newest_version")]
-                newest_version: String,
-            }
-
-            let info: CratesIoResponse = match response.json() {
-                Ok(v) => v,
-                Err(_) => return,
-            };
-
-            let current = match Version::parse(env!("CARGO_PKG_VERSION")) {
-                Ok(v) => v,
-                Err(_) => return,
-            };
-
-            let latest = match Version::parse(&info.krate.newest_version) {
-                Ok(v) => v,
-                Err(_) => return,
-            };
-
-            if !latest.pre.is_empty() {
-                return;
-            }
-
-            if latest <= current {
-                return;
-            }
-
-            let new_cache = CheckedVersion {
-                last_checked: chrono::Utc::now().timestamp(),
-                latest_version: info.krate.newest_version.clone(),
-                notified_for_version: Some(info.krate.newest_version.clone()),
-            };
-
-            if cache.save(&new_cache).is_err() {
-                return;
-            }
-
-            eprintln!(
-                "{} {}",
-                "💡".yellow().bold(),
-                format!(
-                    "A new version of agentsync is available: {} (you have {}). Run cargo install agentsync to update.",
-                    info.krate.newest_version.yellow().bold(),
-                    env!("CARGO_PKG_VERSION").dimmed()
-                )
-                .yellow()
-                .bold()
-            );
-        });
+        .spawn(check_and_notify);
 }
 
 #[cfg(test)]
@@ -283,5 +279,41 @@ mod tests {
             notified_for_version: Some("1.0.0".to_string()),
         };
         assert!(!is_fresh(&cache));
+    }
+
+    #[test]
+    fn test_cache_not_fresh_if_notified_is_none() {
+        let cache = CheckedVersion {
+            last_checked: chrono::Utc::now().timestamp(),
+            latest_version: "1.0.0".to_string(),
+            notified_for_version: None,
+        };
+        assert!(!is_fresh(&cache));
+    }
+
+    #[test]
+    fn test_should_skip_when_no_update_check_set() {
+        assert!(should_skip(Some("1"), None, true));
+    }
+
+    #[test]
+    fn test_should_skip_when_ci_set() {
+        assert!(should_skip(None, Some("true"), true));
+    }
+
+    #[test]
+    fn test_should_skip_no_update_check_only_skips_on_1() {
+        // "0" should not trigger skip (terminal=true means not skipped)
+        assert!(!should_skip(Some("0"), None, true));
+    }
+
+    #[test]
+    fn test_should_skip_when_not_terminal() {
+        assert!(should_skip(None, None, false));
+    }
+
+    #[test]
+    fn test_should_not_skip_when_all_clear() {
+        assert!(!should_skip(None, None, true));
     }
 }
