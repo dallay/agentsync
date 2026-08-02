@@ -688,6 +688,26 @@ mod tests {
     }
 
     #[test]
+    fn current_project_root_uses_explicit_path_without_resolving_cwd() {
+        let expected = std::path::PathBuf::from("/tmp/project");
+        let actual = current_project_root(Some(expected.clone()), || {
+            panic!("current directory should not be resolved when a path is provided")
+        })
+        .expect("explicit project path should be returned");
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn current_project_root_returns_resolved_cwd() {
+        let expected = std::path::PathBuf::from("/tmp/current-project");
+        let actual = current_project_root(None, || Ok(expected.clone()))
+            .expect("resolved current directory should be returned");
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn test_render_dry_run_notice_is_explicit() {
         assert_eq!(
             render_dry_run_notice(false),
