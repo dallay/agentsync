@@ -227,10 +227,19 @@ impl Linker {
         self.ensure_safe_path(dest, &dest.display()).map(|_| ())
     }
 
-    /// Re-validate a path before unlinking (remove_file/remove_dir).
-    /// Unlike revalidate_path, this does NOT canonicalize the final component,
-    /// allowing safe removal of symlinks that point outside project_root.
-    /// The symlink entry itself must be within project_root, but its target can be anywhere.
+    /// Validates a path before unlinking it while allowing symlinks to target locations outside the project root.
+    ///
+    /// The path entry itself must remain within the project root. The final component is not canonicalized, so symlink entries can be removed safely.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::path::Path;
+    /// # fn check(linker: &Linker) -> anyhow::Result<()> {
+    /// linker.revalidate_unlink_path(Path::new("generated/link"))?;
+    /// # Ok(())
+    /// # }
+    /// ```
     fn revalidate_unlink_path(&self, path: &Path) -> Result<()> {
         let display_path = path.display().to_string();
 
@@ -252,7 +261,21 @@ impl Linker {
         self.validate_relative_unlink_parent(path, &display_path)
     }
 
-    /// Validate an absolute path for unlinking: must be under project_root with valid parent.
+    /// Validates that an absolute unlink path and its parent remain within the project root.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::path::Path;
+    /// # let path = Path::new("/project/config.toml");
+    /// assert!(path.is_absolute());
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the path or its parent resolves outside the project root, or if the parent cannot be canonicalized.
+    ///
+    /// `path` is the absolute path to validate. `display_path` identifies the path in error messages.
     fn validate_absolute_unlink_path(&self, path: &Path, display_path: &str) -> Result<()> {
         if !path.starts_with(&self.project_root) {
             anyhow::bail!("Path is outside project root: {}", display_path);
@@ -274,7 +297,23 @@ impl Linker {
         Ok(())
     }
 
-    /// Validate that the parent of a relative path is within project_root.
+    /// Validates that an existing parent of a relative unlink path resolves within the project root.
+    ///
+    /// Missing or empty parents are accepted.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the existing parent resolves outside the project root.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let result = linker.validate_relative_unlink_parent(
+    ///     std::path::Path::new("config/agent.toml"),
+    ///     "config/agent.toml",
+    /// );
+    /// assert!(result.is_ok());
+    /// ```
     fn validate_relative_unlink_parent(&self, path: &Path, display_path: &str) -> Result<()> {
         let Some(parent) = path.parent() else {
             return Ok(());
@@ -637,7 +676,18 @@ impl Linker {
         Ok(())
     }
 
-    /// Create a single symlink
+    /// Creates or updates a symlink from `dest` to an existing source path.
+    ///
+    /// Missing sources are skipped. Existing correct symlinks remain unchanged; mismatched
+    /// symlinks are replaced, and other existing destinations are backed up.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let result = linker.create_symlink(&source, destination, &options)?;
+    /// # assert_eq!(result.created, 1);
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
     fn create_symlink(
         &self,
         source: &ResolvedSource,
@@ -723,7 +773,23 @@ impl Linker {
         Ok(result)
     }
 
-    /// Handle an existing symlink at the destination. Returns the action taken.
+    /// Updates an existing symbolic link when it points to a different source.
+    ///
+    /// Correct links are left unchanged. Mismatched links are removed and marked for
+    /// recreation, unless the operation is a dry run.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let action = linker.handle_existing_symlink(&destination, &relative_source, &options)?;
+    /// assert_eq!(action, ExistingSymlinkAction::AlreadyCorrect);
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
+    ///
+    /// # Returns
+    ///
+    /// The action taken: `AlreadyCorrect` for a matching link or `Updated` for a
+    /// link that was removed because it targeted a different source.
     fn handle_existing_symlink(
         &self,
         dest: &Path,
@@ -762,7 +828,16 @@ impl Linker {
         Ok(ExistingSymlinkAction::Updated)
     }
 
-    /// Back up an existing regular file/directory at the destination.
+    /// Backs up an existing destination by renaming it to a `.bak` path before replacement.
+    ///
+    /// In dry-run mode, reports the planned backup without modifying the filesystem.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// linker.backup_existing_destination(&destination, &options)?;
+    /// ```
+    fn backup_existing_destination...
     fn backup_existing_destination(&self, dest: &Path, options: &SyncOptions) -> Result<()> {
         if options.dry_run {
             println!(
@@ -788,7 +863,35 @@ impl Linker {
         Ok(())
     }
 
-    /// Create symlinks for all contents of a directory
+    /// Creates symlinks in a destination directory for matching entries from a source directory.
+    ///
+    /// Missing or invalid source directories are counted as skipped. A destination that resolves
+    /// to the source directory is also skipped to prevent circular symlinks.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let result = linker.create_symlinks_for_contents(
+    ///     source_dir,
+    ///     destination_dir,
+    ///     Some("*.md"),
+    ///     target,
+    ///     options,
+    /// )?;
+    /// assert!(result.created >= 0);
+    /// ```
+    ///
+    /// # Arguments
+    ///
+    /// * `source_dir` - Directory whose entries should be linked.
+    /// * `dest_dir` - Directory in which to create the symlinks.
+    /// * `pattern` - Optional filename pattern used to filter entries.
+    /// * `target` - Configuration controlling source resolution.
+    /// * `options` - Synchronization options controlling execution.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the source directory cannot be read or a filesystem operation fails.
     fn create_symlinks_for_contents(
         &self,
         source_dir: &Path,
@@ -1283,7 +1386,16 @@ impl Linker {
             .ok_or_else(|| anyhow::anyhow!("Cannot calculate relative path"))
     }
 
-    /// Clean all symlinks managed by this configuration
+    /// Removes managed symlinks for all configured agents and targets.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # fn example(linker: &Linker, options: &SyncOptions) -> Result<SyncResult> {
+    /// let result = linker.clean(options)?;
+    /// # Ok(result)
+    /// # }
+    /// ```
     pub fn clean(&self, options: &SyncOptions) -> Result<SyncResult> {
         let mut result = SyncResult::default();
 
@@ -1316,7 +1428,16 @@ impl Linker {
         Ok(result)
     }
 
-    /// Clean a single symlink target.
+    /// Removes the configured destination symlink when it exists.
+    ///
+    /// Invalid destinations and destinations that are not symlinks are ignored. In dry-run
+    /// mode, reports the removal without modifying the filesystem.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// linker.clean_symlink_target(&target_config, &options, &mut result)?;
+    /// ```
     fn clean_symlink_target(
         &self,
         target_config: &TargetConfig,
@@ -1341,7 +1462,17 @@ impl Linker {
         Ok(())
     }
 
-    /// Clean symlink-contents: remove symlinks inside the destination directory.
+    /// Removes symlinks directly contained in the configured destination directory.
+    ///
+    /// In dry-run mode, reports the symlinks that would be removed without changing
+    /// the filesystem. After removal, attempts to delete the destination directory
+    /// if it is empty.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// linker.clean_symlink_contents_target(&target_config, &options, &mut result)?;
+    /// ```
     fn clean_symlink_contents_target(
         &self,
         target_config: &TargetConfig,
@@ -1380,7 +1511,13 @@ impl Linker {
         Ok(())
     }
 
-    /// Clean nested-glob targets: re-discover matched files and remove symlinks.
+    /// Removes symlinks created by a nested-glob target for currently matched files.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// linker.clean_nested_glob_target(&target_config, &options, &mut result)?;
+    /// ```
     fn clean_nested_glob_target(
         &self,
         target_config: &TargetConfig,
@@ -1433,7 +1570,19 @@ impl Linker {
         Ok(())
     }
 
-    /// Clean module-map targets: remove symlinks for each mapping.
+    /// Removes symlinks created for each module mapping.
+    ///
+    /// Invalid mapping destinations are skipped. In dry-run mode, reports removals without changing the filesystem.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use anyhow::Result;
+    /// # fn example(linker: &Linker, agent_name: &str, target_config: &TargetConfig, options: &SyncOptions, result: &mut SyncResult) -> Result<()> {
+    /// linker.clean_module_map_target(agent_name, target_config, options, result)?;
+    /// # Ok(())
+    /// # }
+    /// ```
     fn clean_module_map_target(
         &self,
         agent_name: &str,
@@ -1548,11 +1697,32 @@ fn is_agents_md_path(path: &Path) -> bool {
     path.file_name() == Some(std::ffi::OsStr::new("AGENTS.md"))
 }
 
+/// Builds the path for the compressed `AGENTS.md` file alongside the source path.
+///
+/// # Examples
+///
+/// ```
+/// use std::path::Path;
+///
+/// let path = compressed_agents_md_path(Path::new("docs/AGENTS.md"));
+/// assert_eq!(path, Path::new("docs/AGENTS.compact.md"));
+/// ```
 fn compressed_agents_md_path(path: &Path) -> PathBuf {
     path.with_file_name(COMPRESSED_AGENTS_MD_NAME)
 }
 
-/// Detect a code fence delimiter (``` or ~~~) at the start of a trimmed line.
+/// Identifies a backtick or tilde code-fence delimiter at the beginning of a trimmed line.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(detect_fence_delimiter("```rust"), Some("```"));
+/// assert_eq!(detect_fence_delimiter("~~~"), Some("~~~"));
+/// assert_eq!(detect_fence_delimiter("text"), None);
+/// ```
+///
+/// Returns the complete consecutive delimiter sequence when the line starts with
+/// at least three backticks or tildes; otherwise, returns `None`.
 fn detect_fence_delimiter(trimmed_start: &str) -> Option<&str> {
     if trimmed_start.starts_with("```") {
         let len = trimmed_start
@@ -1569,7 +1739,15 @@ fn detect_fence_delimiter(trimmed_start: &str) -> Option<&str> {
     }
 }
 
-/// Toggle fence state: open a new fence, close a matching one, or leave unchanged.
+/// Updates the active fence delimiter when opening or closing a matching fence.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(toggle_fence(None, "```"), Some("```"));
+/// assert_eq!(toggle_fence(Some("```"), "```"), None);
+/// assert_eq!(toggle_fence(Some("```"), "~~~"), Some("```"));
+/// ```
 fn toggle_fence<'a>(current: Option<&'a str>, delim: &'a str) -> Option<&'a str> {
     match current {
         None => Some(delim),
@@ -1578,6 +1756,14 @@ fn toggle_fence<'a>(current: Option<&'a str>, delim: &'a str) -> Option<&'a str>
     }
 }
 
+/// Compresses Markdown content by removing trailing whitespace, collapsing blank lines, and normalizing inline whitespace outside fenced code blocks.
+///
+/// # Examples
+///
+/// ```
+/// let input = "Title  \n\n\nText\t  \n";
+/// assert_eq!(compress_agents_md_content(input), "Title\n\nText\n");
+/// ```
 fn compress_agents_md_content(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     let mut fence_delim: Option<&str> = None;
@@ -1710,10 +1896,16 @@ fn matches_path_glob(path: &str, pattern: &str) -> bool {
     path_glob_match_iter(path.split('/'), &pattern_parts)
 }
 
-/// Core path-aware glob matching logic using iterators to avoid allocations.
-/// This implementation uses a backtracking algorithm which is more performant than a
-/// recursive one, especially for patterns with '**' since it avoids stack overhead.
-/// It provides O(N*M) complexity in typical cases.
+/// Matches path segments against a glob pattern, supporting `*`, `?`, and `**`.
+///
+/// # Examples
+///
+/// ```
+/// let path = ["src", "bin", "main.rs"];
+/// let pattern = ["src", "**", "*.rs"];
+///
+/// assert!(path_glob_match_iter(path.iter().copied(), &pattern));
+/// ```
 fn path_glob_match_iter<'a, I>(mut path_it: I, pattern: &[&str]) -> bool
 where
     I: Iterator<Item = &'a str> + Clone,
@@ -1748,8 +1940,28 @@ where
     }
 }
 
-/// Process a single path segment against the current pattern state.
-/// Returns false if matching definitively fails, true to continue.
+/// Advances path-pattern matching for one path segment, including `**` backtracking.
+///
+/// # Examples
+///
+/// ```
+/// let path = ["src", "main.rs"];
+/// let mut path_it = path.iter().copied();
+/// let pattern = ["src"];
+/// let mut pat_idx = 0;
+/// let mut backtrack_path_it = None;
+/// let mut backtrack_pat_idx = None;
+///
+/// assert!(try_match_segment(
+///     "src",
+///     &mut path_it,
+///     &pattern,
+///     &mut pat_idx,
+///     &mut backtrack_path_it,
+///     &mut backtrack_pat_idx,
+/// ));
+/// assert_eq!(pat_idx, 1);
+/// ```
 fn try_match_segment<'a, I>(
     segment: &str,
     path_it: &mut I,
@@ -1784,6 +1996,16 @@ where
     true
 }
 
+/// Creates the backup path for a destination by appending `.bak`.
+///
+/// # Examples
+///
+/// ```
+/// use std::path::Path;
+///
+/// let backup = backup_path_for_destination(Path::new("config.toml"));
+/// assert_eq!(backup, Path::new("config.toml.bak"));
+/// ```
 fn backup_path_for_destination(dest: &Path) -> PathBuf {
     // Performance: Use OsString::push to avoid string formatting and UTF-8 validation overhead.
     let mut os_string = dest.as_os_str().to_os_string();

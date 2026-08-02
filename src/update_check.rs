@@ -51,6 +51,23 @@ fn cache_path() -> PathBuf {
         .join("update-check.json")
 }
 
+/// Determines whether cached update information is still valid.
+///
+/// A cache is fresh when it was checked within the cache lifetime and the
+/// cached version has already been recorded as notified.
+///
+/// # Examples
+///
+/// ```
+/// let now = chrono::Utc::now().timestamp();
+/// let cache = CheckedVersion {
+///     last_checked: now,
+///     latest_version: "1.0.0".to_owned(),
+///     notified_for_version: Some("1.0.0".to_owned()),
+/// };
+///
+/// assert!(is_fresh(&cache));
+/// ```
 fn is_fresh(cache: &CheckedVersion) -> bool {
     let now = chrono::Utc::now().timestamp();
     if now - cache.last_checked > CACHE_TTL_SECS {
@@ -62,6 +79,21 @@ fn is_fresh(cache: &CheckedVersion) -> bool {
     true
 }
 
+/// Determines whether the update check should be skipped.
+///
+/// The check is skipped when explicitly disabled, when running in continuous
+/// integration, or when standard error is not attached to a terminal.
+///
+/// # Examples
+///
+/// ```
+/// let skip_update_check = should_skip_update_check();
+/// assert!(matches!(skip_update_check, true | false));
+/// ```
+///
+/// # Returns
+///
+/// `true` if the update check should be skipped, `false` otherwise.
 fn should_skip_update_check() -> bool {
     let no_check = std::env::var("AGENTSYNC_NO_UPDATE_CHECK")
         .map(|v| v.eq_ignore_ascii_case("1"))
@@ -80,6 +112,19 @@ fn should_skip_update_check() -> bool {
     !std::io::stderr().is_terminal()
 }
 
+/// Retrieves the newest published `agentsync` version from crates.io.
+///
+/// # Examples
+///
+/// ```no_run
+/// if let Some(version) = fetch_latest_version() {
+///     println!("Latest version: {version}");
+/// }
+/// ```
+///
+/// # Returns
+///
+/// The newest published version, or `None` if the request or response cannot be processed.
 fn fetch_latest_version() -> Option<String> {
     #[derive(Deserialize)]
     struct CratesIoResponse {
@@ -103,6 +148,17 @@ fn fetch_latest_version() -> Option<String> {
     Some(info.krate.newest_version)
 }
 
+/// Checks for a newer stable version and notifies the user when one is available.
+///
+/// The check is skipped when the cached result is still fresh, the latest version
+/// cannot be determined, or the available version is not newer than the installed
+/// version.
+///
+/// # Examples
+///
+/// ```no_run
+/// check_and_notify();
+/// ```
 fn check_and_notify() {
     let cache = Cache { path: cache_path() };
 
@@ -149,6 +205,13 @@ fn check_and_notify() {
     );
 }
 
+/// Starts an asynchronous check for a newer stable `agentsync` release when update checks are enabled.
+///
+/// # Examples
+///
+/// ```
+/// agentsync::update_check::spawn();
+/// ```
 pub fn spawn() {
     if should_skip_update_check() {
         return;

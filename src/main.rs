@@ -382,6 +382,16 @@ enum Commands {
     },
 }
 
+/// Runs the `agentsync` command-line interface.
+///
+/// Initializes logging, starts the update check, parses command-line arguments,
+/// and dispatches the selected command.
+///
+/// # Examples
+///
+/// ```text
+/// agentsync status
+/// ```#+#+#+#+
 fn main() -> Result<()> {
     // Initialize tracing subscriber for structured logging. Respects RUST_LOG env var.
     tracing_subscriber::fmt::init();
@@ -438,6 +448,26 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+/// Initializes an agentsync configuration in the selected project directory.
+///
+/// Runs either the standard initializer or the interactive wizard, optionally
+/// using the experimental terminal interface and a custom configuration
+/// template.
+///
+/// # Examples
+///
+/// ```no_run
+/// handle_init(None, false, false, false, None)?;
+/// # Ok::<(), anyhow::Error>(())
+/// ```
+///
+/// # Arguments
+///
+/// * `path` - Project directory to initialize, or the current directory when omitted.
+/// * `force` - Whether to overwrite existing managed files.
+/// * `wizard` - Whether to use the interactive configuration wizard.
+/// * `experimental_tui` - Whether to use the experimental terminal interface for the wizard.
+/// * `template` - Optional path to a custom configuration template.
 fn handle_init(
     path: Option<PathBuf>,
     force: bool,
@@ -475,6 +505,31 @@ fn handle_init(
     Ok(())
 }
 
+/// Applies the configured agent synchronization, optionally cleaning managed links and updating Gitignore and MCP configuration.
+///
+/// # Arguments
+///
+/// * `path` - Project directory used to locate the configuration when `config` is not provided.
+/// * `config` - Explicit configuration file path.
+/// * `clean` - Whether to clean managed links before synchronization.
+/// * `dry_run` - Whether to report planned changes without modifying files.
+/// * `verbose` - Whether to display additional progress information.
+/// * `agents` - Optional list of agents to synchronize.
+/// * `no_gitignore` - Whether to skip Gitignore updates.
+///
+/// # Examples
+///
+/// ```no_run
+/// handle_apply(
+///     None,
+///     Some("agentsync.toml".into()),
+///     false,
+///     false,
+///     false,
+///     None,
+///     false,
+/// ).unwrap();
+/// ```
 #[allow(clippy::too_many_arguments)]
 fn handle_apply(
     path: Option<PathBuf>,
@@ -547,6 +602,17 @@ fn handle_apply(
     Ok(())
 }
 
+/// Updates or removes the managed `.gitignore` entries for the project.
+///
+/// # Examples
+///
+/// ```no_run
+/// # fn example(linker: &Linker) -> Result<()> {
+/// handle_apply_gitignore(linker, true, true)?;
+/// # Ok(())
+/// # }
+/// ```
+fn handle_apply_gitignore(linker: &Linker, dry_run: bool, use_color: bool) -> Result<()>
 fn handle_apply_gitignore(linker: &Linker, dry_run: bool, use_color: bool) -> Result<()> {
     if linker.config().gitignore.enabled {
         println!();
@@ -572,6 +638,15 @@ fn handle_apply_gitignore(linker: &Linker, dry_run: bool, use_color: bool) -> Re
     Ok(())
 }
 
+/// Synchronizes configured MCP server configurations and records synchronization failures in the aggregate result.
+///
+/// # Examples
+///
+/// ```ignore
+/// let mut result = SyncResult::default();
+/// handle_apply_mcp(&linker, false, true, None, &mut result)?;
+/// # Ok::<(), anyhow::Error>(())
+/// ```
 fn handle_apply_mcp(
     linker: &Linker,
     dry_run: bool,
@@ -599,6 +674,37 @@ fn handle_apply_mcp(
     Ok(())
 }
 
+/// Removes managed symlinks from the project using the specified configuration.
+///
+/// # Examples
+///
+/// ```no_run
+/// use std::path::PathBuf;
+///
+/// handle_clean(
+///     Some(PathBuf::from(".")),
+///     Some(PathBuf::from("agentsync.toml")),
+///     true,
+///     false,
+/// )?;
+/// # Ok::<(), anyhow::Error>(())
+/// ```
+///
+/// `path` identifies the project directory used to locate configuration when
+/// `config` is not provided. A dry run reports the cleanup without modifying
+/// files.
+///
+/// # Parameters
+///
+/// * `path` - Project directory used for configuration discovery.
+/// * `config` - Explicit configuration file path.
+/// * `dry_run` - Whether to report cleanup without making changes.
+/// * `verbose` - Whether to include verbose cleanup output.
+///
+/// # Returns
+///
+/// `Ok(())` after the cleanup summary is displayed, or an error if
+/// configuration loading or cleanup fails.
 fn handle_clean(
     path: Option<PathBuf>,
     config: Option<PathBuf>,
@@ -632,6 +738,13 @@ fn handle_clean(
     Ok(())
 }
 
+/// Prints the application banner with emphasized terminal styling.
+///
+/// # Examples
+///
+/// ```
+/// print_header();
+/// ```
 fn print_header() {
     let banner = include_str!("banner.txt");
     println!("{}", banner.cyan().bold());

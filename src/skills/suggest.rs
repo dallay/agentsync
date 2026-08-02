@@ -687,6 +687,17 @@ impl SuggestResponse {
 }
 
 impl SuggestInstallJsonResponse {
+    /// Renders the installation response as a human-readable summary.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # fn example(response: &SuggestInstallJsonResponse) {
+    /// let rendered = response.render_human();
+    /// assert!(!rendered.is_empty());
+    /// # }
+    /// ```
+    pub fn render_human(&self) -> String
     pub fn render_human(&self) -> String {
         let mut lines = Vec::new();
 
@@ -708,6 +719,15 @@ impl SuggestInstallJsonResponse {
     }
 }
 
+/// Formats a skill recommendation's installation status, including its installed version when available.
+///
+/// # Examples
+///
+/// ```no_run
+/// let recommendation: SkillSuggestion = todo!();
+/// let status = format_installed_status(&recommendation);
+/// assert!(status == "installed" || status == "not installed");
+/// ```
 #[allow(dead_code)]
 fn format_installed_status(recommendation: &SkillSuggestion) -> String {
     if recommendation.installed {
@@ -720,6 +740,15 @@ fn format_installed_status(recommendation: &SkillSuggestion) -> String {
     }
 }
 
+/// Renders detected technologies and their evidence as human-readable lines.
+///
+/// # Examples
+///
+/// ```
+/// let mut lines = Vec::new();
+/// render_detections_section(&[], &mut lines);
+/// assert_eq!(lines, vec!["Detected technologies: none"]);
+/// ```
 fn render_detections_section(detections: &[SuggestJsonDetection], lines: &mut Vec<String>) {
     if detections.is_empty() {
         lines.push("Detected technologies: none".to_string());
@@ -736,6 +765,16 @@ fn render_detections_section(detections: &[SuggestJsonDetection], lines: &mut Ve
     }
 }
 
+/// Renders recommended skills and their installation status and reasons into text lines.
+///
+/// # Examples
+///
+/// ```
+/// let mut lines = Vec::new();
+/// render_recommendations_section(&[], &mut lines);
+///
+/// assert_eq!(lines, vec!["Recommended skills: none"]);
+/// ```
 fn render_recommendations_section(
     recommendations: &[SuggestJsonRecommendation],
     lines: &mut Vec<String>,
@@ -758,6 +797,16 @@ fn render_recommendations_section(
     }
 }
 
+/// Appends a summary of the selected skill IDs to the output lines.
+///
+/// # Examples
+///
+/// ```
+/// let mut lines = Vec::new();
+/// render_selected_skills_section(&["lint".to_string()], &mut lines);
+///
+/// assert_eq!(lines, vec!["Selected skills: lint"]);
+/// ```
 fn render_selected_skills_section(selected_skill_ids: &[String], lines: &mut Vec<String>) {
     if selected_skill_ids.is_empty() {
         lines.push("Selected skills: none".to_string());
@@ -769,6 +818,20 @@ fn render_selected_skills_section(selected_skill_ids: &[String], lines: &mut Vec
     }
 }
 
+/// Appends a human-readable installation-results section to the output lines.
+///
+/// # Examples
+///
+/// ```
+/// let mut lines = Vec::new();
+/// render_install_results_section(&[], &mut lines);
+/// assert_eq!(lines, vec!["Install results: none"]);
+/// ```
+///
+/// # Parameters
+///
+/// * `results` — Installation results to render.
+/// * `lines` — Output lines to which the section is appended.
 fn render_install_results_section(results: &[SuggestInstallResult], lines: &mut Vec<String>) {
     if results.is_empty() {
         lines.push("Install results: none".to_string());

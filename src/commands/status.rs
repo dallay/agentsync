@@ -397,6 +397,19 @@ pub(crate) fn render_status_summary(problems: usize, formatter: &HumanFormatter)
     }
 }
 
+/// Validates a destination symlink against its expected source and records any detected issues.
+///
+/// # Examples
+///
+/// ```
+/// let entry = validate_symlink_entry(
+///     std::path::PathBuf::from("/tmp/config"),
+///     None,
+///     SyncType::Symlink,
+/// );
+///
+/// assert!(!entry.issues.is_empty());
+/// ```
 fn validate_symlink_entry(
     destination: PathBuf,
     expected_source: Option<PathBuf>,
@@ -467,6 +480,27 @@ fn validate_symlink_entry(
     }
 }
 
+/// Records any issue found for an expected child entry.
+///
+/// # Examples
+///
+/// ```
+/// let child_status = StatusChildEntry {
+///     path: "target/config".to_owned(),
+///     expected_source: "source/config".to_owned(),
+///     exists: false,
+///     is_symlink: false,
+///     points_to: None,
+/// };
+/// let mut issues = Vec::new();
+///
+/// collect_child_issues(&child_status, &mut issues);
+///
+/// assert!(matches!(
+///     issues[0].kind,
+///     StatusIssueKind::MissingExpectedChild
+/// ));
+/// ```
 fn collect_child_issues(child_status: &StatusChildEntry, issues: &mut Vec<StatusIssue>) {
     if !child_status.exists {
         issues.push(StatusIssue {
@@ -498,6 +532,28 @@ fn collect_child_issues(child_status: &StatusChildEntry, issues: &mut Vec<Status
     }
 }
 
+/// Validates a destination directory and records issues for missing or invalid child links.
+///
+/// Child statuses are recorded only when the destination exists and is a directory.
+///
+/// # Examples
+///
+/// ```
+/// use std::path::Path;
+///
+/// let destination = Path::new("/config");
+/// let mut issues = Vec::new();
+/// let mut managed_children = Vec::new();
+///
+/// validate_children_directory(
+///     destination,
+///     DestinationKind::Directory,
+///     true,
+///     Vec::new(),
+///     &mut issues,
+///     &mut managed_children,
+/// );
+/// ```
 fn validate_children_directory(
     destination: &Path,
     destination_kind: DestinationKind,
@@ -529,6 +585,25 @@ fn validate_children_directory(
     }
 }
 
+/// Validates a symlink-contents destination and its expected managed children.
+///
+/// A skills-layout symlink may be accepted without child validation when
+/// `allow_skills_symlink_hint` is enabled. Missing expected sources and
+/// destination or child mismatches are recorded in the returned status entry.
+///
+/// # Examples
+///
+/// ```ignore
+/// let entry = validate_symlink_contents_entry(
+///     &linker,
+///     destination,
+///     source_path,
+///     &target,
+///     true,
+/// )?;
+/// assert_eq!(entry.sync_type, "symlink-contents");
+/// # Ok::<(), anyhow::Error>(())
+/// ```
 fn validate_symlink_contents_entry(
     linker: &Linker,
     destination: PathBuf,

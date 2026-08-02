@@ -20,6 +20,36 @@ pub enum SkillUpdateError {
     Validation(String),
 }
 
+/// Updates an installed skill from a local or remote source.
+///
+/// The candidate version must be newer than the currently installed version.
+/// The existing skill and registry entry are restored if installation fails.
+///
+/// # Arguments
+///
+/// * `skill_id` - Identifier of the skill to update.
+/// * `target_root` - Directory containing the installed skill and registry.
+/// * `update_source` - Path or URL identifying the candidate skill.
+///
+/// # Errors
+///
+/// Returns an error if the source cannot be resolved, the candidate version is
+/// invalid or not newer, or backup, installation, validation, or registry
+/// operations fail.
+///
+/// # Examples
+///
+/// ```
+/// # use std::path::Path;
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// update_skill_async(
+///     "example",
+///     Path::new("./skills"),
+///     Path::new("./example-update"),
+/// ).await?;
+/// # Ok(())
+/// # }
+/// ```
 pub async fn update_skill_async(
     skill_id: &str,
     target_root: &Path,
@@ -47,6 +77,26 @@ pub async fn update_skill_async(
     )
 }
 
+/// Resolves a local path or fetches a remote archive into a temporary directory.
+///
+/// Remote URLs and archive paths are unpacked into a temporary directory whose
+/// lifetime is retained by the returned `TempDir`.
+///
+/// # Returns
+///
+/// A tuple containing the resolved skill path and the temporary directory that
+/// owns it, if the source was fetched remotely.
+///
+/// # Examples
+///
+/// ```
+/// # async fn example() -> Result<(), SkillUpdateError> {
+/// let (path, _temporary_dir) =
+///     resolve_update_source(std::path::Path::new("./skill")).await?;
+/// assert_eq!(path, std::path::PathBuf::from("./skill"));
+/// # Ok(())
+/// # }
+/// ```
 async fn resolve_update_source(
     update_source: &Path,
 ) -> Result<(std::path::PathBuf, Option<tempfile::TempDir>), SkillUpdateError> {
@@ -66,6 +116,21 @@ async fn resolve_update_source(
     }
 }
 
+/// Resolves the installed version of a skill from the registry or its `SKILL.md` manifest.
+///
+/// # Examples
+///
+/// ```
+/// use std::path::Path;
+///
+/// let version = resolve_current_version(
+///     "example-skill",
+///     Path::new("missing-skill"),
+///     Path::new("missing-registry.json"),
+/// );
+///
+/// assert_eq!(version, None);
+/// ```
 fn resolve_current_version(
     skill_id: &str,
     skill_dir: &Path,
@@ -105,6 +170,23 @@ fn resolve_current_version(
     None
 }
 
+/// Validates that a skill manifest contains a semantic version newer than the installed version.
+///
+/// A missing or invalid installed version is treated as `0.0.0`.
+///
+/// # Examples
+///
+/// ```no_run
+/// use std::path::Path;
+///
+/// let installed_version = Some(String::from("1.2.0"));
+/// validate_version_upgrade(Path::new("/path/to/skill"), &installed_version)?;
+/// # Ok::<(), SkillUpdateError>(())
+/// ```
+fn validate_version_upgrade(
+local_dir: &Path,
+current_version: &Option<String>,
+) -> Result<(), SkillUpdateError> {
 fn validate_version_upgrade(
     local_dir: &Path,
     current_version: &Option<String>,
@@ -134,6 +216,30 @@ fn validate_version_upgrade(
     Ok(())
 }
 
+/// Moves an existing skill directory to a backup location, replacing any existing backup.
+///
+/// If the skill directory does not exist, no action is taken.
+///
+/// # Errors
+///
+/// Returns [`SkillUpdateError::Atomic`] if removing the existing backup or moving the skill fails.
+///
+/// # Examples
+///
+/// ```
+/// use std::fs;
+///
+/// let root = std::env::temp_dir().join("skill-update-example");
+/// let skill_dir = root.join("skill");
+/// let backup_dir = root.join("backup");
+/// fs::create_dir_all(&skill_dir).unwrap();
+///
+/// create_backup(&skill_dir, &backup_dir).unwrap();
+///
+/// assert!(!skill_dir.exists());
+/// assert!(backup_dir.exists());
+/// fs::remove_dir_all(root).unwrap();
+/// ```
 fn create_backup(skill_dir: &Path, backup_dir: &Path) -> Result<(), SkillUpdateError> {
     use std::fs;
     if skill_dir.exists() {
@@ -145,6 +251,25 @@ fn create_backup(skill_dir: &Path, backup_dir: &Path) -> Result<(), SkillUpdateE
     Ok(())
 }
 
+/// Installs an updated skill and records its manifest in the registry.
+///
+/// Restores the previous skill and registry entry when manifest validation or registry updates fail.
+///
+/// # Errors
+///
+/// Returns [`SkillUpdateError::Io`] if copying the candidate skill fails, [`SkillUpdateError::Install`] if its manifest is invalid, [`SkillUpdateError::Registry`] if the registry cannot be updated, or [`SkillUpdateError::Atomic`] if replacing the existing skill fails.
+///
+/// # Examples
+///
+/// ```no_run
+/// # use std::path::Path;
+/// # let candidate = Path::new("/tmp/candidate-skill");
+/// # let skill = Path::new("/tmp/skills/example");
+/// # let backup = Path::new("/tmp/skills/example.backup");
+/// # let registry = Path::new("/tmp/skills/registry.json");
+/// install_updated_skill("example", candidate, skill, backup, registry)?;
+/// # Ok::<(), SkillUpdateError>(())
+/// ```
 fn install_updated_skill(
     skill_id: &str,
     local_dir: &Path,
@@ -207,6 +332,20 @@ fn install_updated_skill(
     Ok(())
 }
 
+/// Retrieves a skill's registry entry from the registry file.
+///
+/// # Examples
+///
+/// ```
+/// use std::path::Path;
+///
+/// let entry = read_old_registry_entry("example-skill", Path::new("missing-registry.json"));
+/// assert!(entry.is_none());
+/// ```
+///
+/// # Returns
+///
+/// The registry entry for `skill_id`, or `None` if the registry or skill entry is unavailable.
 fn read_old_registry_entry(
     skill_id: &str,
     registry_path: &Path,
@@ -219,7 +358,26 @@ fn read_old_registry_entry(
     skills.get(skill_id).cloned()
 }
 
-/// Recursively copies a directory (src) to dst.
+/// Recursively copies a directory and its regular contents to a destination, skipping symbolic links.
+///
+/// # Errors
+///
+/// Returns an I/O error if the source cannot be read or the destination cannot be created or written.
+///
+/// # Examples
+///
+/// ```
+/// # use std::fs;
+/// # use std::path::PathBuf;
+/// # let root = std::env::temp_dir().join(format!("copy-dir-all-{}", std::process::id()));
+/// # let src = root.join("src");
+/// # let dst = root.join("dst");
+/// # fs::create_dir_all(&src).unwrap();
+/// # fs::write(src.join("SKILL.md"), "content").unwrap();
+/// copy_dir_all(&src, &dst).unwrap();
+/// assert_eq!(fs::read_to_string(dst.join("SKILL.md")).unwrap(), "content");
+/// # fs::remove_dir_all(root).unwrap();
+/// ```
 fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
     use std::fs;
     if !dst.exists() {

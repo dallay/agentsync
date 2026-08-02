@@ -16,6 +16,15 @@ pub struct MissingSourceIssue {
     pub path: PathBuf,
 }
 
+/// Checks whether the configured source directory exists and reports the result.
+///
+/// # Examples
+///
+/// ```
+/// use std::path::Path;
+///
+/// assert_eq!(check_source_directory(Path::new(".")), 0);
+/// ```
 fn check_source_directory(source_dir: &Path) -> usize {
     if !source_dir.exists() {
         println!(
@@ -34,6 +43,18 @@ fn check_source_directory(source_dir: &Path) -> usize {
     }
 }
 
+/// Checks enabled targets for configuration warnings, missing sources, and skills-layout mismatches.
+///
+/// Returns the number of issues found and reports each issue to the diagnostic output.
+///
+/// # Examples
+///
+/// ```ignore
+/// use std::path::Path;
+///
+/// let issue_count = check_target_sources(&linker, Path::new("src"));
+/// assert_eq!(issue_count, 0);
+/// ```
 fn check_target_sources(linker: &Linker, source_dir: &Path) -> usize {
     let mut issues = 0;
     let mut missing_targets = 0;
@@ -100,6 +121,16 @@ fn check_target_sources(linker: &Linker, source_dir: &Path) -> usize {
     issues
 }
 
+/// Reports duplicate and overlapping destinations configured for enabled targets.
+///
+/// Prints each conflict and returns the number of conflicts found.
+///
+/// # Examples
+///
+/// ```ignore
+/// let issue_count = check_destination_conflicts(&linker);
+/// assert_eq!(issue_count, 0);
+/// ```
 fn check_destination_conflicts(linker: &Linker) -> usize {
     let mut issues = 0;
     let mut destinations: Vec<(String, String, String)> = Vec::new();
@@ -138,6 +169,20 @@ fn check_destination_conflicts(linker: &Linker) -> usize {
     issues
 }
 
+/// Audits enabled MCP servers and reports commands that cannot be found.
+///
+/// Disabled servers and servers without configured commands are skipped from
+/// command validation.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// let issue_count = check_mcp_servers(&linker);
+/// assert_eq!(issue_count, 0);
+/// ```
+///
+/// Returns the number of enabled MCP servers whose configured commands cannot
+/// be found.
 fn check_mcp_servers(linker: &Linker) -> usize {
     let mut issues = 0;
     if !linker.config().mcp.enabled {
@@ -175,6 +220,15 @@ fn check_mcp_servers(linker: &Linker) -> usize {
     issues
 }
 
+/// Checks the project's managed `.gitignore` section and reports any issues.
+///
+/// # Examples
+///
+/// ```ignore
+/// let issue_count = check_gitignore(&linker);
+/// assert_eq!(issue_count, 0);
+/// ```
+fn check_gitignore(linker: &Linker) -> usize {
 fn check_gitignore(linker: &Linker) -> usize {
     let gitignore_path = linker.project_root().join(".gitignore");
     if !gitignore_path.exists() {
@@ -253,6 +307,18 @@ fn check_gitignore(linker: &Linker) -> usize {
     issues
 }
 
+/// Checks whether Claude skills are managed by an enabled target and reports a warning when they are not.
+///
+/// # Returns
+///
+/// The number of issues found: `1` when unmanaged skills are detected, otherwise `0`.
+///
+/// # Examples
+///
+/// ```ignore
+/// let issues = check_unmanaged_skills(&linker);
+/// assert!(issues <= 1);
+/// ```
 fn check_unmanaged_skills(linker: &Linker) -> usize {
     if let Some(warning) = check_unmanaged_claude_skills(linker.project_root(), linker.config()) {
         println!("  {} {}", "⚠".yellow(), warning);
@@ -262,6 +328,18 @@ fn check_unmanaged_skills(linker: &Linker) -> usize {
     }
 }
 
+/// Runs diagnostic checks for the project configuration and reports any issues found.
+///
+/// Configuration discovery and parsing failures are reported to the user and do not
+/// cause the diagnostic command to return an error.
+///
+/// # Examples
+///
+/// ```
+/// let project_root = std::env::current_dir()?;
+/// run_doctor(project_root)?;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 pub fn run_doctor(project_root: PathBuf) -> Result<()> {
     println!("{}", "🩺 Running AgentSync Diagnostic...".bold().cyan());
 

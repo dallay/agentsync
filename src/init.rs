@@ -478,7 +478,21 @@ enum AgentFileType {
     Other,
 }
 
-/// Check if a directory has at least one entry, propagating IO errors.
+/// Determines whether a directory contains at least one entry.
+///
+/// # Errors
+///
+/// Returns an error if the directory cannot be read.
+///
+/// # Examples
+///
+/// ```
+/// # use std::path::Path;
+/// # fn example() -> anyhow::Result<()> {
+/// let has_entries = dir_has_entries(Path::new("."))?;
+/// # Ok(())
+/// # }
+/// ```
 fn dir_has_entries(path: &Path) -> Result<bool> {
     Ok(fs::read_dir(path)
         .with_context(|| format!("Failed to read directory: {}", path.display()))?
@@ -486,7 +500,26 @@ fn dir_has_entries(path: &Path) -> Result<bool> {
         .is_some())
 }
 
-/// Discover a single file and push it if it exists.
+/// Adds a discovered file to `discovered` when the relative path exists under `project_root`.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// let mut discovered = Vec::new();
+/// discover_file(
+///     project_root,
+///     "AGENTS.md",
+///     file_type,
+///     "Agent instructions",
+///     &mut discovered,
+/// );
+/// ```
+///
+/// # Arguments
+///
+/// * `project_root` - The directory from which `rel_path` is resolved.
+/// * `rel_path` - The file path relative to `project_root`.
+/// * `display_name` - The human-readable name stored with the discovered file.
 fn discover_file(
     project_root: &Path,
     rel_path: &str,
@@ -521,7 +554,21 @@ fn discover_dir(
     }
 }
 
-/// Discover a directory only if it has at least one entry.
+/// Records a directory as discovered when it exists and contains at least one entry.
+///
+/// # Examples
+///
+/// ```
+/// let mut discovered = Vec::new();
+/// discover_dir_with_content(
+///     project_root,
+///     "skills",
+///     AgentFileType::Directory,
+///     "Skills",
+///     &mut discovered,
+/// )?;
+/// # Ok::<(), anyhow::Error>(())
+/// ```
 fn discover_dir_with_content(
     project_root: &Path,
     rel_path: &str,
@@ -540,7 +587,22 @@ fn discover_dir_with_content(
     Ok(())
 }
 
-/// Scan for native MCP agent files (Claude, Copilot, Cursor, Gemini, OpenCode, Codex, etc.)
+/// Scans the project for native agent instruction files, skill and command directories, and MCP or tooling configuration files.
+///
+/// # Examples
+///
+/// ```
+/// let root = std::env::temp_dir().join("agentsync-scan-example");
+/// std::fs::create_dir_all(&root)?;
+/// std::fs::write(root.join(".mcp.json"), "{}")?;
+///
+/// let mut discovered = Vec::new();
+/// scan_native_mcp_agents(&root, &mut discovered)?;
+/// assert_eq!(discovered.len(), 1);
+///
+/// std::fs::remove_dir_all(root)?;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 fn scan_native_mcp_agents(project_root: &Path, discovered: &mut Vec<DiscoveredFile>) -> Result<()> {
     // Claude Code
     discover_file(
@@ -687,7 +749,17 @@ fn scan_native_mcp_agents(project_root: &Path, discovered: &mut Vec<DiscoveredFi
     Ok(())
 }
 
-/// Scan for configurable agents (Windsurf, Cline, Crush, Amp, etc.)
+/// Discovers project-level configuration, instruction, rules, skills, and MCP files for supported configurable agents.
+///
+/// Discovered entries are appended to `discovered`. Files and directories that are absent are skipped.
+///
+/// # Examples
+///
+/// ```no_run
+/// let mut discovered = Vec::new();
+/// scan_configurable_agents(std::path::Path::new("."), &mut discovered)?;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 fn scan_configurable_agents(
     project_root: &Path,
     discovered: &mut Vec<DiscoveredFile>,
@@ -934,7 +1006,21 @@ fn scan_configurable_agents(
     Ok(())
 }
 
-/// Scan project for existing agent-related files
+/// Discovers agent-related files in a project.
+///
+/// # Examples
+///
+/// ```
+/// use std::path::Path;
+///
+/// let discovered = scan_agent_files(Path::new("."))?;
+/// println!("Found {} agent-related files.", discovered.len());
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
+///
+/// # Errors
+///
+/// Returns an error if scanning the project fails.
 fn scan_agent_files(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
     let mut discovered = Vec::new();
     scan_native_mcp_agents(project_root, &mut discovered)?;
@@ -1572,6 +1658,28 @@ fn render_experimental_tui_intro_frame(frame: &mut ratatui::Frame<'_>) {
     frame.render_widget(paragraph, chunks[1]);
 }
 
+/// Displays the interactive introductory screen for the experimental terminal interface.
+///
+/// Press `Enter` to continue or `Esc`/`q` to cancel. The terminal is restored when
+/// the screen exits, including when an error occurs.
+///
+/// # Examples
+///
+/// ```no_run
+/// match run_experimental_tui_intro()? {
+///     ExperimentalTuiIntroOutcome::Continue => {
+///         // Proceed with the experimental interface.
+///     }
+///     ExperimentalTuiIntroOutcome::Cancelled => {
+///         // Return to the standard flow.
+///     }
+/// }
+/// # Ok::<(), anyhow::Error>(())
+/// ```
+///
+/// # Errors
+///
+/// Returns an error if terminal setup, screen rendering, or input handling fails.
 fn run_experimental_tui_intro() -> Result<ExperimentalTuiIntroOutcome> {
     use crossterm::{
         event::{self, Event, KeyCode},
@@ -1612,7 +1720,23 @@ fn run_experimental_tui_intro() -> Result<ExperimentalTuiIntroOutcome> {
     }
 }
 
-/// Merge multiple instruction files into a single string with section headings.
+/// Combines instruction files into content suitable for an `AGENTS.md` file.
+///
+/// A single file is returned unchanged. Multiple files are separated by headings
+/// and delimiters. The returned count indicates how many files were processed.
+///
+/// # Errors
+///
+/// Returns an error if an instruction file cannot be read.
+///
+/// # Examples
+///
+/// ```
+/// let (content, count) = merge_instruction_files(std::path::Path::new("."), &[])?;
+/// assert!(content.is_none());
+/// assert_eq!(count, 0);
+/// # Ok::<(), anyhow::Error>(())
+/// ```
 fn merge_instruction_files(
     project_root: &Path,
     instruction_files: &[&DiscoveredFile],
@@ -1652,7 +1776,31 @@ fn merge_instruction_files(
     }
 }
 
-/// Copy directory entries into a destination, printing progress. Returns (migrated, skipped).
+/// Copies the entries in a source directory into a destination directory.
+///
+/// Existing destination entries are skipped, while missing source directories produce zero migrated and skipped entries.
+/// Returns the number of migrated entries and the number of skipped entries.
+///
+/// # Errors
+///
+/// Returns an error if reading the source directory or copying an entry fails.
+///
+/// # Examples
+///
+/// ```
+/// let root = std::env::temp_dir().join(format!("copy-entries-{}", std::process::id()));
+/// let source = root.join("source");
+/// let destination = root.join("destination");
+///
+/// std::fs::create_dir_all(&source).unwrap();
+/// std::fs::create_dir_all(&destination).unwrap();
+/// std::fs::write(source.join("item.txt"), "content").unwrap();
+///
+/// let (migrated, skipped) = copy_entries_to_dest(&source, &destination, "file").unwrap();
+/// assert_eq!((migrated, skipped), (1, 0));
+///
+/// std::fs::remove_dir_all(root).unwrap();
+/// ```
 fn copy_entries_to_dest(
     src_path: &Path,
     dest_dir: &Path,
@@ -1705,7 +1853,26 @@ fn copy_entries_to_dest(
     Ok((migrated, skipped))
 }
 
-/// Migrate a single discovered file, returning (migrated_count, skipped_count).
+/// Migrates a discovered file or directory to the appropriate `.agents` destination.
+///
+/// Instruction files are handled separately and are skipped here. MCP and tooling
+/// configuration files are reported without being copied.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// let (migrated, skipped) = migrate_file(
+///     &file,
+///     project_root,
+///     agents_dir,
+///     skills_dir,
+///     commands_dir,
+/// )?;
+/// assert_eq!(migrated + skipped, 1);
+/// # Ok::<(), anyhow::Error>(())
+/// ```
+///
+/// Returns the number of migrated and skipped items, respectively.
 fn migrate_file(
     file: &DiscoveredFile,
     project_root: &Path,
@@ -1835,7 +2002,21 @@ fn migrate_file(
     }
 }
 
-/// Write AGENTS.md with migrated or default content. Returns outcome.
+/// Writes `AGENTS.md` using migrated content when available, or the default template otherwise.
+///
+/// Existing files are preserved unless `force` is `true`. The managed agent configuration
+/// layout is added or updated in the written content.
+///
+/// # Examples
+///
+/// ```
+/// let path = std::env::temp_dir().join(format!("agentsync-{}.md", std::process::id()));
+/// let outcome = write_agents_md(&path, Some("# Instructions".into()), "", 1, true)?;
+///
+/// assert!(matches!(outcome, ManagedFileOutcome::Written));
+/// std::fs::remove_file(path)?;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 fn write_agents_md(
     agents_md_path: &Path,
     migrated_content: Option<String>,
@@ -1879,7 +2060,27 @@ fn write_agents_md(
     }
 }
 
-/// Write wizard config and run post-init validation. Returns outcome.
+/// Writes the rendered wizard configuration and validates skills modes for the selected agents.
+///
+/// Preserves an existing configuration unless `force` is `true`. Reports any skills mode
+/// mismatches found during post-initialization validation.
+///
+/// # Examples
+///
+/// ```ignore
+/// let outcome = write_wizard_config(
+///     project_root,
+///     config_path,
+///     rendered_config,
+///     &[],
+///     false,
+/// )?;
+/// ```
+///
+/// # Returns
+///
+/// `ManagedFileOutcome::Preserved` when an existing configuration is kept, or
+/// `ManagedFileOutcome::Written` when the configuration is written successfully.
 fn write_wizard_config(
     project_root: &Path,
     config_path: &Path,
@@ -1920,7 +2121,26 @@ fn write_wizard_config(
     Ok(ManagedFileOutcome::Written)
 }
 
-/// Back up original files after migration. Returns outcome.
+/// Backs up migrated source files under `.agents/backup`.
+///
+/// The backup is not offered when `AGENTS.md` was preserved or when the user declines.
+/// MCP, tooling, and other non-migrated files are excluded. Canonical symlink-based skill
+/// layouts are preserved. Returns the resulting backup status and number of moved files.
+///
+/// # Examples
+///
+/// ```no_run
+/// let outcome = perform_wizard_backup(
+///     &mut renderer,
+///     project_root,
+///     agents_dir,
+///     &files_to_migrate,
+///     &skills_choices,
+///     &skills_modes,
+///     &agents_md_outcome,
+/// )?;
+/// # Ok::<(), anyhow::Error>(())
+/// ```
 fn perform_wizard_backup(
     renderer: &mut impl InitWizardRenderer,
     project_root: &Path,
@@ -2008,6 +2228,24 @@ fn perform_wizard_backup(
 
     Ok(BackupOutcome::Completed { moved_count })
 }
+/// Runs the interactive initialization wizard, optionally migrating discovered agent files into `.agents`.
+///
+/// # Arguments
+///
+/// * `project_root` - Project directory to scan and initialize.
+/// * `force` - Whether existing generated files may be overwritten.
+/// * `template_path` - Optional path to the configuration template to use.
+///
+/// # Examples
+///
+/// ```no_run
+/// use std::path::Path;
+///
+/// init_wizard(Path::new("."), false, None)?;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
+///
+pub fn init_wizard(project_root: &Path, force: bool, template_path: Option<&Path>) -> Result<()> {
 pub fn init_wizard(project_root: &Path, force: bool, template_path: Option<&Path>) -> Result<()> {
     use colored::Colorize;
     use dialoguer::{Confirm, MultiSelect, Select, theme::ColorfulTheme};

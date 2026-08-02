@@ -107,6 +107,18 @@ struct RepoMetadata {
 }
 
 impl RepoMetadata {
+    /// Collects filesystem metadata and nested project directories beneath the project root.
+    ///
+    /// The traversal is bounded by the configured discovery depth and excludes ignored directories.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::Path;
+    ///
+    /// let metadata = RepoMetadata::collect(Path::new("."));
+    /// assert!(metadata.paths.iter().all(|path| !path.is_absolute()));
+    /// ```
     fn collect(project_root: &Path) -> Self {
         let mut paths = HashSet::new();
         let mut dirs = HashSet::new();
@@ -151,6 +163,24 @@ impl RepoMetadata {
         }
     }
 
+    /// Records a directory in the directory set and records depth-one directories as root directories.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use std::collections::HashSet;
+    /// use std::path::PathBuf;
+    /// use walkdir::WalkDir;
+    ///
+    /// let mut root_dirs = Vec::new();
+    /// let mut dirs = HashSet::new();
+    ///
+    /// for entry in WalkDir::new(".") {
+    ///     let entry = entry.unwrap();
+    ///     let relative_path = PathBuf::from(entry.path());
+    ///     process_dir_entry(&entry, &relative_path, &mut root_dirs, &mut dirs);
+    /// }
+    /// ```
     fn process_dir_entry(
         entry: &walkdir::DirEntry,
         relative_buf: &Path,
@@ -165,6 +195,17 @@ impl RepoMetadata {
         }
     }
 
+    /// Records the parent directory of a nested project manifest unless it is at the repository root or in a test directory.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut nested_projects = BTreeSet::new();
+    ///
+    /// check_nested_project(Path::new("frontend/package.json"), &mut nested_projects);
+    ///
+    /// assert!(nested_projects.contains(Path::new("frontend")));
+    /// ```
     fn check_nested_project(relative: &Path, nested_projects: &mut BTreeSet<PathBuf>) {
         let file_name = relative.file_name().and_then(|n| n.to_str()).unwrap_or("");
         if !PROJECT_MANIFEST_FILES.contains(&file_name) {
@@ -180,6 +221,23 @@ impl RepoMetadata {
         }
     }
 
+    /// Records the first path associated with a file extension.
+    ///
+    /// The extension is stored with and without its leading dot. Existing entries
+    /// are preserved.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::collections::HashMap;
+    /// use std::path::Path;
+    ///
+    /// let mut extensions = HashMap::new();
+    /// record_extension(Path::new("src/main.rs"), Path::new("src/main.rs"), &mut extensions);
+    ///
+    /// assert_eq!(extensions.get("rs"), Some(&"src/main.rs".into()));
+    /// assert_eq!(extensions.get(".rs"), Some(&"src/main.rs".into()));
+    /// ```
     fn record_extension(
         relative: &Path,
         relative_buf: &Path,
@@ -353,6 +411,21 @@ impl CatalogDrivenDetector {
 }
 
 impl RepoDetector for CatalogDrivenDetector {
+    /// Detects catalog-defined technologies in a project and its discovered nested projects.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// let mut cache = ContentCache::default();
+    /// let detections = detector
+    ///     .detect(std::path::Path::new("."), &mut cache)
+    ///     .unwrap();
+    /// assert!(detections.iter().all(|d| !d.technology_id.is_empty()));
+    /// ```
+    ///
+    /// # Returns
+    ///
+    /// A list of technology detections for the project and nested projects.
     fn detect(
         &self,
         project_root: &Path,
@@ -390,6 +463,28 @@ impl RepoDetector for CatalogDrivenDetector {
     }
 }
 
+/// Detects technologies used by nested projects and appends new detections with paths relative to the repository root.
+///
+/// Existing detections take precedence, so a technology is recorded only once.
+///
+/// # Examples
+///
+/// ```ignore
+/// detect_nested_projects(
+///     project_root,
+///     metadata,
+///     &rules,
+///     &mut cache,
+///     &mut detections,
+/// );
+/// ```
+fn detect_nested_projects(
+project_root: &Path,
+metadata: &RepoMetadata,
+rules: &[(TechnologyId, CompiledDetectionRules)],
+cache: &mut ContentCache,
+detections: &mut Vec<TechnologyDetection>,
+) {
 fn detect_nested_projects(
     project_root: &Path,
     metadata: &RepoMetadata,
@@ -421,6 +516,15 @@ fn detect_nested_projects(
     }
 }
 
+/// Adjusts a nested detection so its paths are relative to the repository root.
+///
+/// # Examples
+///
+/// ```
+/// # let detection: TechnologyDetection = todo!();
+/// let adjusted = adjust_detection(detection, Path::new("packages/app"));
+/// # let _ = adjusted;
+/// ```
 fn adjust_detection(detection: TechnologyDetection, offset: &Path) -> TechnologyDetection {
     TechnologyDetection {
         technology: detection.technology,
@@ -442,6 +546,38 @@ fn adjust_detection(detection: TechnologyDetection, offset: &Path) -> Technology
     }
 }
 
+/// Evaluates detection rules in precedence order and returns the first matching technology detection.
+///
+/// Package matches take precedence over configuration-file and extension matches. Returns `None`
+/// when no configured rule matches the project metadata.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// let detection = evaluate_rules(
+///     project_root,
+///     &technology_id,
+///     &rules,
+///     &all_packages,
+///     &metadata,
+///     &mut cache,
+/// );
+///
+/// assert!(detection.is_some());
+/// ```
+///
+/// # Arguments
+///
+/// * `project_root` - Root directory used to resolve configuration files.
+/// * `tech_id` - Technology identifier associated with the rules.
+/// * `rules` - Compiled rules used for detection.
+/// * `all_packages` - Dependency names discovered in the project.
+/// * `metadata` - Collected project filesystem metadata.
+/// * `cache` - Cache used when reading configuration-file contents.
+///
+/// # Returns
+///
+/// The first matching technology detection, or `None` when no rule matches.
 fn evaluate_rules(
     project_root: &Path,
     tech_id: &TechnologyId,
@@ -465,6 +601,19 @@ fn evaluate_rules(
     check_file_extensions(tech_id, rules, metadata)
 }
 
+/// Detects a technology when one of its exact package names appears in the dependency set.
+///
+/// # Returns
+///
+/// A high-confidence detection for the first matching package, or `None` when no exact
+/// package rule matches.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// let detection = check_exact_packages(&tech_id, &rules, &all_packages);
+/// assert_eq!(detection.unwrap().confidence, DetectionConfidence::High);
+/// ```
 fn check_exact_packages(
     tech_id: &TechnologyId,
     rules: &CompiledDetectionRules,
@@ -484,6 +633,21 @@ fn check_exact_packages(
     None
 }
 
+/// Finds a package-pattern rule that matches one of the detected package names.
+///
+/// Matching uses the configured pattern order and returns the first matching package
+/// with medium detection confidence.
+///
+/// # Returns
+///
+/// A detection for the first matching package, or `None` when no pattern matches.
+///
+/// # Examples
+///
+/// ```ignore
+/// let detection = check_package_patterns(&tech_id, &rules, &all_packages);
+/// assert!(detection.is_some());
+/// ```
 fn check_package_patterns(
     tech_id: &TechnologyId,
     rules: &CompiledDetectionRules,
@@ -505,6 +669,15 @@ fn check_package_patterns(
     None
 }
 
+/// Detects a technology when one of its configured files exists in the project.
+///
+/// # Examples
+///
+/// ```
+/// # // Example usage within the detector module.
+/// # let detection = check_config_files(&tech_id, &rules, project_root, &metadata);
+/// # assert!(detection.is_some() || detection.is_none());
+/// ```
 fn check_config_files(
     tech_id: &TechnologyId,
     rules: &CompiledDetectionRules,
@@ -526,6 +699,27 @@ fn check_config_files(
     None
 }
 
+/// Finds a configuration-file content pattern that identifies a technology.
+///
+/// Scans the applicable project files and returns the first matching detection.
+///
+/// # Examples
+///
+/// ```ignore
+/// let detection = check_config_file_content(
+///     &tech_id,
+///     &rules,
+///     project_root,
+///     &metadata,
+///     &mut cache,
+/// );
+/// assert!(detection.is_some());
+/// ```
+///
+/// # Returns
+///
+/// A medium-confidence detection for the first matching pattern, or `None` if
+/// no configured file contains a matching pattern.
 fn check_config_file_content(
     tech_id: &TechnologyId,
     rules: &CompiledDetectionRules,
@@ -555,6 +749,14 @@ fn check_config_file_content(
     None
 }
 
+/// Identifies the repository technology from a matching file extension.
+///
+/// # Examples
+///
+/// ```ignore
+/// let detection = check_file_extensions(&tech_id, &rules, &metadata);
+/// assert!(detection.is_some());
+/// ```
 fn check_file_extensions(
     tech_id: &TechnologyId,
     rules: &CompiledDetectionRules,
@@ -594,6 +796,17 @@ fn make_detection(
     }
 }
 
+/// Collects the files to scan for configuration-content detection.
+///
+/// Includes files from the configured Gradle layout and explicitly configured
+/// paths, while retaining only files recognized by the repository metadata.
+///
+/// # Examples
+///
+/// ```ignore
+/// let files = gather_content_scan_files(project_root, &rules, &metadata);
+/// assert!(files.iter().all(|path| path.is_file()));
+/// ```
 fn gather_content_scan_files(
     project_root: &Path,
     rules: &CompiledConfigFileContentRules,
@@ -612,6 +825,19 @@ fn gather_content_scan_files(
     files
 }
 
+/// Collects recognized Gradle build and version catalog files present in the repository metadata.
+///
+/// Files at the repository root and in its immediate root directories are appended to `files`.
+///
+/// # Examples
+///
+/// ```
+/// let metadata = RepoMetadata::default();
+/// let mut files = Vec::new();
+///
+/// gather_gradle_files(&metadata, &mut files);
+/// assert!(files.is_empty());
+/// ```
 fn gather_gradle_files(metadata: &RepoMetadata, files: &mut Vec<PathBuf>) {
     for name in &[
         "build.gradle.kts",
@@ -636,6 +862,20 @@ fn gather_gradle_files(metadata: &RepoMetadata, files: &mut Vec<PathBuf>) {
     }
 }
 
+/// Adds existing explicit files to the collection, avoiding duplicates.
+///
+/// # Arguments
+///
+/// * `project_root` - Root directory used to resolve explicit file paths.
+/// * `explicit_files` - Paths explicitly selected for content scanning.
+/// * `metadata` - Repository metadata containing discovered paths.
+/// * `files` - Collection to which eligible paths are added.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// gather_explicit_files(&project_root, &explicit_files, &metadata, &mut files);
+/// ```
 fn gather_explicit_files(
     project_root: &Path,
     explicit_files: &[PathBuf],
@@ -827,6 +1067,21 @@ fn canonical_existing_path(path: &Path) -> Result<PathBuf> {
         .with_context(|| format!("failed to resolve path {}", path.display()))
 }
 
+/// Parses a `pyproject.toml` file and collects its declared Python dependencies.
+///
+/// Returns `None` when the file cannot be resolved, read, or parsed. Otherwise, returns the
+/// dependency names declared using supported PEP 621 and Poetry formats.
+///
+/// # Examples
+///
+/// ```
+/// let mut cache = ContentCache::default();
+/// let dependencies = parse_pyproject_toml_deps(
+///     std::path::Path::new("pyproject.toml"),
+///     &mut cache,
+/// );
+/// assert!(dependencies.is_some() || dependencies.is_none());
+/// ```
 fn parse_pyproject_toml_deps(path: &Path, cache: &mut ContentCache) -> Option<BTreeSet<String>> {
     let path = canonical_existing_path(path).ok()?;
     let content = get_file_content(&path, cache)?;
@@ -839,6 +1094,32 @@ fn parse_pyproject_toml_deps(path: &Path, cache: &mut ContentCache) -> Option<BT
     Some(deps)
 }
 
+/// Collects PEP 621 project and optional dependency names from a TOML document.
+///
+/// # Arguments
+///
+/// * `value` - TOML data containing an optional `[project]` table.
+/// * `deps` - Set to which normalized dependency names are added.
+///
+/// # Examples
+///
+/// ```
+/// let value: toml::Value = toml::from_str(
+///     r#"
+///     [project]
+///     dependencies = ["requests>=2"]
+///
+///     [project.optional-dependencies]
+///     test = ["pytest"]
+///     "#,
+/// ).unwrap();
+/// let mut deps = std::collections::BTreeSet::new();
+///
+/// collect_pep621_deps(&value, &mut deps);
+///
+/// assert!(deps.contains("requests"));
+/// assert!(deps.contains("pytest"));
+/// ```
 fn collect_pep621_deps(value: &toml::Value, deps: &mut BTreeSet<String>) {
     let Some(project) = value.get("project").and_then(|v| v.as_table()) else {
         return;
@@ -856,6 +1137,31 @@ fn collect_pep621_deps(value: &toml::Value, deps: &mut BTreeSet<String>) {
     }
 }
 
+/// Collects Poetry dependency names from a TOML document into a set.
+///
+/// Dependencies from the main, grouped, and development Poetry sections are included.
+///
+/// # Examples
+///
+/// ```
+/// let value: toml::Value = r#"
+/// [tool.poetry.dependencies]
+/// python = "^3.11"
+/// requests = "^2.31"
+///
+/// [tool.poetry.dev-dependencies]
+/// pytest = "^7"
+/// "#
+/// .parse()
+/// .unwrap();
+/// let mut dependencies = std::collections::BTreeSet::new();
+///
+/// collect_poetry_deps(&value, &mut dependencies);
+///
+/// assert!(dependencies.contains("python"));
+/// assert!(dependencies.contains("requests"));
+/// assert!(dependencies.contains("pytest"));
+/// ```
 fn collect_poetry_deps(value: &toml::Value, deps: &mut BTreeSet<String>) {
     let Some(poetry) = value
         .get("tool")
@@ -881,6 +1187,19 @@ fn collect_poetry_deps(value: &toml::Value, deps: &mut BTreeSet<String>) {
     }
 }
 
+/// Parses package and development dependencies from a Pipfile.
+///
+/// Returns `None` when the file cannot be resolved, read, or parsed as TOML.
+///
+/// # Examples
+///
+/// ```no_run
+/// use std::path::Path;
+///
+/// let mut cache = ContentCache::default();
+/// let dependencies = parse_pipfile_deps(Path::new("Pipfile"), &mut cache);
+/// assert!(dependencies.is_some());
+/// ```
 fn parse_pipfile_deps(path: &Path, cache: &mut ContentCache) -> Option<BTreeSet<String>> {
     let path = canonical_existing_path(path).ok()?;
     let content = get_file_content(&path, cache)?;
@@ -1002,6 +1321,20 @@ fn parse_package_json_workspaces(workspaces: &serde_json::Value) -> Vec<String> 
     Vec::new()
 }
 
+/// Expands workspace path patterns into existing workspace directories containing a `package.json` manifest.
+///
+/// Supports exact paths and one-level wildcard directory patterns relative to the project root.
+///
+/// # Examples
+///
+/// ```
+/// let metadata = RepoMetadata::default();
+/// let workspaces = expand_workspace_patterns(
+///     Path::new("."),
+///     &["packages/*".to_owned()],
+///     &metadata,
+/// );
+/// ```
 fn expand_workspace_patterns(
     project_root: &Path,
     patterns: &[String],
@@ -1027,6 +1360,21 @@ fn expand_workspace_patterns(
     dirs
 }
 
+/// Expands a one-level workspace wildcard by adding child directories that contain a `package.json` manifest.
+///
+/// # Arguments
+///
+/// * `project_root` - Absolute root directory of the project.
+/// * `base_rel` - Relative directory containing the workspace’s immediate children.
+/// * `metadata` - Repository metadata used to identify directories and manifests.
+/// * `dirs` - Collection to which matching workspace directories are appended.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// expand_glob_workspace(&project_root, Path::new("packages"), &metadata, &mut dirs);
+/// assert!(dirs.iter().all(|dir| dir.join("package.json").exists()));
+/// ```
 fn expand_glob_workspace(
     project_root: &Path,
     base_rel: &Path,
@@ -1044,6 +1392,18 @@ fn expand_glob_workspace(
     }
 }
 
+/// Adds an exact workspace directory when its `package.json` manifest exists.
+///
+/// # Examples
+///
+/// ```no_run
+/// expand_exact_workspace(
+///     project_root,
+///     base_rel,
+///     metadata,
+///     &mut workspace_dirs,
+/// );
+/// ```
 fn expand_exact_workspace(
     project_root: &Path,
     base_rel: &Path,

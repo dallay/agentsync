@@ -1226,7 +1226,25 @@ impl McpGenerator {
         }
     }
 
-    /// Generate MCP config for a specific agent
+    /// Generates and synchronizes the MCP configuration for one agent.
+    ///
+    /// Disabled servers are excluded from the generated configuration.
+    ///
+    /// # Parameters
+    ///
+    /// * `project_root` — Root directory used to resolve project-specific configuration paths.
+    /// * `dry_run` — Reports the intended operation without modifying files.
+    ///
+    /// # Returns
+    ///
+    /// The synchronization result, or an error if configuration generation fails.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let result = generator.generate_for_agent(agent, project_root, false)?;
+    /// ```
+    ///
     pub fn generate_for_agent(
         &self,
         agent: McpAgent,
@@ -1237,7 +1255,30 @@ impl McpGenerator {
         self.generate_for_agent_with_servers(agent, project_root, &enabled_servers, dry_run)
     }
 
-    /// Resolve the content to write for an MCP config file, returning (content, existing_content).
+    /// Resolves the configuration content to write while applying the configured merge strategy.
+    ///
+    /// Existing content is returned when the configuration file is read; otherwise, the second tuple
+    /// element is `None`. Merge operations remove obsolete servers when necessary, and overwrite
+    /// operations preserve formatter-specific settings.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if an existing configuration cannot be read or parsed, or if the formatter
+    /// cannot generate, merge, or clean up the configuration content.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # // The generator, formatter, path, and enabled servers are prepared by the caller.
+    /// # let (content, existing) = generator.resolve_config_content(
+    /// #     formatter,
+    /// #     config_path,
+    /// #     &enabled_servers,
+    /// # )?;
+    /// # assert!(!content.is_empty());
+    /// # let _ = existing;
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
     fn resolve_config_content(
         &self,
         formatter: &dyn McpFormatter,
@@ -1279,7 +1320,25 @@ impl McpGenerator {
         }
     }
 
-    /// Check if config content is identical to what's already on disk.
+    /// Determines whether configuration content matches the existing file content.
+    ///
+    /// Uses the provided existing content when available; otherwise, reads the
+    /// configuration file. Returns `false` when the file cannot be read.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// assert!(is_content_identical(
+    ///     Path::new("config.json"),
+    ///     "{}",
+    ///     Some("{}".to_owned()),
+    /// ));
+    /// ```
+    fn is_content_identical(
+    config_path: &Path,
+    content: &str,
+    existing_content: Option<String>,
+    ) -> bool
     fn is_content_identical(
         config_path: &Path,
         content: &str,
@@ -1292,7 +1351,37 @@ impl McpGenerator {
         }
     }
 
-    /// Write config (or report what would be done in dry-run mode), returning result delta.
+    /// Writes the generated configuration or reports the intended action in dry-run mode.
+    ///
+    /// # Parameters
+    ///
+    /// * `config_path` — Path of the configuration file.
+    /// * `content` — Complete configuration content to write.
+    /// * `was_existing` — Whether the configuration file already exists.
+    /// * `dry_run` — Whether to report the action without writing the file.
+    ///
+    /// # Returns
+    ///
+    /// A synchronization result recording whether the configuration was created or updated.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing the configuration or setting its restricted permissions fails.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # let generator = todo!();
+    /// # let config_path = std::path::Path::new("mcp.json");
+    /// let result = generator.write_or_report_config(
+    ///     config_path,
+    ///     "{}",
+    ///     false,
+    ///     true,
+    /// )?;
+    /// assert_eq!(result.created, 1);
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
     fn write_or_report_config(
         &self,
         config_path: &Path,
@@ -1344,7 +1433,35 @@ impl McpGenerator {
         Ok(result)
     }
 
-    /// Internal method to generate config using pre-calculated enabled servers
+    /// Generates and synchronizes an agent configuration from a precomputed set of enabled servers.
+    ///
+    /// The operation is skipped when the agent has no resolvable configuration path or when the server
+    /// set is empty. Existing configuration content is preserved according to the configured merge
+    /// strategy, and dry-run mode reports changes without writing files.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let result = generator.generate_for_agent_with_servers(
+    ///     agent,
+    ///     project_root,
+    ///     &enabled_servers,
+    ///     false,
+    /// )?;
+    /// assert_eq!(result.failed, 0);
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
+    ///
+    /// # Arguments
+    ///
+    /// * `agent` - Agent whose configuration should be generated.
+    /// * `project_root` - Project root used to resolve project-scoped configuration paths.
+    /// * `enabled_servers` - Enabled server definitions to include.
+    /// * `dry_run` - Whether to report changes without modifying the filesystem.
+    ///
+    /// # Returns
+    ///
+    /// A synchronization result describing created, updated, and skipped configurations.
     fn generate_for_agent_with_servers(
         &self,
         agent: McpAgent,

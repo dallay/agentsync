@@ -743,6 +743,26 @@ pub fn run_skill(cmd: SkillCommand, project_root: PathBuf) -> Result<()> {
     }
 }
 
+/// Runs the skill suggestion command for a project.
+///
+/// # Parameters
+///
+/// * `args` - Suggestion options, including selection and installation behavior.
+/// * `project_root` - Root directory of the project to analyze.
+///
+/// # Returns
+///
+/// `Ok(())` when suggestion handling completes successfully; otherwise, an error
+/// produced while processing the command.
+///
+/// # Examples
+///
+/// ```no_run
+/// # use std::path::PathBuf;
+/// # let args: SkillSuggestArgs = todo!();
+/// run_suggest(args, PathBuf::from("."))?;
+/// # Ok::<(), anyhow::Error>(())
+/// ```
 pub fn run_suggest(args: SkillSuggestArgs, project_root: PathBuf) -> Result<()> {
     let service = SuggestionService;
     let result = run_suggest_inner(&args, &project_root, &service);
@@ -753,6 +773,16 @@ pub fn run_suggest(args: SkillSuggestArgs, project_root: PathBuf) -> Result<()> 
     }
 }
 
+/// Generates repository skill recommendations and optionally installs the selected recommendations.
+///
+/// When installation is enabled, renders the installation result according to the requested output mode.
+///
+/// # Examples
+///
+/// ```no_run
+/// let result = run_suggest_inner(&args, project_root, service);
+/// assert!(result.is_ok());
+/// ```
 fn run_suggest_inner(
     args: &SkillSuggestArgs,
     project_root: &Path,
@@ -791,6 +821,23 @@ fn run_suggest_inner(
     Ok(())
 }
 
+/// Prints a suggestion response as JSON or human-readable output.
+///
+/// # Examples
+///
+/// ```no_run
+/// # fn example(response: &SuggestResponse) -> Result<()> {
+/// print_suggest_output(false, response)?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// The output format is selected by `json`; human-readable output uses terminal color settings.
+///
+/// # Returns
+///
+/// `Ok(())` after the response is printed, or an error if JSON serialization fails.
+///
 fn print_suggest_output(json: bool, response: &SuggestResponse) -> Result<()> {
     if json {
         println!("{}", serde_json::to_string(&response.to_json_response())?);
@@ -804,6 +851,32 @@ fn print_suggest_output(json: bool, response: &SuggestResponse) -> Result<()> {
     Ok(())
 }
 
+/// Installs recommended skills using the selected output and interaction mode.
+///
+/// # Examples
+///
+/// ```ignore
+/// let result = run_suggest_install(
+///     &args,
+///     project_root,
+///     &service,
+///     &response,
+///     &provider,
+///     output_mode,
+/// );
+/// ```
+///
+/// # Errors
+///
+/// Returns an error if interactive selection is unavailable or installation fails.
+fn run_suggest_install(
+args: &SkillSuggestArgs,
+project_root: &Path,
+service: &SuggestionService,
+response: &SuggestResponse,
+provider: &SuggestInstallProvider,
+output_mode: SuggestInstallOutputMode,
+) -> Result<SuggestInstallJsonResponse> {
 fn run_suggest_install(
     args: &SkillSuggestArgs,
     project_root: &Path,
@@ -855,6 +928,19 @@ fn run_suggest_install(
     }
 }
 
+/// Resolves the installation mode and skill IDs for recommended skills.
+///
+/// Selects all recommendations when `--all` is enabled. Otherwise, requires
+/// interactive installation support and obtains the selected skill IDs from the
+/// user.
+///
+/// # Examples
+///
+/// ```ignore
+/// let (mode, skill_ids) = resolve_install_mode_and_ids(&args, &response)?;
+/// assert!(!skill_ids.is_empty());
+/// # Ok::<(), anyhow::Error>(())
+/// ```
 fn resolve_install_mode_and_ids(
     args: &SkillSuggestArgs,
     response: &SuggestResponse,
@@ -877,6 +963,24 @@ fn resolve_install_mode_and_ids(
     }
 }
 
+/// Installs the selected skill recommendations and reports progress as human-readable lines.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// let result = run_suggest_install_human_line(
+///     &args,
+///     project_root,
+///     &service,
+///     &response,
+///     &provider,
+///     use_color,
+/// );
+/// ```
+///
+/// # Returns
+///
+/// The structured installation result, or an error if the installation mode is invalid or installation fails.
 fn run_suggest_install_human_line(
     args: &SkillSuggestArgs,
     project_root: &Path,
@@ -906,6 +1010,23 @@ fn run_suggest_install_human_line(
     )
 }
 
+/// Installs the selected skill recommendations while displaying live progress.
+///
+/// # Examples
+///
+/// ```ignore
+/// let result = run_suggest_install_human_live(
+///     &args,
+///     project_root,
+///     &service,
+///     &response,
+///     &provider,
+///     true,
+/// );
+/// assert!(result.is_ok());
+/// ```
+///
+/// Returns the installation response or an error if the selection or installation fails.
 fn run_suggest_install_human_live(
     args: &SkillSuggestArgs,
     project_root: &Path,
@@ -937,6 +1058,19 @@ fn run_suggest_install_human_live(
     result
 }
 
+/// Formats a suggestion command error for human or JSON output and preserves the original error.
+///
+/// # Examples
+///
+/// ```no_run
+/// let args = SkillSuggestArgs::default();
+/// let result = handle_suggest_error(&args, anyhow::anyhow!("suggestion failed"));
+/// assert!(result.is_err());
+/// ```
+///
+/// # Returns
+///
+/// The original error wrapped in `Err` after the formatted message is emitted.
 fn handle_suggest_error(args: &SkillSuggestArgs, error: anyhow::Error) -> Result<()> {
     let error_message = error.to_string();
     let (code, remediation) = if error_message
@@ -981,6 +1115,18 @@ fn handle_suggest_error(args: &SkillSuggestArgs, error: anyhow::Error) -> Result
     Err(error)
 }
 
+/// Verifies that guided recommendation installation is running with interactive standard input and output.
+///
+/// # Errors
+///
+/// Returns an error when either standard input or standard output is not connected to a terminal.
+///
+/// # Examples
+///
+/// ```
+/// let result = ensure_interactive_install_supported();
+/// assert!(result.is_ok() || result.is_err());
+/// ```
 fn ensure_interactive_install_supported() -> Result<()> {
     if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
         return Ok(());
@@ -1298,21 +1444,23 @@ fn infer_install_source_format(source: &str) -> String {
     "dir".to_string()
 }
 
-/// Attempts to convert a GitHub URL to a downloadable ZIP URL.
+/// Converts supported GitHub repository URLs to downloadable ZIP URLs.
 ///
-/// Supports the following GitHub URL formats:
-/// - `https://github.com/owner/repo` → `https://github.com/owner/repo/archive/HEAD.zip`
-/// - `https://github.com/owner/repo/tree/branch/path` → `https://github.com/owner/repo/archive/refs/heads/branch.zip#path`
-/// - `https://github.com/owner/repo/blob/branch/path/file` → `https://github.com/owner/repo/archive/refs/heads/branch.zip#path`
+/// Repository URLs use the `HEAD` archive; `tree` and `blob` URLs use the
+/// identified branch and preserve the remaining path as a fragment. Branch
+/// names containing slashes are interpreted using only their first segment.
 ///
-/// **Limitation:** Branch names containing slashes (e.g., `feature/auth`) cannot be reliably
-/// distinguished from subpaths without accessing the GitHub API. In such cases, the function
-/// assumes the first segment after `tree/` or `blob/` is the branch name. For branches with
-/// slashes, the resulting URL may be incorrect. If API access becomes available in the future,
-/// this function could use the GitHub refs API to resolve the correct branch name via
-/// longest-prefix matching.
+/// Returns `None` for non-GitHub URLs, existing archive URLs, and unsupported
+/// GitHub paths.
 ///
-/// Returns `None` if the URL is not a GitHub URL or already points to an archive.
+/// # Examples
+///
+/// ```
+/// assert_eq!(
+///     try_convert_github_url("https://github.com/owner/repo"),
+///     Some("https://github.com/owner/repo/archive/HEAD.zip".to_string())
+/// );
+/// ```
 fn try_convert_github_url(url: &str) -> Option<String> {
     let parsed = url::Url::parse(url).ok()?;
 
@@ -1351,6 +1499,19 @@ fn try_convert_github_url(url: &str) -> Option<String> {
     None
 }
 
+/// Converts GitHub tree or blob path segments into a downloadable branch archive URL.
+///
+/// # Examples
+///
+/// ```
+/// let segments = ["owner", "repo", "tree", "main", "skills"];
+/// let url = convert_github_tree_blob_url("owner", "repo", &segments);
+///
+/// assert_eq!(
+///     url,
+///     Some("https://github.com/owner/repo/archive/refs/heads/main.zip#skills".to_string())
+/// );
+/// ```
 fn convert_github_tree_blob_url(owner: &str, repo: &str, segments: &[&str]) -> Option<String> {
     let branch = segments[3];
     let subpath = segments[4..].join("/");
@@ -1374,6 +1535,21 @@ fn convert_github_tree_blob_url(owner: &str, repo: &str, segments: &[&str]) -> O
     Some(zip_url)
 }
 
+/// Returns the directory path containing a blob subpath.
+
+///
+
+/// # Examples
+
+///
+
+/// ```
+
+/// assert_eq!(resolve_blob_subpath("src/main.rs"), "src");
+
+/// assert_eq!(resolve_blob_subpath("README.md"), "");
+
+/// ```
 fn resolve_blob_subpath(subpath: &str) -> String {
     if subpath.contains('/') {
         let path_parts: Vec<&str> = subpath.split('/').collect();
@@ -1387,6 +1563,24 @@ fn resolve_blob_subpath(subpath: &str) -> String {
     }
 }
 
+/// Provides remediation guidance based on an error message.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(
+///     remediation_for_error("manifest is invalid"),
+///     "Check the SKILL.md syntax, frontmatter, and ensure the 'name' field matches requirements. See agentsync docs/spec for manifest schema."
+/// );
+/// ```
+///
+/// # Arguments
+///
+/// * `msg` - Error message used to select the relevant guidance.
+///
+/// # Returns
+///
+/// Guidance for resolving the error category, or general troubleshooting advice when no category matches.
 fn remediation_for_error(msg: &str) -> &str {
     if msg.contains("manifest") {
         "Check the SKILL.md syntax, frontmatter, and ensure the 'name' field matches requirements. See agentsync docs/spec for manifest schema."

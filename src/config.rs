@@ -346,8 +346,20 @@ impl Config {
         config_dir.join(&self.source_dir)
     }
 
-    /// Get all gitignore entries (from config + auto-generated from targets + known patterns)
-    /// Uses a BTreeSet for efficient deduplication and automatic sorting.
+    /// Collects configured and automatically generated `.gitignore` entries.
+    ///
+    /// Entries are deduplicated and returned in sorted order. Disabled agents are
+    /// excluded from automatic agent and target entries.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let config = Config::default();
+    /// let entries = config.all_gitignore_entries();
+    ///
+    /// assert!(entries.contains(&".agents/skills/*.bak".to_string()));
+    /// ```
+    pub fn all_gitignore_entries(&self) -> Vec<String>
     pub fn all_gitignore_entries(&self) -> Vec<String> {
         let mut entries: BTreeSet<String> = self.gitignore.entries.iter().cloned().collect();
 
@@ -361,6 +373,19 @@ impl Config {
         entries.into_iter().collect()
     }
 
+    /// Collects the managed `.gitignore` entries contributed by an agent's targets and known patterns.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::collections::BTreeSet;
+    /// # let mut entries = BTreeSet::new();
+    /// # let agent_name = "example";
+    /// # // Collect entries for an enabled agent configuration.
+    /// # let _ = (agent_name, &mut entries);
+    /// ```
+    ///
+    /// `agent_name` identifies the agent whose known ignore patterns are collected, and `entries` receives the deduplicated results.
     fn collect_agent_gitignore_entries(
         agent_name: &str,
         agent: &AgentConfig,
@@ -374,6 +399,19 @@ impl Config {
         }
     }
 
+    /// Collects the managed Gitignore entries produced by a synchronization target.
+    ///
+    /// Nested-glob targets are omitted. Module-map targets contribute entries for each
+    /// resolved mapped filename and its backup; other targets contribute the destination
+    /// and its backup.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let mut entries = BTreeSet::new();
+    /// collect_target_gitignore_entries("agent", &target, &mut entries);
+    /// assert!(entries.contains("/output/file"));
+    /// ```
     fn collect_target_gitignore_entries(
         agent_name: &str,
         target: &TargetConfig,
@@ -398,8 +436,22 @@ impl Config {
         )));
     }
 
-    /// Get known gitignore patterns for a specific agent.
-    /// These are files/directories that agents generate but are not direct symlink targets.
+    /// Returns generated files and directories that should be ignored for an agent.
+    ///
+    /// # Arguments
+    ///
+    /// * `agent_name` - The agent whose generated files should be identified.
+    ///
+    /// # Returns
+    ///
+    /// The agent's known ignore patterns.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let patterns = known_ignore_patterns("unknown-agent");
+    /// assert!(patterns.is_empty());
+    /// ```
     pub fn known_ignore_patterns(agent_name: &str) -> &'static [&'static str] {
         agent_ids::known_ignore_patterns(agent_name)
     }

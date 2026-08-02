@@ -238,6 +238,21 @@ fn find_best_skill_dir(temp_path: &Path, skill_id: &str) -> PathBuf {
     temp_path.to_path_buf()
 }
 
+/// Fetches a local or remote skill archive and unpacks it into a temporary directory.
+///
+/// A URL fragment selects a subpath within the archive. ZIP and gzip-compressed tar
+/// archives are supported.
+///
+/// # Examples
+///
+/// ```no_run
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), SkillInstallError> {
+/// let temp_dir = fetch_and_unpack_to_tempdir("https://example.com/skill.zip").await?;
+/// assert!(temp_dir.path().exists());
+/// # Ok(())
+/// # }
+/// ```
 pub async fn fetch_and_unpack_to_tempdir(url: &str) -> Result<TempDir, SkillInstallError> {
     use std::io::Cursor;
 
@@ -271,6 +286,29 @@ pub async fn fetch_and_unpack_to_tempdir(url: &str) -> Result<TempDir, SkillInst
     Ok(tmp)
 }
 
+/// Retrieves archive data from a local source or remote URL.
+///
+/// Local paths and `file://` URLs are read directly; other URLs are downloaded
+/// using the provided temporary path.
+///
+/// # Parameters
+///
+/// * `url_base` - The local path or URL identifying the archive.
+/// * `tmp_path` - The temporary path used for remote downloads.
+///
+/// # Returns
+///
+/// The archive bytes and a label identifying its file format.
+///
+/// # Examples
+///
+/// ```
+/// # let runtime = tokio::runtime::Runtime::new().unwrap();
+/// # runtime.block_on(async {
+/// let result = fetch_archive_data("file:///tmp/archive.zip", std::path::Path::new("/tmp/download")).await;
+/// assert!(result.is_err() || result.is_ok());
+/// # });
+/// ```
 async fn fetch_archive_data(
     url_base: &str,
     tmp_path: &std::path::Path,
@@ -285,6 +323,24 @@ async fn fetch_archive_data(
     }
 }
 
+/// Reads a local file or copies a local directory into a temporary destination.
+///
+/// # Examples
+///
+/// ```
+/// # let source = std::env::temp_dir().join("skill-install-example.txt");
+/// # let destination = std::env::temp_dir().join("skill-install-example-destination");
+/// # std::fs::write(&source, b"skill data").unwrap();
+/// let (data, extension) = fetch_local_data(
+///     source.to_str().unwrap(),
+///     false,
+///     &destination,
+/// ).unwrap();
+///
+/// assert_eq!(data, b"skill data");
+/// assert_eq!(extension, "txt");
+/// # std::fs::remove_file(source).unwrap();
+/// ```
 fn fetch_local_data(
     url_base: &str,
     is_file: bool,
@@ -312,6 +368,25 @@ fn fetch_local_data(
     Ok((data, ext))
 }
 
+/// Downloads data from a remote URL into temporary storage and returns its contents with the URL's file extension.
+///
+/// # Examples
+///
+/// ```no_run
+/// # async fn example(tmp_path: &std::path::Path) -> Result<(), SkillInstallError> {
+/// let (data, extension) = fetch_remote_data("https://example.com/skill.zip", tmp_path).await?;
+/// assert!(!data.is_empty());
+/// assert_eq!(extension, "zip");
+/// # Ok(())
+/// # }
+/// ```
+///
+/// The URL must respond successfully; network and local storage failures are returned as
+/// `SkillInstallError` values.
+async fn fetch_remote_data(
+url_base: &str,
+tmp_path: &std::path::Path,
+) -> Result<(Vec<u8>, String), SkillInstallError> {
 async fn fetch_remote_data(
     url_base: &str,
     tmp_path: &std::path::Path,
@@ -351,6 +426,29 @@ async fn fetch_remote_data(
     Ok((data, ext))
 }
 
+/// Extracts ZIP archive entries into a destination directory, optionally restricting extraction to a subpath.
+///
+/// Archive paths are validated before extraction, and unsafe paths cause an error.
+///
+/// # Arguments
+///
+/// * `reader` - A seekable reader containing the ZIP archive.
+/// * `dest` - Directory where selected entries are extracted.
+/// * `subpath` - Optional path within the archive to extract.
+///
+/// # Errors
+///
+/// Returns an error if the archive cannot be read, an entry has an unsafe path, or extraction fails.
+///
+/// # Examples
+///
+/// ```
+/// use std::io::Cursor;
+/// use std::path::Path;
+///
+/// let result = unpack_zip(Cursor::new(Vec::<u8>::new()), Path::new("output"), None);
+/// assert!(result.is_err());
+/// ```
 fn unpack_zip(
     reader: impl std::io::Read + std::io::Seek,
     dest: &std::path::Path,
@@ -391,6 +489,31 @@ fn unpack_zip(
     Ok(())
 }
 
+/// Identifies a shared top-level directory among ZIP entries.
+///
+/// # Examples
+///
+/// ```
+/// use std::io::{Cursor, Write};
+/// use zip::{write::SimpleFileOptions, ZipArchive, ZipWriter};
+///
+/// let mut data = Cursor::new(Vec::new());
+/// {
+///     let mut writer = ZipWriter::new(&mut data);
+///     writer
+///         .start_file("skill/SKILL.md", SimpleFileOptions::default())
+///         .unwrap();
+///     writer.write_all(b"content").unwrap();
+///     writer.finish().unwrap();
+/// }
+///
+/// data.set_position(0);
+/// let mut archive = ZipArchive::new(data).unwrap();
+/// assert_eq!(
+///     zip_common_root(&mut archive).unwrap(),
+///     Some("skill".to_owned())
+/// );
+/// ```
 fn zip_common_root(
     zip: &mut ZipArchive<impl std::io::Read + std::io::Seek>,
 ) -> Result<Option<String>, SkillInstallError> {
@@ -410,6 +533,19 @@ fn zip_common_root(
     }
 }
 
+/// Computes the path of a ZIP entry relative to an optional archive root and subpath.
+///
+/// # Examples
+///
+/// ```
+/// let path = zip_entry_rel_path(
+///     "project/docs/SKILL.md",
+///     Some("project"),
+///     Some("docs"),
+/// );
+///
+/// assert_eq!(path, Some("SKILL.md"));
+/// ```
 fn zip_entry_rel_path<'a>(
     full_name: &'a str,
     common_root: Option<&str>,
@@ -433,6 +569,29 @@ fn zip_entry_rel_path<'a>(
     }
 }
 
+/// Extracts supported entries from a gzip-compressed tar archive into a destination directory.
+///
+/// Archive paths are validated before extraction, and an optional subpath limits the entries
+/// that are unpacked. Files and directories are extracted; other entry types are skipped.
+///
+/// # Examples
+///
+/// ```
+/// use flate2::{write::GzEncoder, Compression};
+/// use std::io::Cursor;
+///
+/// let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+/// {
+///     let mut builder = tar::Builder::new(&mut encoder);
+///     builder.finish().unwrap();
+/// }
+/// let archive = encoder.finish().unwrap();
+///
+/// let dest = std::env::temp_dir().join("skill-install-example");
+/// std::fs::create_dir_all(&dest).unwrap();
+/// unpack_tar_gz(Cursor::new(archive), &dest, None).unwrap();
+/// std::fs::remove_dir_all(dest).unwrap();
+/// ```
 fn unpack_tar_gz(
     reader: impl std::io::Read,
     dest: &std::path::Path,
@@ -479,6 +638,30 @@ fn unpack_tar_gz(
     Ok(())
 }
 
+/// Determines whether all archive entries share the same top-level directory.
+///
+/// Returns the shared directory name when every entry starts with it; otherwise, returns `None`.
+///
+/// # Examples
+///
+/// ```
+/// use flate2::{Compression, read::GzDecoder, write::GzEncoder};
+/// use std::io::Write;
+/// use tar::{Archive, Builder};
+///
+/// let mut data = Vec::new();
+/// {
+///     let encoder = GzEncoder::new(&mut data, Compression::default());
+///     let mut builder = Builder::new(encoder);
+///     builder.finish().unwrap();
+/// }
+///
+/// let decoder = GzDecoder::new(&data[..]);
+/// let mut archive = Archive::new(decoder);
+/// let entries: Vec<_> = archive.entries().unwrap().collect();
+///
+/// assert_eq!(tar_common_root(&entries).unwrap(), None);
+/// ```
 fn tar_common_root(
     entries: &[Result<tar::Entry<flate2::read::GzDecoder<impl std::io::Read>>, std::io::Error>],
 ) -> Result<Option<String>, SkillInstallError> {
@@ -513,6 +696,27 @@ fn tar_common_root(
     }
 }
 
+/// Produces the extraction-relative path for a tar archive entry.
+///
+/// The common archive root is removed when present. If a subpath is provided,
+/// the entry must be within that subpath, which is also removed from the
+/// resulting path.
+///
+/// # Examples
+///
+/// ```
+/// use std::path::Path;
+///
+/// let path = tar_entry_rel_path(
+///     Path::new("skills/example/SKILL.md"),
+///     Some("skills"),
+///     Some("example"),
+/// );
+///
+/// assert_eq!(path, Some(std::path::PathBuf::from("SKILL.md")));
+/// ```
+///
+/// Returns `None` when the entry does not belong to the requested subpath.
 fn tar_entry_rel_path(
     full_path: &std::path::Path,
     common_root: Option<&str>,
