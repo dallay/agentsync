@@ -2,7 +2,7 @@
 //!
 //! Command-line interface for synchronizing AI agent configurations.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use std::env;
@@ -21,6 +21,16 @@ fn human_use_color() -> bool {
         output::OutputMode::Human { use_color } => use_color,
         output::OutputMode::Json => false,
     }
+}
+
+fn current_project_root<F>(path: Option<PathBuf>, current_dir: F) -> Result<PathBuf>
+where
+    F: FnOnce() -> Result<PathBuf>,
+{
+    path.map_or_else(
+        || current_dir().context("failed to determine current project directory"),
+        Ok,
+    )
 }
 
 fn render_phase(title: &str, detail: &str, use_color: bool) -> Vec<String> {
@@ -390,15 +400,18 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::Skill { cmd, project_root } => {
-            let root = project_root.unwrap_or_else(|| env::current_dir().unwrap());
+            let root =
+                current_project_root(project_root, || env::current_dir().map_err(Into::into))?;
             run_skill(cmd, root)?;
         }
         Commands::Status { args, project_root } => {
-            let project_root = project_root.unwrap_or_else(|| env::current_dir().unwrap());
+            let project_root =
+                current_project_root(project_root, || env::current_dir().map_err(Into::into))?;
             run_status(args.json, project_root)?;
         }
         Commands::Doctor { project_root } => {
-            let project_root = project_root.unwrap_or_else(|| env::current_dir().unwrap());
+            let project_root =
+                current_project_root(project_root, || env::current_dir().map_err(Into::into))?;
             run_doctor(project_root)?;
         }
         Commands::Init {
@@ -432,7 +445,8 @@ fn main() -> Result<()> {
             verbose,
         } => handle_clean(path, config, dry_run, verbose)?,
         Commands::DevInstall { skill_id, json } => {
-            let project_root = env::current_dir().unwrap();
+            let project_root =
+                current_project_root(None, || env::current_dir().map_err(Into::into))?;
             use commands::skill::SkillInstallArgs;
             use commands::skill::run_install;
             let args = SkillInstallArgs {
@@ -453,7 +467,7 @@ fn handle_init(
     experimental_tui: bool,
     template: Option<PathBuf>,
 ) -> Result<()> {
-    let project_root = path.unwrap_or_else(|| env::current_dir().unwrap());
+    let project_root = current_project_root(path, || env::current_dir().map_err(Into::into))?;
     print_header();
     if wizard {
         println!(
@@ -494,7 +508,7 @@ struct ApplyArgs {
 }
 
 fn handle_apply(args: ApplyArgs) -> Result<()> {
-    let start_dir = args.path.unwrap_or_else(|| env::current_dir().unwrap());
+    let start_dir = current_project_root(args.path, || env::current_dir().map_err(Into::into))?;
     print_header();
     let config_path = match args.config {
         Some(p) => p,
@@ -620,7 +634,7 @@ fn handle_clean(
     dry_run: bool,
     verbose: bool,
 ) -> Result<()> {
-    let start_dir = path.unwrap_or_else(|| env::current_dir().unwrap());
+    let start_dir = current_project_root(path, || env::current_dir().map_err(Into::into))?;
     print_header();
     let config_path = match config {
         Some(p) => p,
@@ -655,12 +669,23 @@ fn print_header() {
 #[cfg(test)]
 mod tests {
     use super::{
-        Cli, Commands, init_next_steps_lines, render_apply_summary, render_clean_phase,
-        render_clean_summary, render_dry_run_notice, render_gitignore_phase, render_mcp_summary,
-        render_sync_phase,
+        Cli, Commands, current_project_root, init_next_steps_lines, render_apply_summary,
+        render_clean_phase, render_clean_summary, render_dry_run_notice, render_gitignore_phase,
+        render_mcp_summary, render_sync_phase,
     };
     use agentsync::{SyncResult, mcp::McpSyncResult};
     use clap::Parser;
+
+    #[test]
+    fn current_project_root_reports_cwd_errors_with_context() {
+        let error = current_project_root(None, || Err(anyhow::anyhow!("cwd unavailable")))
+            .expect_err("cwd resolution should fail");
+
+        assert_eq!(
+            format!("{error:#}"),
+            "failed to determine current project directory: cwd unavailable"
+        );
+    }
 
     #[test]
     fn test_render_dry_run_notice_is_explicit() {
