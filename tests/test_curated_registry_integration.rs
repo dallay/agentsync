@@ -3,6 +3,17 @@ use agentsync::skills::install::install_from_dir_verified;
 use agentsync::skills::provider::{PinnedProvider, Provider};
 use agentsync::skills::registry::load_curated_registry;
 use std::path::Path;
+
+#[test]
+fn curated_fixture_uses_lf_bytes_for_cross_platform_hashes() {
+    let bytes = std::fs::read("tests/fixtures/curated-skills/valid-skill/SKILL.md")
+        .expect("curated fixture should be readable");
+
+    assert!(
+        !bytes.windows(2).any(|window| window == b"\r\n"),
+        "curated fixture must use LF line endings so its SHA-256 is stable across platforms"
+    );
+}
 use tempfile::TempDir;
 
 #[test]
