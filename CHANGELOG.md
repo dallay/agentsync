@@ -21,6 +21,75 @@
 * **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
 * **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
 
+## [1.47.0](https://github.com/dallay/agentsync/compare/v1.46.3...v1.47.0) (2026-08-02)
+
+
+### Features
+
+* add Claude Desktop MCP server syncing ([91900a9](https://github.com/dallay/agentsync/commit/91900a98ce2e8667929d5b3995a28543d6c12882))
+* add Claude Desktop MCP server syncing ([2c1483e](https://github.com/dallay/agentsync/commit/2c1483e96f5435c092fc863b1ac94cbbeddafaf7))
+* **init:** add --template flag and XDG user config template support ([7039eaa](https://github.com/dallay/agentsync/commit/7039eaa254183d1a5542895443bd86e99905aab9)), closes [#478](https://github.com/dallay/agentsync/issues/478)
+
+
+### Bug Fixes
+
+* address PR review feedback ([963c065](https://github.com/dallay/agentsync/commit/963c0654437f926b7f59d5718af5906149b9eed8))
+* address second round of PR review feedback ([16aafaf](https://github.com/dallay/agentsync/commit/16aafaf523a748b750bc43ad1f2535b7eead5cc1))
+* **ci:** update vulnerable deps and codecov action ([f27bf06](https://github.com/dallay/agentsync/commit/f27bf0659acb1f8584301674c1806306d1ad7e04))
+* **deps:** update dependency sharp to ^0.35.0 [security] ([fa05a66](https://github.com/dallay/agentsync/commit/fa05a66310759ae64c6f623d1ed6ddc57836eb66))
+* **deps:** update dependency sharp to ^0.35.0 [security] ([2a56fcd](https://github.com/dallay/agentsync/commit/2a56fcd236169d8285119f680223a227291f6558))
+* **init:** eliminate env var race in resolve_user_config_path tests ([424fc16](https://github.com/dallay/agentsync/commit/424fc166ee443511341592b24b06b5e46b3d5fa4))
+* **security:** harden skill ID validation and installation paths ([b719ccd](https://github.com/dallay/agentsync/commit/b719ccd44a9404c206d2d84740431c1cee9d887d))
+* **security:** harden skill ID validation and installation paths ([517e39d](https://github.com/dallay/agentsync/commit/517e39d6ec6754ac37d8a8908e0ab395380e5cfe))
+* **security:** prevent symlink following in skill updates ([c479ae4](https://github.com/dallay/agentsync/commit/c479ae430d2ea2a8b028551f57c2403b04e855e0))
+* **security:** prevent symlink following in skill updates ([dea4ed8](https://github.com/dallay/agentsync/commit/dea4ed88dec0ed5a3ba3f650a499815105d29c86))
+
+
+### Performance
+
+* optimize linker caches, allocations, and NestedGlob discovery ([4bf3e6f](https://github.com/dallay/agentsync/commit/4bf3e6f46d84e96c5b0c7aaca10ffb85abff59ea))
+* optimize linker caches, allocations, and NestedGlob discovery ([2344075](https://github.com/dallay/agentsync/commit/2344075178d0b6f7bbfd5fa389b6ab6dd5b600c3))
+* optimize package.json dependency parsing ([aab87fc](https://github.com/dallay/agentsync/commit/aab87fcaac41b5f515993b0583b2499b72f6e4e6))
+* optimize package.json dependency parsing ([f18ba7f](https://github.com/dallay/agentsync/commit/f18ba7f9130d15a5002c041a52b42641eacdcfa1))
+* optimize technology detection performance and memory efficiency ([8dfc25f](https://github.com/dallay/agentsync/commit/8dfc25f1641fa7e8f73fd0e007f75db2662688be))
+* Optimize technology detection performance and memory efficiency ([917bd11](https://github.com/dallay/agentsync/commit/917bd113e308603a9e4f61bd3c6976eb57d2be3b))
+
+
+### Documentation
+
+* add Claude Desktop to MCP guide and configuration reference ([21b437f](https://github.com/dallay/agentsync/commit/21b437fdf0dca55fcf24ce7b1f96638dc132a34f))
+* **journal:** fix formatting in symlink vulnerability entry ([32b2754](https://github.com/dallay/agentsync/commit/32b2754871dfe8d034afec19ac1c0fed1c438da9))
+* update technology detection markers and confidence logic ([32f527f](https://github.com/dallay/agentsync/commit/32f527f34d48db6cbe80ea147400a85edcd6eb62))
+
+
+### Styles
+
+* cargo fmt + update Cargo.lock with dirs dependency ([f05b110](https://github.com/dallay/agentsync/commit/f05b110266028b4f0befebc607568a9c1530cdeb))
+
+
+### Code Refactoring
+
+* **init:** address review findings ([6308c79](https://github.com/dallay/agentsync/commit/6308c79468f80a22269940b7a76a2da42efad856))
+* **mcp:** harden config_path against misuse on global agents ([2197bd8](https://github.com/dallay/agentsync/commit/2197bd8a370191adae889c9450adc98e92bc108a))
+* reduce cognitive complexity across 13 modules ([105c260](https://github.com/dallay/agentsync/commit/105c260cf8b464e6c4bf4dd7960ea0fbd67e4831))
+* reduce cognitive complexity across 13 modules ([377ef4a](https://github.com/dallay/agentsync/commit/377ef4a9c6b81050beb4a551349b6b0d4101d8b4))
+
+
+### Tests
+
+* add unit tests to improve coverage on new code ([4e79990](https://github.com/dallay/agentsync/commit/4e7999020a7c28a2dc24c3f122672d866d9bd525))
+* add unpack_zip/tar, doctor, and install coverage tests ([f13dc19](https://github.com/dallay/agentsync/commit/f13dc1903d8667193a3dffd186bcad63180b47a0))
+* **security:** strengthen symlink skip assertion in update test ([c807735](https://github.com/dallay/agentsync/commit/c807735f47a83f7513bf9d005e8419c2ba80de04))
+
+
+### Chores
+
+* **deps:** bump the npm_and_yarn group across 4 directories with 5 updates ([830db56](https://github.com/dallay/agentsync/commit/830db56a558374928ffe21e1ef2e29fb51a0f158))
+* **deps:** update dependency @iconify/json to v2.2.508 ([c350b77](https://github.com/dallay/agentsync/commit/c350b7739a970096268d986475aec08e4a5de632))
+* **deps:** update dependency @iconify/json to v2.2.508 ([ae6a673](https://github.com/dallay/agentsync/commit/ae6a67347fd68311b72b5dc9b3d32a3ad83a2a8e))
+* fix biome formatting in GitHub rulesets ([ea39d6a](https://github.com/dallay/agentsync/commit/ea39d6a19c22179cbf4f032be6a939445ba409f3))
+* migrate biome schema to 2.4.15 and fix lint issues ([a499745](https://github.com/dallay/agentsync/commit/a499745918123cedb4bf5549c7907f5202a94e54))
+
 ## [1.46.3](https://github.com/dallay/agentsync/compare/v1.46.2...v1.46.3) (2026-05-26)
 
 
