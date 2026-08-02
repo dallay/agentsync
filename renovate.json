@@ -17,7 +17,7 @@
 	},
 	"packageRules": [
 		{
-			"description": "Baseline rule enforcing 3-day minimum release age for all npm and pnpm packages (dependencies, devDependencies, etc.) across all update types.",
+			"description": "Baseline rule enforcing 3-day minimum release age for supported package updates (dependencies, devDependencies, etc.). Note: pnpm-workspace.yaml controls release age validation for lockfile maintenance.",
 			"matchManagers": ["npm", "pnpm"],
 			"minimumReleaseAge": "3 days"
 		},
@@ -57,8 +57,7 @@
 	],
 	"lockFileMaintenance": {
 		"enabled": true,
-		"automerge": true,
-		"minimumReleaseAge": "3 days"
+		"automerge": true
 	},
 	"labels": ["dependencies", "renovate"],
 	"dependencyDashboardTitle": "🔗 Dependency Dashboard"
