@@ -180,7 +180,7 @@ Recommendation metadata now comes from a hybrid catalog model:
 
 - AgentSync ships an **embedded declarative catalog** in the binary, so `skill suggest` still works offline and always has a baseline recommendation source.
 - Providers may expose an **optional catalog overlay**. Valid provider entries extend or override matching embedded entries by stable ids.
-- Invalid provider entries are ignored individually; if provider metadata is missing, unreadable, or invalid at the top level, AgentSync falls back to the embedded catalog.
+- Invalid provider entries are ignored individually; if provider metadata is missing, unreadable, or invalid at the top level, AgentSync falls back to the embedded catalog for recommendations only. Skill-source fallback is never silent: curated entries require local content or an explicit pinned-commit remote policy.
 - A single technology can recommend **multiple skills**. For example, the embedded catalog currently maps `astro` to `frontend-design`, `accessibility`, `performance`, `core-web-vitals`, and `seo`, and maps `github_actions` to both `github-actions` and `pinned-tag`.
 - The schema also supports explicit **combo** entries (multi-technology recommendations). Phase 2 combo evaluation is functional and used to recommend specific skills when multiple technologies (e.g., `react-hook-form` + `zod`) are detected.
 
@@ -339,6 +339,23 @@ That TOML shape is already supported by the catalog model. But the repository wo
 
 ## Skill sources: owned vs external
 
+### Curated registry, provenance, and licenses
+
+Curated install metadata lives separately from recommendation metadata in the versioned
+`registry.v1.toml` and generated `registry.lock.toml`. Each approved entry records its canonical
+provider ID, local runtime ID, source repository, full commit SHA, subpath, expected `SKILL.md`,
+SHA-256 file hashes, SPDX license evidence, validator, and attribution requirement. The installed
+`registry.json` contract remains unchanged; provenance is validated before installation.
+
+Entries with missing or incompatible SPDX evidence are rejected. Dual-licensed content requires a
+reviewed choice and attribution plan. AgentSync does not copy or vendor autoskills, bundles, or
+protected catalog/content; references to external projects are metadata only and must be refreshed
+through an explicit maintainer workflow.
+
+Offline CI uses local fixtures twice and compares outcomes. Mutable remote checks are separate,
+explicitly gated maintainer tests and must use a fixed commit; `HEAD` is never an acceptable
+curated source.
+
 AgentSync resolves skills from two kinds of sources:
 
 ### dallay-owned skills (`dallay/agents-skills`)
@@ -350,7 +367,7 @@ When you install a dallay-owned skill, the CLI resolves it **deterministically**
 ```
 agentsync skill install docker-expert
 → resolves to: dallay/agents-skills/docker-expert
-→ downloads: https://github.com/dallay/agents-skills/archive/HEAD.zip#skills/docker-expert
+→ resolves from the curated registry's pinned commit and verified hash
 ```
 
 In this URL, the `#skills/docker-expert` fragment identifies the `skills/docker-expert` subdirectory inside the downloaded ZIP archive, so the CLI can extract and install just that skill directory.
@@ -366,7 +383,7 @@ Skills maintained by external organizations (Angular, Vercel, Cloudflare, Expo, 
 ```
 agentsync skill install angular-developer
 → resolves to: angular/skills/angular-developer
-→ downloads: https://github.com/angular/skills/archive/HEAD.zip#skills/angular-developer
+→ resolves through the explicit provider fallback policy; curated entries always use a pinned commit
 ```
 
 For skill IDs that don't match the `owner/repo/skill-name` pattern (simple IDs), AgentSync falls back to the skills.sh search API after first checking the catalog.

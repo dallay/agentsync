@@ -1,0 +1,26 @@
+schema_version = "v2"
+
+[entries.bad]
+provider_skill_id = "owner/bad"
+local_skill_id = "bad"
+
+[entries.bad.source]
+repository = "https://github.com/example/skills"
+commit = "0123456789abcdef0123456789abcdef01234567"
+subpath = "skills/bad"
+
+[entries.bad.manifest]
+name = "bad"
+
+[[entries.bad.files]]
+path = "SKILL.md"
+sha256 = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+
+[entries.bad.license]
+spdx = "MIT"
+source = "LICENSE"
+attribution_required = false
+
+[entries.bad.validation]
+status = "approved"
+validator = "agentsync-tests"

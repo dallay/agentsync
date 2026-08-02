@@ -1,4 +1,5 @@
 use agentsync::skills::provider::{Provider, SkillInstallInfo, SkillsShProvider};
+use agentsync::skills::registry::load_curated_registry;
 
 struct DummyProvider;
 
@@ -147,4 +148,53 @@ fn resolve_deterministic_skill_name_with_space_passes_through_unencoded() {
         "https://github.com/angular/angular/archive/HEAD.zip#PR Review"
     );
     assert_eq!(info.format, "zip");
+}
+
+#[test]
+fn pinned_provider_prefers_local_content_and_never_uses_head() {
+    let root = tempfile::TempDir::new().unwrap();
+    std::fs::create_dir_all(root.path().join("valid-skill")).unwrap();
+    let registry = load_curated_registry(std::path::Path::new(
+        "tests/fixtures/curated-skills/registry.v1.toml",
+    ))
+    .unwrap();
+    let provider = agentsync::skills::provider::PinnedProvider::new(registry, root.path());
+    let info = provider.resolve("owner/valid-skill").unwrap();
+    assert_eq!(info.format, "dir");
+    assert!(!info.download_url.contains("HEAD"));
+    assert!(info.download_url.ends_with("valid-skill"));
+}
+
+#[test]
+fn pinned_provider_requires_explicit_fallback() {
+    let registry = load_curated_registry(std::path::Path::new(
+        "tests/fixtures/curated-skills/registry.v1.toml",
+    ))
+    .unwrap();
+    let root = tempfile::TempDir::new().unwrap();
+    let provider = agentsync::skills::provider::PinnedProvider::new(registry, root.path());
+    let error = provider
+        .without_remote_fallback()
+        .resolve("owner/valid-skill")
+        .unwrap_err();
+    assert!(error.to_string().contains("remote fallback is disabled"));
+}
+
+#[test]
+fn pinned_provider_builds_commit_archive_only_when_fallback_is_enabled() {
+    let registry = load_curated_registry(std::path::Path::new(
+        "tests/fixtures/curated-skills/registry.v1.toml",
+    ))
+    .unwrap();
+    let root = tempfile::TempDir::new().unwrap();
+    let provider = agentsync::skills::provider::PinnedProvider::new(registry, root.path());
+    let info = provider
+        .allow_remote_fallback()
+        .resolve("owner/valid-skill")
+        .unwrap();
+    assert!(
+        info.download_url
+            .contains("0123456789abcdef0123456789abcdef0123456a.zip")
+    );
+    assert!(!info.download_url.contains("HEAD"));
 }

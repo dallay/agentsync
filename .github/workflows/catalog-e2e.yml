@@ -11,9 +11,19 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  RUN_E2E: 1
 
 jobs:
+  offline:
+    name: Deterministic offline catalog E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: dtolnay/rust-toolchain@e97d2e8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: stable
+      - name: Run offline fixtures with network disabled
+        run: cargo test --test test_catalog_integration --offline -- --nocapture
+
   catalog-installation:
     name: Verify catalog skill installation
     runs-on: ubuntu-latest
@@ -22,12 +32,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
-      - name: Checkout dallay skills repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          repository: dallay/agents-skills
-          path: vendor/agents-skills
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
@@ -48,12 +52,20 @@ jobs:
 
       - name: Run catalog installation E2E
         env:
-          AGENTSYNC_LOCAL_SKILLS_REPO: ${{ github.workspace }}/vendor/agents-skills
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ ! -d "$AGENTSYNC_LOCAL_SKILLS_REPO" ]; then
-            echo "Expected vendored skills repository at '$AGENTSYNC_LOCAL_SKILLS_REPO', but the directory does not exist."
-            exit 1
-          fi
-
           cargo test --test test_catalog_integration -- --ignored --nocapture
+
+  remote-refresh:
+    name: Explicit opt-in pinned-commit remote E2E
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: dtolnay/rust-toolchain@e97d2e8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: stable
+      - name: Run fixed-commit remote verification only
+        env:
+          RUN_E2E: 1
+        run: cargo test --test test_catalog_integrity -- --nocapture

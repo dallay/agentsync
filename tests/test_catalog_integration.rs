@@ -1,11 +1,9 @@
 //! End-to-end catalog installation verification.
 //!
-//! This suite is intentionally opt-in because it exercises every catalog entry,
-//! including external providers that depend on network availability and third-party
-//! repositories staying valid.
+//! Deterministic offline integration coverage for catalog and curated registry resolution.
 
 use agentsync::skills::catalog::EmbeddedSkillCatalog;
-use agentsync::skills::install::blocking_fetch_and_install_skill;
+use agentsync::skills::install::{blocking_fetch_and_install_skill, install_from_dir};
 use agentsync::skills::provider::{SkillsShProvider, resolve_catalog_install_source};
 use agentsync::skills::registry::read_registry;
 use std::path::Path;
@@ -47,6 +45,21 @@ fn install_with_retry(skill_id: &str, source: &str, target_root: &Path) -> anyho
             )
         }
     }
+}
+
+#[test]
+fn offline_catalog_e2e_is_reproducible() {
+    let source = Path::new("tests/fixtures/curated-skills/valid-skill");
+    let outcomes = (0..2)
+        .map(|_| {
+            let temp = TempDir::new().unwrap();
+            let target = temp.path().join("skills");
+            std::fs::create_dir_all(&target).unwrap();
+            install_from_dir("valid-skill", source, &target).unwrap();
+            std::fs::read(target.join("valid-skill/SKILL.md")).unwrap()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(outcomes[0], outcomes[1]);
 }
 
 #[test]

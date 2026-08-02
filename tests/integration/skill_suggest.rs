@@ -911,6 +911,7 @@ impl Provider for CanonicalOverlayProvider {
                 archive_subpath: None,
                 legacy_local_skill_ids: Vec::new(),
                 install_source: None,
+                registry_entry_id: None,
             }],
             technologies: vec![ProviderCatalogTechnology {
                 id: "rust".to_string(),

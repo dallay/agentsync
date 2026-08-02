@@ -1,5 +1,11 @@
 #[cfg(test)]
+mod install;
+
+#[cfg(test)]
 mod provider;
+
+#[cfg(test)]
+mod registry;
 
 #[cfg(test)]
 mod suggest_catalog;

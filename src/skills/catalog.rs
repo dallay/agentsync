@@ -235,6 +235,7 @@ pub struct CatalogSkillDefinition {
     pub archive_subpath: Option<String>,
     pub legacy_local_skill_ids: Vec<String>,
     pub install_source: Option<String>,
+    pub registry_entry_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -377,6 +378,8 @@ struct RawCatalogSkill {
     legacy_local_skill_ids: Vec<String>,
     #[serde(default)]
     install_source: Option<String>,
+    #[serde(default)]
+    registry_entry_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -419,6 +422,7 @@ impl From<ProviderCatalogMetadata> for RawCatalogDocument {
                     archive_subpath: skill.archive_subpath,
                     legacy_local_skill_ids: skill.legacy_local_skill_ids,
                     install_source: skill.install_source,
+                    registry_entry_id: skill.registry_entry_id,
                 })
                 .collect(),
             technologies: metadata
@@ -927,6 +931,7 @@ fn normalize_skill_definition(raw_skill: &RawCatalogSkill) -> Result<CatalogSkil
         archive_subpath: raw_skill.archive_subpath.clone(),
         legacy_local_skill_ids: raw_skill.legacy_local_skill_ids.clone(),
         install_source: raw_skill.install_source.clone(),
+        registry_entry_id: raw_skill.registry_entry_id.clone(),
     })
 }
 

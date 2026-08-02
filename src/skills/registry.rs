@@ -13,6 +13,201 @@ pub struct Registry {
     pub skills: Option<BTreeMap<String, SkillEntry>>,
 }
 
+/// Versioned metadata describing a curated skill. This is deliberately separate from the
+/// installed `registry.json` contract above.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct RegistryDocument {
+    pub schema_version: String,
+    pub entries: BTreeMap<String, RegistryEntry>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct RegistryEntry {
+    pub provider_skill_id: String,
+    pub local_skill_id: String,
+    pub source: SourcePin,
+    pub manifest: ManifestExpectation,
+    pub files: Vec<FileHash>,
+    pub license: LicenseEvidence,
+    pub validation: ValidationMetadata,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct SourcePin {
+    pub repository: String,
+    pub commit: String,
+    pub subpath: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct FileHash {
+    pub path: String,
+    pub sha256: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct ManifestExpectation {
+    pub name: String,
+    pub version: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct LicenseEvidence {
+    pub spdx: String,
+    pub source: String,
+    pub attribution_required: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct ValidationMetadata {
+    pub status: String,
+    pub validator: String,
+}
+
+/// Load and validate a curated registry document from TOML.
+pub fn load_curated_registry(path: &Path) -> Result<RegistryDocument> {
+    let content = fs::read_to_string(path)
+        .with_context(|| format!("failed to read curated registry: {}", path.display()))?;
+    let registry: RegistryDocument = toml::from_str(&content)
+        .with_context(|| format!("failed to parse curated registry: {}", path.display()))?;
+    validate_curated_registry(&registry)
+        .with_context(|| format!("invalid curated registry: {}", path.display()))?;
+    Ok(registry)
+}
+
+/// Write a deterministic lockfile from a validated registry manifest.
+pub fn sync_curated_registry(manifest_path: &Path, lock_path: &Path) -> Result<()> {
+    let registry = load_curated_registry(manifest_path)?;
+    let body = toml::to_string_pretty(&registry)
+        .context("failed to serialize curated registry lockfile")?;
+    let parent = lock_path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("lockfile path has no parent: {}", lock_path.display()))?;
+    fs::create_dir_all(parent)
+        .with_context(|| format!("failed to create lockfile directory: {}", parent.display()))?;
+    let temporary = lock_path.with_extension("toml.tmp");
+    fs::write(&temporary, body).with_context(|| {
+        format!(
+            "failed to write temporary lockfile: {}",
+            temporary.display()
+        )
+    })?;
+    fs::rename(&temporary, lock_path)
+        .with_context(|| format!("failed to replace lockfile: {}", lock_path.display()))?;
+    Ok(())
+}
+
+/// Validate the metadata needed to resolve a curated entry deterministically.
+pub fn validate_curated_registry(registry: &RegistryDocument) -> Result<()> {
+    anyhow::ensure!(
+        registry.schema_version == "v1",
+        "schema_version: unsupported value `{}` (expected v1)",
+        registry.schema_version
+    );
+    anyhow::ensure!(!registry.entries.is_empty(), "entries: must not be empty");
+
+    for (key, entry) in &registry.entries {
+        anyhow::ensure!(!key.is_empty(), "entries: key must not be empty");
+        anyhow::ensure!(
+            key == &entry.local_skill_id,
+            "entries.{key}.local_skill_id: must match entry key"
+        );
+        anyhow::ensure!(
+            !entry.provider_skill_id.is_empty(),
+            "entries.{key}.provider_skill_id: required"
+        );
+        validate_id(
+            &format!("entries.{key}.local_skill_id"),
+            &entry.local_skill_id,
+        )?;
+        validate_commit(
+            &format!("entries.{key}.source.commit"),
+            &entry.source.commit,
+        )?;
+        validate_safe_path(
+            &format!("entries.{key}.source.subpath"),
+            &entry.source.subpath,
+        )?;
+        anyhow::ensure!(
+            !entry.source.repository.is_empty(),
+            "entries.{key}.source.repository: required"
+        );
+        validate_id(
+            &format!("entries.{key}.manifest.name"),
+            &entry.manifest.name,
+        )?;
+        anyhow::ensure!(
+            !entry.files.is_empty(),
+            "entries.{key}.files: must not be empty"
+        );
+        let mut has_manifest = false;
+        for (index, file) in entry.files.iter().enumerate() {
+            let field = format!("entries.{key}.files[{index}]");
+            validate_safe_path(&format!("{field}.path"), &file.path)?;
+            anyhow::ensure!(
+                is_hex(&file.sha256, 64),
+                "{field}.sha256: expected 64 hexadecimal characters"
+            );
+            has_manifest |= file.path == "SKILL.md";
+        }
+        anyhow::ensure!(has_manifest, "entries.{key}.files: must declare SKILL.md");
+        anyhow::ensure!(
+            !entry.license.spdx.is_empty(),
+            "entries.{key}.license.spdx: required"
+        );
+        anyhow::ensure!(
+            entry.license.spdx != "LicenseRef-Unknown",
+            "entries.{key}.license.spdx: unapproved license"
+        );
+        anyhow::ensure!(
+            !entry.license.source.is_empty(),
+            "entries.{key}.license.source: required"
+        );
+        anyhow::ensure!(
+            entry.validation.status == "approved",
+            "entries.{key}.validation.status: must be approved"
+        );
+        anyhow::ensure!(
+            !entry.validation.validator.is_empty(),
+            "entries.{key}.validation.validator: required"
+        );
+    }
+    Ok(())
+}
+
+fn validate_id(field: &str, value: &str) -> Result<()> {
+    anyhow::ensure!(!value.is_empty(), "{field}: required");
+    anyhow::ensure!(
+        value
+            .bytes()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-'),
+        "{field}: must use lowercase slug characters"
+    );
+    Ok(())
+}
+
+fn validate_commit(field: &str, value: &str) -> Result<()> {
+    anyhow::ensure!(
+        is_hex(value, 40),
+        "{field}: expected full 40-character commit SHA"
+    );
+    Ok(())
+}
+
+fn validate_safe_path(field: &str, value: &str) -> Result<()> {
+    anyhow::ensure!(!value.is_empty(), "{field}: required");
+    anyhow::ensure!(
+        !value.starts_with('/') && !value.split('/').any(|part| part == ".."),
+        "{field}: path must be relative and traversal-free"
+    );
+    Ok(())
+}
+
+fn is_hex(value: &str, length: usize) -> bool {
+    value.len() == length && value.bytes().all(|c| c.is_ascii_hexdigit())
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SkillEntry {
     pub name: Option<String>,

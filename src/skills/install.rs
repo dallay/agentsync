@@ -1,7 +1,9 @@
 use flate2::read::GzDecoder;
 // futures_util::StreamExt is used locally where needed
+use crate::skills::registry::RegistryEntry;
 use anyhow::Error as AnyhowError;
 use reqwest::{Client, Error as ReqwestError};
+use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use tar::Archive;
 use tempfile::TempDir;
@@ -146,6 +148,65 @@ pub fn install_from_dir(
     crate::skills::registry::update_registry_entry(&registry_path, skill_id, entry)
         .map_err(SkillInstallError::Registry)?;
     Ok(())
+}
+
+/// Validate curated metadata in staging before invoking the existing atomic installer.
+pub fn install_from_dir_verified(
+    skill_id: &str,
+    src_dir: &Path,
+    target_root: &Path,
+    expected: &RegistryEntry,
+) -> Result<(), SkillInstallError> {
+    if expected.local_skill_id != skill_id {
+        return Err(SkillInstallError::Validation(format!(
+            "registry local_skill_id `{}` does not match requested skill `{skill_id}`",
+            expected.local_skill_id
+        )));
+    }
+    for file in &expected.files {
+        let relative = Path::new(&file.path);
+        if relative.is_absolute()
+            || relative
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir))
+        {
+            return Err(SkillInstallError::Validation(format!(
+                "unsafe expected path: {}",
+                file.path
+            )));
+        }
+        let path = src_dir.join(relative);
+        let bytes = std::fs::read(&path)
+            .map_err(|e| SkillInstallError::Validation(format!("{}: {e}", file.path)))?;
+        let actual = Sha256::digest(bytes)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        if actual != file.sha256.to_ascii_lowercase() {
+            return Err(SkillInstallError::Validation(format!(
+                "{} sha256 mismatch: expected {}, got {}",
+                file.path, file.sha256, actual
+            )));
+        }
+    }
+    let manifest = crate::skills::manifest::parse_skill_manifest(&src_dir.join("SKILL.md"))?;
+    if manifest.name != expected.manifest.name
+        || manifest.version != expected.manifest.version
+        || manifest.description != expected.manifest.description
+    {
+        return Err(SkillInstallError::Validation(
+            "manifest does not match curated registry metadata".into(),
+        ));
+    }
+    if expected.license.spdx.is_empty()
+        || expected.license.spdx == "LicenseRef-Unknown"
+        || expected.validation.status != "approved"
+    {
+        return Err(SkillInstallError::Validation(
+            "curated registry license or validation policy rejected entry".into(),
+        ));
+    }
+    install_from_dir(skill_id, src_dir, target_root)
 }
 
 pub fn install_from_zip(
