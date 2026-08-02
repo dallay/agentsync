@@ -62,105 +62,101 @@ fn is_fresh(cache: &CheckedVersion) -> bool {
     true
 }
 
-pub fn spawn() {
+fn should_skip_update_check() -> bool {
     let no_check = std::env::var("AGENTSYNC_NO_UPDATE_CHECK")
         .map(|v| v.eq_ignore_ascii_case("1"))
         .unwrap_or(false);
     if no_check {
-        return;
+        return true;
     }
 
     let ci = std::env::var("CI")
         .map(|v| v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
     if ci {
+        return true;
+    }
+
+    !std::io::stderr().is_terminal()
+}
+
+fn fetch_latest_version() -> Option<String> {
+    #[derive(Deserialize)]
+    struct CratesIoResponse {
+        #[serde(rename = "crate")]
+        krate: CrateInfo,
+    }
+
+    #[derive(Deserialize)]
+    struct CrateInfo {
+        #[serde(rename = "newest_version")]
+        newest_version: String,
+    }
+
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+        .ok()?;
+
+    let response = client.get(CRATES_IO_URL).send().ok()?;
+    let info: CratesIoResponse = response.json().ok()?;
+    Some(info.krate.newest_version)
+}
+
+fn check_and_notify() {
+    let cache = Cache { path: cache_path() };
+
+    if cache.load().is_some_and(|c| is_fresh(&c)) {
         return;
     }
 
-    if !std::io::stderr().is_terminal() {
+    let Some(newest_version) = fetch_latest_version() else {
+        return;
+    };
+
+    let Ok(current) = Version::parse(env!("CARGO_PKG_VERSION")) else {
+        return;
+    };
+
+    let Ok(latest) = Version::parse(&newest_version) else {
+        return;
+    };
+
+    if !latest.pre.is_empty() || latest <= current {
+        return;
+    }
+
+    let new_cache = CheckedVersion {
+        last_checked: chrono::Utc::now().timestamp(),
+        latest_version: newest_version.clone(),
+        notified_for_version: Some(newest_version.clone()),
+    };
+
+    if cache.save(&new_cache).is_err() {
+        return;
+    }
+
+    eprintln!(
+        "{} {}",
+        "💡".yellow().bold(),
+        format!(
+            "A new version of agentsync is available: {} (you have {}). Run cargo install agentsync to update.",
+            newest_version.yellow().bold(),
+            env!("CARGO_PKG_VERSION").dimmed()
+        )
+        .yellow()
+        .bold()
+    );
+}
+
+pub fn spawn() {
+    if should_skip_update_check() {
         return;
     }
 
     let _ = thread::Builder::new()
         .name("agentsync-update-check".to_string())
-        .spawn(|| {
-            let path = cache_path();
-            let cache = Cache { path };
-
-            if cache.load().is_some_and(|c| is_fresh(&c)) {
-                return;
-            }
-
-            let client = match reqwest::blocking::Client::builder()
-                .timeout(std::time::Duration::from_secs(3))
-                .build()
-            {
-                Ok(c) => c,
-                Err(_) => return,
-            };
-
-            let response = match client.get(CRATES_IO_URL).send() {
-                Ok(r) => r,
-                Err(_) => return,
-            };
-
-            #[derive(Deserialize)]
-            struct CratesIoResponse {
-                #[serde(rename = "crate")]
-                krate: CrateInfo,
-            }
-
-            #[derive(Deserialize)]
-            struct CrateInfo {
-                #[serde(rename = "newest_version")]
-                newest_version: String,
-            }
-
-            let info: CratesIoResponse = match response.json() {
-                Ok(v) => v,
-                Err(_) => return,
-            };
-
-            let current = match Version::parse(env!("CARGO_PKG_VERSION")) {
-                Ok(v) => v,
-                Err(_) => return,
-            };
-
-            let latest = match Version::parse(&info.krate.newest_version) {
-                Ok(v) => v,
-                Err(_) => return,
-            };
-
-            if !latest.pre.is_empty() {
-                return;
-            }
-
-            if latest <= current {
-                return;
-            }
-
-            let new_cache = CheckedVersion {
-                last_checked: chrono::Utc::now().timestamp(),
-                latest_version: info.krate.newest_version.clone(),
-                notified_for_version: Some(info.krate.newest_version.clone()),
-            };
-
-            if cache.save(&new_cache).is_err() {
-                return;
-            }
-
-            eprintln!(
-                "{} {}",
-                "💡".yellow().bold(),
-                format!(
-                    "A new version of agentsync is available: {} (you have {}). Run cargo install agentsync to update.",
-                    info.krate.newest_version.yellow().bold(),
-                    env!("CARGO_PKG_VERSION").dimmed()
-                )
-                .yellow()
-                .bold()
-            );
-        });
+        .spawn(check_and_notify);
 }
 
 #[cfg(test)]

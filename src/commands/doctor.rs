@@ -16,58 +16,26 @@ pub struct MissingSourceIssue {
     pub path: PathBuf,
 }
 
-pub fn run_doctor(project_root: PathBuf) -> Result<()> {
-    println!("{}", "🩺 Running AgentSync Diagnostic...".bold().cyan());
-
-    let mut issues = 0;
-
-    // 1. Config Loading & Validation
-    let config_path = match agentsync::config::Config::find_config(&project_root) {
-        Ok(path) => {
-            println!(
-                "  {} Found config: {}",
-                "✔".green(),
-                path.display().to_string().dimmed()
-            );
-            path
-        }
-        Err(e) => {
-            println!("  {} Could not find config: {}", "✗".red(), e);
-            return Ok(());
-        }
-    };
-
-    let config = match agentsync::config::Config::load(&config_path) {
-        Ok(c) => {
-            println!("  {} Config loaded successfully", "✔".green());
-            c
-        }
-        Err(e) => {
-            println!("  {} Failed to parse config: {}", "✗".red(), e);
-            return Ok(());
-        }
-    };
-
-    let linker = Linker::new(config, config_path.clone());
-    let source_dir = linker.config().source_dir(&config_path);
-
-    // 2. Source Directory Check
+fn check_source_directory(source_dir: &Path) -> usize {
     if !source_dir.exists() {
         println!(
             "  {} Source directory does not exist: {}",
             "✗".red(),
             source_dir.display()
         );
-        issues += 1;
+        1
     } else {
         println!(
             "  {} Source directory exists: {}",
             "✔".green(),
             source_dir.display().to_string().dimmed()
         );
+        0
     }
+}
 
-    // 3. Target Source Existence Check
+fn check_target_sources(linker: &Linker, source_dir: &Path) -> usize {
+    let mut issues = 0;
     let mut missing_targets = 0;
     for (agent_name, agent) in &linker.config().agents {
         if !agent.enabled {
@@ -86,7 +54,7 @@ pub fn run_doctor(project_root: PathBuf) -> Result<()> {
             }
 
             for missing in collect_missing_sources(
-                &source_dir,
+                source_dir,
                 linker.project_root(),
                 agent_name,
                 target_name,
@@ -116,7 +84,7 @@ pub fn run_doctor(project_root: PathBuf) -> Result<()> {
 
             if let Some(mismatch) = collect_skills_mode_mismatch(
                 linker.project_root(),
-                &source_dir,
+                source_dir,
                 agent_name,
                 target_name,
                 target,
@@ -129,9 +97,12 @@ pub fn run_doctor(project_root: PathBuf) -> Result<()> {
     if missing_targets == 0 {
         println!("  {} All target sources exist", "✔".green());
     }
+    issues
+}
 
-    // 4. Destination Path Conflict Check
-    let mut destinations: Vec<(String, String, String)> = Vec::new(); // (path, agent, target)
+fn check_destination_conflicts(linker: &Linker) -> usize {
+    let mut issues = 0;
+    let mut destinations: Vec<(String, String, String)> = Vec::new();
     for (agent_name, agent) in &linker.config().agents {
         if !agent.enabled {
             continue;
@@ -141,8 +112,7 @@ pub fn run_doctor(project_root: PathBuf) -> Result<()> {
         }
     }
 
-    let conflict_results = validate_destinations(&destinations);
-    for conflict in conflict_results {
+    for conflict in validate_destinations(&destinations) {
         match conflict {
             Conflict::Duplicate(dest) => {
                 println!(
@@ -165,117 +135,172 @@ pub fn run_doctor(project_root: PathBuf) -> Result<()> {
             }
         }
     }
+    issues
+}
 
-    // 5. MCP Server Audit
-    if linker.config().mcp.enabled {
-        for (name, server) in &linker.config().mcp_servers {
-            if server.disabled {
-                continue;
-            }
-            if let Some(cmd) = &server.command {
-                if !command_exists(cmd) {
-                    println!(
-                        "  {} MCP server {} command not found in PATH: {}",
-                        "✗".red(),
-                        name.bold(),
-                        cmd.bold()
-                    );
-                    issues += 1;
-                } else {
-                    println!(
-                        "  {} MCP server {} command executable: {}",
-                        "✔".green(),
-                        name.bold(),
-                        cmd.dimmed()
-                    );
-                }
+fn check_mcp_servers(linker: &Linker) -> usize {
+    let mut issues = 0;
+    if !linker.config().mcp.enabled {
+        return 0;
+    }
+    for (name, server) in &linker.config().mcp_servers {
+        if server.disabled {
+            continue;
+        }
+        if let Some(cmd) = &server.command {
+            if !command_exists(cmd) {
+                println!(
+                    "  {} MCP server {} command not found in PATH: {}",
+                    "✗".red(),
+                    name.bold(),
+                    cmd.bold()
+                );
+                issues += 1;
             } else {
                 println!(
-                    "  {} MCP server {} has no command configured (not audited)",
-                    "ℹ".blue(),
-                    name.bold()
+                    "  {} MCP server {} command executable: {}",
+                    "✔".green(),
+                    name.bold(),
+                    cmd.dimmed()
                 );
             }
+        } else {
+            println!(
+                "  {} MCP server {} has no command configured (not audited)",
+                "ℹ".blue(),
+                name.bold()
+            );
         }
     }
+    issues
+}
 
-    // 6. .gitignore Audit
+fn check_gitignore(linker: &Linker) -> usize {
     let gitignore_path = linker.project_root().join(".gitignore");
-    if gitignore_path.exists() {
-        match fs::read_to_string(&gitignore_path) {
-            Ok(content) => {
-                let marker = &linker.config().gitignore.marker;
-                let (start_marker, end_marker) = agentsync::gitignore::managed_markers(marker);
-                let (has_start_marker, has_end_marker) =
-                    parse_markers(&content, &start_marker, &end_marker);
-                let has_managed_section = has_start_marker && has_end_marker;
-
-                if gitignore_missing_section_is_issue(
-                    linker.config().gitignore.enabled,
-                    &content,
-                    &start_marker,
-                    &end_marker,
-                ) {
-                    println!(
-                        "  {} .gitignore managed section missing (Marker: {})",
-                        "⚠".yellow(),
-                        marker
-                    );
-                    issues += 1;
-                } else if has_managed_section {
-                    // Audit entries
-                    let managed_entries =
-                        extract_managed_entries(&content, &start_marker, &end_marker);
-                    let required_entries: HashSet<String> = linker
-                        .config()
-                        .all_gitignore_entries()
-                        .into_iter()
-                        .collect();
-                    let actual_entries: HashSet<String> = managed_entries.into_iter().collect();
-
-                    let missing: Vec<_> = required_entries.difference(&actual_entries).collect();
-                    let extra: Vec<_> = actual_entries.difference(&required_entries).collect();
-
-                    if !missing.is_empty() {
-                        println!(
-                            "  {} .gitignore missing {} managed entries",
-                            "✗".red(),
-                            missing.len()
-                        );
-                        for m in &missing {
-                            println!("    - {}", m);
-                        }
-                        issues += 1;
-                    }
-                    if !extra.is_empty() {
-                        println!(
-                            "  {} .gitignore has {} extra entries in managed section",
-                            "⚠".yellow(),
-                            extra.len()
-                        );
-                        issues += 1;
-                    }
-
-                    if missing.is_empty() && extra.is_empty() {
-                        println!("  {} .gitignore managed section is up to date", "✔".green());
-                    }
-                }
-            }
-            Err(e) => {
-                println!("  {} Failed to read .gitignore: {}", "✗".red(), e);
-                issues += 1;
-            }
+    if !gitignore_path.exists() {
+        if linker.config().gitignore.enabled {
+            println!("  {} .gitignore file not found", "⚠".yellow());
+            return 1;
         }
-    } else if linker.config().gitignore.enabled {
-        println!("  {} .gitignore file not found", "⚠".yellow());
+        return 0;
+    }
+
+    let content = match fs::read_to_string(&gitignore_path) {
+        Ok(c) => c,
+        Err(e) => {
+            println!("  {} Failed to read .gitignore: {}", "✗".red(), e);
+            return 1;
+        }
+    };
+
+    let mut issues = 0;
+    let marker = &linker.config().gitignore.marker;
+    let (start_marker, end_marker) = agentsync::gitignore::managed_markers(marker);
+    let (has_start_marker, has_end_marker) = parse_markers(&content, &start_marker, &end_marker);
+
+    if gitignore_missing_section_is_issue(
+        linker.config().gitignore.enabled,
+        &content,
+        &start_marker,
+        &end_marker,
+    ) {
+        println!(
+            "  {} .gitignore managed section missing (Marker: {})",
+            "⚠".yellow(),
+            marker
+        );
+        return 1;
+    }
+
+    if !(has_start_marker && has_end_marker) {
+        return 0;
+    }
+
+    let managed_entries = extract_managed_entries(&content, &start_marker, &end_marker);
+    let required_entries: HashSet<String> = linker
+        .config()
+        .all_gitignore_entries()
+        .into_iter()
+        .collect();
+    let actual_entries: HashSet<String> = managed_entries.into_iter().collect();
+
+    let missing: Vec<_> = required_entries.difference(&actual_entries).collect();
+    let extra: Vec<_> = actual_entries.difference(&required_entries).collect();
+
+    if !missing.is_empty() {
+        println!(
+            "  {} .gitignore missing {} managed entries",
+            "✗".red(),
+            missing.len()
+        );
+        for m in &missing {
+            println!("    - {}", m);
+        }
+        issues += 1;
+    }
+    if !extra.is_empty() {
+        println!(
+            "  {} .gitignore has {} extra entries in managed section",
+            "⚠".yellow(),
+            extra.len()
+        );
         issues += 1;
     }
 
-    // 7. Unmanaged Claude Skills Check
+    if missing.is_empty() && extra.is_empty() {
+        println!("  {} .gitignore managed section is up to date", "✔".green());
+    }
+    issues
+}
+
+fn check_unmanaged_skills(linker: &Linker) -> usize {
     if let Some(warning) = check_unmanaged_claude_skills(linker.project_root(), linker.config()) {
         println!("  {} {}", "⚠".yellow(), warning);
-        issues += 1;
+        1
+    } else {
+        0
     }
+}
+
+pub fn run_doctor(project_root: PathBuf) -> Result<()> {
+    println!("{}", "🩺 Running AgentSync Diagnostic...".bold().cyan());
+
+    let config_path = match agentsync::config::Config::find_config(&project_root) {
+        Ok(path) => {
+            println!(
+                "  {} Found config: {}",
+                "✔".green(),
+                path.display().to_string().dimmed()
+            );
+            path
+        }
+        Err(e) => {
+            println!("  {} Could not find config: {}", "✗".red(), e);
+            return Ok(());
+        }
+    };
+
+    let config = match agentsync::config::Config::load(&config_path) {
+        Ok(c) => {
+            println!("  {} Config loaded successfully", "✔".green());
+            c
+        }
+        Err(e) => {
+            println!("  {} Failed to parse config: {}", "✗".red(), e);
+            return Ok(());
+        }
+    };
+
+    let linker = Linker::new(config, config_path.clone());
+    let source_dir = linker.config().source_dir(&config_path);
+
+    let mut issues = 0;
+    issues += check_source_directory(&source_dir);
+    issues += check_target_sources(&linker, &source_dir);
+    issues += check_destination_conflicts(&linker);
+    issues += check_mcp_servers(&linker);
+    issues += check_gitignore(&linker);
+    issues += check_unmanaged_skills(&linker);
 
     if issues == 0 {
         println!("\n{}", "✨ All systems go! No issues found.".green().bold());

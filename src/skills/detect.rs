@@ -132,41 +132,13 @@ impl RepoMetadata {
 
             let relative_buf = relative.to_path_buf();
 
-            if entry.file_type().is_dir() && entry.depth() == 1 {
-                root_dirs.push(relative_buf.clone());
-            }
-            if entry.file_type().is_dir() {
-                dirs.insert(relative_buf.clone());
-            }
+            Self::process_dir_entry(&entry, &relative_buf, &mut root_dirs, &mut dirs);
 
             if entry.file_type().is_file() {
-                let file_name = entry.file_name().to_str().unwrap_or("");
-
-                // Integrated Nested Project Discovery (issue #409)
-                if PROJECT_MANIFEST_FILES.contains(&file_name)
-                    && let Some(dir) = relative.parent()
-                    && !dir.as_os_str().is_empty()
-                {
-                    let dir_name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                    if !TEST_DIR_NAMES.contains(&dir_name) {
-                        nested_projects.insert(dir.to_path_buf());
-                    }
-                }
-
-                if let Some(ext) = relative.extension().and_then(|e| e.to_str()) {
-                    // Optimization: Skip string formatting and map insertions if extension already recorded.
-                    if !extensions.contains_key(ext) {
-                        let dot_ext = format!(".{ext}");
-                        // Store first occurrence for deterministic evidence.
-                        // Note: WalkDir sort_by_file_name() ensures deterministic choice if multiple exist.
-                        extensions.insert(dot_ext, relative_buf.clone());
-                        extensions.insert(ext.to_string(), relative_buf.clone());
-                    }
-                }
+                Self::check_nested_project(relative, &mut nested_projects);
+                Self::record_extension(relative, &relative_buf, &mut extensions);
             }
 
-            // Optimization: Move the owned relative_buf into the paths set at the end
-            // of the iteration to avoid a clone() call for every file and directory.
             paths.insert(relative_buf);
         }
 
@@ -177,6 +149,51 @@ impl RepoMetadata {
             extensions,
             nested_projects: nested_projects.into_iter().collect(),
         }
+    }
+
+    fn process_dir_entry(
+        entry: &walkdir::DirEntry,
+        relative_buf: &Path,
+        root_dirs: &mut Vec<PathBuf>,
+        dirs: &mut HashSet<PathBuf>,
+    ) {
+        if entry.file_type().is_dir() {
+            if entry.depth() == 1 {
+                root_dirs.push(relative_buf.to_path_buf());
+            }
+            dirs.insert(relative_buf.to_path_buf());
+        }
+    }
+
+    fn check_nested_project(relative: &Path, nested_projects: &mut BTreeSet<PathBuf>) {
+        let file_name = relative.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if !PROJECT_MANIFEST_FILES.contains(&file_name) {
+            return;
+        }
+        let Some(dir) = relative.parent() else { return };
+        if dir.as_os_str().is_empty() {
+            return;
+        }
+        let dir_name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if !TEST_DIR_NAMES.contains(&dir_name) {
+            nested_projects.insert(dir.to_path_buf());
+        }
+    }
+
+    fn record_extension(
+        relative: &Path,
+        relative_buf: &Path,
+        extensions: &mut HashMap<String, PathBuf>,
+    ) {
+        let Some(ext) = relative.extension().and_then(|e| e.to_str()) else {
+            return;
+        };
+        if extensions.contains_key(ext) {
+            return;
+        }
+        let dot_ext = format!(".{ext}");
+        extensions.insert(dot_ext, relative_buf.to_path_buf());
+        extensions.insert(ext.to_string(), relative_buf.to_path_buf());
     }
 }
 
@@ -367,62 +384,61 @@ impl RepoDetector for CatalogDrivenDetector {
         }
 
         // Phase 2: Scan nested projects (issue #409)
-        for rel_nested_dir in &metadata.nested_projects {
-            let nested_dir = project_root.join(rel_nested_dir);
-            let nested_meta = RepoMetadata::collect(&nested_dir);
-            let nested_pkgs = collect_package_names(&nested_dir, &nested_meta, cache);
-
-            let offset = Some(rel_nested_dir.to_path_buf());
-
-            for (tech_id, compiled) in &self.rules {
-                // Skip if already detected at root
-                if detections.iter().any(|d| d.technology == *tech_id) {
-                    continue;
-                }
-
-                if let Some(detection) = evaluate_rules(
-                    &nested_dir,
-                    tech_id,
-                    compiled,
-                    &nested_pkgs,
-                    &nested_meta,
-                    cache,
-                ) {
-                    // Adjust paths: detections are relative to nested_dir, need to prepend offset
-                    let adjusted = TechnologyDetection {
-                        technology: detection.technology,
-                        confidence: detection.confidence,
-                        root_relative_paths: detection
-                            .root_relative_paths
-                            .iter()
-                            .map(|p| {
-                                if let Some(ref off) = offset {
-                                    off.join(p)
-                                } else {
-                                    p.clone()
-                                }
-                            })
-                            .collect(),
-                        evidence: detection
-                            .evidence
-                            .iter()
-                            .map(|e| DetectionEvidence {
-                                marker: e.marker.clone(),
-                                path: if let Some(ref off) = offset {
-                                    off.join(&e.path)
-                                } else {
-                                    e.path.clone()
-                                },
-                                notes: e.notes.clone(),
-                            })
-                            .collect(),
-                    };
-                    detections.push(adjusted);
-                }
-            }
-        }
+        detect_nested_projects(project_root, &metadata, &self.rules, cache, &mut detections);
 
         Ok(detections)
+    }
+}
+
+fn detect_nested_projects(
+    project_root: &Path,
+    metadata: &RepoMetadata,
+    rules: &[(TechnologyId, CompiledDetectionRules)],
+    cache: &mut ContentCache,
+    detections: &mut Vec<TechnologyDetection>,
+) {
+    for rel_nested_dir in &metadata.nested_projects {
+        let nested_dir = project_root.join(rel_nested_dir);
+        let nested_meta = RepoMetadata::collect(&nested_dir);
+        let nested_pkgs = collect_package_names(&nested_dir, &nested_meta, cache);
+
+        for (tech_id, compiled) in rules {
+            if detections.iter().any(|d| d.technology == *tech_id) {
+                continue;
+            }
+
+            if let Some(detection) = evaluate_rules(
+                &nested_dir,
+                tech_id,
+                compiled,
+                &nested_pkgs,
+                &nested_meta,
+                cache,
+            ) {
+                detections.push(adjust_detection(detection, rel_nested_dir));
+            }
+        }
+    }
+}
+
+fn adjust_detection(detection: TechnologyDetection, offset: &Path) -> TechnologyDetection {
+    TechnologyDetection {
+        technology: detection.technology,
+        confidence: detection.confidence,
+        root_relative_paths: detection
+            .root_relative_paths
+            .iter()
+            .map(|p| offset.join(p))
+            .collect(),
+        evidence: detection
+            .evidence
+            .iter()
+            .map(|e| DetectionEvidence {
+                marker: e.marker.clone(),
+                path: offset.join(&e.path),
+                notes: e.notes.clone(),
+            })
+            .collect(),
     }
 }
 
@@ -434,88 +450,128 @@ fn evaluate_rules(
     metadata: &RepoMetadata,
     cache: &mut ContentCache,
 ) -> Option<TechnologyDetection> {
-    // Check packages (exact match)
-    if let Some(packages) = &rules.packages {
-        for package in packages {
-            if all_packages.contains(package) {
+    if let Some(d) = check_exact_packages(tech_id, rules, all_packages) {
+        return Some(d);
+    }
+    if let Some(d) = check_package_patterns(tech_id, rules, all_packages) {
+        return Some(d);
+    }
+    if let Some(d) = check_config_files(tech_id, rules, project_root, metadata) {
+        return Some(d);
+    }
+    if let Some(d) = check_config_file_content(tech_id, rules, project_root, metadata, cache) {
+        return Some(d);
+    }
+    check_file_extensions(tech_id, rules, metadata)
+}
+
+fn check_exact_packages(
+    tech_id: &TechnologyId,
+    rules: &CompiledDetectionRules,
+    all_packages: &BTreeSet<String>,
+) -> Option<TechnologyDetection> {
+    let packages = rules.packages.as_ref()?;
+    for package in packages {
+        if all_packages.contains(package) {
+            return Some(make_detection(
+                tech_id,
+                DetectionConfidence::High,
+                package,
+                &format!("package '{package}' found in dependencies"),
+            ));
+        }
+    }
+    None
+}
+
+fn check_package_patterns(
+    tech_id: &TechnologyId,
+    rules: &CompiledDetectionRules,
+    all_packages: &BTreeSet<String>,
+) -> Option<TechnologyDetection> {
+    let patterns = rules.package_patterns.as_ref()?;
+    for regex in patterns {
+        for package in all_packages {
+            if regex.is_match(package) {
                 return Some(make_detection(
                     tech_id,
-                    DetectionConfidence::High,
+                    DetectionConfidence::Medium,
                     package,
-                    &format!("package '{package}' found in dependencies"),
+                    &format!("package '{package}' matches pattern '{regex}'"),
                 ));
             }
         }
     }
+    None
+}
 
-    // Check package_patterns (regex match)
-    if let Some(patterns) = &rules.package_patterns {
-        for regex in patterns {
-            for package in all_packages {
-                if regex.is_match(package) {
-                    return Some(make_detection(
-                        tech_id,
-                        DetectionConfidence::Medium,
-                        package,
-                        &format!("package '{package}' matches pattern '{regex}'"),
-                    ));
-                }
-            }
+fn check_config_files(
+    tech_id: &TechnologyId,
+    rules: &CompiledDetectionRules,
+    project_root: &Path,
+    metadata: &RepoMetadata,
+) -> Option<TechnologyDetection> {
+    let config_files = rules.config_files.as_ref()?;
+    for path in config_files {
+        if metadata.paths.contains(path) || project_root.join(path).exists() {
+            let display = path.display().to_string();
+            return Some(make_detection(
+                tech_id,
+                DetectionConfidence::High,
+                &display,
+                &format!("config file '{}' exists", display),
+            ));
         }
     }
+    None
+}
 
-    // Check config_files (existence)
-    if let Some(config_files) = &rules.config_files {
-        for path in config_files {
-            // Check cache first (hot path for shallow markers), fallback to fs for deeply nested ones
-            if metadata.paths.contains(path) || project_root.join(path).exists() {
-                let display = path.display().to_string();
-                return Some(make_detection(
-                    tech_id,
-                    DetectionConfidence::High,
-                    &display,
-                    &format!("config file '{}' exists", display),
-                ));
-            }
-        }
-    }
-
-    // Check config_file_content (read files, search patterns)
-    if let Some(content_rules) = &rules.config_file_content {
-        let files_to_scan = gather_content_scan_files(project_root, content_rules, metadata);
-        for file_path in &files_to_scan {
-            let absolute = project_root.join(file_path);
-            if let Some(content) = get_file_content(&absolute, cache) {
-                for pattern in &content_rules.patterns {
-                    if pattern.is_match(&content) {
-                        let display = file_path.display().to_string();
-                        return Some(make_detection(
-                            tech_id,
-                            DetectionConfidence::Medium,
-                            &display,
-                            &format!("pattern '{}' found in '{}'", pattern, display),
-                        ));
-                    }
-                }
-            }
-        }
-    }
-
-    // Check file_extensions (lookup in metadata)
-    if let Some(extensions) = &rules.file_extensions {
-        for ext in extensions {
-            if let Some(path) = metadata.extensions.get(ext) {
-                let display = path.display().to_string();
+fn check_config_file_content(
+    tech_id: &TechnologyId,
+    rules: &CompiledDetectionRules,
+    project_root: &Path,
+    metadata: &RepoMetadata,
+    cache: &mut ContentCache,
+) -> Option<TechnologyDetection> {
+    let content_rules = rules.config_file_content.as_ref()?;
+    let files_to_scan = gather_content_scan_files(project_root, content_rules, metadata);
+    for file_path in &files_to_scan {
+        let absolute = project_root.join(file_path);
+        let Some(content) = get_file_content(&absolute, cache) else {
+            continue;
+        };
+        for pattern in &content_rules.patterns {
+            if pattern.is_match(&content) {
+                let display = file_path.display().to_string();
                 return Some(make_detection(
                     tech_id,
                     DetectionConfidence::Medium,
                     &display,
-                    &format!("file with extension '{ext}' found"),
+                    &format!("pattern '{}' found in '{}'", pattern, display),
                 ));
             }
         }
     }
+    None
+}
 
+fn check_file_extensions(
+    tech_id: &TechnologyId,
+    rules: &CompiledDetectionRules,
+    metadata: &RepoMetadata,
+) -> Option<TechnologyDetection> {
+    let extensions = rules.file_extensions.as_ref()?;
+    for ext in extensions {
+        if let Some(path) = metadata.extensions.get(ext) {
+            let display = path.display().to_string();
+            return Some(make_detection(
+                tech_id,
+                DetectionConfidence::Medium,
+                &display,
+                &format!("file with extension '{ext}' found"),
+            ));
+        }
+    }
     None
 }
 
@@ -546,43 +602,53 @@ fn gather_content_scan_files(
     let mut files = Vec::new();
 
     if rules.scan_gradle_layout {
-        // Root-level Gradle files
-        for name in &[
-            "build.gradle.kts",
-            "build.gradle",
-            "settings.gradle.kts",
-            "settings.gradle",
-            "gradle/libs.versions.toml",
-        ] {
-            let path = PathBuf::from(name);
+        gather_gradle_files(metadata, &mut files);
+    }
+
+    if let Some(explicit_files) = &rules.files {
+        gather_explicit_files(project_root, explicit_files, metadata, &mut files);
+    }
+
+    files
+}
+
+fn gather_gradle_files(metadata: &RepoMetadata, files: &mut Vec<PathBuf>) {
+    for name in &[
+        "build.gradle.kts",
+        "build.gradle",
+        "settings.gradle.kts",
+        "settings.gradle",
+        "gradle/libs.versions.toml",
+    ] {
+        let path = PathBuf::from(name);
+        if metadata.paths.contains(&path) {
+            files.push(path);
+        }
+    }
+
+    for dir in &metadata.root_dirs {
+        for build_file in &["build.gradle.kts", "build.gradle"] {
+            let path = dir.join(build_file);
             if metadata.paths.contains(&path) {
                 files.push(path);
             }
         }
+    }
+}
 
-        // Optimization: Use pre-calculated root_dirs from metadata to avoid
-        // re-filtering the entire directory set on every tech rule evaluation.
-        for dir in &metadata.root_dirs {
-            for build_file in &["build.gradle.kts", "build.gradle"] {
-                let path = dir.join(build_file);
-                if metadata.paths.contains(&path) {
-                    files.push(path);
-                }
-            }
+fn gather_explicit_files(
+    project_root: &Path,
+    explicit_files: &[PathBuf],
+    metadata: &RepoMetadata,
+    files: &mut Vec<PathBuf>,
+) {
+    for path in explicit_files {
+        if (metadata.paths.contains(path) || project_root.join(path).exists())
+            && !files.contains(path)
+        {
+            files.push(path.clone());
         }
     }
-
-    if let Some(explicit_files) = &rules.files {
-        for path in explicit_files {
-            if (metadata.paths.contains(path) || project_root.join(path).exists())
-                && !files.contains(path)
-            {
-                files.push(path.clone());
-            }
-        }
-    }
-
-    files
 }
 
 // ---------------------------------------------------------------------------
@@ -767,43 +833,52 @@ fn parse_pyproject_toml_deps(path: &Path, cache: &mut ContentCache) -> Option<BT
     let value: toml::Value = toml::from_str(&content).ok()?;
     let mut deps = BTreeSet::new();
 
-    if let Some(project) = value.get("project").and_then(|v| v.as_table()) {
-        if let Some(dependencies) = project.get("dependencies").and_then(|v| v.as_array()) {
-            collect_python_dependency_array(dependencies, &mut deps);
-        }
-        if let Some(optional) = project
-            .get("optional-dependencies")
-            .and_then(|v| v.as_table())
-        {
-            for dependencies in optional.values().filter_map(|v| v.as_array()) {
-                collect_python_dependency_array(dependencies, &mut deps);
-            }
+    collect_pep621_deps(&value, &mut deps);
+    collect_poetry_deps(&value, &mut deps);
+
+    Some(deps)
+}
+
+fn collect_pep621_deps(value: &toml::Value, deps: &mut BTreeSet<String>) {
+    let Some(project) = value.get("project").and_then(|v| v.as_table()) else {
+        return;
+    };
+    if let Some(dependencies) = project.get("dependencies").and_then(|v| v.as_array()) {
+        collect_python_dependency_array(dependencies, deps);
+    }
+    if let Some(optional) = project
+        .get("optional-dependencies")
+        .and_then(|v| v.as_table())
+    {
+        for dependencies in optional.values().filter_map(|v| v.as_array()) {
+            collect_python_dependency_array(dependencies, deps);
         }
     }
+}
 
-    if let Some(poetry) = value
+fn collect_poetry_deps(value: &toml::Value, deps: &mut BTreeSet<String>) {
+    let Some(poetry) = value
         .get("tool")
         .and_then(|v| v.get("poetry"))
         .and_then(|v| v.as_table())
-    {
-        if let Some(dependencies) = poetry.get("dependencies").and_then(|v| v.as_table()) {
-            collect_python_dependency_table(dependencies, &mut deps);
-        }
-        if let Some(group) = poetry.get("group").and_then(|v| v.as_table()) {
-            for dependencies in group.values().filter_map(|group| {
-                group
-                    .get("dependencies")
-                    .and_then(|dependencies| dependencies.as_table())
-            }) {
-                collect_python_dependency_table(dependencies, &mut deps);
-            }
-        }
-        if let Some(dev_dependencies) = poetry.get("dev-dependencies").and_then(|v| v.as_table()) {
-            collect_python_dependency_table(dev_dependencies, &mut deps);
+    else {
+        return;
+    };
+    if let Some(dependencies) = poetry.get("dependencies").and_then(|v| v.as_table()) {
+        collect_python_dependency_table(dependencies, deps);
+    }
+    if let Some(group) = poetry.get("group").and_then(|v| v.as_table()) {
+        for dependencies in group.values().filter_map(|group| {
+            group
+                .get("dependencies")
+                .and_then(|dependencies| dependencies.as_table())
+        }) {
+            collect_python_dependency_table(dependencies, deps);
         }
     }
-
-    Some(deps)
+    if let Some(dev_dependencies) = poetry.get("dev-dependencies").and_then(|v| v.as_table()) {
+        collect_python_dependency_table(dev_dependencies, deps);
+    }
 }
 
 fn parse_pipfile_deps(path: &Path, cache: &mut ContentCache) -> Option<BTreeSet<String>> {
@@ -935,7 +1010,6 @@ fn expand_workspace_patterns(
     let mut dirs = Vec::new();
 
     for pattern in patterns {
-        // Strip trailing /* or /** for simple glob expansion
         let base = pattern
             .trim_end_matches("/**")
             .trim_end_matches("/*")
@@ -944,28 +1018,42 @@ fn expand_workspace_patterns(
         let base_rel = Path::new(base);
 
         if pattern.contains('*') {
-            // Glob: use cached directories from metadata to find workspace members
-            // avoiding redundant O(N) filesystem walks.
-            for dir_rel in &metadata.dirs {
-                if dir_rel.parent() == Some(base_rel) {
-                    // Optimization: Defer the PathBuf join of "package.json" until after
-                    // verifying the directory is a child of the workspace base.
-                    let manifest = dir_rel.join("package.json");
-                    if metadata.paths.contains(&manifest) || project_root.join(&manifest).exists() {
-                        dirs.push(project_root.join(dir_rel));
-                    }
-                }
-            }
+            expand_glob_workspace(project_root, base_rel, metadata, &mut dirs);
         } else {
-            // Exact path: check cache first, then fall back to filesystem existence.
-            let manifest = base_rel.join("package.json");
-            if metadata.paths.contains(&manifest) || project_root.join(&manifest).exists() {
-                dirs.push(project_root.join(base_rel));
-            }
+            expand_exact_workspace(project_root, base_rel, metadata, &mut dirs);
         }
     }
 
     dirs
+}
+
+fn expand_glob_workspace(
+    project_root: &Path,
+    base_rel: &Path,
+    metadata: &RepoMetadata,
+    dirs: &mut Vec<PathBuf>,
+) {
+    for dir_rel in &metadata.dirs {
+        if dir_rel.parent() != Some(base_rel) {
+            continue;
+        }
+        let manifest = dir_rel.join("package.json");
+        if metadata.paths.contains(&manifest) || project_root.join(&manifest).exists() {
+            dirs.push(project_root.join(dir_rel));
+        }
+    }
+}
+
+fn expand_exact_workspace(
+    project_root: &Path,
+    base_rel: &Path,
+    metadata: &RepoMetadata,
+    dirs: &mut Vec<PathBuf>,
+) {
+    let manifest = base_rel.join("package.json");
+    if metadata.paths.contains(&manifest) || project_root.join(&manifest).exists() {
+        dirs.push(project_root.join(base_rel));
+    }
 }
 
 /// Collects package names including from nested projects.

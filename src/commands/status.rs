@@ -467,6 +467,68 @@ fn validate_symlink_entry(
     }
 }
 
+fn collect_child_issues(child_status: &StatusChildEntry, issues: &mut Vec<StatusIssue>) {
+    if !child_status.exists {
+        issues.push(StatusIssue {
+            kind: StatusIssueKind::MissingExpectedChild,
+            path: child_status.path.clone(),
+            expected: Some(child_status.expected_source.clone()),
+            actual: None,
+        });
+    } else if !child_status.is_symlink {
+        issues.push(StatusIssue {
+            kind: StatusIssueKind::ChildNotSymlink,
+            path: child_status.path.clone(),
+            expected: Some(child_status.expected_source.clone()),
+            actual: None,
+        });
+    } else if let Some(actual) = child_status.points_to.as_ref()
+        && !paths_match(
+            Path::new(&child_status.path),
+            Path::new(actual),
+            Path::new(&child_status.expected_source),
+        )
+    {
+        issues.push(StatusIssue {
+            kind: StatusIssueKind::IncorrectLinkTarget,
+            path: child_status.path.clone(),
+            expected: Some(child_status.expected_source.clone()),
+            actual: Some(actual.clone()),
+        });
+    }
+}
+
+fn validate_children_directory(
+    destination: &Path,
+    destination_kind: DestinationKind,
+    exists: bool,
+    children: Vec<SymlinkContentsChildExpectation>,
+    issues: &mut Vec<StatusIssue>,
+    managed_children: &mut Vec<StatusChildEntry>,
+) {
+    if !exists {
+        issues.push(StatusIssue {
+            kind: StatusIssueKind::MissingDestination,
+            path: display_path(destination),
+            expected: Some("directory".to_string()),
+            actual: None,
+        });
+    } else if destination_kind != DestinationKind::Directory {
+        issues.push(StatusIssue {
+            kind: StatusIssueKind::InvalidDestinationType,
+            path: display_path(destination),
+            expected: Some("directory".to_string()),
+            actual: Some(destination_kind_label(destination_kind).to_string()),
+        });
+    } else {
+        for child in children {
+            let child_status = validate_symlink_contents_child(destination, child);
+            collect_child_issues(&child_status, issues);
+            managed_children.push(child_status);
+        }
+    }
+}
+
 fn validate_symlink_contents_entry(
     linker: &Linker,
     destination: PathBuf,
@@ -498,55 +560,14 @@ fn validate_symlink_contents_entry(
             });
         }
 
-        if !exists {
-            issues.push(StatusIssue {
-                kind: StatusIssueKind::MissingDestination,
-                path: display_path(&destination),
-                expected: Some("directory".to_string()),
-                actual: None,
-            });
-        } else if destination_kind != DestinationKind::Directory {
-            issues.push(StatusIssue {
-                kind: StatusIssueKind::InvalidDestinationType,
-                path: display_path(&destination),
-                expected: Some("directory".to_string()),
-                actual: Some(destination_kind_label(destination_kind).to_string()),
-            });
-        } else {
-            for child in children {
-                let child_status = validate_symlink_contents_child(&destination, child);
-                if !child_status.exists {
-                    issues.push(StatusIssue {
-                        kind: StatusIssueKind::MissingExpectedChild,
-                        path: child_status.path.clone(),
-                        expected: Some(child_status.expected_source.clone()),
-                        actual: None,
-                    });
-                } else if !child_status.is_symlink {
-                    issues.push(StatusIssue {
-                        kind: StatusIssueKind::ChildNotSymlink,
-                        path: child_status.path.clone(),
-                        expected: Some(child_status.expected_source.clone()),
-                        actual: None,
-                    });
-                } else if let Some(actual) = child_status.points_to.as_ref()
-                    && !paths_match(
-                        Path::new(&child_status.path),
-                        Path::new(actual),
-                        Path::new(&child_status.expected_source),
-                    )
-                {
-                    issues.push(StatusIssue {
-                        kind: StatusIssueKind::IncorrectLinkTarget,
-                        path: child_status.path.clone(),
-                        expected: Some(child_status.expected_source.clone()),
-                        actual: Some(actual.clone()),
-                    });
-                }
-
-                managed_children.push(child_status);
-            }
-        }
+        validate_children_directory(
+            &destination,
+            destination_kind,
+            exists,
+            children,
+            &mut issues,
+            &mut managed_children,
+        );
     } else {
         issues.push(StatusIssue {
             kind: StatusIssueKind::MissingExpectedSource,

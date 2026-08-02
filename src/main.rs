@@ -407,35 +407,7 @@ fn main() -> Result<()> {
             wizard,
             experimental_tui,
             template,
-        } => {
-            let project_root = path.unwrap_or_else(|| env::current_dir().unwrap());
-            print_header();
-            if wizard {
-                println!(
-                    "{}",
-                    "Starting interactive configuration wizard...\n".cyan()
-                );
-                if experimental_tui {
-                    init::init_wizard_experimental_tui(&project_root, force, template.as_deref())?;
-                } else {
-                    init::init_wizard(&project_root, force, template.as_deref())?;
-                }
-            } else {
-                println!("{}", "Initializing agentsync configuration...\n".cyan());
-                let (config_content, source) = init::resolve_config_template(template.as_deref())?;
-                if let Some(notice) = source.notice() {
-                    use colored::Colorize;
-                    println!("  {} {notice}", "✔".green());
-                }
-                init::init(&project_root, force, &config_content)?;
-            }
-            println!("\n{}", "✨ Initialization complete!".green().bold());
-            if let Some(lines) = init_next_steps_lines(wizard) {
-                for line in lines {
-                    println!("{line}");
-                }
-            }
-        }
+        } => handle_init(path, force, wizard, experimental_tui, template)?,
         Commands::Apply {
             path,
             config,
@@ -444,128 +416,13 @@ fn main() -> Result<()> {
             verbose,
             agents,
             no_gitignore,
-        } => {
-            let start_dir = path.unwrap_or_else(|| env::current_dir().unwrap());
-            print_header();
-            let config_path = match config {
-                Some(p) => p,
-                None => Config::find_config(&start_dir)?,
-            };
-            if verbose {
-                println!(
-                    "Using config: {}\n",
-                    config_path.display().to_string().dimmed()
-                );
-            }
-            let config = Config::load(&config_path)?;
-            let linker = Linker::new(config, config_path);
-            let use_color = human_use_color();
-            if dry_run {
-                print_lines(&render_dry_run_notice(use_color));
-                println!();
-            }
-            let clean_result = if clean {
-                print_lines(&render_clean_phase_with_color(dry_run, use_color));
-                let clean_opts = SyncOptions {
-                    dry_run,
-                    verbose,
-                    ..Default::default()
-                };
-                let clean_result = linker.clean(&clean_opts)?;
-                println!();
-                Some(clean_result)
-            } else {
-                None
-            };
-            print_lines(&render_sync_phase_with_color(dry_run, clean, use_color));
-            let options = SyncOptions {
-                clean: false,
-                dry_run,
-                verbose,
-                agents,
-            };
-            let mut result = linker.sync(&options)?;
-            if let Some(clean_result) = &clean_result {
-                merge_clean_result_into_apply_result(&mut result, clean_result);
-            }
-            if !no_gitignore {
-                if linker.config().gitignore.enabled {
-                    println!();
-                    print_lines(&render_gitignore_phase_with_color(true, dry_run, use_color));
-                    let entries = linker.config().all_gitignore_entries();
-                    gitignore::update_gitignore(
-                        linker.project_root(),
-                        &linker.config().gitignore.marker,
-                        &entries,
-                        dry_run,
-                    )?;
-                } else {
-                    println!();
-                    print_lines(&render_gitignore_phase_with_color(
-                        false, dry_run, use_color,
-                    ));
-                    gitignore::cleanup_gitignore(
-                        linker.project_root(),
-                        &linker.config().gitignore.marker,
-                        dry_run,
-                    )?;
-                }
-            }
-            if linker.config().mcp.enabled && !linker.config().mcp_servers.is_empty() {
-                println!();
-                print_lines(&render_mcp_phase(dry_run, use_color));
-                match linker.sync_mcp(dry_run, options.agents.as_ref()) {
-                    Ok(mcp_result) => {
-                        if mcp_result.created > 0
-                            || mcp_result.updated > 0
-                            || mcp_result.skipped > 0
-                            || mcp_result.errors > 0
-                        {
-                            print_lines(&render_mcp_summary_with_color(&mcp_result, use_color));
-                        }
-                    }
-                    Err(e) => {
-                        tracing::error!(%e, "Error syncing MCP configs");
-                        result.errors += 1;
-                    }
-                }
-            }
-            println!();
-            print_lines(&render_apply_summary_with_color(
-                dry_run, &result, use_color,
-            ));
-        }
+        } => handle_apply(path, config, clean, dry_run, verbose, agents, no_gitignore)?,
         Commands::Clean {
             path,
             config,
             dry_run,
             verbose,
-        } => {
-            let start_dir = path.unwrap_or_else(|| env::current_dir().unwrap());
-            print_header();
-            let config_path = match config {
-                Some(p) => p,
-                None => Config::find_config(&start_dir)?,
-            };
-            let config = Config::load(&config_path)?;
-            let linker = Linker::new(config, config_path);
-            let use_color = human_use_color();
-            if dry_run {
-                print_lines(&render_dry_run_notice(use_color));
-                println!();
-            }
-            print_lines(&render_clean_phase_with_color(dry_run, use_color));
-            let options = SyncOptions {
-                dry_run,
-                verbose,
-                ..Default::default()
-            };
-            let result = linker.clean(&options)?;
-            println!();
-            print_lines(&render_clean_summary_with_color(
-                dry_run, &result, use_color,
-            ));
-        }
+        } => handle_clean(path, config, dry_run, verbose)?,
         Commands::DevInstall { skill_id, json } => {
             let project_root = env::current_dir().unwrap();
             use commands::skill::SkillInstallArgs;
@@ -578,6 +435,200 @@ fn main() -> Result<()> {
             run_install(args, project_root)?;
         }
     }
+    Ok(())
+}
+
+fn handle_init(
+    path: Option<PathBuf>,
+    force: bool,
+    wizard: bool,
+    experimental_tui: bool,
+    template: Option<PathBuf>,
+) -> Result<()> {
+    let project_root = path.unwrap_or_else(|| env::current_dir().unwrap());
+    print_header();
+    if wizard {
+        println!(
+            "{}",
+            "Starting interactive configuration wizard...\n".cyan()
+        );
+        if experimental_tui {
+            init::init_wizard_experimental_tui(&project_root, force, template.as_deref())?;
+        } else {
+            init::init_wizard(&project_root, force, template.as_deref())?;
+        }
+    } else {
+        println!("{}", "Initializing agentsync configuration...\n".cyan());
+        let (config_content, source) = init::resolve_config_template(template.as_deref())?;
+        if let Some(notice) = source.notice() {
+            use colored::Colorize;
+            println!("  {} {notice}", "✔".green());
+        }
+        init::init(&project_root, force, &config_content)?;
+    }
+    println!("\n{}", "✨ Initialization complete!".green().bold());
+    if let Some(lines) = init_next_steps_lines(wizard) {
+        for line in lines {
+            println!("{line}");
+        }
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn handle_apply(
+    path: Option<PathBuf>,
+    config: Option<PathBuf>,
+    clean: bool,
+    dry_run: bool,
+    verbose: bool,
+    agents: Option<Vec<String>>,
+    no_gitignore: bool,
+) -> Result<()> {
+    let start_dir = path.unwrap_or_else(|| env::current_dir().unwrap());
+    print_header();
+    let config_path = match config {
+        Some(p) => p,
+        None => Config::find_config(&start_dir)?,
+    };
+    if verbose {
+        println!(
+            "Using config: {}\n",
+            config_path.display().to_string().dimmed()
+        );
+    }
+    let config = Config::load(&config_path)?;
+    let linker = Linker::new(config, config_path);
+    let use_color = human_use_color();
+    if dry_run {
+        print_lines(&render_dry_run_notice(use_color));
+        println!();
+    }
+    let clean_result = if clean {
+        print_lines(&render_clean_phase_with_color(dry_run, use_color));
+        let clean_opts = SyncOptions {
+            dry_run,
+            verbose,
+            ..Default::default()
+        };
+        let clean_result = linker.clean(&clean_opts)?;
+        println!();
+        Some(clean_result)
+    } else {
+        None
+    };
+    print_lines(&render_sync_phase_with_color(dry_run, clean, use_color));
+    let options = SyncOptions {
+        clean: false,
+        dry_run,
+        verbose,
+        agents,
+    };
+    let mut result = linker.sync(&options)?;
+    if let Some(clean_result) = &clean_result {
+        merge_clean_result_into_apply_result(&mut result, clean_result);
+    }
+    if !no_gitignore {
+        handle_apply_gitignore(&linker, dry_run, use_color)?;
+    }
+    if linker.config().mcp.enabled && !linker.config().mcp_servers.is_empty() {
+        handle_apply_mcp(
+            &linker,
+            dry_run,
+            use_color,
+            options.agents.as_ref(),
+            &mut result,
+        )?;
+    }
+    println!();
+    print_lines(&render_apply_summary_with_color(
+        dry_run, &result, use_color,
+    ));
+    Ok(())
+}
+
+fn handle_apply_gitignore(linker: &Linker, dry_run: bool, use_color: bool) -> Result<()> {
+    if linker.config().gitignore.enabled {
+        println!();
+        print_lines(&render_gitignore_phase_with_color(true, dry_run, use_color));
+        let entries = linker.config().all_gitignore_entries();
+        gitignore::update_gitignore(
+            linker.project_root(),
+            &linker.config().gitignore.marker,
+            &entries,
+            dry_run,
+        )?;
+    } else {
+        println!();
+        print_lines(&render_gitignore_phase_with_color(
+            false, dry_run, use_color,
+        ));
+        gitignore::cleanup_gitignore(
+            linker.project_root(),
+            &linker.config().gitignore.marker,
+            dry_run,
+        )?;
+    }
+    Ok(())
+}
+
+fn handle_apply_mcp(
+    linker: &Linker,
+    dry_run: bool,
+    use_color: bool,
+    agents: Option<&Vec<String>>,
+    result: &mut SyncResult,
+) -> Result<()> {
+    println!();
+    print_lines(&render_mcp_phase(dry_run, use_color));
+    match linker.sync_mcp(dry_run, agents) {
+        Ok(mcp_result) => {
+            if mcp_result.created > 0
+                || mcp_result.updated > 0
+                || mcp_result.skipped > 0
+                || mcp_result.errors > 0
+            {
+                print_lines(&render_mcp_summary_with_color(&mcp_result, use_color));
+            }
+        }
+        Err(e) => {
+            tracing::error!(%e, "Error syncing MCP configs");
+            result.errors += 1;
+        }
+    }
+    Ok(())
+}
+
+fn handle_clean(
+    path: Option<PathBuf>,
+    config: Option<PathBuf>,
+    dry_run: bool,
+    verbose: bool,
+) -> Result<()> {
+    let start_dir = path.unwrap_or_else(|| env::current_dir().unwrap());
+    print_header();
+    let config_path = match config {
+        Some(p) => p,
+        None => Config::find_config(&start_dir)?,
+    };
+    let config = Config::load(&config_path)?;
+    let linker = Linker::new(config, config_path);
+    let use_color = human_use_color();
+    if dry_run {
+        print_lines(&render_dry_run_notice(use_color));
+        println!();
+    }
+    print_lines(&render_clean_phase_with_color(dry_run, use_color));
+    let options = SyncOptions {
+        dry_run,
+        verbose,
+        ..Default::default()
+    };
+    let result = linker.clean(&options)?;
+    println!();
+    print_lines(&render_clean_summary_with_color(
+        dry_run, &result, use_color,
+    ));
     Ok(())
 }
 

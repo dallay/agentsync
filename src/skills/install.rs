@@ -240,7 +240,6 @@ fn find_best_skill_dir(temp_path: &Path, skill_id: &str) -> PathBuf {
 
 pub async fn fetch_and_unpack_to_tempdir(url: &str) -> Result<TempDir, SkillInstallError> {
     use std::io::Cursor;
-    use std::path::Path;
 
     // Support subpaths via fragments, e.g. https://example.com/archive.zip#subpath
     let (url_base, subpath) = match url.find('#') {
@@ -249,252 +248,304 @@ pub async fn fetch_and_unpack_to_tempdir(url: &str) -> Result<TempDir, SkillInst
     };
 
     let tmp = tempfile::TempDir::new().map_err(SkillInstallError::Io)?;
-    let is_file = url_base.starts_with("file://");
-    // is_local: either absolute unix path or Windows drive letter (C:)
-    let is_local = url_base.starts_with('/') || url_base.chars().nth(1) == Some(':');
-    let client = if !is_file && !is_local {
-        Some(Client::new())
-    } else {
-        None
-    };
-    let (data, ext) = if is_file || is_local {
-        // Safely strip file:// prefix
-        let path_str = if is_file {
-            url_base.strip_prefix("file://").unwrap_or("")
-        } else {
-            url_base
-        };
-        if path_str.is_empty() {
-            return Err(SkillInstallError::Validation("empty file:// path".into()));
-        }
-        let path = Path::new(path_str);
-        let ext = path
-            .extension()
-            .and_then(|v| v.to_str())
-            .unwrap_or("")
-            .to_ascii_lowercase();
-        if path.is_dir() {
-            // Local directory: copy recursively to tempdir and return
-            copy_dir_recursively(path, tmp.path())?;
-            return Ok(tmp);
-        }
-        let data = std::fs::read(path).map_err(SkillInstallError::Io)?;
-        (data, ext)
-    } else {
-        let ext = {
-            let parts: Vec<_> = url_base.split('.').collect();
-            if let Some(last) = parts.last() {
-                last.to_ascii_lowercase()
-            } else {
-                "".to_string()
-            }
-        };
-        let client = client.ok_or_else(|| SkillInstallError::Other("no client".into()))?;
-        let resp = client
-            .get(url_base)
-            .send()
-            .await
-            .map_err(SkillInstallError::Network)?
-            .error_for_status()
-            .map_err(SkillInstallError::Network)?;
-        // Stream response to a temp file instead of buffering in memory
-        let stdfile = std::fs::File::create(tmp.path().join("download.tmp"))
-            .map_err(SkillInstallError::Io)?;
-        let mut tmpfile = tokio::fs::File::from_std(stdfile);
-        let mut stream = resp.bytes_stream();
-        use futures_util::StreamExt as _;
-        use tokio::io::AsyncWriteExt;
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(SkillInstallError::Network)?;
-            tmpfile
-                .write_all(&chunk)
-                .await
-                .map_err(SkillInstallError::Io)?;
-        }
-        tmpfile.flush().await.map_err(SkillInstallError::Io)?;
-        // Re-open and read into memory for legacy unpacking logic where needed
-        let data = std::fs::read(tmp.path().join("download.tmp")).map_err(SkillInstallError::Io)?;
-        // Cleanup download temp file to avoid including it in the skill
-        let _ = std::fs::remove_file(tmp.path().join("download.tmp"));
-        (data, ext)
-    };
-    // Unpack archive type into the tempdir
-    // Determine source name for archive-type heuristics (handles local file paths too)
+
+    let (data, ext) = fetch_archive_data(url_base, tmp.path()).await?;
+
+    // If fetch_archive_data returned empty data, it was a local dir copy — done
+    if data.is_empty() {
+        return Ok(tmp);
+    }
+
     let source_name = url_base.to_string();
     let is_tar_gz = source_name.ends_with(".tar.gz") || source_name.ends_with(".tgz");
 
     if ext == "zip" {
         let reader = Cursor::new(&data);
-        let mut zip = ZipArchive::new(reader).map_err(SkillInstallError::ZipArchive)?;
-
-        // Find if there is a common root directory (like GitHub zips do)
-        let common_root = if !zip.is_empty() {
-            let first_name = zip
-                .by_index(0)
-                .map_err(SkillInstallError::ZipArchive)?
-                .name()
-                .to_string();
-            let root = first_name.split('/').next().unwrap_or("");
-            if !root.is_empty() && zip.file_names().all(|n| n.starts_with(root)) {
-                Some(root.to_string())
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        for i in 0..zip.len() {
-            let mut file = zip.by_index(i).map_err(SkillInstallError::ZipArchive)?;
-            let full_name = file.name();
-
-            // SECURITY: Reject absolute paths, drive prefixes, and path traversal attempts.
-            if archive_path_is_unsafe(full_name) {
-                return Err(SkillInstallError::PathTraversal(full_name.to_string()));
-            }
-
-            // Strip common root if present
-            let rel_path = if let Some(ref root) = common_root {
-                if full_name.starts_with(root) {
-                    full_name[root.len()..].trim_start_matches('/')
-                } else {
-                    full_name
-                }
-            } else {
-                full_name
-            };
-
-            // If a subpath is requested, filter and strip it
-            let final_rel_path = if let Some(sub) = subpath {
-                if let Some(stripped) = rel_path.strip_prefix(sub) {
-                    stripped.trim_start_matches('/')
-                } else {
-                    continue; // Skip files not in subpath
-                }
-            } else {
-                rel_path
-            };
-
-            if final_rel_path.is_empty() {
-                continue;
-            }
-
-            let outpath = tmp.path().join(final_rel_path);
-            if file.is_dir() {
-                std::fs::create_dir_all(&outpath).map_err(SkillInstallError::Io)?;
-            } else {
-                if let Some(parent) = outpath.parent() {
-                    std::fs::create_dir_all(parent).map_err(SkillInstallError::Io)?;
-                }
-                let mut out = std::fs::File::create(&outpath).map_err(SkillInstallError::Io)?;
-                std::io::copy(&mut file, &mut out).map_err(SkillInstallError::Io)?;
-            }
-        }
+        unpack_zip(reader, tmp.path(), subpath)?;
     } else if is_tar_gz {
         let reader = Cursor::new(&data);
-        let gz = GzDecoder::new(reader);
-        let mut archive = Archive::new(gz);
-
-        let entries: Vec<_> = archive.entries().map_err(SkillInstallError::Io)?.collect();
-
-        // Find if there is a common root directory
-        let common_root = if !entries.is_empty() {
-            let first_path = entries[0]
-                .as_ref()
-                .map_err(|e| SkillInstallError::Other(e.to_string()))?
-                .path()
-                .map_err(SkillInstallError::Io)?;
-            let root = first_path.components().next().and_then(|c| match c {
-                std::path::Component::Normal(s) => Some(s.to_string_lossy().into_owned()),
-                _ => None,
-            });
-
-            if let Some(ref r) = root {
-                let all_start_with = entries.iter().all(|e| {
-                    if let Ok(entry) = e {
-                        if let Ok(path) = entry.path() {
-                            path.starts_with(r)
-                        } else {
-                            false
-                        }
-                    } else {
-                        false
-                    }
-                });
-                if all_start_with {
-                    Some(r.clone())
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        for entry in entries {
-            let mut entry = entry.map_err(SkillInstallError::Io)?;
-
-            // SECURITY: Skip symlinks, hardlinks, and other special files to prevent
-            // unexpected side effects or path traversal during unpacking.
-            let entry_type = entry.header().entry_type();
-            if !entry_type.is_file() && !entry_type.is_dir() {
-                continue;
-            }
-
-            let full_path = entry.path().map_err(SkillInstallError::Io)?;
-            let full_path_string = full_path.to_string_lossy();
-
-            if archive_path_is_unsafe(&full_path_string) {
-                return Err(SkillInstallError::PathTraversal(
-                    full_path_string.into_owned(),
-                ));
-            }
-
-            // Strip common root if present
-            let rel_path = if let Some(ref root) = common_root {
-                if full_path.starts_with(root) {
-                    full_path
-                        .strip_prefix(root)
-                        .unwrap_or(&full_path)
-                        .to_path_buf()
-                } else {
-                    full_path.to_path_buf()
-                }
-            } else {
-                full_path.to_path_buf()
-            };
-
-            // If a subpath is requested, filter and strip it
-            let final_rel_path = if let Some(sub) = subpath {
-                let sub_path = std::path::Path::new(sub);
-                if rel_path.starts_with(sub_path) {
-                    rel_path
-                        .strip_prefix(sub_path)
-                        .unwrap_or(&rel_path)
-                        .to_path_buf()
-                } else {
-                    continue; // Skip files not in subpath
-                }
-            } else {
-                rel_path
-            };
-
-            if final_rel_path.as_os_str().is_empty() {
-                continue;
-            }
-
-            let outpath = tmp.path().join(final_rel_path);
-            if let Some(parent) = outpath.parent() {
-                std::fs::create_dir_all(parent).map_err(SkillInstallError::Io)?;
-            }
-            entry.unpack(&outpath).map_err(SkillInstallError::Io)?;
-        }
+        unpack_tar_gz(reader, tmp.path(), subpath)?;
     } else {
         return Err(SkillInstallError::Other("unknown archive format".into()));
     }
     Ok(tmp)
+}
+
+async fn fetch_archive_data(
+    url_base: &str,
+    tmp_path: &std::path::Path,
+) -> Result<(Vec<u8>, String), SkillInstallError> {
+    let is_file = url_base.starts_with("file://");
+    let is_local = url_base.starts_with('/') || url_base.chars().nth(1) == Some(':');
+
+    if is_file || is_local {
+        fetch_local_data(url_base, is_file, tmp_path)
+    } else {
+        fetch_remote_data(url_base, tmp_path).await
+    }
+}
+
+fn fetch_local_data(
+    url_base: &str,
+    is_file: bool,
+    tmp_path: &std::path::Path,
+) -> Result<(Vec<u8>, String), SkillInstallError> {
+    let path_str = if is_file {
+        url_base.strip_prefix("file://").unwrap_or("")
+    } else {
+        url_base
+    };
+    if path_str.is_empty() {
+        return Err(SkillInstallError::Validation("empty file:// path".into()));
+    }
+    let path = Path::new(path_str);
+    let ext = path
+        .extension()
+        .and_then(|v| v.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if path.is_dir() {
+        copy_dir_recursively(path, tmp_path)?;
+        return Ok((Vec::new(), String::new()));
+    }
+    let data = std::fs::read(path).map_err(SkillInstallError::Io)?;
+    Ok((data, ext))
+}
+
+async fn fetch_remote_data(
+    url_base: &str,
+    tmp_path: &std::path::Path,
+) -> Result<(Vec<u8>, String), SkillInstallError> {
+    let ext = url_base
+        .rsplit('.')
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
+
+    let client = Client::new();
+    let resp = client
+        .get(url_base)
+        .send()
+        .await
+        .map_err(SkillInstallError::Network)?
+        .error_for_status()
+        .map_err(SkillInstallError::Network)?;
+
+    let stdfile =
+        std::fs::File::create(tmp_path.join("download.tmp")).map_err(SkillInstallError::Io)?;
+    let mut tmpfile = tokio::fs::File::from_std(stdfile);
+    let mut stream = resp.bytes_stream();
+    use futures_util::StreamExt as _;
+    use tokio::io::AsyncWriteExt;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(SkillInstallError::Network)?;
+        tmpfile
+            .write_all(&chunk)
+            .await
+            .map_err(SkillInstallError::Io)?;
+    }
+    tmpfile.flush().await.map_err(SkillInstallError::Io)?;
+
+    let data = std::fs::read(tmp_path.join("download.tmp")).map_err(SkillInstallError::Io)?;
+    let _ = std::fs::remove_file(tmp_path.join("download.tmp"));
+    Ok((data, ext))
+}
+
+fn unpack_zip(
+    reader: impl std::io::Read + std::io::Seek,
+    dest: &std::path::Path,
+    subpath: Option<&str>,
+) -> Result<(), SkillInstallError> {
+    let mut zip = ZipArchive::new(reader).map_err(SkillInstallError::ZipArchive)?;
+
+    let common_root = zip_common_root(&mut zip)?;
+
+    for i in 0..zip.len() {
+        let mut file = zip.by_index(i).map_err(SkillInstallError::ZipArchive)?;
+        let full_name = file.name().to_string();
+
+        if archive_path_is_unsafe(&full_name) {
+            return Err(SkillInstallError::PathTraversal(full_name));
+        }
+
+        let Some(final_rel_path) = zip_entry_rel_path(&full_name, common_root.as_deref(), subpath)
+        else {
+            continue;
+        };
+
+        if final_rel_path.is_empty() {
+            continue;
+        }
+
+        let outpath = dest.join(final_rel_path);
+        if file.is_dir() {
+            std::fs::create_dir_all(&outpath).map_err(SkillInstallError::Io)?;
+        } else {
+            if let Some(parent) = outpath.parent() {
+                std::fs::create_dir_all(parent).map_err(SkillInstallError::Io)?;
+            }
+            let mut out = std::fs::File::create(&outpath).map_err(SkillInstallError::Io)?;
+            std::io::copy(&mut file, &mut out).map_err(SkillInstallError::Io)?;
+        }
+    }
+    Ok(())
+}
+
+fn zip_common_root(
+    zip: &mut ZipArchive<impl std::io::Read + std::io::Seek>,
+) -> Result<Option<String>, SkillInstallError> {
+    if zip.is_empty() {
+        return Ok(None);
+    }
+    let first_name = zip
+        .by_index(0)
+        .map_err(SkillInstallError::ZipArchive)?
+        .name()
+        .to_string();
+    let root = first_name.split('/').next().unwrap_or("");
+    if !root.is_empty() && zip.file_names().all(|n| n.starts_with(root)) {
+        Ok(Some(root.to_string()))
+    } else {
+        Ok(None)
+    }
+}
+
+fn zip_entry_rel_path<'a>(
+    full_name: &'a str,
+    common_root: Option<&str>,
+    subpath: Option<&str>,
+) -> Option<&'a str> {
+    let rel_path = if let Some(root) = common_root {
+        full_name
+            .strip_prefix(root)
+            .unwrap_or(full_name)
+            .trim_start_matches('/')
+    } else {
+        full_name
+    };
+
+    if let Some(sub) = subpath {
+        rel_path
+            .strip_prefix(sub)
+            .map(|s| s.trim_start_matches('/'))
+    } else {
+        Some(rel_path)
+    }
+}
+
+fn unpack_tar_gz(
+    reader: impl std::io::Read,
+    dest: &std::path::Path,
+    subpath: Option<&str>,
+) -> Result<(), SkillInstallError> {
+    let gz = GzDecoder::new(reader);
+    let mut archive = Archive::new(gz);
+
+    let entries: Vec<_> = archive.entries().map_err(SkillInstallError::Io)?.collect();
+    let common_root = tar_common_root(&entries)?;
+
+    for entry in entries {
+        let mut entry = entry.map_err(SkillInstallError::Io)?;
+
+        let entry_type = entry.header().entry_type();
+        if !entry_type.is_file() && !entry_type.is_dir() {
+            continue;
+        }
+
+        let full_path = entry.path().map_err(SkillInstallError::Io)?;
+        let full_path_string = full_path.to_string_lossy();
+
+        if archive_path_is_unsafe(&full_path_string) {
+            return Err(SkillInstallError::PathTraversal(
+                full_path_string.into_owned(),
+            ));
+        }
+
+        let Some(final_rel_path) = tar_entry_rel_path(&full_path, common_root.as_deref(), subpath)
+        else {
+            continue;
+        };
+
+        if final_rel_path.as_os_str().is_empty() {
+            continue;
+        }
+
+        let outpath = dest.join(&final_rel_path);
+        if let Some(parent) = outpath.parent() {
+            std::fs::create_dir_all(parent).map_err(SkillInstallError::Io)?;
+        }
+        entry.unpack(&outpath).map_err(SkillInstallError::Io)?;
+    }
+    Ok(())
+}
+
+fn tar_common_root(
+    entries: &[Result<tar::Entry<flate2::read::GzDecoder<impl std::io::Read>>, std::io::Error>],
+) -> Result<Option<String>, SkillInstallError> {
+    if entries.is_empty() {
+        return Ok(None);
+    }
+    let first_path = entries[0]
+        .as_ref()
+        .map_err(|e| SkillInstallError::Other(e.to_string()))?
+        .path()
+        .map_err(SkillInstallError::Io)?;
+    let root = first_path.components().next().and_then(|c| match c {
+        std::path::Component::Normal(s) => Some(s.to_string_lossy().into_owned()),
+        _ => None,
+    });
+
+    let Some(ref r) = root else {
+        return Ok(None);
+    };
+
+    let all_start_with = entries.iter().all(|e| {
+        e.as_ref()
+            .ok()
+            .and_then(|entry| entry.path().ok())
+            .is_some_and(|path| path.starts_with(r))
+    });
+
+    if all_start_with {
+        Ok(Some(r.clone()))
+    } else {
+        Ok(None)
+    }
+}
+
+fn tar_entry_rel_path(
+    full_path: &std::path::Path,
+    common_root: Option<&str>,
+    subpath: Option<&str>,
+) -> Option<PathBuf> {
+    let rel_path = if let Some(root) = common_root {
+        if full_path.starts_with(root) {
+            full_path
+                .strip_prefix(root)
+                .unwrap_or(full_path)
+                .to_path_buf()
+        } else {
+            full_path.to_path_buf()
+        }
+    } else {
+        full_path.to_path_buf()
+    };
+
+    if let Some(sub) = subpath {
+        let sub_path = std::path::Path::new(sub);
+        if rel_path.starts_with(sub_path) {
+            Some(
+                rel_path
+                    .strip_prefix(sub_path)
+                    .unwrap_or(&rel_path)
+                    .to_path_buf(),
+            )
+        } else {
+            None
+        }
+    } else {
+        Some(rel_path)
+    }
 }
 
 #[cfg(test)]

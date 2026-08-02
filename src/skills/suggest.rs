@@ -690,36 +690,8 @@ impl SuggestInstallJsonResponse {
     pub fn render_human(&self) -> String {
         let mut lines = Vec::new();
 
-        if self.suggest.detections.is_empty() {
-            lines.push("Detected technologies: none".to_string());
-        } else {
-            lines.push("Detected technologies:".to_string());
-            for detection in &self.suggest.detections {
-                lines.push(format!(
-                    "- {} ({}): {}",
-                    detection.technology,
-                    detection.confidence,
-                    detection.evidence.join(", ")
-                ));
-            }
-        }
-
-        if self.suggest.recommendations.is_empty() {
-            lines.push("Recommended skills: none".to_string());
-        } else {
-            lines.push("Recommended skills:".to_string());
-            for recommendation in &self.suggest.recommendations {
-                let installed = if recommendation.installed {
-                    "installed"
-                } else {
-                    "not installed"
-                };
-                lines.push(format!("- {} [{}]", recommendation.skill_id, installed));
-                for reason in &recommendation.reasons {
-                    lines.push(format!("  reason: {}", reason));
-                }
-            }
-        }
+        render_detections_section(&self.suggest.detections, &mut lines);
+        render_recommendations_section(&self.suggest.recommendations, &mut lines);
 
         lines.push(format!(
             "Summary: {} detected, {} recommended, {} installable",
@@ -729,29 +701,86 @@ impl SuggestInstallJsonResponse {
         ));
         lines.push(format!("Install mode: {}", self.mode.as_human_label()));
 
-        if self.selected_skill_ids.is_empty() {
-            lines.push("Selected skills: none".to_string());
-        } else {
-            lines.push(format!(
-                "Selected skills: {}",
-                self.selected_skill_ids.join(", ")
-            ));
-        }
-
-        if self.results.is_empty() {
-            lines.push("Install results: none".to_string());
-        } else {
-            lines.push("Install results:".to_string());
-            for result in &self.results {
-                let mut line = format!("- {}: {}", result.skill_id, result.status.as_human_label());
-                if let Some(error_message) = &result.error_message {
-                    line.push_str(&format!(" ({error_message})"));
-                }
-                lines.push(line);
-            }
-        }
+        render_selected_skills_section(&self.selected_skill_ids, &mut lines);
+        render_install_results_section(&self.results, &mut lines);
 
         lines.join("\n")
+    }
+}
+
+#[allow(dead_code)]
+fn format_installed_status(recommendation: &SkillSuggestion) -> String {
+    if recommendation.installed {
+        match recommendation.installed_version.as_deref() {
+            Some(version) => format!("installed ({version})"),
+            None => "installed".to_string(),
+        }
+    } else {
+        "not installed".to_string()
+    }
+}
+
+fn render_detections_section(detections: &[SuggestJsonDetection], lines: &mut Vec<String>) {
+    if detections.is_empty() {
+        lines.push("Detected technologies: none".to_string());
+    } else {
+        lines.push("Detected technologies:".to_string());
+        for detection in detections {
+            lines.push(format!(
+                "- {} ({}): {}",
+                detection.technology,
+                detection.confidence,
+                detection.evidence.join(", ")
+            ));
+        }
+    }
+}
+
+fn render_recommendations_section(
+    recommendations: &[SuggestJsonRecommendation],
+    lines: &mut Vec<String>,
+) {
+    if recommendations.is_empty() {
+        lines.push("Recommended skills: none".to_string());
+    } else {
+        lines.push("Recommended skills:".to_string());
+        for recommendation in recommendations {
+            let installed = if recommendation.installed {
+                "installed"
+            } else {
+                "not installed"
+            };
+            lines.push(format!("- {} [{}]", recommendation.skill_id, installed));
+            for reason in &recommendation.reasons {
+                lines.push(format!("  reason: {}", reason));
+            }
+        }
+    }
+}
+
+fn render_selected_skills_section(selected_skill_ids: &[String], lines: &mut Vec<String>) {
+    if selected_skill_ids.is_empty() {
+        lines.push("Selected skills: none".to_string());
+    } else {
+        lines.push(format!(
+            "Selected skills: {}",
+            selected_skill_ids.join(", ")
+        ));
+    }
+}
+
+fn render_install_results_section(results: &[SuggestInstallResult], lines: &mut Vec<String>) {
+    if results.is_empty() {
+        lines.push("Install results: none".to_string());
+    } else {
+        lines.push("Install results:".to_string());
+        for result in results {
+            let mut line = format!("- {}: {}", result.skill_id, result.status.as_human_label());
+            if let Some(error_message) = &result.error_message {
+                line.push_str(&format!(" ({error_message})"));
+            }
+            lines.push(line);
+        }
     }
 }
 

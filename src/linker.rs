@@ -18,6 +18,14 @@ use crate::config::{Config, SyncType, TargetConfig};
 
 const COMPRESSED_AGENTS_MD_NAME: &str = "AGENTS.compact.md";
 
+/// Result of checking an existing symlink at a destination.
+enum ExistingSymlinkAction {
+    /// Symlink already points to the correct target.
+    AlreadyCorrect,
+    /// Symlink was removed (or would be in dry-run) and needs recreation.
+    Updated,
+}
+
 type NestedGlobKey = (PathBuf, String, Vec<String>);
 type NestedGlobMatches = Rc<Vec<(PathBuf, PathBuf)>>;
 
@@ -228,26 +236,7 @@ impl Linker {
 
         // SECURITY: Reject absolute paths
         if path.is_absolute() {
-            // If path is already absolute and under project_root, validate parent only
-            if !path.starts_with(&self.project_root) {
-                anyhow::bail!("Path is outside project root: {}", display_path);
-            }
-            // For absolute paths under project_root, validate the parent directory
-            if let Some(parent) = path.parent() {
-                let canonical_parent = self.canonicalize_uncached(parent).with_context(|| {
-                    format!("Failed to canonicalize parent: {}", parent.display())
-                })?;
-
-                let canonical_root = self.get_canonical_project_root()?;
-
-                if !canonical_parent.starts_with(&*canonical_root) {
-                    anyhow::bail!(
-                        "Path parent resolves outside project root: {}",
-                        display_path
-                    );
-                }
-            }
-            return Ok(());
+            return self.validate_absolute_unlink_path(path, &display_path);
         }
 
         // SECURITY: Reject paths with ParentDir components before resolution
@@ -260,40 +249,66 @@ impl Linker {
             }
         }
 
-        // Validate that the parent directory (if any) is within project_root
-        // We canonicalize the parent but NOT the final component (which might be a symlink)
+        self.validate_relative_unlink_parent(path, &display_path)
+    }
+
+    /// Validate an absolute path for unlinking: must be under project_root with valid parent.
+    fn validate_absolute_unlink_path(&self, path: &Path, display_path: &str) -> Result<()> {
+        if !path.starts_with(&self.project_root) {
+            anyhow::bail!("Path is outside project root: {}", display_path);
+        }
         if let Some(parent) = path.parent() {
-            if parent.as_os_str().is_empty() {
-                // Path has no parent (e.g., just a filename), it's relative to project_root
-                return Ok(());
+            let canonical_parent = self
+                .canonicalize_uncached(parent)
+                .with_context(|| format!("Failed to canonicalize parent: {}", parent.display()))?;
+
+            let canonical_root = self.get_canonical_project_root()?;
+
+            if !canonical_parent.starts_with(&*canonical_root) {
+                anyhow::bail!(
+                    "Path parent resolves outside project root: {}",
+                    display_path
+                );
             }
+        }
+        Ok(())
+    }
 
-            let parent_absolute = if parent.is_absolute() {
-                parent.to_path_buf()
-            } else {
-                self.project_root.join(parent)
-            };
+    /// Validate that the parent of a relative path is within project_root.
+    fn validate_relative_unlink_parent(&self, path: &Path, display_path: &str) -> Result<()> {
+        let Some(parent) = path.parent() else {
+            return Ok(());
+        };
+        if parent.as_os_str().is_empty() {
+            return Ok(());
+        }
 
-            // Only canonicalize if the parent exists; for cleanup operations the parent might not exist yet
-            if parent_absolute.exists() {
-                let canonical_parent =
-                    self.canonicalize_uncached(&parent_absolute)
-                        .with_context(|| {
-                            format!(
-                                "Failed to canonicalize parent: {}",
-                                parent_absolute.display()
-                            )
-                        })?;
+        let parent_absolute = if parent.is_absolute() {
+            parent.to_path_buf()
+        } else {
+            self.project_root.join(parent)
+        };
 
-                let canonical_root = self.get_canonical_project_root()?;
+        if !parent_absolute.exists() {
+            return Ok(());
+        }
 
-                if !canonical_parent.starts_with(&*canonical_root) {
-                    anyhow::bail!(
-                        "Path parent resolves outside project root: {}",
-                        display_path
-                    );
-                }
-            }
+        let canonical_parent = self
+            .canonicalize_uncached(&parent_absolute)
+            .with_context(|| {
+                format!(
+                    "Failed to canonicalize parent: {}",
+                    parent_absolute.display()
+                )
+            })?;
+
+        let canonical_root = self.get_canonical_project_root()?;
+
+        if !canonical_parent.starts_with(&*canonical_root) {
+            anyhow::bail!(
+                "Path parent resolves outside project root: {}",
+                display_path
+            );
         }
 
         Ok(())
@@ -653,63 +668,18 @@ impl Linker {
 
         // Handle existing destination
         if dest.is_symlink() {
-            let current_target = fs::read_link(dest)?;
-            if current_target == relative_source {
-                if options.verbose {
-                    println!("  {} Already linked: {}", "✔".green(), dest.display());
+            let action = self.handle_existing_symlink(dest, &relative_source, options)?;
+            match action {
+                ExistingSymlinkAction::AlreadyCorrect => {
+                    result.skipped += 1;
+                    return Ok(result);
                 }
-                result.skipped += 1;
-                return Ok(result);
-            } else {
-                // Wrong target, remove and recreate
-                if options.dry_run {
-                    println!(
-                        "  {} Would update symlink: {} -> {}",
-                        "→".cyan(),
-                        dest.display(),
-                        relative_source.display()
-                    );
-                } else {
-                    // SECURITY: Use revalidate_unlink_path here (not revalidate_path) so that a
-                    // symlink whose target points outside project_root can still be safely removed.
-                    // revalidate_path would canonicalize through the symlink and reject the path.
-                    self.revalidate_unlink_path(dest)?;
-                    remove_symlink(dest)?;
-                    self.invalidate_path_cache();
-                    if options.verbose {
-                        println!(
-                            "  {} Removed old symlink: {} (was -> {})",
-                            "○".yellow(),
-                            dest.display(),
-                            current_target.display()
-                        );
-                    }
+                ExistingSymlinkAction::Updated => {
+                    result.updated += 1;
                 }
-                result.updated += 1;
             }
         } else if dest.exists() {
-            // It's a regular file/directory - back it up
-            if options.dry_run {
-                println!(
-                    "  {} Would backup and replace: {}",
-                    "→".cyan(),
-                    dest.display()
-                );
-            } else {
-                let backup = backup_path_for_destination(dest);
-                self.revalidate_path(dest)?;
-                self.revalidate_path(&backup)?;
-                remove_existing_path(&backup)?;
-                fs::rename(dest, &backup)?;
-                self.invalidate_path_cache();
-                self.invalidate_glob_cache();
-                println!(
-                    "  {} Backed up: {} -> {}",
-                    "!".yellow(),
-                    dest.display(),
-                    backup.display()
-                );
-            }
+            self.backup_existing_destination(dest, options)?;
             result.updated += 1;
         } else {
             result.created += 1;
@@ -751,6 +721,71 @@ impl Linker {
         }
 
         Ok(result)
+    }
+
+    /// Handle an existing symlink at the destination. Returns the action taken.
+    fn handle_existing_symlink(
+        &self,
+        dest: &Path,
+        relative_source: &Path,
+        options: &SyncOptions,
+    ) -> Result<ExistingSymlinkAction> {
+        let current_target = fs::read_link(dest)?;
+        if current_target == relative_source {
+            if options.verbose {
+                println!("  {} Already linked: {}", "✔".green(), dest.display());
+            }
+            return Ok(ExistingSymlinkAction::AlreadyCorrect);
+        }
+
+        // Wrong target, remove and recreate
+        if options.dry_run {
+            println!(
+                "  {} Would update symlink: {} -> {}",
+                "→".cyan(),
+                dest.display(),
+                relative_source.display()
+            );
+        } else {
+            self.revalidate_unlink_path(dest)?;
+            remove_symlink(dest)?;
+            self.invalidate_path_cache();
+            if options.verbose {
+                println!(
+                    "  {} Removed old symlink: {} (was -> {})",
+                    "○".yellow(),
+                    dest.display(),
+                    current_target.display()
+                );
+            }
+        }
+        Ok(ExistingSymlinkAction::Updated)
+    }
+
+    /// Back up an existing regular file/directory at the destination.
+    fn backup_existing_destination(&self, dest: &Path, options: &SyncOptions) -> Result<()> {
+        if options.dry_run {
+            println!(
+                "  {} Would backup and replace: {}",
+                "→".cyan(),
+                dest.display()
+            );
+        } else {
+            let backup = backup_path_for_destination(dest);
+            self.revalidate_path(dest)?;
+            self.revalidate_path(&backup)?;
+            remove_existing_path(&backup)?;
+            fs::rename(dest, &backup)?;
+            self.invalidate_path_cache();
+            self.invalidate_glob_cache();
+            println!(
+                "  {} Backed up: {} -> {}",
+                "!".yellow(),
+                dest.display(),
+                backup.display()
+            );
+        }
+        Ok(())
     }
 
     /// Create symlinks for all contents of a directory
@@ -1258,158 +1293,186 @@ impl Linker {
             for target_config in agent_config.targets.values() {
                 match target_config.sync_type {
                     SyncType::NestedGlob => {
-                        // SECURITY: Validate destination template for traversal/absolute paths.
-                        if self
-                            .ensure_safe_destination(&target_config.destination)
-                            .is_err()
-                        {
-                            continue;
-                        }
-
-                        // Re-discover the same files and remove the corresponding symlinks.
-                        let search_root = self.project_root.join(&target_config.source);
-                        // SECURITY: Validate search root to prevent traversal/absolute escapes.
-                        if self.revalidate_path(&search_root).is_err() {
-                            continue;
-                        }
-                        if !search_root.exists() || !search_root.is_dir() {
-                            continue;
-                        }
-                        let glob_pattern =
-                            target_config.pattern.as_deref().unwrap_or("**/AGENTS.md");
-                        let dest_template = &target_config.destination;
-                        let excludes = &target_config.exclude;
-
-                        let matches = self.get_nested_glob_matches(
-                            &search_root,
-                            glob_pattern,
-                            excludes,
-                            options,
-                        )?;
-
-                        for (_, rel_path) in matches.iter() {
-                            let dest_str =
-                                Self::expand_destination_template(dest_template, rel_path);
-                            if dest_str.is_empty() {
-                                continue;
-                            }
-
-                            let dest = match self.ensure_safe_destination(&dest_str) {
-                                Ok(dest) => dest,
-                                Err(_) => continue,
-                            };
-                            if dest.is_symlink() {
-                                if options.dry_run {
-                                    println!("  {} Would remove: {}", "→".cyan(), dest.display());
-                                } else {
-                                    self.revalidate_unlink_path(&dest)?;
-                                    fs::remove_file(&dest)?;
-                                    self.invalidate_path_cache();
-                                    println!("  {} Removed: {}", "✔".green(), dest.display());
-                                }
-                                result.removed += 1;
-                            }
-                        }
+                        self.clean_nested_glob_target(target_config, options, &mut result)?;
                     }
                     SyncType::SymlinkContents => {
-                        let dest = match self.ensure_safe_destination(&target_config.destination) {
-                            Ok(d) => d,
-                            Err(_) => continue,
-                        };
-                        if dest.is_dir() {
-                            // For symlink-contents, remove symlinks inside the directory
-                            for entry in fs::read_dir(&dest).with_context(|| {
-                                format!("Failed to read destination directory: {}", dest.display())
-                            })? {
-                                let entry = entry.with_context(|| {
-                                    format!("Failed to read entry in: {}", dest.display())
-                                })?;
-                                if entry.path().is_symlink() {
-                                    if options.dry_run {
-                                        println!(
-                                            "  {} Would remove: {}",
-                                            "→".cyan(),
-                                            entry.path().display()
-                                        );
-                                    } else {
-                                        self.revalidate_unlink_path(&entry.path())?;
-                                        fs::remove_file(entry.path())?;
-                                        self.invalidate_path_cache();
-                                        println!(
-                                            "  {} Removed: {}",
-                                            "✔".green(),
-                                            entry.path().display()
-                                        );
-                                    }
-                                    result.removed += 1;
-                                }
-                            }
-                            // Try to remove the directory if empty
-                            if !options.dry_run {
-                                self.revalidate_unlink_path(&dest)?;
-                                let _ = fs::remove_dir(&dest);
-                            }
-                        }
+                        self.clean_symlink_contents_target(target_config, options, &mut result)?;
                     }
                     SyncType::Symlink => {
-                        let dest = match self.ensure_safe_destination(&target_config.destination) {
-                            Ok(d) => d,
-                            Err(_) => continue,
-                        };
-                        if dest.is_symlink() {
-                            if options.dry_run {
-                                println!("  {} Would remove: {}", "→".cyan(), dest.display());
-                            } else {
-                                // SECURITY: Use revalidate_unlink_path so a symlink whose target
-                                // points outside project_root can still be removed safely.
-                                self.revalidate_unlink_path(&dest)?;
-                                remove_symlink(&dest)?;
-                                self.invalidate_path_cache();
-                                println!("  {} Removed: {}", "✔".green(), dest.display());
-                            }
-                            result.removed += 1;
-                        }
+                        self.clean_symlink_target(target_config, options, &mut result)?;
                     }
                     SyncType::ModuleMap => {
-                        for mapping in &target_config.mappings {
-                            let filename =
-                                crate::config::resolve_module_map_filename(mapping, agent_name);
-
-                            // SECURITY: Validate that the joined destination (dir + filename) is safe.
-                            let dest_str = format!("{}/{}", mapping.destination, filename);
-                            let dest = match self.ensure_safe_destination(&dest_str) {
-                                Ok(d) => d,
-                                Err(e) => {
-                                    if options.verbose {
-                                        println!(
-                                            "  {} Skipping mapping {}: {}",
-                                            "!".yellow(),
-                                            mapping.source,
-                                            e
-                                        );
-                                    }
-                                    continue;
-                                }
-                            };
-
-                            if dest.is_symlink() {
-                                if options.dry_run {
-                                    println!("  {} Would remove: {}", "→".cyan(), dest.display());
-                                } else {
-                                    self.revalidate_unlink_path(&dest)?;
-                                    fs::remove_file(&dest)?;
-                                    self.invalidate_path_cache();
-                                    println!("  {} Removed: {}", "✔".green(), dest.display());
-                                }
-                                result.removed += 1;
-                            }
-                        }
+                        self.clean_module_map_target(
+                            agent_name,
+                            target_config,
+                            options,
+                            &mut result,
+                        )?;
                     }
                 }
             }
         }
 
         Ok(result)
+    }
+
+    /// Clean a single symlink target.
+    fn clean_symlink_target(
+        &self,
+        target_config: &TargetConfig,
+        options: &SyncOptions,
+        result: &mut SyncResult,
+    ) -> Result<()> {
+        let dest = match self.ensure_safe_destination(&target_config.destination) {
+            Ok(d) => d,
+            Err(_) => return Ok(()),
+        };
+        if dest.is_symlink() {
+            if options.dry_run {
+                println!("  {} Would remove: {}", "→".cyan(), dest.display());
+            } else {
+                self.revalidate_unlink_path(&dest)?;
+                remove_symlink(&dest)?;
+                self.invalidate_path_cache();
+                println!("  {} Removed: {}", "✔".green(), dest.display());
+            }
+            result.removed += 1;
+        }
+        Ok(())
+    }
+
+    /// Clean symlink-contents: remove symlinks inside the destination directory.
+    fn clean_symlink_contents_target(
+        &self,
+        target_config: &TargetConfig,
+        options: &SyncOptions,
+        result: &mut SyncResult,
+    ) -> Result<()> {
+        let dest = match self.ensure_safe_destination(&target_config.destination) {
+            Ok(d) => d,
+            Err(_) => return Ok(()),
+        };
+        if !dest.is_dir() {
+            return Ok(());
+        }
+        for entry in fs::read_dir(&dest)
+            .with_context(|| format!("Failed to read destination directory: {}", dest.display()))?
+        {
+            let entry =
+                entry.with_context(|| format!("Failed to read entry in: {}", dest.display()))?;
+            if entry.path().is_symlink() {
+                if options.dry_run {
+                    println!("  {} Would remove: {}", "→".cyan(), entry.path().display());
+                } else {
+                    self.revalidate_unlink_path(&entry.path())?;
+                    fs::remove_file(entry.path())?;
+                    self.invalidate_path_cache();
+                    println!("  {} Removed: {}", "✔".green(), entry.path().display());
+                }
+                result.removed += 1;
+            }
+        }
+        // Try to remove the directory if empty
+        if !options.dry_run {
+            self.revalidate_unlink_path(&dest)?;
+            let _ = fs::remove_dir(&dest);
+        }
+        Ok(())
+    }
+
+    /// Clean nested-glob targets: re-discover matched files and remove symlinks.
+    fn clean_nested_glob_target(
+        &self,
+        target_config: &TargetConfig,
+        options: &SyncOptions,
+        result: &mut SyncResult,
+    ) -> Result<()> {
+        if self
+            .ensure_safe_destination(&target_config.destination)
+            .is_err()
+        {
+            return Ok(());
+        }
+
+        let search_root = self.project_root.join(&target_config.source);
+        if self.revalidate_path(&search_root).is_err() {
+            return Ok(());
+        }
+        if !search_root.exists() || !search_root.is_dir() {
+            return Ok(());
+        }
+        let glob_pattern = target_config.pattern.as_deref().unwrap_or("**/AGENTS.md");
+        let dest_template = &target_config.destination;
+        let excludes = &target_config.exclude;
+
+        let matches =
+            self.get_nested_glob_matches(&search_root, glob_pattern, excludes, options)?;
+
+        for (_, rel_path) in matches.iter() {
+            let dest_str = Self::expand_destination_template(dest_template, rel_path);
+            if dest_str.is_empty() {
+                continue;
+            }
+
+            let dest = match self.ensure_safe_destination(&dest_str) {
+                Ok(dest) => dest,
+                Err(_) => continue,
+            };
+            if dest.is_symlink() {
+                if options.dry_run {
+                    println!("  {} Would remove: {}", "→".cyan(), dest.display());
+                } else {
+                    self.revalidate_unlink_path(&dest)?;
+                    fs::remove_file(&dest)?;
+                    self.invalidate_path_cache();
+                    println!("  {} Removed: {}", "✔".green(), dest.display());
+                }
+                result.removed += 1;
+            }
+        }
+        Ok(())
+    }
+
+    /// Clean module-map targets: remove symlinks for each mapping.
+    fn clean_module_map_target(
+        &self,
+        agent_name: &str,
+        target_config: &TargetConfig,
+        options: &SyncOptions,
+        result: &mut SyncResult,
+    ) -> Result<()> {
+        for mapping in &target_config.mappings {
+            let filename = crate::config::resolve_module_map_filename(mapping, agent_name);
+
+            let dest_str = format!("{}/{}", mapping.destination, filename);
+            let dest = match self.ensure_safe_destination(&dest_str) {
+                Ok(d) => d,
+                Err(e) => {
+                    if options.verbose {
+                        println!(
+                            "  {} Skipping mapping {}: {}",
+                            "!".yellow(),
+                            mapping.source,
+                            e
+                        );
+                    }
+                    continue;
+                }
+            };
+
+            if dest.is_symlink() {
+                if options.dry_run {
+                    println!("  {} Would remove: {}", "→".cyan(), dest.display());
+                } else {
+                    self.revalidate_unlink_path(&dest)?;
+                    fs::remove_file(&dest)?;
+                    self.invalidate_path_cache();
+                    println!("  {} Removed: {}", "✔".green(), dest.display());
+                }
+                result.removed += 1;
+            }
+        }
+        Ok(())
     }
 
     /// Sync MCP configurations for enabled agents
@@ -1489,9 +1552,34 @@ fn compressed_agents_md_path(path: &Path) -> PathBuf {
     path.with_file_name(COMPRESSED_AGENTS_MD_NAME)
 }
 
+/// Detect a code fence delimiter (``` or ~~~) at the start of a trimmed line.
+fn detect_fence_delimiter(trimmed_start: &str) -> Option<&str> {
+    if trimmed_start.starts_with("```") {
+        let len = trimmed_start
+            .find(|c| c != '`')
+            .unwrap_or(trimmed_start.len());
+        Some(&trimmed_start[..len])
+    } else if trimmed_start.starts_with("~~~") {
+        let len = trimmed_start
+            .find(|c| c != '~')
+            .unwrap_or(trimmed_start.len());
+        Some(&trimmed_start[..len])
+    } else {
+        None
+    }
+}
+
+/// Toggle fence state: open a new fence, close a matching one, or leave unchanged.
+fn toggle_fence<'a>(current: Option<&'a str>, delim: &'a str) -> Option<&'a str> {
+    match current {
+        None => Some(delim),
+        Some(open) if open == delim => None,
+        other => other,
+    }
+}
+
 fn compress_agents_md_content(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
-    // Track the exact fence delimiter so only a matching fence closes the block.
     let mut fence_delim: Option<&str> = None;
     let mut previous_blank = false;
 
@@ -1499,30 +1587,8 @@ fn compress_agents_md_content(input: &str) -> String {
         let trimmed_end = line.trim_end_matches([' ', '\t']);
         let trimmed_start = trimmed_end.trim_start();
 
-        // Detect code fence delimiter (``` or ~~~) via slicing, no allocation.
-        // fence_delim_match borrows from trimmed_start, avoiding a new String.
-        let fence_delim_match = if trimmed_start.starts_with("```") {
-            let len = trimmed_start
-                .find(|c| c != '`')
-                .unwrap_or(trimmed_start.len());
-            Some(&trimmed_start[..len])
-        } else if trimmed_start.starts_with("~~~") {
-            let len = trimmed_start
-                .find(|c| c != '~')
-                .unwrap_or(trimmed_start.len());
-            Some(&trimmed_start[..len])
-        } else {
-            None
-        };
-        let is_fence = fence_delim_match.is_some();
-
-        if is_fence {
-            let delim = fence_delim_match.expect("fence_delim_match is Some when is_fence is true");
-            if fence_delim.is_none() {
-                fence_delim = Some(delim);
-            } else if fence_delim == Some(delim) {
-                fence_delim = None;
-            }
+        if let Some(delim) = detect_fence_delimiter(trimmed_start) {
+            fence_delim = toggle_fence(fence_delim, delim);
             out.push_str(trimmed_end);
             out.push('\n');
             previous_blank = false;
@@ -1660,24 +1726,14 @@ where
         let mut path_it_peek = path_it.clone();
         match path_it_peek.next() {
             Some(s) => {
-                if pat_idx < pattern.len() && pattern[pat_idx] == "**" {
-                    // ** matches zero or more segments
-                    backtrack_pat_idx = Some(pat_idx);
-                    backtrack_path_it = Some(path_it.clone());
-                    pat_idx += 1;
-                } else if pat_idx < pattern.len() && matches_pattern(s, pattern[pat_idx]) {
-                    path_it.next(); // Consume segment
-                    pat_idx += 1;
-                } else if let (Some(b_pat_idx), Some(b_path_it)) =
-                    (backtrack_pat_idx, backtrack_path_it.as_mut())
-                {
-                    // Backtrack: last ** matches one more segment
-                    if b_path_it.next().is_none() {
-                        return false;
-                    }
-                    path_it = b_path_it.clone();
-                    pat_idx = b_pat_idx + 1;
-                } else {
+                if !try_match_segment(
+                    s,
+                    &mut path_it,
+                    pattern,
+                    &mut pat_idx,
+                    &mut backtrack_path_it,
+                    &mut backtrack_pat_idx,
+                ) {
                     return false;
                 }
             }
@@ -1690,6 +1746,42 @@ where
             }
         }
     }
+}
+
+/// Process a single path segment against the current pattern state.
+/// Returns false if matching definitively fails, true to continue.
+fn try_match_segment<'a, I>(
+    segment: &str,
+    path_it: &mut I,
+    pattern: &[&str],
+    pat_idx: &mut usize,
+    backtrack_path_it: &mut Option<I>,
+    backtrack_pat_idx: &mut Option<usize>,
+) -> bool
+where
+    I: Iterator<Item = &'a str> + Clone,
+{
+    if *pat_idx < pattern.len() && pattern[*pat_idx] == "**" {
+        // ** matches zero or more segments
+        *backtrack_pat_idx = Some(*pat_idx);
+        *backtrack_path_it = Some(path_it.clone());
+        *pat_idx += 1;
+    } else if *pat_idx < pattern.len() && matches_pattern(segment, pattern[*pat_idx]) {
+        path_it.next(); // Consume segment
+        *pat_idx += 1;
+    } else if let (Some(b_pat_idx), Some(b_path_it)) =
+        (*backtrack_pat_idx, backtrack_path_it.as_mut())
+    {
+        // Backtrack: last ** matches one more segment
+        if b_path_it.next().is_none() {
+            return false;
+        }
+        *path_it = b_path_it.clone();
+        *pat_idx = b_pat_idx + 1;
+    } else {
+        return false;
+    }
+    true
 }
 
 fn backup_path_for_destination(dest: &Path) -> PathBuf {
