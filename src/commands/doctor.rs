@@ -660,3 +660,48 @@ pub fn extract_managed_entries(content: &str, start_marker: &str, end_marker: &s
 
     entries
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_check_source_directory_exists() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert_eq!(check_source_directory(tmp.path()), 0);
+    }
+
+    #[test]
+    fn test_check_source_directory_missing() {
+        let path = Path::new("/nonexistent/agentsync/test/path");
+        assert_eq!(check_source_directory(path), 1);
+    }
+
+    #[test]
+    fn test_extract_managed_entries_basic() {
+        let content = "# comment\n## START\nfoo\nbar\n## END\n";
+        let entries = extract_managed_entries(content, "## START", "## END");
+        assert_eq!(entries, vec!["foo", "bar"]);
+    }
+
+    #[test]
+    fn test_extract_managed_entries_skips_comments() {
+        let content = "## START\n# comment\nentry\n## END\n";
+        let entries = extract_managed_entries(content, "## START", "## END");
+        assert_eq!(entries, vec!["entry"]);
+    }
+
+    #[test]
+    fn test_extract_managed_entries_empty_section() {
+        let content = "## START\n## END\n";
+        let entries = extract_managed_entries(content, "## START", "## END");
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn test_extract_managed_entries_no_markers() {
+        let content = "just some text\n";
+        let entries = extract_managed_entries(content, "## START", "## END");
+        assert!(entries.is_empty());
+    }
+}

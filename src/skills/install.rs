@@ -874,6 +874,200 @@ mod tests {
         assert_eq!(ext, "gz");
     }
 
+    // --- unpack_zip end-to-end tests ---
+
+    #[test]
+    fn test_unpack_zip_basic_extraction() {
+        let mut buf = Vec::new();
+        {
+            let mut zip = ZipWriter::new(Cursor::new(&mut buf));
+            zip.start_file("SKILL.md", FileOptions::<()>::default())
+                .unwrap();
+            zip.write_all(b"name: my-skill").unwrap();
+            zip.start_file("src/main.rs", FileOptions::<()>::default())
+                .unwrap();
+            zip.write_all(b"fn main() {}").unwrap();
+            zip.finish().unwrap();
+        }
+
+        let dest = tempfile::tempdir().unwrap();
+        unpack_zip(Cursor::new(&buf), dest.path(), None).unwrap();
+
+        assert!(dest.path().join("SKILL.md").exists());
+        assert!(dest.path().join("src/main.rs").exists());
+        assert_eq!(
+            std::fs::read_to_string(dest.path().join("SKILL.md")).unwrap(),
+            "name: my-skill"
+        );
+    }
+
+    #[test]
+    fn test_unpack_zip_with_common_root_stripping() {
+        // Archive where all files share a common root "my-skill-v1/"
+        let mut buf = Vec::new();
+        {
+            let mut zip = ZipWriter::new(Cursor::new(&mut buf));
+            zip.add_directory("my-skill-v1/", FileOptions::<()>::default())
+                .unwrap();
+            zip.start_file("my-skill-v1/SKILL.md", FileOptions::<()>::default())
+                .unwrap();
+            zip.write_all(b"name: skill").unwrap();
+            zip.start_file("my-skill-v1/lib.rs", FileOptions::<()>::default())
+                .unwrap();
+            zip.write_all(b"pub mod lib;").unwrap();
+            zip.finish().unwrap();
+        }
+
+        let dest = tempfile::tempdir().unwrap();
+        unpack_zip(Cursor::new(&buf), dest.path(), None).unwrap();
+
+        // Common root "my-skill-v1" should be stripped
+        assert!(dest.path().join("SKILL.md").exists());
+        assert!(dest.path().join("lib.rs").exists());
+    }
+
+    #[test]
+    fn test_unpack_zip_with_subpath_filter() {
+        let mut buf = Vec::new();
+        {
+            let mut zip = ZipWriter::new(Cursor::new(&mut buf));
+            zip.start_file("docs/readme.md", FileOptions::<()>::default())
+                .unwrap();
+            zip.write_all(b"docs").unwrap();
+            zip.start_file("src/SKILL.md", FileOptions::<()>::default())
+                .unwrap();
+            zip.write_all(b"name: skill").unwrap();
+            zip.start_file("src/code.rs", FileOptions::<()>::default())
+                .unwrap();
+            zip.write_all(b"code").unwrap();
+            zip.finish().unwrap();
+        }
+
+        let dest = tempfile::tempdir().unwrap();
+        unpack_zip(Cursor::new(&buf), dest.path(), Some("src")).unwrap();
+
+        // Only files under "src/" should be extracted, with "src/" stripped
+        assert!(dest.path().join("SKILL.md").exists());
+        assert!(dest.path().join("code.rs").exists());
+        assert!(!dest.path().join("docs").exists());
+        assert!(!dest.path().join("readme.md").exists());
+    }
+
+    // --- unpack_tar_gz end-to-end tests ---
+
+    #[test]
+    fn test_unpack_tar_gz_basic_extraction() {
+        let buf = make_tar_gz(&["SKILL.md", "src/main.rs"]);
+
+        let dest = tempfile::tempdir().unwrap();
+        unpack_tar_gz(Cursor::new(&buf), dest.path(), None).unwrap();
+
+        assert!(dest.path().join("SKILL.md").exists());
+        assert!(dest.path().join("src/main.rs").exists());
+    }
+
+    #[test]
+    fn test_unpack_tar_gz_with_common_root_stripping() {
+        let buf = make_tar_gz(&["root/SKILL.md", "root/lib.rs"]);
+
+        let dest = tempfile::tempdir().unwrap();
+        unpack_tar_gz(Cursor::new(&buf), dest.path(), None).unwrap();
+
+        // Common root "root" should be stripped
+        assert!(dest.path().join("SKILL.md").exists());
+        assert!(dest.path().join("lib.rs").exists());
+    }
+
+    #[test]
+    fn test_unpack_tar_gz_with_subpath_filter() {
+        let buf = make_tar_gz(&[
+            "root/docs/readme.md",
+            "root/src/SKILL.md",
+            "root/src/code.rs",
+        ]);
+
+        let dest = tempfile::tempdir().unwrap();
+        unpack_tar_gz(Cursor::new(&buf), dest.path(), Some("src")).unwrap();
+
+        // Only files under "src/" after root stripping
+        assert!(dest.path().join("SKILL.md").exists());
+        assert!(dest.path().join("code.rs").exists());
+        assert!(!dest.path().join("docs").exists());
+    }
+
+    // --- find_best_skill_dir tests ---
+
+    #[test]
+    fn test_find_best_skill_dir_root_manifest() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("SKILL.md"), b"name: test").unwrap();
+        assert_eq!(find_best_skill_dir(tmp.path(), "test"), tmp.path());
+    }
+
+    #[test]
+    fn test_find_best_skill_dir_matching_subdir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sub = tmp.path().join("my-skill");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(sub.join("SKILL.md"), b"name: my-skill").unwrap();
+        assert_eq!(find_best_skill_dir(tmp.path(), "my-skill"), sub);
+    }
+
+    #[test]
+    fn test_find_best_skill_dir_sole_manifest() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sub = tmp.path().join("some-other-name");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(sub.join("SKILL.md"), b"name: test").unwrap();
+        // Only one manifest found, should return its parent even if name doesn't match
+        assert_eq!(find_best_skill_dir(tmp.path(), "my-skill"), sub);
+    }
+
+    #[test]
+    fn test_find_best_skill_dir_fallback() {
+        let tmp = tempfile::tempdir().unwrap();
+        // No SKILL.md anywhere
+        std::fs::write(tmp.path().join("README.md"), b"hello").unwrap();
+        assert_eq!(find_best_skill_dir(tmp.path(), "test"), tmp.path());
+    }
+
+    // --- copy_dir_recursively tests ---
+
+    #[test]
+    fn test_copy_dir_recursively_basic() {
+        let src = tempfile::tempdir().unwrap();
+        std::fs::write(src.path().join("a.txt"), b"hello").unwrap();
+        std::fs::create_dir_all(src.path().join("sub")).unwrap();
+        std::fs::write(src.path().join("sub/b.txt"), b"world").unwrap();
+
+        let dst = tempfile::tempdir().unwrap();
+        let target = dst.path().join("output");
+        copy_dir_recursively(src.path(), &target).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(target.join("a.txt")).unwrap(),
+            "hello"
+        );
+        assert_eq!(
+            std::fs::read_to_string(target.join("sub/b.txt")).unwrap(),
+            "world"
+        );
+    }
+
+    // --- archive_path_is_unsafe tests ---
+
+    #[test]
+    fn test_archive_path_is_unsafe_safe_paths() {
+        assert!(!archive_path_is_unsafe("foo/bar.txt"));
+        assert!(!archive_path_is_unsafe("SKILL.md"));
+        assert!(!archive_path_is_unsafe("src/lib.rs"));
+    }
+
+    #[test]
+    fn test_archive_path_is_unsafe_backslash_prefix() {
+        assert!(archive_path_is_unsafe("\\\\server\\share"));
+    }
+
     #[tokio::test]
     async fn test_tar_windows_drive_path_rejection() {
         let temp_root = tempfile::tempdir().unwrap();
