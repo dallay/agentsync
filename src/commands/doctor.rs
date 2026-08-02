@@ -673,8 +673,9 @@ mod tests {
 
     #[test]
     fn test_check_source_directory_missing() {
-        let path = Path::new("/nonexistent/agentsync/test/path");
-        assert_eq!(check_source_directory(path), 1);
+        let tmp = tempfile::tempdir().unwrap();
+        let missing = tmp.path().join("does_not_exist");
+        assert_eq!(check_source_directory(&missing), 1);
     }
 
     #[test]

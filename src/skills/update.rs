@@ -161,7 +161,10 @@ fn install_updated_skill(
     if skill_dir.exists() {
         fs::remove_dir_all(skill_dir).map_err(|_| SkillUpdateError::Atomic)?;
     }
-    copy_dir_all(local_dir, skill_dir).map_err(SkillUpdateError::Io)?;
+    if let Err(e) = copy_dir_all(local_dir, skill_dir) {
+        rollback_skill_dir(skill_dir, backup_dir);
+        return Err(SkillUpdateError::Io(e));
+    }
 
     // Validate the new skill manifest
     let manifest_path = skill_dir.join("SKILL.md");

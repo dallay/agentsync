@@ -433,6 +433,7 @@ fn zip_common_root(
         && zip
             .file_names()
             .all(|n| n == root || n.starts_with(&format!("{root}/")))
+        && zip.file_names().any(|n| n.starts_with(&format!("{root}/")))
     {
         Ok(Some(root.to_string()))
     } else {
@@ -459,6 +460,8 @@ fn zip_entry_rel_path<'a>(
     };
 
     if let Some(sub) = subpath {
+        // Normalize trailing slash: "src/" → "src"
+        let sub = sub.trim_end_matches('/');
         // Strip subpath only at a component boundary
         if let Some(rest) = rel_path.strip_prefix(&format!("{sub}/")) {
             Some(rest)
@@ -477,10 +480,19 @@ fn unpack_tar_gz(
     dest: &std::path::Path,
     subpath: Option<&str>,
 ) -> Result<(), SkillInstallError> {
-    // Read the full decompressed tar into a buffer so we can iterate twice
+    // Limit decompressed size to prevent zip bombs
+    const MAX_DECOMPRESSED_SIZE: u64 = 500 * 1024 * 1024; // 500 MB
+
     let mut decompressed = Vec::new();
-    let mut gz = GzDecoder::new(reader);
-    std::io::Read::read_to_end(&mut gz, &mut decompressed).map_err(SkillInstallError::Io)?;
+    let gz = GzDecoder::new(reader);
+    let mut limited = std::io::Read::take(gz, MAX_DECOMPRESSED_SIZE + 1);
+    std::io::Read::read_to_end(&mut limited, &mut decompressed).map_err(SkillInstallError::Io)?;
+
+    if decompressed.len() as u64 > MAX_DECOMPRESSED_SIZE {
+        return Err(SkillInstallError::Other(format!(
+            "decompressed archive too large: exceeds {MAX_DECOMPRESSED_SIZE} byte limit"
+        )));
+    }
 
     // First pass: determine common root
     let common_root = {
@@ -529,10 +541,16 @@ fn tar_common_root_from_archive(
     archive: &mut Archive<impl std::io::Read>,
 ) -> Result<Option<String>, SkillInstallError> {
     let mut root: Option<String> = None;
+    let mut has_nested = false;
 
     for entry in archive.entries().map_err(SkillInstallError::Io)? {
         let entry = entry.map_err(SkillInstallError::Io)?;
         let path = entry.path().map_err(SkillInstallError::Io)?;
+
+        if path.components().count() > 1 {
+            has_nested = true;
+        }
+
         let first_component = path.components().next().and_then(|c| match c {
             std::path::Component::Normal(s) => Some(s.to_string_lossy().into_owned()),
             _ => None,
@@ -549,7 +567,7 @@ fn tar_common_root_from_archive(
         }
     }
 
-    Ok(root)
+    if has_nested { Ok(root) } else { Ok(None) }
 }
 
 fn tar_entry_rel_path(
@@ -571,6 +589,7 @@ fn tar_entry_rel_path(
     };
 
     if let Some(sub) = subpath {
+        let sub = sub.trim_end_matches('/');
         let sub_path = std::path::Path::new(sub);
         if rel_path.starts_with(sub_path) {
             Some(

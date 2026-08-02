@@ -62,22 +62,23 @@ fn is_fresh(cache: &CheckedVersion) -> bool {
     true
 }
 
+/// Pure logic for determining whether to skip the update check, given the
+/// relevant environment values and terminal state.
+fn should_skip(no_update_check: Option<&str>, ci: Option<&str>, is_terminal: bool) -> bool {
+    if no_update_check.is_some_and(|v| v.eq_ignore_ascii_case("1")) {
+        return true;
+    }
+    if ci.is_some_and(|v| v.eq_ignore_ascii_case("true")) {
+        return true;
+    }
+    !is_terminal
+}
+
 fn should_skip_update_check() -> bool {
-    let no_check = std::env::var("AGENTSYNC_NO_UPDATE_CHECK")
-        .map(|v| v.eq_ignore_ascii_case("1"))
-        .unwrap_or(false);
-    if no_check {
-        return true;
-    }
-
-    let ci = std::env::var("CI")
-        .map(|v| v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
-    if ci {
-        return true;
-    }
-
-    !std::io::stderr().is_terminal()
+    let no_check = std::env::var("AGENTSYNC_NO_UPDATE_CHECK").ok();
+    let ci = std::env::var("CI").ok();
+    let is_terminal = std::io::stderr().is_terminal();
+    should_skip(no_check.as_deref(), ci.as_deref(), is_terminal)
 }
 
 fn fetch_latest_version() -> Option<String> {
@@ -291,75 +292,28 @@ mod tests {
     }
 
     #[test]
-    fn test_should_skip_when_no_update_check_env_set() {
-        // Save and restore env
-        let orig = std::env::var("AGENTSYNC_NO_UPDATE_CHECK").ok();
-        let orig_ci = std::env::var("CI").ok();
-
-        unsafe {
-            std::env::set_var("AGENTSYNC_NO_UPDATE_CHECK", "1");
-            std::env::remove_var("CI");
-        }
-        assert!(should_skip_update_check());
-
-        // Cleanup
-        unsafe {
-            match orig {
-                Some(v) => std::env::set_var("AGENTSYNC_NO_UPDATE_CHECK", v),
-                None => std::env::remove_var("AGENTSYNC_NO_UPDATE_CHECK"),
-            }
-            match orig_ci {
-                Some(v) => std::env::set_var("CI", v),
-                None => std::env::remove_var("CI"),
-            }
-        }
+    fn test_should_skip_when_no_update_check_set() {
+        assert!(should_skip(Some("1"), None, true));
     }
 
     #[test]
-    fn test_should_skip_when_ci_env_set() {
-        let orig = std::env::var("CI").ok();
-        let orig_no = std::env::var("AGENTSYNC_NO_UPDATE_CHECK").ok();
-
-        unsafe {
-            std::env::set_var("CI", "true");
-            std::env::remove_var("AGENTSYNC_NO_UPDATE_CHECK");
-        }
-        assert!(should_skip_update_check());
-
-        unsafe {
-            match orig {
-                Some(v) => std::env::set_var("CI", v),
-                None => std::env::remove_var("CI"),
-            }
-            match orig_no {
-                Some(v) => std::env::set_var("AGENTSYNC_NO_UPDATE_CHECK", v),
-                None => std::env::remove_var("AGENTSYNC_NO_UPDATE_CHECK"),
-            }
-        }
+    fn test_should_skip_when_ci_set() {
+        assert!(should_skip(None, Some("true"), true));
     }
 
     #[test]
     fn test_should_skip_no_update_check_only_skips_on_1() {
-        let orig = std::env::var("AGENTSYNC_NO_UPDATE_CHECK").ok();
-        let orig_ci = std::env::var("CI").ok();
+        // "0" should not trigger skip (terminal=true means not skipped)
+        assert!(!should_skip(Some("0"), None, true));
+    }
 
-        unsafe {
-            std::env::set_var("AGENTSYNC_NO_UPDATE_CHECK", "0");
-            std::env::remove_var("CI");
-        }
-        // With "0", the env check won't trigger skip (but terminal check may)
-        // At least confirm it doesn't panic
-        let _ = should_skip_update_check();
+    #[test]
+    fn test_should_skip_when_not_terminal() {
+        assert!(should_skip(None, None, false));
+    }
 
-        unsafe {
-            match orig {
-                Some(v) => std::env::set_var("AGENTSYNC_NO_UPDATE_CHECK", v),
-                None => std::env::remove_var("AGENTSYNC_NO_UPDATE_CHECK"),
-            }
-            match orig_ci {
-                Some(v) => std::env::set_var("CI", v),
-                None => std::env::remove_var("CI"),
-            }
-        }
+    #[test]
+    fn test_should_not_skip_when_all_clear() {
+        assert!(!should_skip(None, None, true));
     }
 }
