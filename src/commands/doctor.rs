@@ -198,12 +198,14 @@ fn check_gitignore(linker: &Linker) -> usize {
     let (start_marker, end_marker) = agentsync::gitignore::managed_markers(marker);
     let (has_start_marker, has_end_marker) = parse_markers(&content, &start_marker, &end_marker);
 
-    if gitignore_missing_section_is_issue(
-        linker.config().gitignore.enabled,
-        &content,
-        &start_marker,
-        &end_marker,
-    ) {
+    // Check for missing/mismatched managed section using already-parsed marker results
+    let section_is_issue = match (has_start_marker, has_end_marker) {
+        (true, true) => false,
+        (false, false) => linker.config().gitignore.enabled,
+        _ => true, // mismatched markers
+    };
+
+    if section_is_issue {
         println!(
             "  {} .gitignore managed section missing (Marker: {})",
             "⚠".yellow(),
@@ -236,7 +238,7 @@ fn check_gitignore(linker: &Linker) -> usize {
         for m in &missing {
             println!("    - {}", m);
         }
-        issues += 1;
+        issues += missing.len();
     }
     if !extra.is_empty() {
         println!(
@@ -244,7 +246,7 @@ fn check_gitignore(linker: &Linker) -> usize {
             "⚠".yellow(),
             extra.len()
         );
-        issues += 1;
+        issues += extra.len();
     }
 
     if missing.is_empty() && extra.is_empty() {
@@ -342,6 +344,7 @@ pub(crate) fn parse_markers(content: &str, start_marker: &str, end_marker: &str)
     (has_start, has_end)
 }
 
+#[cfg(test)]
 pub(crate) fn gitignore_missing_section_is_issue(
     gitignore_enabled: bool,
     content: &str,

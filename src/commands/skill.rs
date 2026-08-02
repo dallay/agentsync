@@ -814,45 +814,62 @@ fn run_suggest_install(
 ) -> Result<SuggestInstallJsonResponse> {
     match output_mode {
         SuggestInstallOutputMode::Json => {
-            if args.all {
-                service.install_all_with(project_root, response, provider)
-            } else {
-                ensure_interactive_install_supported()?;
-                let selected_skill_ids = prompt_for_recommended_skills(response)?;
-                service.install_selected_with(
-                    project_root,
-                    response,
-                    provider,
-                    SuggestInstallMode::Interactive,
-                    &selected_skill_ids,
-                    |skill_id, source, target_root| {
-                        agentsync::skills::install::blocking_fetch_and_install_skill(
-                            skill_id,
-                            source,
-                            target_root,
-                        )
-                        .map_err(|error| anyhow::anyhow!(error))
-                    },
-                )
-            }
+            let (mode, selected_skill_ids) = resolve_install_mode_and_ids(args, response)?;
+            let mut reporter = NoopInstallReporter;
+            service.install_selected_with_reporter(
+                project_root,
+                response,
+                provider,
+                mode,
+                &selected_skill_ids,
+                &mut reporter,
+                install_skill_callback,
+            )
         }
-        SuggestInstallOutputMode::HumanLine { use_color } => run_suggest_install_human_line(
-            args,
-            project_root,
-            service,
-            response,
-            provider,
-            use_color,
-        ),
-        SuggestInstallOutputMode::HumanLive { use_color } => run_suggest_install_human_live(
-            args,
-            project_root,
-            service,
-            response,
-            provider,
-            use_color,
-        ),
+        SuggestInstallOutputMode::HumanLine { use_color } => {
+            let (mode, selected_skill_ids) = resolve_install_mode_and_ids(args, response)?;
+            print_suggest_install_batch_start(mode, selected_skill_ids.len(), use_color);
+            let mut reporter = SuggestInstallLineReporter::new(use_color);
+            service.install_selected_with_reporter(
+                project_root,
+                response,
+                provider,
+                mode,
+                &selected_skill_ids,
+                &mut reporter,
+                install_skill_callback,
+            )
+        }
+        SuggestInstallOutputMode::HumanLive { use_color } => {
+            let (mode, selected_skill_ids) = resolve_install_mode_and_ids(args, response)?;
+            print_suggest_install_batch_start(mode, selected_skill_ids.len(), use_color);
+            let mut reporter = SuggestInstallLiveReporter::new(use_color);
+            let result = service.install_selected_with_reporter(
+                project_root,
+                response,
+                provider,
+                mode,
+                &selected_skill_ids,
+                &mut reporter,
+                install_skill_callback,
+            );
+            reporter.finalize();
+            result
+        }
     }
+}
+
+/// Reusable install callback that bridges into the blocking skill installer.
+fn install_skill_callback(skill_id: &str, source: &str, target_root: &Path) -> Result<()> {
+    agentsync::skills::install::blocking_fetch_and_install_skill(skill_id, source, target_root)
+        .map_err(|error| anyhow::anyhow!(error))
+}
+
+/// No-op reporter for JSON output mode (results collected, no progress display).
+struct NoopInstallReporter;
+
+impl SuggestInstallProgressReporter for NoopInstallReporter {
+    fn on_event(&mut self, _event: SuggestInstallProgressEvent) {}
 }
 
 fn resolve_install_mode_and_ids(
@@ -875,66 +892,6 @@ fn resolve_install_mode_and_ids(
             prompt_for_recommended_skills(response)?,
         ))
     }
-}
-
-fn run_suggest_install_human_line(
-    args: &SkillSuggestArgs,
-    project_root: &Path,
-    service: &SuggestionService,
-    response: &SuggestResponse,
-    provider: &SuggestInstallProvider,
-    use_color: bool,
-) -> Result<SuggestInstallJsonResponse> {
-    let (mode, selected_skill_ids) = resolve_install_mode_and_ids(args, response)?;
-    print_suggest_install_batch_start(mode, selected_skill_ids.len(), use_color);
-    let mut reporter = SuggestInstallLineReporter::new(use_color);
-    service.install_selected_with_reporter(
-        project_root,
-        response,
-        provider,
-        mode,
-        &selected_skill_ids,
-        &mut reporter,
-        |skill_id, source, target_root| {
-            agentsync::skills::install::blocking_fetch_and_install_skill(
-                skill_id,
-                source,
-                target_root,
-            )
-            .map_err(|error| anyhow::anyhow!(error))
-        },
-    )
-}
-
-fn run_suggest_install_human_live(
-    args: &SkillSuggestArgs,
-    project_root: &Path,
-    service: &SuggestionService,
-    response: &SuggestResponse,
-    provider: &SuggestInstallProvider,
-    use_color: bool,
-) -> Result<SuggestInstallJsonResponse> {
-    let (mode, selected_skill_ids) = resolve_install_mode_and_ids(args, response)?;
-    print_suggest_install_batch_start(mode, selected_skill_ids.len(), use_color);
-    let mut reporter = SuggestInstallLiveReporter::new(use_color);
-    let result = service.install_selected_with_reporter(
-        project_root,
-        response,
-        provider,
-        mode,
-        &selected_skill_ids,
-        &mut reporter,
-        |skill_id, source, target_root| {
-            agentsync::skills::install::blocking_fetch_and_install_skill(
-                skill_id,
-                source,
-                target_root,
-            )
-            .map_err(|error| anyhow::anyhow!(error))
-        },
-    );
-    reporter.finalize();
-    result
 }
 
 fn handle_suggest_error(args: &SkillSuggestArgs, error: anyhow::Error) -> Result<()> {

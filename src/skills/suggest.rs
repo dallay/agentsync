@@ -708,18 +708,6 @@ impl SuggestInstallJsonResponse {
     }
 }
 
-#[allow(dead_code)]
-fn format_installed_status(recommendation: &SkillSuggestion) -> String {
-    if recommendation.installed {
-        match recommendation.installed_version.as_deref() {
-            Some(version) => format!("installed ({version})"),
-            None => "installed".to_string(),
-        }
-    } else {
-        "not installed".to_string()
-    }
-}
-
 fn render_detections_section(detections: &[SuggestJsonDetection], lines: &mut Vec<String>) {
     if detections.is_empty() {
         lines.push("Detected technologies: none".to_string());

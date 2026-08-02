@@ -94,6 +94,7 @@ fn fetch_latest_version() -> Option<String> {
     }
 
     let client = reqwest::blocking::Client::builder()
+        .user_agent(concat!("agentsync/", env!("CARGO_PKG_VERSION")))
         .timeout(std::time::Duration::from_secs(3))
         .build()
         .ok()?;
@@ -132,10 +133,6 @@ fn check_and_notify() {
         notified_for_version: Some(newest_version.clone()),
     };
 
-    if cache.save(&new_cache).is_err() {
-        return;
-    }
-
     eprintln!(
         "{} {}",
         "💡".yellow().bold(),
@@ -147,6 +144,8 @@ fn check_and_notify() {
         .yellow()
         .bold()
     );
+
+    let _ = cache.save(&new_cache);
 }
 
 pub fn spawn() {

@@ -416,7 +416,15 @@ fn main() -> Result<()> {
             verbose,
             agents,
             no_gitignore,
-        } => handle_apply(path, config, clean, dry_run, verbose, agents, no_gitignore)?,
+        } => handle_apply(ApplyArgs {
+            path,
+            config,
+            clean,
+            dry_run,
+            verbose,
+            agents,
+            no_gitignore,
+        })?,
         Commands::Clean {
             path,
             config,
@@ -475,8 +483,7 @@ fn handle_init(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
-fn handle_apply(
+struct ApplyArgs {
     path: Option<PathBuf>,
     config: Option<PathBuf>,
     clean: bool,
@@ -484,14 +491,16 @@ fn handle_apply(
     verbose: bool,
     agents: Option<Vec<String>>,
     no_gitignore: bool,
-) -> Result<()> {
-    let start_dir = path.unwrap_or_else(|| env::current_dir().unwrap());
+}
+
+fn handle_apply(args: ApplyArgs) -> Result<()> {
+    let start_dir = args.path.unwrap_or_else(|| env::current_dir().unwrap());
     print_header();
-    let config_path = match config {
+    let config_path = match args.config {
         Some(p) => p,
         None => Config::find_config(&start_dir)?,
     };
-    if verbose {
+    if args.verbose {
         println!(
             "Using config: {}\n",
             config_path.display().to_string().dimmed()
@@ -500,15 +509,15 @@ fn handle_apply(
     let config = Config::load(&config_path)?;
     let linker = Linker::new(config, config_path);
     let use_color = human_use_color();
-    if dry_run {
+    if args.dry_run {
         print_lines(&render_dry_run_notice(use_color));
         println!();
     }
-    let clean_result = if clean {
-        print_lines(&render_clean_phase_with_color(dry_run, use_color));
+    let clean_result = if args.clean {
+        print_lines(&render_clean_phase_with_color(args.dry_run, use_color));
         let clean_opts = SyncOptions {
-            dry_run,
-            verbose,
+            dry_run: args.dry_run,
+            verbose: args.verbose,
             ..Default::default()
         };
         let clean_result = linker.clean(&clean_opts)?;
@@ -517,24 +526,28 @@ fn handle_apply(
     } else {
         None
     };
-    print_lines(&render_sync_phase_with_color(dry_run, clean, use_color));
+    print_lines(&render_sync_phase_with_color(
+        args.dry_run,
+        args.clean,
+        use_color,
+    ));
     let options = SyncOptions {
         clean: false,
-        dry_run,
-        verbose,
-        agents,
+        dry_run: args.dry_run,
+        verbose: args.verbose,
+        agents: args.agents,
     };
     let mut result = linker.sync(&options)?;
     if let Some(clean_result) = &clean_result {
         merge_clean_result_into_apply_result(&mut result, clean_result);
     }
-    if !no_gitignore {
-        handle_apply_gitignore(&linker, dry_run, use_color)?;
+    if !args.no_gitignore {
+        handle_apply_gitignore(&linker, args.dry_run, use_color)?;
     }
     if linker.config().mcp.enabled && !linker.config().mcp_servers.is_empty() {
         handle_apply_mcp(
             &linker,
-            dry_run,
+            options.dry_run,
             use_color,
             options.agents.as_ref(),
             &mut result,
@@ -542,7 +555,9 @@ fn handle_apply(
     }
     println!();
     print_lines(&render_apply_summary_with_color(
-        dry_run, &result, use_color,
+        options.dry_run,
+        &result,
+        use_color,
     ));
     Ok(())
 }

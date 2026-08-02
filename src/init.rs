@@ -1678,19 +1678,12 @@ fn copy_entries_to_dest(
                 dest_dir.file_name().unwrap_or_default().to_string_lossy()
             );
             skipped += 1;
-        } else if entry_path.is_dir() {
-            copy_dir_all(&entry_path, &dest)?;
-            println!(
-                "  {} Copied {}: {} → {}/{}",
-                "✔".green(),
-                entry_kind,
-                entry_path.display(),
-                dest_dir.file_name().unwrap_or_default().to_string_lossy(),
-                name.to_string_lossy()
-            );
-            migrated += 1;
         } else {
-            fs::copy(&entry_path, &dest)?;
+            if entry_path.is_dir() {
+                copy_dir_all(&entry_path, &dest)?;
+            } else {
+                fs::copy(&entry_path, &dest)?;
+            }
             println!(
                 "  {} Copied {}: {} → {}/{}",
                 "✔".green(),

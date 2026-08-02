@@ -238,6 +238,13 @@ fn find_best_skill_dir(temp_path: &Path, skill_id: &str) -> PathBuf {
     temp_path.to_path_buf()
 }
 
+/// Result of fetching a skill source — either we already copied a directory,
+/// or we have archive bytes to unpack.
+enum FetchedSource {
+    DirectoryCopied,
+    Archive(Vec<u8>),
+}
+
 pub async fn fetch_and_unpack_to_tempdir(url: &str) -> Result<TempDir, SkillInstallError> {
     use std::io::Cursor;
 
@@ -249,12 +256,12 @@ pub async fn fetch_and_unpack_to_tempdir(url: &str) -> Result<TempDir, SkillInst
 
     let tmp = tempfile::TempDir::new().map_err(SkillInstallError::Io)?;
 
-    let (data, ext) = fetch_archive_data(url_base, tmp.path()).await?;
+    let (source, ext) = fetch_archive_data(url_base, tmp.path()).await?;
 
-    // If fetch_archive_data returned empty data, it was a local dir copy — done
-    if data.is_empty() {
-        return Ok(tmp);
-    }
+    let data = match source {
+        FetchedSource::DirectoryCopied => return Ok(tmp),
+        FetchedSource::Archive(bytes) => bytes,
+    };
 
     let source_name = url_base.to_string();
     let is_tar_gz = source_name.ends_with(".tar.gz") || source_name.ends_with(".tgz");
@@ -274,7 +281,7 @@ pub async fn fetch_and_unpack_to_tempdir(url: &str) -> Result<TempDir, SkillInst
 async fn fetch_archive_data(
     url_base: &str,
     tmp_path: &std::path::Path,
-) -> Result<(Vec<u8>, String), SkillInstallError> {
+) -> Result<(FetchedSource, String), SkillInstallError> {
     let is_file = url_base.starts_with("file://");
     let is_local = url_base.starts_with('/') || url_base.chars().nth(1) == Some(':');
 
@@ -289,7 +296,7 @@ fn fetch_local_data(
     url_base: &str,
     is_file: bool,
     tmp_path: &std::path::Path,
-) -> Result<(Vec<u8>, String), SkillInstallError> {
+) -> Result<(FetchedSource, String), SkillInstallError> {
     let path_str = if is_file {
         url_base.strip_prefix("file://").unwrap_or("")
     } else {
@@ -306,16 +313,18 @@ fn fetch_local_data(
         .to_ascii_lowercase();
     if path.is_dir() {
         copy_dir_recursively(path, tmp_path)?;
-        return Ok((Vec::new(), String::new()));
+        return Ok((FetchedSource::DirectoryCopied, String::new()));
     }
     let data = std::fs::read(path).map_err(SkillInstallError::Io)?;
-    Ok((data, ext))
+    Ok((FetchedSource::Archive(data), ext))
 }
 
 async fn fetch_remote_data(
     url_base: &str,
     tmp_path: &std::path::Path,
-) -> Result<(Vec<u8>, String), SkillInstallError> {
+) -> Result<(FetchedSource, String), SkillInstallError> {
+    const MAX_DOWNLOAD_SIZE: u64 = 100 * 1024 * 1024; // 100 MB
+
     let ext = url_base
         .rsplit('.')
         .next()
@@ -331,14 +340,31 @@ async fn fetch_remote_data(
         .error_for_status()
         .map_err(SkillInstallError::Network)?;
 
+    // Check Content-Length header if available
+    if let Some(content_length) = resp.content_length()
+        && content_length > MAX_DOWNLOAD_SIZE
+    {
+        return Err(SkillInstallError::Other(format!(
+            "download too large: {content_length} bytes exceeds {MAX_DOWNLOAD_SIZE} byte limit"
+        )));
+    }
+
     let stdfile =
         std::fs::File::create(tmp_path.join("download.tmp")).map_err(SkillInstallError::Io)?;
     let mut tmpfile = tokio::fs::File::from_std(stdfile);
     let mut stream = resp.bytes_stream();
+    let mut total_bytes: u64 = 0;
     use futures_util::StreamExt as _;
     use tokio::io::AsyncWriteExt;
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(SkillInstallError::Network)?;
+        total_bytes += chunk.len() as u64;
+        if total_bytes > MAX_DOWNLOAD_SIZE {
+            let _ = std::fs::remove_file(tmp_path.join("download.tmp"));
+            return Err(SkillInstallError::Other(format!(
+                "download too large: exceeded {MAX_DOWNLOAD_SIZE} byte limit while streaming"
+            )));
+        }
         tmpfile
             .write_all(&chunk)
             .await
@@ -348,7 +374,7 @@ async fn fetch_remote_data(
 
     let data = std::fs::read(tmp_path.join("download.tmp")).map_err(SkillInstallError::Io)?;
     let _ = std::fs::remove_file(tmp_path.join("download.tmp"));
-    Ok((data, ext))
+    Ok((FetchedSource::Archive(data), ext))
 }
 
 fn unpack_zip(
@@ -403,7 +429,11 @@ fn zip_common_root(
         .name()
         .to_string();
     let root = first_name.split('/').next().unwrap_or("");
-    if !root.is_empty() && zip.file_names().all(|n| n.starts_with(root)) {
+    if !root.is_empty()
+        && zip
+            .file_names()
+            .all(|n| n == root || n.starts_with(&format!("{root}/")))
+    {
         Ok(Some(root.to_string()))
     } else {
         Ok(None)
@@ -416,18 +446,27 @@ fn zip_entry_rel_path<'a>(
     subpath: Option<&str>,
 ) -> Option<&'a str> {
     let rel_path = if let Some(root) = common_root {
-        full_name
-            .strip_prefix(root)
-            .unwrap_or(full_name)
-            .trim_start_matches('/')
+        // Strip root only at a component boundary: "root/" prefix or exact match
+        if let Some(rest) = full_name.strip_prefix(&format!("{root}/")) {
+            rest
+        } else if full_name == root {
+            ""
+        } else {
+            full_name
+        }
     } else {
         full_name
     };
 
     if let Some(sub) = subpath {
-        rel_path
-            .strip_prefix(sub)
-            .map(|s| s.trim_start_matches('/'))
+        // Strip subpath only at a component boundary
+        if let Some(rest) = rel_path.strip_prefix(&format!("{sub}/")) {
+            Some(rest)
+        } else if rel_path == sub {
+            Some("")
+        } else {
+            None
+        }
     } else {
         Some(rel_path)
     }
@@ -438,13 +477,20 @@ fn unpack_tar_gz(
     dest: &std::path::Path,
     subpath: Option<&str>,
 ) -> Result<(), SkillInstallError> {
-    let gz = GzDecoder::new(reader);
-    let mut archive = Archive::new(gz);
+    // Read the full decompressed tar into a buffer so we can iterate twice
+    let mut decompressed = Vec::new();
+    let mut gz = GzDecoder::new(reader);
+    std::io::Read::read_to_end(&mut gz, &mut decompressed).map_err(SkillInstallError::Io)?;
 
-    let entries: Vec<_> = archive.entries().map_err(SkillInstallError::Io)?.collect();
-    let common_root = tar_common_root(&entries)?;
+    // First pass: determine common root
+    let common_root = {
+        let mut archive = Archive::new(std::io::Cursor::new(&decompressed));
+        tar_common_root_from_archive(&mut archive)?
+    };
 
-    for entry in entries {
+    // Second pass: extract entries
+    let mut archive = Archive::new(std::io::Cursor::new(&decompressed));
+    for entry in archive.entries().map_err(SkillInstallError::Io)? {
         let mut entry = entry.map_err(SkillInstallError::Io)?;
 
         let entry_type = entry.header().entry_type();
@@ -479,38 +525,31 @@ fn unpack_tar_gz(
     Ok(())
 }
 
-fn tar_common_root(
-    entries: &[Result<tar::Entry<flate2::read::GzDecoder<impl std::io::Read>>, std::io::Error>],
+fn tar_common_root_from_archive(
+    archive: &mut Archive<impl std::io::Read>,
 ) -> Result<Option<String>, SkillInstallError> {
-    if entries.is_empty() {
-        return Ok(None);
+    let mut root: Option<String> = None;
+
+    for entry in archive.entries().map_err(SkillInstallError::Io)? {
+        let entry = entry.map_err(SkillInstallError::Io)?;
+        let path = entry.path().map_err(SkillInstallError::Io)?;
+        let first_component = path.components().next().and_then(|c| match c {
+            std::path::Component::Normal(s) => Some(s.to_string_lossy().into_owned()),
+            _ => None,
+        });
+
+        let Some(ref component) = first_component else {
+            return Ok(None);
+        };
+
+        match &root {
+            None => root = Some(component.clone()),
+            Some(r) if r != component => return Ok(None),
+            _ => {}
+        }
     }
-    let first_path = entries[0]
-        .as_ref()
-        .map_err(|e| SkillInstallError::Other(e.to_string()))?
-        .path()
-        .map_err(SkillInstallError::Io)?;
-    let root = first_path.components().next().and_then(|c| match c {
-        std::path::Component::Normal(s) => Some(s.to_string_lossy().into_owned()),
-        _ => None,
-    });
 
-    let Some(ref r) = root else {
-        return Ok(None);
-    };
-
-    let all_start_with = entries.iter().all(|e| {
-        e.as_ref()
-            .ok()
-            .and_then(|entry| entry.path().ok())
-            .is_some_and(|path| path.starts_with(r))
-    });
-
-    if all_start_with {
-        Ok(Some(r.clone()))
-    } else {
-        Ok(None)
-    }
+    Ok(root)
 }
 
 fn tar_entry_rel_path(

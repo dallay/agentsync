@@ -1365,7 +1365,7 @@ impl Linker {
                     println!("  {} Would remove: {}", "→".cyan(), entry.path().display());
                 } else {
                     self.revalidate_unlink_path(&entry.path())?;
-                    fs::remove_file(entry.path())?;
+                    remove_symlink(&entry.path())?;
                     self.invalidate_path_cache();
                     println!("  {} Removed: {}", "✔".green(), entry.path().display());
                 }
@@ -1465,7 +1465,7 @@ impl Linker {
                     println!("  {} Would remove: {}", "→".cyan(), dest.display());
                 } else {
                     self.revalidate_unlink_path(&dest)?;
-                    fs::remove_file(&dest)?;
+                    remove_symlink(&dest)?;
                     self.invalidate_path_cache();
                     println!("  {} Removed: {}", "✔".green(), dest.display());
                 }
@@ -4652,5 +4652,36 @@ mod tests {
                 .join("escape/CLAUDE.md")
                 .exists()
         );
+    }
+
+    #[test]
+    fn test_path_glob_match_iter_double_star_middle() {
+        // Pattern **/foo/**/bar should match a/foo/b/bar
+        let pattern = ["**", "foo", "**", "bar"];
+        assert!(path_glob_match_iter("a/foo/b/bar".split('/'), &pattern));
+        assert!(path_glob_match_iter("x/y/foo/z/w/bar".split('/'), &pattern));
+        assert!(path_glob_match_iter("foo/bar".split('/'), &pattern));
+        // Non-match: missing bar
+        assert!(!path_glob_match_iter("a/foo/b/baz".split('/'), &pattern));
+    }
+
+    #[test]
+    fn test_path_glob_match_iter_trailing_double_star_zero_segments() {
+        // Pattern foo/** should match "foo" (trailing ** matches zero segments)
+        let pattern = ["foo", "**"];
+        assert!(path_glob_match_iter("foo".split('/'), &pattern));
+        assert!(path_glob_match_iter("foo/bar".split('/'), &pattern));
+        assert!(path_glob_match_iter("foo/bar/baz".split('/'), &pattern));
+    }
+
+    #[test]
+    fn test_path_glob_match_iter_non_matching() {
+        let pattern = ["src", "**", "*.rs"];
+        assert!(!path_glob_match_iter("lib/foo.rs".split('/'), &pattern));
+        assert!(!path_glob_match_iter("src/main.go".split('/'), &pattern));
+
+        let pattern2 = ["foo", "bar"];
+        assert!(!path_glob_match_iter("foo/baz".split('/'), &pattern2));
+        assert!(!path_glob_match_iter("foo".split('/'), &pattern2));
     }
 }

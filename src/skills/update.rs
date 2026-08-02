@@ -25,9 +25,8 @@ pub async fn update_skill_async(
     target_root: &Path,
     update_source: &Path,
 ) -> Result<(), SkillUpdateError> {
-    let local_dir = resolve_update_source(update_source).await?;
-    let _temp_holder = local_dir.1;
-    let local_dir = local_dir.0;
+    // _temp_guard must remain alive to prevent premature cleanup of temp directory
+    let (local_dir, _temp_guard) = resolve_update_source(update_source).await?;
 
     let skill_dir = target_root.join(skill_id);
     let backup_dir = target_root.join(format!("{}.bak", skill_id));
@@ -72,11 +71,6 @@ fn resolve_current_version(
     registry_path: &Path,
 ) -> Option<String> {
     debug!(registry_path = %registry_path.display(), exists = %registry_path.exists(), "update registry check");
-    if registry_path.exists() {
-        let reg_contents =
-            std::fs::read_to_string(registry_path).unwrap_or_else(|_| "<read error>".to_string());
-        debug!(contents = %reg_contents, "registry contents after install");
-    }
 
     // Try registry first
     if registry_path.exists()
@@ -145,6 +139,16 @@ fn create_backup(skill_dir: &Path, backup_dir: &Path) -> Result<(), SkillUpdateE
     Ok(())
 }
 
+/// Rolls back skill_dir by removing it and restoring from backup_dir if present.
+fn rollback_skill_dir(skill_dir: &Path, backup_dir: &Path) {
+    if skill_dir.exists() {
+        let _ = std::fs::remove_dir_all(skill_dir);
+    }
+    if backup_dir.exists() {
+        let _ = std::fs::rename(backup_dir, skill_dir);
+    }
+}
+
 fn install_updated_skill(
     skill_id: &str,
     local_dir: &Path,
@@ -164,10 +168,7 @@ fn install_updated_skill(
     let manifest = match crate::skills::manifest::parse_skill_manifest(&manifest_path) {
         Ok(manifest) => manifest,
         Err(e) => {
-            let _ = fs::remove_dir_all(skill_dir);
-            if backup_dir.exists() {
-                let _ = fs::rename(backup_dir, skill_dir);
-            }
+            rollback_skill_dir(skill_dir, backup_dir);
             return Err(SkillUpdateError::Install(e));
         }
     };
@@ -190,10 +191,7 @@ fn install_updated_skill(
     if let Err(e) =
         crate::skills::registry::update_registry_entry(registry_path, skill_id, new_entry)
     {
-        let _ = fs::remove_dir_all(skill_dir);
-        if backup_dir.exists() {
-            let _ = fs::rename(backup_dir, skill_dir);
-        }
+        rollback_skill_dir(skill_dir, backup_dir);
         if let Some(old_entry) = old_registry_entry {
             let _ =
                 crate::skills::registry::update_registry_entry(registry_path, skill_id, old_entry);
