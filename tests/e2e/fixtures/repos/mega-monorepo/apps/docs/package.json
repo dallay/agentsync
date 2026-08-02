@@ -2,6 +2,6 @@
 	"name": "docs",
 	"private": true,
 	"dependencies": {
-		"astro": "^6.1.6"
+		"astro": "^7.1.1"
 	}
 }
