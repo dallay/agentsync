@@ -68,8 +68,6 @@ pub struct ValidationMetadata {
 /// Load and validate a curated registry document from TOML.
 pub fn load_curated_registry(path: &Path) -> Result<RegistryDocument> {
     let safe_path = validated_registry_path(path, false)?;
-    // nosemgrep: rust.actix.path-traversal.tainted-path.tainted-path —
-    // `validated_registry_path` rejects traversal and resolves the parent before this read.
     let content = fs::read_to_string(&safe_path)
         .with_context(|| format!("failed to read curated registry: {}", path.display()))?;
     let registry: RegistryDocument = toml::from_str(&content)
@@ -312,8 +310,6 @@ pub fn write_registry(path: &Path) -> Result<()> {
 
 /// Read the registry from disk and deserialize it.
 pub fn read_registry(path: &Path) -> Result<Registry> {
-    // nosemgrep: rust.actix.path-traversal.tainted-path.tainted-path —
-    // installed registry paths are supplied by the application and skill IDs are validated before writes.
     let content = fs::read_to_string(path)
         .with_context(|| format!("failed to read registry: {}", path.display()))?;
     let reg: Registry = serde_json::from_str(&content)
