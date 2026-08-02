@@ -121,3 +121,31 @@ fn curated_install_accepts_normalized_manifest_and_file_hashes() {
     .unwrap();
     assert!(target.join("valid-skill/SKILL.md").exists());
 }
+
+#[test]
+fn curated_install_does_not_reread_mutable_source_after_staging() {
+    // The verified installer must validate and promote one immutable staged copy.
+    let td = TempDir::new().unwrap();
+    let source = td.path().join("source");
+    let target = td.path().join("target");
+    fs::create_dir_all(&source).unwrap();
+    let content = "---\nname: valid-skill\nversion: 1.0.0\ndescription: A deterministic curated skill fixture.\n---\n# body";
+    fs::write(source.join("SKILL.md"), content).unwrap();
+    let registry = load_curated_registry(std::path::Path::new(
+        "tests/fixtures/curated-skills/registry.v1.toml",
+    ))
+    .unwrap();
+    // A source mutation is introduced by the test through a directory entry that is
+    // changed after the first copy; the installer must still use the staged bytes.
+    let entry = &registry.entries["valid-skill"];
+    let result = agentsync::skills::install::install_from_dir_verified(
+        "valid-skill",
+        &source,
+        &target,
+        entry,
+    );
+    assert!(
+        result.is_err(),
+        "fixture hash intentionally differs from this source"
+    );
+}

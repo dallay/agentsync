@@ -79,5 +79,5 @@ None.
 ## Final verdict
 
 **PASS WITH WARNINGS** — all requested verification evidence passed, no CRITICAL issues remain, and
-`state.yaml` already records `current_phase: verify`, includes `verify` in `completed`, and points to
-`next: archive`.
+`state.yaml` already records `current_phase: archive`, includes `verify` in `completed`, and points to
+`next: none`.

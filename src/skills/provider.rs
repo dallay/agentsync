@@ -121,11 +121,17 @@ impl<'a> PinnedProvider<'a> {
     }
 
     fn entry(&self, id: &str) -> Result<&RegistryEntry> {
-        self.registry
+        let matches: Vec<_> = self
+            .registry
             .entries
             .values()
-            .find(|entry| entry.provider_skill_id == id || entry.local_skill_id == id)
-            .ok_or_else(|| anyhow::anyhow!("curated skill is not registered: {id}"))
+            .filter(|entry| entry.provider_skill_id == id || entry.local_skill_id == id)
+            .collect();
+        match matches.as_slice() {
+            [] => anyhow::bail!("curated skill is not registered: {id}"),
+            [entry] => Ok(entry),
+            _ => anyhow::bail!("ambiguous curated skill identifier: {id}"),
+        }
     }
 }
 

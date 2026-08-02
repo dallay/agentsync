@@ -47,8 +47,17 @@ fn catalog_dallay_skill_urls_are_reachable() {
     for entry in registry.entries.values() {
         let provider_skill_id = &entry.provider_skill_id;
         // Use the GitHub Contents API to check for the SKILL.md file.
+        let repository = entry
+            .source
+            .repository
+            .trim_end_matches('/')
+            .trim_end_matches(".git");
+        let repository = repository
+            .strip_prefix("https://github.com/")
+            .unwrap_or(repository)
+            .trim_end_matches('/');
         let url = format!(
-            "https://api.github.com/repos/dallay/agents-skills/contents/{}/SKILL.md?ref={}",
+            "https://api.github.com/repos/{repository}/contents/{}/SKILL.md?ref={}",
             entry.source.subpath, entry.source.commit
         );
 

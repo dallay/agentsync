@@ -63,6 +63,50 @@ fn curated_registry_validation_accepts_complete_entry() {
 }
 
 #[test]
+fn curated_registry_rejects_unsupported_schema_with_actionable_diagnostic() {
+    let error = load_curated_registry(Path::new(
+        "tests/fixtures/curated-skills/unsupported-schema.toml",
+    ))
+    .expect_err("unsupported schema must be rejected");
+    let message = format!("{error:#}");
+    assert!(message.contains("schema_version"), "diagnostic: {message}");
+    assert!(message.contains("unsupported"), "diagnostic: {message}");
+}
+
+#[test]
+fn curated_registry_rejects_windows_and_empty_path_components() {
+    let mut registry =
+        load_curated_registry(Path::new("tests/fixtures/curated-skills/registry.v1.toml")).unwrap();
+    registry
+        .entries
+        .get_mut("valid-skill")
+        .unwrap()
+        .source
+        .subpath = r"skills\..\valid-skill".into();
+    let error = validate_curated_registry(&registry).expect_err("unsafe path must be rejected");
+    assert!(format!("{error:#}").contains("source.subpath"));
+}
+
+#[test]
+fn installed_registry_rejects_tainted_skill_id() {
+    let td = TempDir::new().unwrap();
+    let path = td.path().join("registry.json");
+    let entry = agentsync::skills::registry::SkillEntry {
+        name: None,
+        version: None,
+        description: None,
+        provider: None,
+        source: None,
+        installed_at: None,
+        files: None,
+        manifest_hash: None,
+    };
+    let error = agentsync::skills::registry::update_registry_entry(&path, "../escape", entry)
+        .expect_err("path traversal skill id must be rejected");
+    assert!(format!("{error:#}").contains("invalid skill id"));
+}
+
+#[test]
 fn shipped_curated_registry_contains_reviewed_local_skills() {
     let registry = load_curated_registry(Path::new("src/skills/registry.v1.toml"))
         .expect("shipped registry should contain valid curated entries");

@@ -47,6 +47,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
+          persist-credentials: false
           token: ${{ steps.app-token.outputs.token }}
 
       - name: Release Please
@@ -104,6 +105,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
+          persist-credentials: false
           ref: ${{ needs.release-please.outputs.release_git_tag }}
 
       - name: Install and configure gcc-12 (Linux)
@@ -291,6 +293,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
+          persist-credentials: false
           ref: ${{ needs.release-please.outputs.release_git_tag }}
 
       - name: Install and configure gcc-12 (Linux)
@@ -469,6 +472,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
+          persist-credentials: false
           ref: ${{ needs.release-please.outputs.release_git_tag }}
 
       - name: Install and configure gcc-12 (Linux)
@@ -547,6 +551,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
+          persist-credentials: false
           ref: ${{ needs.release-please.outputs.release_git_tag }}
 
       - name: Setup Rust toolchain
@@ -573,6 +578,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
+          persist-credentials: false
           ref: ${{ needs.release-please.outputs.release_git_tag }}
 
       - name: Set up QEMU

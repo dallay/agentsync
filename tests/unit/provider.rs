@@ -198,3 +198,23 @@ fn pinned_provider_builds_commit_archive_only_when_fallback_is_enabled() {
     );
     assert!(!info.download_url.contains("HEAD"));
 }
+
+#[test]
+fn pinned_provider_rejects_ambiguous_provider_or_local_identifier() {
+    let registry = load_curated_registry(std::path::Path::new(
+        "tests/fixtures/curated-skills/registry.v1.toml",
+    ))
+    .unwrap();
+    let mut entries = registry.entries;
+    let mut duplicate = entries["valid-skill"].clone();
+    duplicate.provider_skill_id = "valid-skill".into();
+    entries.insert("other-skill".into(), duplicate);
+    let registry = agentsync::skills::registry::RegistryDocument {
+        schema_version: "v1".into(),
+        entries,
+    };
+    let root = tempfile::TempDir::new().unwrap();
+    let provider = agentsync::skills::provider::PinnedProvider::new(registry, root.path());
+    let error = provider.resolve("valid-skill").unwrap_err();
+    assert!(error.to_string().contains("ambiguous"));
+}
