@@ -24,7 +24,8 @@ fn canonical_rows() -> Vec<String> {
         .collect()
 }
 
-fn governed_fragment(content: &str) -> &str {
+fn governed_fragment(content: &str) -> String {
+    let content = content.replace("\r\n", "\n");
     assert_eq!(
         content.matches(START_MARKER).count(),
         1,
@@ -38,7 +39,7 @@ fn governed_fragment(content: &str) -> &str {
     let start = content.find(START_MARKER).unwrap();
     let end = content.find(END_MARKER).unwrap() + END_MARKER.len();
     assert!(start < end, "end marker must follow start marker");
-    &content[start..end]
+    content[start..end].to_string()
 }
 
 #[test]
@@ -79,9 +80,11 @@ fn governed_documentation_contains_canonical_fragment() {
     ];
     let expected = canonical_fragment();
     for content in files {
-        assert_eq!(governed_fragment(content), expected);
+        let fragment = governed_fragment(content);
+        assert_eq!(fragment, expected);
 
-        let outside = content.replace(&expected, "");
+        let normalized = content.replace("\r\n", "\n");
+        let outside = normalized.replace(&expected, "");
         let rows = canonical_rows();
         for line in outside.lines() {
             assert!(
