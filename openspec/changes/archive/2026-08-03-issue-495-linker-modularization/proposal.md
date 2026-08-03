@@ -9,12 +9,14 @@ and clean behavior reviewable without changing observable behavior.
 ## Scope
 
 ### In Scope
+
 - Mechanically extract `src/linker.rs` into Rust modules while preserving APIs, state,
   errors, counters, output, cache resets, and all four sync types.
 - Preserve apply, clean, MCP, compression, path-safety/TOCTOU, backup, and cross-platform behavior.
 - Keep callers and tests working; verify path and symlink responsibilities separately.
 
 ### Out of Scope
+
 - Parallelization, new caching, optimization, or async conversion.
 - CLI behavior or output changes.
 - Changes to security rules or path-validation semantics.
@@ -23,9 +25,11 @@ and clean behavior reviewable without changing observable behavior.
 ## Capabilities
 
 ### New Capabilities
+
 - None — this is a behavior-preserving refactor.
 
 ### Modified Capabilities
+
 - None — `openspec/specs/core-sync-engine/spec.md` remains the behavioral contract and is not
   updated in this phase.
 
@@ -70,8 +74,8 @@ Revert the extraction commits and restore `src/linker.rs`; no API or data migrat
 
 ## Success Criteria
 
-- [ ] The six-module structure exists and `src/linker.rs` is no longer the monolith.
-- [ ] Public APIs and apply/clean behavior remain unchanged for issue #495 acceptance cases.
-- [ ] `cargo fmt --all -- --check`, `cargo check --all-targets --all-features`, linker,
+- [x] The six-module structure exists and `src/linker.rs` is no longer the monolith.
+- [x] Public APIs and apply/clean behavior remain unchanged for issue #495 acceptance cases.
+- [x] `cargo fmt --all -- --check`, `cargo check --all-targets --all-features`, linker,
       security/status/module-map tests, and the full suite pass.
-- [ ] No base specs, CLI/output contracts, security rules, caches, or performance algorithms change.
+- [x] No base specs, CLI/output contracts, security rules, caches, or performance algorithms change.

@@ -30,10 +30,10 @@ focused and full test runs below.
 | Stable facade and focused private internals | `src/linker/mod.rs:6-10, 39-297`; `src/lib.rs:18`; unchanged callers | `cargo check --all-targets --all-features`; `cargo test --all-features` | PASS |
 | Existing callers remain compatible | No diff in `src/lib.rs`, `src/main.rs`, `src/commands/status.rs`, `src/commands/doctor.rs`; status uses `Linker`, `expected_source_path`, and `symlink_contents_expected_children` | Full suite includes status/doctor tests | PASS |
 | Focused path/symlink tests remain runnable | `src/linker/mod.rs` retains 83 inline tests; `tests/unit/linker_security.rs` remains in `all_tests` | `cargo test --lib linker`; `cargo test --test all_tests unit::linker_security` | PASS |
-| Filtered/repeated apply equivalence | `src/linker/apply.rs:15-98` preserves cache reset, disabled/default/CLI filtering, `BTreeMap` iteration, aggregation, and per-target error continuation | Linker filter/cache tests; full suite | PASS |
-| All four sync types dispatchable | `src/linker/apply.rs:101-146` dispatches Symlink, SymlinkContents, NestedGlob, ModuleMap; `src/linker/clean.rs:20-39` cleans all four | Linker nested-glob/module-map/apply/clean tests; module-map CLI test | PASS |
+| Filtered/repeated apply equivalence | `src/linker/apply.rs:28-110` preserves cache reset, disabled/default/CLI filtering, `BTreeMap` iteration, aggregation, and per-target error continuation | Linker filter/cache tests; full suite | PASS |
+| All four sync types dispatchable | `src/linker/apply.rs:114-158` dispatches Symlink, SymlinkContents, NestedGlob, ModuleMap; `src/linker/clean.rs:13-44` cleans all four | Linker nested-glob/module-map/apply/clean tests; module-map CLI test | PASS |
 | Unsafe paths fail before mutation | `src/linker/paths.rs:44-121,128-208`; mutation sites revalidate immediately | Security tests and `unit::linker_security` all passed | PASS |
-| Existing destination outcomes preserved | `src/linker/symlinks.rs:15-161,263-291` handles correct/wrong/broken/existing destinations, backup replacement, safe removal, dry-run, cfg gates | Linker backup, update, clean, dry-run tests; security tests | PASS |
+| Existing destination outcomes preserved | `src/linker/symlinks.rs:15-163,263-291` handles correct/wrong/broken/existing destinations, backup replacement, safe removal, dry-run, cfg gates | Linker backup, update, clean, dry-run tests; security tests | PASS |
 | Discovery deterministic and scope-limited | `src/linker/discovery.rs:92-289,292-405`; no-follow walk and pruning preserved; module-map in `apply.rs:240-297` | Nested-glob and module-map tests; module-map CLI | PASS |
 | Execution remains synchronous | No `async`, Rayon, spawn, or parallel iterator in extracted modules; `WalkDir` and `RefCell` synchronous | `cargo check`; full tests | PASS |
 
@@ -115,6 +115,9 @@ monolith; the difference is module/import/visibility documentation, not a new be
    tests passed and no coverage threshold is specified.
 3. The worktree intentionally contains uncommitted OpenSpec and extraction artifacts per the issue
    instructions. This is expected, not a blocker.
+
+4. Follow-up coverage should target the less-traveled validation branches in `paths.rs`, especially
+   `ensure_safe_destination`, `ensure_safe_path`, `revalidate_path`, and `revalidate_unlink_path`.
 
 ### SUGGESTION
 

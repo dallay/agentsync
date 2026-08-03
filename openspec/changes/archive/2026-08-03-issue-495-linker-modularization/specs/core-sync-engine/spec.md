@@ -18,7 +18,7 @@ responsibilities MUST be separated into private apply, clean, discovery, paths, 
 #### Scenario: Focused tests remain isolatable
 
 - GIVEN path tests in `tests/test_security.rs` and `tests/unit/linker_security.rs`, and linker
-  symlink tests in `src/linker.rs`
+  symlink tests in `src/linker/mod.rs`
 - WHEN responsibilities are moved
 - THEN equivalent path and symlink tests MUST remain independently runnable without contract changes
 
@@ -42,7 +42,7 @@ compression, gitignore, and MCP coordination.
 - WHEN apply and clean run
 - THEN filesystem state, cleanup, counters, errors, and output MUST match the existing contract
 
-**References:** `src/linker.rs::{sync, process_target, clean}`; `src/main.rs::{handle_apply, handle_clean}`.
+**References:** `src/linker/apply.rs::{sync, process_target}`, `src/linker/clean.rs::clean`; `src/main.rs::{handle_apply, handle_clean}`.
 
 ### Requirement: Path Safety and Symlink Mutation Are Unchanged
 
@@ -64,7 +64,7 @@ Unix/Windows creation/removal behavior.
 - WHEN apply or clean processes it
 - THEN the same filesystem result, backup/removal behavior, counters, and output MUST occur
 
-**References:** `src/linker.rs::{ensure_safe_destination, revalidate_path, revalidate_unlink_path, relative_path, create_symlink, remove_symlink}`; `tests/test_security.rs`; `tests/unit/linker_security.rs`.
+**References:** `src/linker/paths.rs::{ensure_safe_destination, revalidate_path, revalidate_unlink_path, relative_path}`, `src/linker/symlinks.rs::{create_symlink, remove_symlink}`; `tests/test_security.rs`; `tests/unit/linker_security.rs`.
 
 ### Requirement: Discovery Is Deterministic and Scope-Limited
 
@@ -85,4 +85,4 @@ changes; it is a mechanical extraction of existing behavior.
 - WHEN the modular engine runs
 - THEN it MUST use the existing synchronous algorithms and caches with no parallel or asynchronous work
 
-**References:** `src/linker.rs::{get_nested_glob_matches, process_nested_glob, expand_destination_template}`; `src/config.rs::resolve_module_map_filename`; `tests/test_module_map_cli.rs`.
+**References:** `src/linker/discovery.rs::{get_nested_glob_matches, process_nested_glob, expand_destination_template}`; `src/config.rs::resolve_module_map_filename`; `tests/test_module_map_cli.rs`.

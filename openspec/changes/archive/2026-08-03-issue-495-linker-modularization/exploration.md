@@ -1,6 +1,7 @@
-## Exploration: Issue #495 linker modularization
+# Exploration: Issue #495 linker modularization
 
-### Current State
+## Current State
+
 `src/linker.rs` is a single 4,687-line Rust module. It currently compiles and owns the complete synchronization engine: public API/types (`SyncOptions`, `SyncResult`, `Linker`, `SymlinkContentsChildExpectation`), linker construction/accessors, path safety and canonicalization, apply orchestration, source/compression resolution, symlink creation/update/backup, `symlink-contents`, nested-glob discovery and template expansion, module-map processing, relative path calculation, clean for all sync types, MCP delegation, low-level glob/compression/filesystem helpers, and an inline test module.
 
 The public boundary is already narrow. `src/lib.rs:11,18` exposes `linker` and re-exports `Linker`, `SyncOptions`, and `SyncResult`. `src/main.rs:267-334,388-418` constructs `Linker`, calls `clean`, `sync`, `config`, `project_root`, and `sync_mcp`; it also merges clean results and handles gitignore/MCP presentation. `src/commands/status.rs:4,71-136,186-217,532-590` uses `Linker`, `expected_source_path`, `symlink_contents_expected_children`, `config`, and `project_root`. `src/commands/doctor.rs:37-113,141-180` uses the config/project-root accessors. `tests` also use the public API directly.
@@ -49,27 +50,27 @@ Baseline evidence collected before any production/test edit:
    - `sync_mcp()` (`1478-1537`) can stay in `mod.rs` as public API or move here as an `impl Linker`; it is a façade over `McpGenerator` and must not be accidentally coupled to path/symlink internals.
    - Dependencies: config iteration/filtering (`crate::agent_ids`, `Config`, `SyncType`, `TargetConfig`), `paths` for destination/source validation and relative paths, `symlinks` for actual link creation, `discovery` for nested-glob processing.
 
-3. **Clean (`clean.rs`)
+3. **Clean (`clean.rs`)**
    - Public `clean()` and `clean_symlink_target`, `clean_symlink_contents_target`, `clean_nested_glob_target`, and `clean_module_map_target` (`1286-1476`).
    - Dependencies: `paths::{ensure_safe_destination, revalidate_path, revalidate_unlink_path}`, `discovery::{get_nested_glob_matches, expand_destination_template}`, `symlinks::remove_symlink`, config module-map filename resolution, and shared `SyncOptions/SyncResult`.
    - Preserve the deliberate behavior that clean does not apply the CLI/default-agent filter and only removes symlinks, never regular files; `symlink-contents` does best-effort empty-directory removal.
 
-4. **Paths (`paths.rs`)
+4. **Paths (`paths.rs`)**
    - Constructor-independent path/cache operations `invalidate_path_cache`, `canonicalize_uncached`, `get_canonical_project_root`, `ensure_safe_path`, `ensure_safe_destination`, `revalidate_path`, `revalidate_unlink_path`, `validate_absolute_unlink_path`, `validate_relative_unlink_parent`, `canonicalize_cached`, and `relative_path` (`114-315`, `1238-1284`).
    - Keep `project_root`, path caches, and canonical root cache on `Linker`; do not introduce a new path service or cache. `paths.rs` should access them through `pub(super)` fields/methods, or retain one private implementation boundary in `mod.rs` if this avoids exposing state.
    - This is the primary isolated path-resolution test boundary. Existing tests in `src/linker.rs:2033-2124` and external security tests must continue to run; new tests are not required in explore and no tests should be changed here.
 
-5. **Symlinks (`symlinks.rs`)
+5. **Symlinks (`symlinks.rs`)**
    - `create_symlink`, `handle_existing_symlink`, `backup_existing_destination`, `create_symlinks_for_contents`, `remove_existing_path`, `remove_symlink`, and `backup_path_for_destination` (`641-879`, `1787-1822`).
    - This is the symlink-handling boundary, including Unix/Windows creation, Windows directory-link removal, relative targets supplied by `paths`, dry-run accounting, replacement/backup, circular destination guard, compression-aware child resolution, and per-child result aggregation.
    - Dependencies: paths validation/revalidation, apply source resolution, compression helper, pattern matcher, and shared state caches. Avoid changing the order of `ensure_directory`, relative target calculation, existing-link handling, and final revalidation.
 
-6. **Discovery (`discovery.rs`)
+6. **Discovery (`discovery.rs`)**
    - `expand_destination_template`, `get_nested_glob_matches`, `process_nested_glob`, `for_each_nested_glob_match`, `matches_pattern`, `matches_path_glob` (test helper), `path_glob_match_iter`, and `try_match_segment` (`881-1174`, `1650-1785`).
    - This owns directory walking (`WalkDir::follow_links(false)`), pattern/exclude semantics, path templates, glob cache, and nested-glob apply/clean coordination. Keep the existing `NestedGlobKey`/`NestedGlobMatches` types and cache reset behavior; do not optimize or parallelize.
    - `expand_destination_template` is currently an associated private method called by internal tests and nested-glob code. Moving it may require `pub(super)` (or preserving an associated wrapper in `mod.rs`) so current inline tests remain valid.
 
-7. **Compression/helper placement
+7. **Compression/helper placement**
    - Compression decision and writing are called from apply and symlink-contents, while `expected_source_path` and child discovery also need `is_agents_md_path`/`compressed_agents_md_path`. Keep the path-name helpers in a shared/private location (`mod.rs` or `apply.rs` with `pub(super)`), and move only the content algorithm (`detect_fence_delimiter`, `toggle_fence`, `compress_agents_md_content`, `split_leading_whitespace`, `normalize_inline_whitespace_to`) as a cohesive group. The behavior is specified by `core-sync-engine` REQ-022 and tested at `src/linker.rs:2171-2220` and `2823-2867`.
 
 ### Approaches
