@@ -474,6 +474,32 @@ mod tests {
         assert_eq!(rel, PathBuf::from("../source.md"));
     }
 
+    #[test]
+    fn canonical_fallback_path_canonicalizes_absolute_path_inside_project_root() {
+        let temp = TempDir::new().unwrap();
+        let linker = make_linker(temp.path());
+        let missing = temp.path().join("missing.md");
+
+        let fallback = linker.canonical_fallback_path(&missing).unwrap();
+
+        assert_eq!(
+            fallback,
+            fs::canonicalize(temp.path()).unwrap().join("missing.md")
+        );
+    }
+
+    #[test]
+    fn canonical_fallback_path_preserves_absolute_path_outside_project_root() {
+        let temp = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        let linker = make_linker(temp.path());
+        let missing = outside.path().join("missing.md");
+
+        let fallback = linker.canonical_fallback_path(&missing).unwrap();
+
+        assert_eq!(fallback, missing);
+    }
+
     // ==========================================================================
     // canonicalize_cached / invalidate_path_cache
     // ==========================================================================
