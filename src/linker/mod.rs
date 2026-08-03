@@ -16,6 +16,12 @@ use walkdir::WalkDir;
 
 use crate::config::{Config, SyncType, TargetConfig};
 
+mod apply;
+mod clean;
+mod discovery;
+mod paths;
+mod symlinks;
+
 const COMPRESSED_AGENTS_MD_NAME: &str = "AGENTS.compact.md";
 
 /// Result of checking an existing symlink at a destination.
