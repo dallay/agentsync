@@ -23,6 +23,17 @@ merge_strategy = "merge"
 - **`merge` (Default)**: AgentSync will read the existing agent-specific config file, add the servers defined in your TOML, and preserve existing servers that are not in the TOML. If a conflict occurs (same server name), the TOML configuration wins.
 - **`overwrite`**: AgentSync will completely replace the agent-specific config file with the servers defined in your TOML.
 
+<!-- agentsync:mcp:start -->
+- **Claude Code** — `.mcp.json` (agent id: `claude`) — JSON; Standard format
+- **Claude Desktop** — `Global OS-dependent config` (agent id: `claude-desktop`) — JSON; Global; disabled by default
+- **GitHub Copilot** — `.vscode/mcp.json` (agent id: `copilot`) — JSON; Shared with VS Code
+- **OpenAI Codex CLI** — `.codex/config.toml` (agent id: `codex`) — TOML; Maps headers to http_headers
+- **Gemini CLI** — `.gemini/settings.json` (agent id: `gemini`) — JSON; Adds trust: true
+- **VS Code** — `.vscode/mcp.json` (agent id: `vscode`) — JSON; Shared with GitHub Copilot
+- **Cursor** — `.cursor/mcp.json` (agent id: `cursor`) — JSON; Standard format
+- **OpenCode** — `opencode.json` (agent id: `opencode`) — JSON; Standard format
+<!-- agentsync:mcp:end -->
+
 ## Defining Servers
 
 Define your servers under `[mcp_servers.<name>]`:
@@ -47,21 +58,6 @@ env = { "DEBUG" = "true" }
 - **`headers`**: (Optional) Key-value pairs for HTTP headers.
 - **`type`**: (Optional) The transport type (e.g., `stdio`, `http`, `sse`).
 - **`disabled`**: (Optional) Set to `true` to temporarily disable a server without removing it.
-
-## Supported Agents
-
-AgentSync automatically knows where to place the MCP configuration for these assistants:
-
-| Assistant | Destination File | Notes |
-| :--- | :--- | :--- |
-| **Claude Code** | `.mcp.json` | Standard format |
-| **Claude Desktop** | Global config (OS-dependent; see [below](#global-agents)) | Preserves non-MCP settings; disabled by default |
-| **GitHub Copilot** | `.vscode/mcp.json` | Shared with VS Code |
-| **OpenAI Codex CLI** | `.codex/config.toml` | TOML format (`[mcp_servers.<name>]`); AgentSync maps `headers` to `http_headers` |
-| **Gemini CLI** | `.gemini/settings.json` | Automatically adds `"trust": true` |
-| **VS Code** | `.vscode/mcp.json` | For VS Code extensions |
-| **Cursor** | `.cursor/mcp.json` | Standard format |
-| **OpenCode** | `opencode.json` | |
 
 ## Global Agents
 

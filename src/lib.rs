@@ -16,4 +16,4 @@ pub mod update_check;
 
 pub use config::Config;
 pub use linker::{Linker, SyncOptions, SyncResult};
-pub use mcp::{McpAgent, McpGenerator, McpSyncResult};
+pub use mcp::{McpAgent, McpAgentDocumentation, McpGenerator, McpSyncResult};

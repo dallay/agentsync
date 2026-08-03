@@ -112,7 +112,17 @@ agentsync clean
 
 ## MCP & Skills
 
-- AgentSync supports MCP generation for multiple agents (Claude, Copilot, Gemini, Cursor, VS Code, OpenCode). The canonical list and file locations live in the repo README and in the docs site (guides/mcp).
+<!-- agentsync:mcp:start -->
+- **Claude Code** — `.mcp.json` (agent id: `claude`) — JSON; Standard format
+- **Claude Desktop** — `Global OS-dependent config` (agent id: `claude-desktop`) — JSON; Global; disabled by default
+- **GitHub Copilot** — `.vscode/mcp.json` (agent id: `copilot`) — JSON; Shared with VS Code
+- **OpenAI Codex CLI** — `.codex/config.toml` (agent id: `codex`) — TOML; Maps headers to http_headers
+- **Gemini CLI** — `.gemini/settings.json` (agent id: `gemini`) — JSON; Adds trust: true
+- **VS Code** — `.vscode/mcp.json` (agent id: `vscode`) — JSON; Shared with GitHub Copilot
+- **Cursor** — `.cursor/mcp.json` (agent id: `cursor`) — JSON; Standard format
+- **OpenCode** — `opencode.json` (agent id: `opencode`) — JSON; Standard format
+<!-- agentsync:mcp:end -->
+- The typed registry and focused CI validator govern this list.
 - Skills live under `.agents/skills/` in the project.
 
 ---

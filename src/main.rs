@@ -14,14 +14,12 @@ mod output;
 use commands::doctor::run_doctor;
 use commands::skill::{SkillCommand, run_skill};
 use commands::status::{StatusArgs, run_status};
-use output::{HumanFormatter, LabelKind, output_mode};
-
-fn human_use_color() -> bool {
-    match output_mode(false) {
-        output::OutputMode::Human { use_color } => use_color,
-        output::OutputMode::Json => false,
-    }
-}
+use output::{
+    human_use_color, init_next_steps_lines, print_header, print_lines,
+    render_apply_summary_with_color, render_clean_phase_with_color,
+    render_clean_summary_with_color, render_dry_run_notice, render_gitignore_phase_with_color,
+    render_mcp_phase, render_mcp_summary_with_color, render_sync_phase_with_color,
+};
 
 fn current_project_root<F>(path: Option<PathBuf>, current_dir: F) -> Result<PathBuf>
 where
@@ -33,252 +31,11 @@ where
     )
 }
 
-fn render_phase(title: &str, detail: &str, use_color: bool) -> Vec<String> {
-    let formatter = HumanFormatter::new(use_color);
-    vec![
-        formatter.format_heading(&format!("➤ {title}")),
-        format!("  {detail}"),
-    ]
-}
-
-fn render_dry_run_notice(use_color: bool) -> Vec<String> {
-    let formatter = HumanFormatter::new(use_color);
-    vec![
-        formatter.format_label("!", "Dry run", LabelKind::Warning),
-        "  No filesystem changes will be made.".to_string(),
-    ]
-}
-
 fn merge_clean_result_into_apply_result(result: &mut SyncResult, clean_result: &SyncResult) {
     result.updated += clean_result.updated;
     result.skipped += clean_result.skipped;
     result.removed += clean_result.removed;
     result.errors += clean_result.errors;
-}
-
-#[cfg(test)]
-fn render_clean_phase(dry_run: bool) -> Vec<String> {
-    render_clean_phase_with_color(dry_run, false)
-}
-
-fn render_clean_phase_with_color(dry_run: bool, use_color: bool) -> Vec<String> {
-    render_phase(
-        "Clean",
-        if dry_run {
-            "Previewing managed symlink removals"
-        } else {
-            "Removing managed symlinks"
-        },
-        use_color,
-    )
-}
-
-#[cfg(test)]
-fn render_sync_phase(dry_run: bool, clean_first: bool) -> Vec<String> {
-    render_sync_phase_with_color(dry_run, clean_first, false)
-}
-
-fn render_sync_phase_with_color(dry_run: bool, clean_first: bool, use_color: bool) -> Vec<String> {
-    let detail = match (dry_run, clean_first) {
-        (true, true) => "Previewing clean and sync changes",
-        (true, false) => "Previewing agent configuration changes",
-        (false, true) => "Cleaning existing symlinks before syncing",
-        (false, false) => "Syncing agent configurations",
-    };
-    render_phase("Sync", detail, use_color)
-}
-
-#[cfg(test)]
-fn render_gitignore_phase(enabled: bool, dry_run: bool) -> Vec<String> {
-    render_gitignore_phase_with_color(enabled, dry_run, false)
-}
-
-fn render_gitignore_phase_with_color(enabled: bool, dry_run: bool, use_color: bool) -> Vec<String> {
-    let detail = match (enabled, dry_run) {
-        (true, true) => "Previewing .gitignore update",
-        (true, false) => "Updating .gitignore",
-        (false, true) => "Previewing .gitignore cleanup",
-        (false, false) => "Cleaning .gitignore",
-    };
-    render_phase("Gitignore", detail, use_color)
-}
-
-fn render_mcp_phase(dry_run: bool, use_color: bool) -> Vec<String> {
-    render_phase(
-        "MCP",
-        if dry_run {
-            "Previewing MCP configuration changes"
-        } else {
-            "Syncing MCP configurations"
-        },
-        use_color,
-    )
-}
-
-fn render_count(label: &str, value: usize, kind: LabelKind, use_color: bool) -> String {
-    let formatter = HumanFormatter::new(use_color);
-    format!(
-        "  {}",
-        formatter.format_summary_line(label, &value.to_string(), kind)
-    )
-}
-
-#[cfg(test)]
-fn render_apply_summary(dry_run: bool, result: &SyncResult) -> Vec<String> {
-    render_apply_summary_with_color(dry_run, result, false)
-}
-
-fn render_apply_summary_with_color(
-    dry_run: bool,
-    result: &SyncResult,
-    use_color: bool,
-) -> Vec<String> {
-    let formatter = HumanFormatter::new(use_color);
-    let has_errors = result.errors > 0;
-    let mut lines = vec![formatter.format_label(
-        if has_errors { "✗" } else { "✔" },
-        match (dry_run, has_errors) {
-            (true, true) => "Sync dry run completed with errors",
-            (true, false) => "Sync dry run complete",
-            (false, true) => "Sync completed with errors",
-            (false, false) => "Sync complete",
-        },
-        if has_errors {
-            LabelKind::Failure
-        } else {
-            LabelKind::Success
-        },
-    )];
-    lines.push(render_count(
-        "Created",
-        result.created,
-        LabelKind::Success,
-        use_color,
-    ));
-    lines.push(render_count(
-        "Updated",
-        result.updated,
-        LabelKind::Warning,
-        use_color,
-    ));
-    lines.push(render_count(
-        "Skipped",
-        result.skipped,
-        LabelKind::Muted,
-        use_color,
-    ));
-    lines.push(render_count(
-        "Removed",
-        result.removed,
-        if result.removed > 0 {
-            LabelKind::Warning
-        } else {
-            LabelKind::Muted
-        },
-        use_color,
-    ));
-    lines.push(render_count(
-        "Errors",
-        result.errors,
-        if result.errors > 0 {
-            LabelKind::Failure
-        } else {
-            LabelKind::Muted
-        },
-        use_color,
-    ));
-
-    lines
-}
-
-#[cfg(test)]
-fn render_clean_summary(dry_run: bool, result: &SyncResult) -> Vec<String> {
-    render_clean_summary_with_color(dry_run, result, false)
-}
-
-fn render_clean_summary_with_color(
-    dry_run: bool,
-    result: &SyncResult,
-    use_color: bool,
-) -> Vec<String> {
-    let formatter = HumanFormatter::new(use_color);
-    let has_errors = result.errors > 0;
-    vec![
-        formatter.format_label(
-            if has_errors { "✗" } else { "✔" },
-            match (dry_run, has_errors) {
-                (true, true) => "Clean dry run completed with errors",
-                (true, false) => "Clean dry run complete",
-                (false, true) => "Clean completed with errors",
-                (false, false) => "Clean complete",
-            },
-            if has_errors {
-                LabelKind::Failure
-            } else {
-                LabelKind::Success
-            },
-        ),
-        render_count(
-            if dry_run { "Would remove" } else { "Removed" },
-            result.removed,
-            LabelKind::Success,
-            use_color,
-        ),
-        render_count(
-            "Errors",
-            result.errors,
-            if result.errors > 0 {
-                LabelKind::Failure
-            } else {
-                LabelKind::Muted
-            },
-            use_color,
-        ),
-    ]
-}
-
-#[cfg(test)]
-fn render_mcp_summary(result: &agentsync::mcp::McpSyncResult) -> Vec<String> {
-    render_mcp_summary_with_color(result, false)
-}
-
-fn render_mcp_summary_with_color(
-    result: &agentsync::mcp::McpSyncResult,
-    use_color: bool,
-) -> Vec<String> {
-    vec![
-        render_count("Created", result.created, LabelKind::Success, use_color),
-        render_count("Updated", result.updated, LabelKind::Warning, use_color),
-        render_count("Skipped", result.skipped, LabelKind::Muted, use_color),
-        render_count(
-            "Errors",
-            result.errors,
-            if result.errors > 0 {
-                LabelKind::Failure
-            } else {
-                LabelKind::Muted
-            },
-            use_color,
-        ),
-    ]
-}
-
-fn print_lines(lines: &[String]) {
-    for line in lines {
-        println!("{line}");
-    }
-}
-
-fn init_next_steps_lines(wizard: bool) -> Option<Vec<String>> {
-    if wizard {
-        return None;
-    }
-
-    Some(vec![
-        "Next steps:".to_string(),
-        "  1. Edit .agents/AGENTS.md with your project instructions".to_string(),
-        "  2. Run agentsync apply to create symlinks".to_string(),
-    ])
 }
 
 // tracing_subscriber is used to initialize logging in main
@@ -661,20 +418,38 @@ fn handle_clean(
     Ok(())
 }
 
-fn print_header() {
-    let banner = include_str!("banner.txt");
-    println!("{}", banner.cyan().bold());
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{
-        Cli, Commands, current_project_root, init_next_steps_lines, render_apply_summary,
-        render_clean_phase, render_clean_summary, render_dry_run_notice, render_gitignore_phase,
-        render_mcp_summary, render_sync_phase,
+    use super::{Cli, Commands, current_project_root};
+    use crate::output::{
+        init_next_steps_lines, render_apply_summary_with_color, render_clean_phase_with_color,
+        render_clean_summary_with_color, render_gitignore_phase_with_color,
+        render_mcp_summary_with_color, render_sync_phase_with_color,
     };
     use agentsync::{SyncResult, mcp::McpSyncResult};
     use clap::Parser;
+
+    fn render_apply_summary(dry_run: bool, result: &SyncResult) -> Vec<String> {
+        render_apply_summary_with_color(dry_run, result, false)
+    }
+    fn render_clean_phase(dry_run: bool) -> Vec<String> {
+        render_clean_phase_with_color(dry_run, false)
+    }
+    fn render_clean_summary(dry_run: bool, result: &SyncResult) -> Vec<String> {
+        render_clean_summary_with_color(dry_run, result, false)
+    }
+    fn render_dry_run_notice(use_color: bool) -> Vec<String> {
+        super::output::render_dry_run_notice(use_color)
+    }
+    fn render_gitignore_phase(enabled: bool, dry_run: bool) -> Vec<String> {
+        render_gitignore_phase_with_color(enabled, dry_run, false)
+    }
+    fn render_mcp_summary(result: &McpSyncResult) -> Vec<String> {
+        render_mcp_summary_with_color(result, false)
+    }
+    fn render_sync_phase(dry_run: bool, clean_first: bool) -> Vec<String> {
+        render_sync_phase_with_color(dry_run, clean_first, false)
+    }
 
     #[test]
     fn current_project_root_reports_cwd_errors_with_context() {

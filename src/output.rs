@@ -141,10 +141,300 @@ pub fn output_mode(json: bool) -> OutputMode {
     )
 }
 
+pub(crate) fn human_use_color() -> bool {
+    match output_mode(false) {
+        OutputMode::Human { use_color } => use_color,
+        OutputMode::Json => false,
+    }
+}
+
+pub(crate) fn print_lines(lines: &[String]) {
+    for line in lines {
+        println!("{line}");
+    }
+}
+
+pub(crate) fn print_header() {
+    let banner = include_str!("banner.txt");
+    println!(
+        "{}",
+        if human_use_color() {
+            banner.cyan().bold().to_string()
+        } else {
+            banner.to_string()
+        }
+    );
+}
+
+pub(crate) fn init_next_steps_lines(wizard: bool) -> Option<Vec<String>> {
+    if wizard {
+        return None;
+    }
+    Some(vec![
+        "Next steps:".to_string(),
+        "  1. Edit .agents/AGENTS.md with your project instructions".to_string(),
+        "  2. Run agentsync apply to create symlinks".to_string(),
+    ])
+}
+
+fn render_phase(title: &str, detail: &str, use_color: bool) -> Vec<String> {
+    let formatter = HumanFormatter::new(use_color);
+    vec![
+        formatter.format_heading(&format!("➤ {title}")),
+        format!("  {detail}"),
+    ]
+}
+
+pub(crate) fn render_dry_run_notice(use_color: bool) -> Vec<String> {
+    let formatter = HumanFormatter::new(use_color);
+    vec![
+        formatter.format_label("!", "Dry run", LabelKind::Warning),
+        "  No filesystem changes will be made.".to_string(),
+    ]
+}
+
+pub(crate) fn render_clean_phase_with_color(dry_run: bool, use_color: bool) -> Vec<String> {
+    render_phase(
+        "Clean",
+        if dry_run {
+            "Previewing managed symlink removals"
+        } else {
+            "Removing managed symlinks"
+        },
+        use_color,
+    )
+}
+
+pub(crate) fn render_sync_phase_with_color(
+    dry_run: bool,
+    clean_first: bool,
+    use_color: bool,
+) -> Vec<String> {
+    let detail = match (dry_run, clean_first) {
+        (true, true) => "Previewing clean and sync changes",
+        (true, false) => "Previewing agent configuration changes",
+        (false, true) => "Cleaning existing symlinks before syncing",
+        (false, false) => "Syncing agent configurations",
+    };
+    render_phase("Sync", detail, use_color)
+}
+
+fn render_count(label: &str, value: usize, kind: LabelKind, use_color: bool) -> String {
+    format!(
+        "  {}",
+        HumanFormatter::new(use_color).format_summary_line(label, &value.to_string(), kind)
+    )
+}
+
+pub(crate) fn render_apply_summary_with_color(
+    dry_run: bool,
+    result: &agentsync::SyncResult,
+    use_color: bool,
+) -> Vec<String> {
+    let formatter = HumanFormatter::new(use_color);
+    let has_errors = result.errors > 0;
+    let mut lines = vec![formatter.format_label(
+        if has_errors { "✗" } else { "✔" },
+        match (dry_run, has_errors) {
+            (true, true) => "Sync dry run completed with errors",
+            (true, false) => "Sync dry run complete",
+            (false, true) => "Sync completed with errors",
+            (false, false) => "Sync complete",
+        },
+        if has_errors {
+            LabelKind::Failure
+        } else {
+            LabelKind::Success
+        },
+    )];
+    lines.extend([
+        render_count("Created", result.created, LabelKind::Success, use_color),
+        render_count("Updated", result.updated, LabelKind::Warning, use_color),
+        render_count("Skipped", result.skipped, LabelKind::Muted, use_color),
+        render_count(
+            "Removed",
+            result.removed,
+            if result.removed > 0 {
+                LabelKind::Warning
+            } else {
+                LabelKind::Muted
+            },
+            use_color,
+        ),
+        render_count(
+            "Errors",
+            result.errors,
+            if result.errors > 0 {
+                LabelKind::Failure
+            } else {
+                LabelKind::Muted
+            },
+            use_color,
+        ),
+    ]);
+    lines
+}
+
+pub(crate) fn render_clean_summary_with_color(
+    dry_run: bool,
+    result: &agentsync::SyncResult,
+    use_color: bool,
+) -> Vec<String> {
+    let formatter = HumanFormatter::new(use_color);
+    let has_errors = result.errors > 0;
+    vec![
+        formatter.format_label(
+            if has_errors { "✗" } else { "✔" },
+            match (dry_run, has_errors) {
+                (true, true) => "Clean dry run completed with errors",
+                (true, false) => "Clean dry run complete",
+                (false, true) => "Clean completed with errors",
+                (false, false) => "Clean complete",
+            },
+            if has_errors {
+                LabelKind::Failure
+            } else {
+                LabelKind::Success
+            },
+        ),
+        render_count(
+            if dry_run { "Would remove" } else { "Removed" },
+            result.removed,
+            LabelKind::Success,
+            use_color,
+        ),
+        render_count(
+            "Errors",
+            result.errors,
+            if result.errors > 0 {
+                LabelKind::Failure
+            } else {
+                LabelKind::Muted
+            },
+            use_color,
+        ),
+    ]
+}
+
+pub(crate) fn render_gitignore_phase_with_color(
+    enabled: bool,
+    dry_run: bool,
+    use_color: bool,
+) -> Vec<String> {
+    let detail = match (enabled, dry_run) {
+        (true, true) => "Previewing .gitignore update",
+        (true, false) => "Updating .gitignore",
+        (false, true) => "Previewing .gitignore cleanup",
+        (false, false) => "Cleaning .gitignore",
+    };
+    render_phase("Gitignore", detail, use_color)
+}
+
+pub(crate) fn render_mcp_phase(dry_run: bool, use_color: bool) -> Vec<String> {
+    render_phase(
+        "MCP",
+        if dry_run {
+            "Previewing MCP configuration changes"
+        } else {
+            "Syncing MCP configurations"
+        },
+        use_color,
+    )
+}
+
+pub(crate) fn render_mcp_summary_with_color(
+    result: &agentsync::mcp::McpSyncResult,
+    use_color: bool,
+) -> Vec<String> {
+    vec![
+        render_count("Created", result.created, LabelKind::Success, use_color),
+        render_count("Updated", result.updated, LabelKind::Warning, use_color),
+        render_count("Skipped", result.skipped, LabelKind::Muted, use_color),
+        render_count(
+            "Errors",
+            result.errors,
+            if result.errors > 0 {
+                LabelKind::Failure
+            } else {
+                LabelKind::Muted
+            },
+            use_color,
+        ),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use agentsync::SyncResult;
     use std::collections::HashSet;
+
+    fn render_apply_summary(dry_run: bool, result: &SyncResult) -> Vec<String> {
+        render_apply_summary_with_color(dry_run, result, false)
+    }
+
+    #[test]
+    fn apply_summary_preserves_exact_plain_contract() {
+        assert_eq!(
+            render_apply_summary(
+                false,
+                &SyncResult {
+                    created: 2,
+                    updated: 1,
+                    skipped: 3,
+                    removed: 0,
+                    errors: 1
+                }
+            ),
+            vec![
+                "✗ Sync completed with errors".to_string(),
+                "  Created: 2".to_string(),
+                "  Updated: 1".to_string(),
+                "  Skipped: 3".to_string(),
+                "  Removed: 0".to_string(),
+                "  Errors: 1".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn renderers_preserve_color_and_plain_paths() {
+        let result = SyncResult {
+            removed: 3,
+            ..Default::default()
+        };
+        assert_eq!(
+            render_clean_phase_with_color(true, false),
+            vec![
+                "➤ Clean".to_string(),
+                "  Previewing managed symlink removals".to_string()
+            ]
+        );
+        force_color();
+        let colored_summary = render_apply_summary_with_color(false, &result, true);
+        assert_eq!(
+            colored_summary,
+            vec![
+                "\x1b[1;32m✔ Sync complete\x1b[0m".to_string(),
+                "  \x1b[2mCreated\x1b[0m: \x1b[32m0\x1b[0m".to_string(),
+                "  \x1b[2mUpdated\x1b[0m: \x1b[33m0\x1b[0m".to_string(),
+                "  \x1b[2mSkipped\x1b[0m: \x1b[2m0\x1b[0m".to_string(),
+                "  \x1b[2mRemoved\x1b[0m: \x1b[33m3\x1b[0m".to_string(),
+                "  \x1b[2mErrors\x1b[0m: \x1b[2m0\x1b[0m".to_string(),
+            ]
+        );
+        assert!(
+            render_apply_summary_with_color(false, &result, false)
+                .iter()
+                .all(|line| !line.contains("\x1b["))
+        );
+    }
+
+    #[test]
+    fn init_footer_and_print_lines_contract_is_available_at_output_boundary() {
+        assert!(init_next_steps_lines(true).is_none());
+        assert_eq!(init_next_steps_lines(false).unwrap().len(), 3);
+    }
 
     /// Force the `colored` crate to emit ANSI codes even when stdout is not a TTY
     /// (e.g., inside `cargo test` which pipes stdout).

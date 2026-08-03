@@ -432,17 +432,20 @@ args = ["-y", "@modelcontextprotocol/server-git", "--repository", "."]
 
 #### Supported Agents (canonical)
 
-AgentSync supports the following agents and will synchronize corresponding files/locations. This list is canonical — keep it in sync with `src/mcp.rs` (authoritative).
+<!-- agentsync:mcp:start -->
+- **Claude Code** — `.mcp.json` (agent id: `claude`) — JSON; Standard format
+- **Claude Desktop** — `Global OS-dependent config` (agent id: `claude-desktop`) — JSON; Global; disabled by default
+- **GitHub Copilot** — `.vscode/mcp.json` (agent id: `copilot`) — JSON; Shared with VS Code
+- **OpenAI Codex CLI** — `.codex/config.toml` (agent id: `codex`) — TOML; Maps headers to http_headers
+- **Gemini CLI** — `.gemini/settings.json` (agent id: `gemini`) — JSON; Adds trust: true
+- **VS Code** — `.vscode/mcp.json` (agent id: `vscode`) — JSON; Shared with GitHub Copilot
+- **Cursor** — `.cursor/mcp.json` (agent id: `cursor`) — JSON; Standard format
+- **OpenCode** — `opencode.json` (agent id: `opencode`) — JSON; Standard format
+<!-- agentsync:mcp:end -->
 
-- **Claude Code** — `.mcp.json` (agent id: `claude`)
-- **GitHub Copilot** — `.vscode/mcp.json` (agent id: `copilot`)
-- **OpenAI Codex CLI** — `.codex/config.toml` (agent id: `codex`) — TOML format with `[mcp_servers.<name>]` tables. AgentSync maps `headers` to Codex `http_headers`.
-- **Gemini CLI** — `.gemini/settings.json` (agent id: `gemini`) — AgentSync will add `trust: true` when generating Gemini configs.
-- **Cursor** — `.cursor/mcp.json` (agent id: `cursor`)
-- **VS Code** — `.vscode/mcp.json` (agent id: `vscode`)
-- **OpenCode** — `opencode.json` (agent id: `opencode`)
+AgentSync supports the native MCP agents above. The typed registry and focused CI validator are authoritative.
 
-AgentSync also supports 32+ agents (7 native MCP agents and 25+ configurable agents) including Windsurf, Cline, Amazon Q, Aider, RooCode, Trae, and more. See the [full list in the documentation](https://dallay.github.io/agentsync/reference/configuration/).
+AgentSync also supports 32+ configurable agents including Windsurf, Cline, Amazon Q, Aider, RooCode, Trae, and more. See the [full list in the documentation](https://dallay.github.io/agentsync/reference/configuration/).
 
 See the [MCP Integration Guide](https://dallay.github.io/agentsync/guides/mcp/) for formatter details and merge behavior.
 
