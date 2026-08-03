@@ -1,6 +1,6 @@
 # Documentation Specification
 
-### Requirement: Native MCP Documentation Has One Governed Source
+## Requirement: Native MCP Documentation Has One Governed Source
 
 Documentation MUST identify native MCP support separately from generic configurable-agent support.
 The README, npm README, MCP guide, and MCP OpenSpec MUST use the canonical native MCP IDs and

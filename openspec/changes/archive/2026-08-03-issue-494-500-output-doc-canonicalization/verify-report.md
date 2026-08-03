@@ -1,9 +1,11 @@
 # Verification Report
 
 ## Change
+
 `issue-494-500-output-doc-canonicalization`
 
 ## Verdict
+
 **PASS WITH WARNINGS**
 
 ## Completeness
@@ -31,7 +33,7 @@
 | Stale names, wrong order, changed notes/formats, and duplicates are rejected | Exact fragment equality makes any row/text/order/duplicate drift unequal; marker cardinality rejects duplicate markers | COMPLIANT |
 | README has no stale duplicate native-MCP list | Focused test rejects canonical/native row syntax outside the single governed fragment; README now contains only the marked list | COMPLIANT |
 | Manual synchronization guidance removed | Governed docs point to typed registry/CI validation and contain no manual keep-in-sync instruction | COMPLIANT |
-| Focused CI validation wired | `.github/workflows/ci.yml` runs `cargo test --test mcp_documentation` before the full matrix | COMPLIANT |
+| Focused CI validation wired | `.github/workflows/ci.yml` defines a standalone `mcp-documentation` job running `cargo test --test mcp_documentation`; it has no dependency ordering with the full matrix | COMPLIANT |
 | Runtime MCP generation/defaults/aliases/path resolution unchanged | Full feature suite passes; implementation keeps generation and path-resolution behavior in place | COMPLIANT |
 
 ## Correctness table
@@ -55,6 +57,7 @@
 ## Issues
 
 ### WARNING
+
 1. The repository contains no committed red-phase transcript/artifact proving each TDD test first failed before implementation. Runtime correctness is verified; this is a process-evidence gap only.
 
 ## Checks run

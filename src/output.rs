@@ -411,10 +411,17 @@ mod tests {
             ]
         );
         force_color();
-        assert!(
-            render_apply_summary_with_color(false, &result, true)
-                .iter()
-                .all(|line| line.contains("\x1b["))
+        let colored_summary = render_apply_summary_with_color(false, &result, true);
+        assert_eq!(
+            colored_summary,
+            vec![
+                "\x1b[1;32m✔ Sync complete\x1b[0m".to_string(),
+                "  \x1b[2mCreated\x1b[0m: \x1b[32m0\x1b[0m".to_string(),
+                "  \x1b[2mUpdated\x1b[0m: \x1b[33m0\x1b[0m".to_string(),
+                "  \x1b[2mSkipped\x1b[0m: \x1b[2m0\x1b[0m".to_string(),
+                "  \x1b[2mRemoved\x1b[0m: \x1b[33m3\x1b[0m".to_string(),
+                "  \x1b[2mErrors\x1b[0m: \x1b[2m0\x1b[0m".to_string(),
+            ]
         );
         assert!(
             render_apply_summary_with_color(false, &result, false)

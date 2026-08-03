@@ -7,12 +7,14 @@ Address GitHub issues #494 and #500 together: separate reusable CLI presentation
 ## Scope
 
 ### In Scope
+
 - Extract main-owned apply/clean/init presentation helpers into the output boundary while preserving exact line order, labels, spacing, ANSI behavior, and existing JSON contracts.
 - Add exact renderer/output-contract tests, retaining status JSON ownership in `src/commands/status.rs` and leaving `src/init.rs` operation progress unchanged.
 - Define one typed canonical registry for native MCP agents, including Claude Desktop, canonical IDs, names, paths, formats, global-path status, and documentation notes.
 - Generate or validate marked documentation fragments in `README.md`, `npm/agentsync/README.md`, `website/docs/src/content/docs/guides/mcp.mdx`, and `openspec/specs/mcp-generation/spec.md`; add focused CI drift validation.
 
 ### Out of Scope
+
 - Refactoring unrelated command orchestration, linker/config behavior, or `src/init.rs` progress output.
 - Treating configurable-only agents as native MCP agents or expanding the native MCP support set.
 - Changing MCP formats, paths, defaults, filtering semantics, or CLI output wording.
@@ -20,9 +22,11 @@ Address GitHub issues #494 and #500 together: separate reusable CLI presentation
 ## Capabilities
 
 ### New Capabilities
+
 - None. This change consolidates implementation and governance of existing behavior.
 
 ### Modified Capabilities
+
 - `mcp-generation`: document the complete native MCP registry, including Claude Desktop and canonical IDs, without changing generation behavior.
 - `documentation`: require governed native-agent/MCP listings and CI validation against the typed registry.
 
@@ -37,7 +41,7 @@ Move pure renderers and emission helpers from `src/main.rs` to `src/output.rs` (
 | `src/main.rs`, `src/output.rs` | Modified | Extract presentation; preserve contracts |
 | `src/mcp.rs`, `src/agent_ids.rs` | Modified | Canonical native MCP metadata and ID boundary |
 | `README.md`, `npm/agentsync/README.md`, `website/docs/src/content/docs/guides/mcp.mdx` | Modified | Governed MCP listings |
-| `openspec/specs/mcp-generation/spec.md`, `.github/workflows/ci.yml`, `scripts/` | Modified/New | Spec alignment and drift validation |
+| `openspec/specs/mcp-generation/spec.md`, `.github/workflows/ci.yml`, `tests/mcp_documentation.rs` | Modified/New | Spec alignment and drift validation |
 
 ## Risks
 
@@ -57,7 +61,7 @@ Revert the change commit(s), restoring renderer locations and documentation sour
 
 ## Success Criteria
 
-- [ ] Existing CLI output and status JSON contract tests pass unchanged.
-- [ ] Native MCP docs agree with typed metadata, including Claude Desktop and canonical IDs.
-- [ ] CI fails deterministically when governed MCP documentation drifts.
-- [ ] No unrelated agent or MCP behavior changes are introduced.
+- [x] Existing CLI output and status JSON contract tests pass unchanged.
+- [x] Native MCP docs agree with typed metadata, including Claude Desktop and canonical IDs.
+- [x] CI fails deterministically when governed MCP documentation drifts.
+- [x] No unrelated agent or MCP behavior changes are introduced.

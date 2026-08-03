@@ -56,7 +56,8 @@ fn native_mcp_registry_has_complete_unique_metadata() {
     assert!(docs.iter().all(|doc| !doc.id.is_empty()
         && !doc.name.is_empty()
         && !doc.destination.is_empty()
-        && !doc.format.is_empty()));
+        && !doc.format.is_empty()
+        && !doc.notes.is_empty()));
     let claude = docs.iter().find(|doc| doc.id == "claude-desktop").unwrap();
     assert!(claude.global);
     assert!(claude.destination.contains("Global"));

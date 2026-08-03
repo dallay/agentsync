@@ -1,9 +1,11 @@
 # Archive Report
 
 ## Change
+
 `issue-494-500-output-doc-canonicalization`
 
 ## Verification Gate
+
 **PASS WITH WARNINGS** with no critical issues. The sole warning is a missing committed red-phase TDD transcript; runtime correctness and all required verification checks passed.
 
 ## Specs Synced
@@ -23,9 +25,11 @@
 - State updated to `current_phase: archive`, completed `archive`, next `none`: ✅
 
 ## Scope Guard
+
 No product behavior was altered during archiving. Changes were limited to durable OpenSpec synchronization, archive placement, state, and this audit report.
 
 ## Source Artifacts
+
 - `proposal.md`
 - `specs/cli-output/spec.md`
 - `specs/documentation/spec.md`

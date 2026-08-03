@@ -1,12 +1,14 @@
-## Exploration: GitHub issues #494 and #500 together
+# Exploration: GitHub issues #494 and #500 together
 
 ### Current State
+
 
 Issue #494: `src/main.rs` is both CLI orchestration and presentation layer. It already imports `src/output.rs` for `OutputMode`, `HumanFormatter`, `LabelKind`, and `output_mode`, but retains nearly all apply/clean presentation helpers: `render_phase`, `render_dry_run_notice`, `render_clean_phase_with_color`, `render_sync_phase_with_color`, `render_gitignore_phase_with_color`, `render_mcp_phase`, `render_count`, `render_apply_summary_with_color`, `render_clean_summary_with_color`, `render_mcp_summary_with_color`, `print_lines`, `print_header`, and `init_next_steps_lines` (roughly lines 36–282 and 664–667). `handle_apply`, `handle_clean`, `handle_init`, `handle_apply_gitignore`, and `handle_apply_mcp` orchestrate filesystem/config work and call those renderers. `src/commands/status.rs` independently owns status rendering (`render_status_entry`, `render_status_hint`, `render_status_summary`) and JSON serialization (`serde_json::to_string_pretty`), while `src/output.rs` currently only owns output-mode detection and formatter primitives. Human output is line-oriented, uses `colored`, and disables color when JSON, stdout is not a TTY, `NO_COLOR` is set, `CLICOLOR=0`, or `TERM=dumb`. Status JSON is an array of `StatusEntry`; non-zero problems exit with code 1. Apply/clean do not have a JSON mode and print directly from orchestration and `init` itself.
 
 Issue #500: MCP support is structurally centralized in `src/mcp.rs` through `McpAgent` and its methods `all`, `id`, `name`, `config_path`, `resolved_config_path`, `is_global`, `formatter`, and `from_id`. The current canonical runtime list is eight agents: Claude Code, Claude Desktop, GitHub Copilot, Codex CLI, Gemini CLI, VS Code, Cursor, and OpenCode. `src/agent_ids.rs` separately contains canonical IDs/aliases for those MCP agents and 25+ configurable-only agents, plus convention filenames and ignore patterns. Documentation is duplicated in `README.md`, `npm/agentsync/README.md`, `website/docs/src/content/docs/guides/mcp.mdx`, `website/docs/src/content/docs/reference/configuration.mdx`, and `openspec/specs/mcp-generation/spec.md`; the OpenSpec MCP table is already stale because it omits Claude Desktop. README explicitly says its list is canonical while also saying `src/mcp.rs` is authoritative, and website README instructs maintainers to cross-check source manually. There is no dedicated `.github/workflows` documentation-drift validation job beyond the existing Rust check/fmt/clippy/test/build/audit/E2E jobs. No scripts currently generate or validate the lists.
 
 ### Affected Areas
+
 - `src/main.rs` — orchestration mixed with apply/clean/init human rendering; extraction must preserve exact line order, labels, spacing, color behavior, and test helper behavior.
 - `src/output.rs` — existing output-mode/formatter boundary is the natural home for reusable human renderers and possibly output emission helpers.
 - `src/commands/status.rs` — separate human/JSON status presentation; avoid changing its JSON contract or accidentally coupling status domain validation to generic output formatting.
@@ -22,6 +24,7 @@ Issue #500: MCP support is structurally centralized in `src/mcp.rs` through `Mcp
 - `scripts/` — only setup/version scripts exist; a small deterministic validator/generator could live here, or validation could be a Rust test if metadata is exposed safely.
 
 ### Approaches
+
 1. **Canonical Rust metadata + generated documentation fragments** — Extend `McpAgent` (or a dedicated public metadata table adjacent to it) with stable ID, display name, destination, format, global flag, and notes; generate/check marked fragments in README/docs/OpenSpec/npm README via a Rust or small script tool.
    - Pros: runtime and docs derive from the same typed registry; prevents omissions such as Claude Desktop; preserves enum/formatter behavior; CI can fail deterministically.
    - Cons: requires choosing generated-fragment markers and handling Markdown table rendering; broader configurable-agent list still needs a separate canonical registry or explicit scope.
@@ -38,9 +41,11 @@ Issue #500: MCP support is structurally centralized in `src/mcp.rs` through `Mcp
    - Effort: Low/Medium.
 
 ### Recommendation
+
 Use Approach 1 for the native MCP surface, with a narrow explicit boundary: make one typed MCP metadata registry the canonical source for native MCP agent IDs, names, destinations, format classification, global status, and documentation notes; retain formatter dispatch and OS-specific path resolution as behavior in `McpAgent`. Generate or validate marked documentation fragments in `README.md`, `npm/agentsync/README.md`, `guides/mcp.mdx`, and `openspec/specs/mcp-generation/spec.md`, and add a fast CI validation job. Separately define whether #500’s “supported-agent” claim means native MCP agents only or all configurable agents. If it means all agents, extend the same registry concept to `agent_ids.rs`’s configurable IDs and metadata, but do not conflate native MCP capability with generic symlink support. Remove “keep in sync” prose once CI owns the invariant. For #494, move pure renderers and output helpers into `src/output.rs` while leaving command handlers and domain operations in `main.rs`; keep JSON serialization contracts in command modules unless a shared output abstraction is specifically justified.
 
 ### Risks
+
 - Human output is an implicit CLI contract: moving functions can accidentally change whitespace, ANSI application order, blank lines, banner text, or summary labels; preserve current strings and add/retain exact renderer tests.
 - `src/init.rs` writes user-facing progress directly, so a complete “presentation extraction” cannot be achieved by changing only `main.rs`; scope #494 to main-owned rendering first and explicitly leave operation-progress output for a follow-up if needed.
 - `McpAgent::all()` currently includes Claude Desktop, but `openspec/specs/mcp-generation/spec.md` omits it; docs validation will surface an existing mismatch immediately and should update the spec artifact in the implementation phase.
@@ -51,4 +56,5 @@ Use Approach 1 for the native MCP surface, with a narrow explicit boundary: make
 - Generated docs can create large noisy diffs; use narrowly marked fragments or a validator with stable expected tables and keep the 400-line review budget in mind.
 
 ### Ready for Proposal
+
 Yes — the proposal can proceed if it explicitly separates (a) native MCP support from (b) configurable-agent support, names the documentation surfaces to govern, and requires exact human/JSON output preservation for #494. The main unresolved product decision is whether #500’s canonical list must cover only MCP agents or every configurable agent supported by `agent_ids.rs`.

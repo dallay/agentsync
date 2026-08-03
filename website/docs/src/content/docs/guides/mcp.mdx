@@ -59,21 +59,6 @@ env = { "DEBUG" = "true" }
 - **`type`**: (Optional) The transport type (e.g., `stdio`, `http`, `sse`).
 - **`disabled`**: (Optional) Set to `true` to temporarily disable a server without removing it.
 
-## Supported Agents
-
-AgentSync automatically knows where to place the MCP configuration for these assistants:
-
-| Assistant | Destination File | Notes |
-| :--- | :--- | :--- |
-| **Claude Code** | `.mcp.json` | Standard format |
-| **Claude Desktop** | Global config (OS-dependent; see [below](#global-agents)) | Preserves non-MCP settings; disabled by default |
-| **GitHub Copilot** | `.vscode/mcp.json` | Shared with VS Code |
-| **OpenAI Codex CLI** | `.codex/config.toml` | TOML format (`[mcp_servers.<name>]`); AgentSync maps `headers` to `http_headers` |
-| **Gemini CLI** | `.gemini/settings.json` | Automatically adds `"trust": true` |
-| **VS Code** | `.vscode/mcp.json` | For VS Code extensions |
-| **Cursor** | `.cursor/mcp.json` | Standard format |
-| **OpenCode** | `opencode.json` | |
-
 ## Global Agents
 
 Some agents store their MCP configuration in a global (user-level) location rather than in the project directory. AgentSync calls these **global agents**.

@@ -11,7 +11,7 @@
 - **OpenCode** — `opencode.json` (agent id: `opencode`) — JSON; Standard format
 <!-- agentsync:mcp:end -->
 
-### Requirement: Canonical Typed Native MCP Metadata
+## Requirement: Canonical Typed Native MCP Metadata
 
 The system MUST expose one typed canonical registry for native MCP agents. Each registry entry
 MUST define canonical ID, display name, documented destination, format classification, global path

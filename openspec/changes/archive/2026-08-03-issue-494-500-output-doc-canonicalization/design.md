@@ -85,4 +85,4 @@ runtime data and generated user files are unaffected.
 
 ## Open Questions
 
-- [ ] None blocking. Native MCP support is intentionally distinct from configurable-agent support.
+- [x] No blocking questions remain. Native MCP support is intentionally distinct from configurable-agent support.
