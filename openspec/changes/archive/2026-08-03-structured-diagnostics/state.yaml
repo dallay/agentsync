@@ -1,0 +1,5 @@
+change: structured-diagnostics
+current_phase: archive
+completed: [explore, propose, spec, design, tasks, apply, verify, archive]
+next: none
+updated: 2026-08-03

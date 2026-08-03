@@ -53,6 +53,35 @@ fn skill_suggest_json_contract_includes_required_fields() {
 }
 
 #[test]
+fn skill_suggest_json_keeps_diagnostics_out_of_stdout() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+
+    fs::write(root.join("Cargo.toml"), "[package]\nname='demo'\n").unwrap();
+
+    let output = Command::new(agentsync_bin())
+        .current_dir(root)
+        .args(["skill", "suggest", "--json", "--log-format", "json"])
+        .output()
+        .expect("failed to run agentsync skill suggest --json");
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let _: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .expect("functional skill suggest JSON must remain the only stdout document");
+    for line in String::from_utf8_lossy(&output.stderr).lines() {
+        assert!(
+            serde_json::from_str::<serde_json::Value>(line).is_ok(),
+            "JSON log format must emit one JSON event per stderr line: {line}"
+        );
+    }
+}
+
+#[test]
 fn skill_suggest_json_contract_is_well_formed_when_empty() {
     let temp_dir = TempDir::new().unwrap();
 

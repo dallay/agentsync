@@ -120,6 +120,11 @@ impl Linker {
         &self.config
     }
 
+    /// Get the path of the loaded `agentsync.toml` config file.
+    pub fn config_path(&self) -> &Path {
+        &self.config_path
+    }
+
     /// Drop discovery caches after filesystem mutations that can affect later
     /// nested-glob walks. Symlink mutations do NOT require this as NestedGlob
     /// discovery uses follow_links(false).

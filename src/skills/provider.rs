@@ -361,6 +361,16 @@ impl Provider for SkillsShProvider {
         // Fallback: use skills.sh search API for simple IDs (e.g., "rust-async-patterns")
         self.resolve_via_search(id)
     }
+
+    fn recommendation_catalog(&self) -> Result<Option<ProviderCatalogMetadata>> {
+        // Deterministic subprocess hook for the CLI contract test that verifies
+        // catalog fallback warnings stay on stderr. It is inert unless explicitly
+        // enabled by a test environment.
+        if std::env::var_os("AGENTSYNC_TEST_INVALID_RECOMMENDATION_CATALOG").is_some() {
+            anyhow::bail!("invalid recommendation catalog test fixture")
+        }
+        Ok(None)
+    }
 }
 
 #[cfg(test)]

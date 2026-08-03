@@ -1495,11 +1495,19 @@ impl McpGenerator {
         }
 
         for agent in enabled_agents {
+            let span = tracing::info_span!(
+                "agentsync",
+                operation = "mcp",
+                agent_id = %agent.id(),
+                outcome = tracing::field::Empty
+            );
+            let _enter = span.enter();
+
             let path = match agent.resolved_config_path(project_root) {
                 Some(p) => p,
                 None => continue,
             };
-            if !handled_paths.insert(path) {
+            if !handled_paths.insert(path.clone()) {
                 continue;
             }
 
@@ -1513,9 +1521,25 @@ impl McpGenerator {
                     total_result.created += result.created;
                     total_result.updated += result.updated;
                     total_result.skipped += result.skipped;
+                    let outcome = if result.errors > 0 {
+                        "error"
+                    } else if result.created > 0 {
+                        "created"
+                    } else if result.updated > 0 {
+                        "updated"
+                    } else {
+                        "skipped"
+                    };
+                    span.record("outcome", outcome);
                 }
                 Err(e) => {
-                    tracing::error!(agent = %agent.name(), error = %e, "Error generating agent config");
+                    tracing::error!(
+                        agent = %agent.name(),
+                        config_path = %path.display(),
+                        error = %e,
+                        "Error generating agent config"
+                    );
+                    span.record("outcome", "error");
                     total_result.errors += 1;
                 }
             }
