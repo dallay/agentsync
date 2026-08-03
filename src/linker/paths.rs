@@ -221,6 +221,19 @@ impl Linker {
         Ok(canonical)
     }
 
+    fn canonical_fallback_path(&self, path: &Path) -> Result<PathBuf> {
+        let canonical_root = self.get_canonical_project_root()?;
+
+        if path.is_absolute() {
+            if let Ok(relative) = path.strip_prefix(&self.project_root) {
+                return Ok(canonical_root.join(relative));
+            }
+            return Ok(path.to_path_buf());
+        }
+
+        Ok(canonical_root.join(path))
+    }
+
     /// Calculate relative path from dest to source
     // `pub(super)` is required by the root façade and future symlink sibling.
     pub(super) fn relative_path(
@@ -239,18 +252,12 @@ impl Linker {
             let relative = from_dir
                 .strip_prefix(&self.project_root)
                 .unwrap_or(from_dir);
-            Rc::new(self.project_root.join(relative))
+            Rc::new(self.canonical_fallback_path(relative)?)
         };
 
         let to_abs = match self.canonicalize_cached(to) {
             Ok(path) => path,
-            Err(_) if allow_missing => {
-                if to.is_absolute() {
-                    Rc::new(to.to_path_buf())
-                } else {
-                    Rc::new(self.project_root.join(to))
-                }
-            }
+            Err(_) if allow_missing => Rc::new(self.canonical_fallback_path(to)?),
             Err(err) => {
                 return Err(err)
                     .with_context(|| format!("Source path does not exist: {}", to.display()));
@@ -260,5 +267,247 @@ impl Linker {
         // Use pathdiff to calculate relative path
         pathdiff::diff_paths(&*to_abs, &*from_abs)
             .ok_or_else(|| anyhow::anyhow!("Cannot calculate relative path"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+    use std::collections::BTreeMap;
+    use tempfile::TempDir;
+
+    fn make_linker(project_root: &Path) -> Linker {
+        let agents_dir = project_root.join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+        let config_path = agents_dir.join("agentsync.toml");
+
+        let config = Config {
+            source_dir: ".".to_string(),
+            compress_agents_md: false,
+            default_agents: vec![],
+            agents: BTreeMap::new(),
+            gitignore: Default::default(),
+            mcp: Default::default(),
+            mcp_servers: Default::default(),
+        };
+
+        Linker::new(config, config_path)
+    }
+
+    // ==========================================================================
+    // revalidate_unlink_path
+    // ==========================================================================
+
+    #[test]
+    fn revalidate_unlink_path_accepts_absolute_path_inside_root() {
+        let temp = TempDir::new().unwrap();
+        let linker = make_linker(temp.path());
+
+        let target = temp.path().join("link.md");
+        fs::write(&target, "x").unwrap();
+
+        assert!(linker.revalidate_unlink_path(&target).is_ok());
+    }
+
+    #[test]
+    fn revalidate_unlink_path_rejects_absolute_path_outside_root() {
+        let temp = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        let linker = make_linker(temp.path());
+
+        let target = outside.path().join("evil.md");
+
+        assert!(linker.revalidate_unlink_path(&target).is_err());
+    }
+
+    #[test]
+    fn revalidate_unlink_path_rejects_relative_parent_dir_component() {
+        let temp = TempDir::new().unwrap();
+        let linker = make_linker(temp.path());
+
+        let target = Path::new("subdir/../escape.md");
+
+        assert!(linker.revalidate_unlink_path(target).is_err());
+    }
+
+    #[test]
+    fn revalidate_unlink_path_accepts_relative_path_with_nonexistent_parent() {
+        let temp = TempDir::new().unwrap();
+        let linker = make_linker(temp.path());
+
+        // The parent directory does not exist, so validation must short-circuit
+        // to Ok without attempting canonicalization.
+        let target = Path::new("does/not/exist/file.md");
+
+        assert!(linker.revalidate_unlink_path(target).is_ok());
+    }
+
+    #[test]
+    fn revalidate_unlink_path_accepts_relative_top_level_path() {
+        let temp = TempDir::new().unwrap();
+        let linker = make_linker(temp.path());
+
+        // A top-level relative path has an empty parent component.
+        let target = Path::new("file.md");
+
+        assert!(linker.revalidate_unlink_path(target).is_ok());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn revalidate_unlink_path_rejects_relative_path_whose_parent_escapes_root() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let outside = TempDir::new_in(temp.path().parent().unwrap()).unwrap();
+        let linker = make_linker(temp.path());
+
+        let link_path = temp.path().join("escape-link");
+        symlink(outside.path(), &link_path).unwrap();
+
+        let target = Path::new("escape-link/file.md");
+
+        assert!(linker.revalidate_unlink_path(target).is_err());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn revalidate_unlink_path_accepts_absolute_symlink_target_outside_root() {
+        // The managed symlink entry itself is inside project_root even though its
+        // target (read via fs::read_link elsewhere) may point outside; this method
+        // validates the *entry* path, not the destination it points to.
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        let linker = make_linker(temp.path());
+
+        let target_file = outside.path().join("real.md");
+        fs::write(&target_file, "hi").unwrap();
+        let link = temp.path().join("link.md");
+        symlink(&target_file, &link).unwrap();
+
+        assert!(linker.revalidate_unlink_path(&link).is_ok());
+    }
+
+    // ==========================================================================
+    // revalidate_path / ensure_safe_path
+    // ==========================================================================
+
+    #[test]
+    fn revalidate_path_accepts_path_with_nonexistent_ancestors() {
+        let temp = TempDir::new().unwrap();
+        let linker = make_linker(temp.path());
+
+        let deep = temp.path().join("a/b/c/file.md");
+
+        assert!(linker.revalidate_path(&deep).is_ok());
+    }
+
+    #[test]
+    fn revalidate_path_rejects_parent_dir_component() {
+        let temp = TempDir::new().unwrap();
+        let linker = make_linker(temp.path());
+
+        let bad = temp.path().join("a/../../escape.md");
+
+        assert!(linker.revalidate_path(&bad).is_err());
+    }
+
+    // ==========================================================================
+    // relative_path
+    // ==========================================================================
+
+    #[test]
+    fn relative_path_computes_correct_relative_target() {
+        let temp = TempDir::new().unwrap();
+        let linker = make_linker(temp.path());
+
+        let source = temp.path().join("source.md");
+        fs::write(&source, "hi").unwrap();
+        let dest_dir = temp.path().join("nested");
+        fs::create_dir_all(&dest_dir).unwrap();
+        let dest = dest_dir.join("link.md");
+
+        let rel = linker.relative_path(&dest, &source, false).unwrap();
+
+        assert_eq!(rel, PathBuf::from("../source.md"));
+    }
+
+    #[test]
+    fn relative_path_errs_when_source_missing_and_not_allowed() {
+        let temp = TempDir::new().unwrap();
+        let linker = make_linker(temp.path());
+
+        let dest = temp.path().join("link.md");
+        let missing_source = temp.path().join("missing.md");
+
+        assert!(linker.relative_path(&dest, &missing_source, false).is_err());
+    }
+
+    #[test]
+    fn relative_path_falls_back_when_source_missing_and_allowed() {
+        let temp = TempDir::new().unwrap();
+        let linker = make_linker(temp.path());
+
+        let dest = temp.path().join("link.md");
+        let missing_source = temp.path().join("missing.md");
+
+        let rel = linker.relative_path(&dest, &missing_source, true).unwrap();
+
+        assert_eq!(rel, PathBuf::from("missing.md"));
+    }
+
+    #[test]
+    fn relative_path_uses_project_root_fallback_when_dest_dir_missing() {
+        let temp = TempDir::new().unwrap();
+        let linker = make_linker(temp.path());
+
+        let source = temp.path().join("source.md");
+        fs::write(&source, "hi").unwrap();
+        // The destination's parent directory has not been created yet.
+        let dest = temp.path().join("not-yet-created").join("link.md");
+
+        let rel = linker.relative_path(&dest, &source, false).unwrap();
+
+        assert_eq!(rel, PathBuf::from("../source.md"));
+    }
+
+    // ==========================================================================
+    // canonicalize_cached / invalidate_path_cache
+    // ==========================================================================
+
+    #[test]
+    #[cfg(unix)]
+    fn canonicalize_cache_returns_stale_value_until_invalidated() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let linker = make_linker(temp.path());
+
+        let dest = temp.path().join("link.md");
+        let real_a = temp.path().join("real-a.md");
+        let real_b = temp.path().join("real-b.md");
+        fs::write(&real_a, "a").unwrap();
+        fs::write(&real_b, "b").unwrap();
+
+        let source_link = temp.path().join("source-link.md");
+        symlink(&real_a, &source_link).unwrap();
+
+        let rel_a = linker.relative_path(&dest, &source_link, false).unwrap();
+        assert_eq!(rel_a, PathBuf::from("real-a.md"));
+
+        fs::remove_file(&source_link).unwrap();
+        symlink(&real_b, &source_link).unwrap();
+
+        // Cache still holds the canonical target resolved on the first call.
+        let rel_stale = linker.relative_path(&dest, &source_link, false).unwrap();
+        assert_eq!(rel_stale, PathBuf::from("real-a.md"));
+
+        linker.invalidate_path_cache();
+
+        let rel_fresh = linker.relative_path(&dest, &source_link, false).unwrap();
+        assert_eq!(rel_fresh, PathBuf::from("real-b.md"));
     }
 }

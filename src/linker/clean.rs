@@ -202,3 +202,148 @@ impl Linker {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{AgentConfig, Config, TargetConfig};
+    use std::collections::BTreeMap;
+    use std::path::Path;
+    use tempfile::TempDir;
+
+    fn make_target(source: &str, destination: &str, sync_type: SyncType) -> TargetConfig {
+        TargetConfig {
+            source: source.to_string(),
+            destination: destination.to_string(),
+            sync_type,
+            pattern: None,
+            exclude: vec![],
+            mappings: vec![],
+        }
+    }
+
+    fn make_linker(project_root: &Path, agent_enabled: bool, target: TargetConfig) -> Linker {
+        let mut targets = BTreeMap::new();
+        targets.insert("target".to_string(), target);
+
+        let agent_config = AgentConfig {
+            enabled: agent_enabled,
+            description: String::new(),
+            targets,
+        };
+
+        let mut agents = BTreeMap::new();
+        agents.insert("test".to_string(), agent_config);
+
+        let config = Config {
+            source_dir: ".agents".to_string(),
+            compress_agents_md: false,
+            default_agents: vec![],
+            agents,
+            gitignore: Default::default(),
+            mcp: Default::default(),
+            mcp_servers: Default::default(),
+        };
+
+        let config_path = project_root.join("agentsync.toml");
+        Linker::new(config, config_path)
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn clean_removes_symlinks_even_for_disabled_agents() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+        fs::create_dir_all(project_root.join(".agents")).unwrap();
+        let source = project_root.join(".agents/source.md");
+        fs::write(&source, "hi").unwrap();
+
+        let target = make_target("source.md", "dest.md", SyncType::Symlink);
+        // The agent is disabled; `clean` deliberately ignores agent/apply filters,
+        // so the managed symlink must still be removed.
+        let linker = make_linker(project_root, false, target);
+
+        let dest = project_root.join("dest.md");
+        symlink(&source, &dest).unwrap();
+        assert!(dest.is_symlink());
+
+        let result = linker.clean(&SyncOptions::default()).unwrap();
+
+        assert_eq!(result.removed, 1);
+        assert!(!dest.exists());
+    }
+
+    #[test]
+    fn clean_symlink_target_skips_invalid_destination_without_error() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+        fs::create_dir_all(project_root.join(".agents")).unwrap();
+
+        // An absolute destination fails `ensure_safe_destination`; clean must skip
+        // it silently rather than propagating an error.
+        let target = make_target("source.md", "/etc/passwd", SyncType::Symlink);
+        let linker = make_linker(project_root, true, target);
+
+        let result = linker.clean(&SyncOptions::default()).unwrap();
+
+        assert_eq!(result.removed, 0);
+    }
+
+    #[test]
+    fn clean_symlink_contents_target_leaves_regular_files_untouched() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+        fs::create_dir_all(project_root.join(".agents")).unwrap();
+
+        let dest_dir = project_root.join("dest");
+        fs::create_dir_all(&dest_dir).unwrap();
+        fs::write(dest_dir.join("regular.md"), "hi").unwrap();
+
+        let target = make_target("source-dir", "dest", SyncType::SymlinkContents);
+        let linker = make_linker(project_root, true, target);
+
+        let result = linker.clean(&SyncOptions::default()).unwrap();
+
+        assert_eq!(result.removed, 0);
+        assert!(dest_dir.join("regular.md").exists());
+    }
+
+    #[test]
+    fn clean_symlink_contents_target_is_noop_for_missing_destination() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+        fs::create_dir_all(project_root.join(".agents")).unwrap();
+
+        let target = make_target(
+            "source-dir",
+            "dest-never-created",
+            SyncType::SymlinkContents,
+        );
+        let linker = make_linker(project_root, true, target);
+
+        let result = linker.clean(&SyncOptions::default()).unwrap();
+
+        assert_eq!(result.removed, 0);
+    }
+
+    #[test]
+    fn clean_module_map_target_skips_mapping_with_invalid_destination() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+        fs::create_dir_all(project_root.join(".agents")).unwrap();
+
+        let mut target = make_target("unused", "unused", SyncType::ModuleMap);
+        target.mappings = vec![crate::config::ModuleMapping {
+            source: "shared/context.md".to_string(),
+            destination: "/etc".to_string(),
+            filename_override: None,
+        }];
+        let linker = make_linker(project_root, true, target);
+
+        let result = linker.clean(&SyncOptions::default()).unwrap();
+
+        assert_eq!(result.removed, 0);
+    }
+}

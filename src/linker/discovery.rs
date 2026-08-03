@@ -407,3 +407,78 @@ where
     }
     true
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ==========================================================================
+    // expand_destination_template edge cases
+    // ==========================================================================
+
+    #[test]
+    fn expand_destination_template_passes_through_unknown_placeholder() {
+        let rel = Path::new("AGENTS.md");
+
+        assert_eq!(
+            Linker::expand_destination_template("{unknown}/{file_name}", rel),
+            "{unknown}/AGENTS.md"
+        );
+    }
+
+    #[test]
+    fn expand_destination_template_handles_unterminated_brace_literally() {
+        let rel = Path::new("AGENTS.md");
+
+        assert_eq!(
+            Linker::expand_destination_template("prefix-{file_name", rel),
+            "prefix-{file_name"
+        );
+    }
+
+    #[test]
+    fn expand_destination_template_supports_multiple_placeholders_in_one_template() {
+        let rel = Path::new("clients/agent-runtime/AGENTS.md");
+
+        assert_eq!(
+            Linker::expand_destination_template("{relative_path}/{stem}.{ext}.bak", rel),
+            "clients/agent-runtime/AGENTS.md.bak"
+        );
+    }
+
+    #[test]
+    fn expand_destination_template_with_no_placeholders_is_unchanged() {
+        let rel = Path::new("AGENTS.md");
+
+        assert_eq!(
+            Linker::expand_destination_template("static/CLAUDE.md", rel),
+            "static/CLAUDE.md"
+        );
+    }
+
+    // ==========================================================================
+    // path_glob_match_iter edge cases
+    // ==========================================================================
+
+    #[test]
+    fn path_glob_match_iter_handles_multiple_backtracks_for_leading_double_star() {
+        // Requires the matcher to retry the leading "**" against successive
+        // segments until the literal tail segment lines up.
+        let pattern = ["**", "target.md"];
+
+        assert!(path_glob_match_iter(
+            "a/b/c/d/target.md".split('/'),
+            &pattern
+        ));
+        assert!(!path_glob_match_iter(
+            "a/b/c/d/target.txt".split('/'),
+            &pattern
+        ));
+    }
+
+    #[test]
+    fn path_glob_match_iter_empty_path_matches_only_all_double_star_pattern() {
+        assert!(path_glob_match_iter(std::iter::empty::<&str>(), &["**"]));
+        assert!(!path_glob_match_iter(std::iter::empty::<&str>(), &["foo"]));
+    }
+}

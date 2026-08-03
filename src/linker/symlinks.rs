@@ -295,3 +295,126 @@ pub(super) fn remove_symlink(path: &Path) -> std::io::Result<()> {
     }
     fs::remove_file(path)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    // ==========================================================================
+    // backup_path_for_destination
+    // ==========================================================================
+
+    #[test]
+    fn backup_path_for_destination_appends_bak_suffix() {
+        let dest = Path::new("/tmp/project/AGENTS.md");
+
+        assert_eq!(
+            backup_path_for_destination(dest),
+            PathBuf::from("/tmp/project/AGENTS.md.bak")
+        );
+    }
+
+    #[test]
+    fn backup_path_for_destination_preserves_extensionless_names() {
+        let dest = Path::new("/tmp/project/README");
+
+        assert_eq!(
+            backup_path_for_destination(dest),
+            PathBuf::from("/tmp/project/README.bak")
+        );
+    }
+
+    #[test]
+    fn backup_path_for_destination_is_relative_when_input_is_relative() {
+        let dest = Path::new("nested/dir/file.md");
+
+        assert_eq!(
+            backup_path_for_destination(dest),
+            PathBuf::from("nested/dir/file.md.bak")
+        );
+    }
+
+    // ==========================================================================
+    // remove_existing_path
+    // ==========================================================================
+
+    #[test]
+    fn remove_existing_path_removes_regular_file() {
+        let temp = TempDir::new().unwrap();
+        let file = temp.path().join("file.md");
+        fs::write(&file, "hi").unwrap();
+
+        remove_existing_path(&file).unwrap();
+
+        assert!(!file.exists());
+    }
+
+    #[test]
+    fn remove_existing_path_removes_nonempty_directory() {
+        let temp = TempDir::new().unwrap();
+        let dir = temp.path().join("dir");
+        fs::create_dir_all(dir.join("nested")).unwrap();
+        fs::write(dir.join("nested").join("file.md"), "hi").unwrap();
+
+        remove_existing_path(&dir).unwrap();
+
+        assert!(!dir.exists());
+    }
+
+    #[test]
+    fn remove_existing_path_is_noop_for_missing_path() {
+        let temp = TempDir::new().unwrap();
+        let missing = temp.path().join("missing.md");
+
+        assert!(remove_existing_path(&missing).is_ok());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn remove_existing_path_removes_symlink_without_following_target() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let target = temp.path().join("target.md");
+        fs::write(&target, "hi").unwrap();
+        let link = temp.path().join("link.md");
+        symlink(&target, &link).unwrap();
+
+        remove_existing_path(&link).unwrap();
+
+        assert!(!link.exists());
+        // Removing the symlink entry must not delete its target.
+        assert!(target.exists());
+    }
+
+    // ==========================================================================
+    // remove_symlink
+    // ==========================================================================
+
+    #[test]
+    #[cfg(unix)]
+    fn remove_symlink_removes_file_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let target = temp.path().join("target.md");
+        fs::write(&target, "hi").unwrap();
+        let link = temp.path().join("link.md");
+        symlink(&target, &link).unwrap();
+
+        remove_symlink(&link).unwrap();
+
+        assert!(!link.exists());
+        assert!(target.exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn remove_symlink_errs_for_missing_path() {
+        let temp = TempDir::new().unwrap();
+        let missing = temp.path().join("missing-link.md");
+
+        assert!(remove_symlink(&missing).is_err());
+    }
+}

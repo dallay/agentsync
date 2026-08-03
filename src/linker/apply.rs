@@ -410,3 +410,187 @@ fn normalize_inline_whitespace_to(line: &str, out: &mut String) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ==========================================================================
+    // is_agents_md_path / compressed_agents_md_path
+    // ==========================================================================
+
+    #[test]
+    fn is_agents_md_path_matches_exact_filename_only() {
+        assert!(is_agents_md_path(Path::new("AGENTS.md")));
+        assert!(is_agents_md_path(Path::new("/some/nested/AGENTS.md")));
+        assert!(!is_agents_md_path(Path::new("agents.md")));
+        assert!(!is_agents_md_path(Path::new("AGENTS.MD")));
+        assert!(!is_agents_md_path(Path::new("OTHER.md")));
+    }
+
+    #[test]
+    fn compressed_agents_md_path_replaces_file_name() {
+        let path = Path::new("/project/.agents/AGENTS.md");
+
+        assert_eq!(
+            Linker::compressed_agents_md_path(path),
+            PathBuf::from("/project/.agents/AGENTS.compact.md")
+        );
+    }
+
+    // ==========================================================================
+    // module_map_destination
+    // ==========================================================================
+
+    #[test]
+    fn module_map_destination_joins_directory_and_resolved_filename() {
+        let mapping = ModuleMapping {
+            source: "shared/context.md".to_string(),
+            destination: "src/api".to_string(),
+            filename_override: None,
+        };
+
+        assert_eq!(
+            module_map_destination(&mapping, "claude"),
+            "src/api/CLAUDE.md"
+        );
+    }
+
+    #[test]
+    fn module_map_destination_honors_filename_override() {
+        let mapping = ModuleMapping {
+            source: "shared/context.md".to_string(),
+            destination: "src/api".to_string(),
+            filename_override: Some("CUSTOM.md".to_string()),
+        };
+
+        assert_eq!(
+            module_map_destination(&mapping, "claude"),
+            "src/api/CUSTOM.md"
+        );
+    }
+
+    #[test]
+    fn module_map_destination_falls_back_to_source_basename_for_unknown_agent() {
+        let mapping = ModuleMapping {
+            source: "shared/context.md".to_string(),
+            destination: "src/api".to_string(),
+            filename_override: None,
+        };
+
+        assert_eq!(
+            module_map_destination(&mapping, "some-unknown-agent"),
+            "src/api/context.md"
+        );
+    }
+
+    // ==========================================================================
+    // fence detection / toggling
+    // ==========================================================================
+
+    #[test]
+    fn detect_fence_delimiter_recognizes_backtick_and_tilde_fences() {
+        assert_eq!(detect_fence_delimiter("```"), Some("```"));
+        assert_eq!(detect_fence_delimiter("```rust"), Some("```"));
+        assert_eq!(detect_fence_delimiter("````"), Some("````"));
+        assert_eq!(detect_fence_delimiter("~~~"), Some("~~~"));
+        assert_eq!(detect_fence_delimiter("~~~~"), Some("~~~~"));
+    }
+
+    #[test]
+    fn detect_fence_delimiter_ignores_non_fence_lines() {
+        assert_eq!(detect_fence_delimiter("plain text"), None);
+        assert_eq!(detect_fence_delimiter("``code``"), None);
+        assert_eq!(detect_fence_delimiter(""), None);
+    }
+
+    #[test]
+    fn toggle_fence_opens_and_closes_matching_delimiter() {
+        assert_eq!(toggle_fence(None, "```"), Some("```"));
+        assert_eq!(toggle_fence(Some("```"), "```"), None);
+    }
+
+    #[test]
+    fn toggle_fence_ignores_mismatched_delimiter_while_open() {
+        // A ~~~ fence encountered while a ``` fence is open must not close it.
+        assert_eq!(toggle_fence(Some("```"), "~~~"), Some("```"));
+    }
+
+    // ==========================================================================
+    // whitespace helpers
+    // ==========================================================================
+
+    #[test]
+    fn split_leading_whitespace_separates_indentation_from_content() {
+        assert_eq!(split_leading_whitespace("   foo"), ("   ", "foo"));
+        assert_eq!(split_leading_whitespace("\t\tfoo"), ("\t\t", "foo"));
+        assert_eq!(split_leading_whitespace("foo"), ("", "foo"));
+        assert_eq!(split_leading_whitespace(""), ("", ""));
+        assert_eq!(split_leading_whitespace("   "), ("   ", ""));
+    }
+
+    #[test]
+    fn normalize_inline_whitespace_to_collapses_runs_of_whitespace() {
+        let mut out = String::new();
+        normalize_inline_whitespace_to("a   b\t\tc", &mut out);
+        assert_eq!(out, "a b c");
+    }
+
+    #[test]
+    fn normalize_inline_whitespace_to_appends_to_existing_content() {
+        let mut out = String::from("prefix-");
+        normalize_inline_whitespace_to("x  y", &mut out);
+        assert_eq!(out, "prefix-x y");
+    }
+
+    // ==========================================================================
+    // compress_agents_md_content
+    // ==========================================================================
+
+    #[test]
+    fn compress_agents_md_content_collapses_blank_lines_and_whitespace() {
+        let input = "# Title\n\n\n\nSome   text  with   spacing.\n\n\nMore.\n";
+
+        let compressed = compress_agents_md_content(input);
+
+        assert_eq!(compressed, "# Title\n\nSome text with spacing.\n\nMore.\n");
+    }
+
+    #[test]
+    fn compress_agents_md_content_preserves_whitespace_inside_fences() {
+        let input = "Text\n```\nfn  main() {\n    let  x = 1;\n}\n```\nAfter\n";
+
+        let compressed = compress_agents_md_content(input);
+
+        assert!(compressed.contains("fn  main() {\n    let  x = 1;\n}"));
+        assert!(compressed.contains("Text\n```"));
+        assert!(compressed.contains("```\nAfter"));
+    }
+
+    #[test]
+    fn compress_agents_md_content_preserves_leading_indentation_outside_fences() {
+        let input = "- item one\n  - nested   item\n";
+
+        let compressed = compress_agents_md_content(input);
+
+        assert_eq!(compressed, "- item one\n  - nested item\n");
+    }
+
+    #[test]
+    fn compress_agents_md_content_trims_trailing_whitespace() {
+        let input = "line one   \nline two\t\n";
+
+        let compressed = compress_agents_md_content(input);
+
+        assert_eq!(compressed, "line one\nline two\n");
+    }
+
+    #[test]
+    fn compress_agents_md_content_handles_tilde_fences_like_backtick_fences() {
+        let input = "~~~\nspaced   out\n~~~\n";
+
+        let compressed = compress_agents_md_content(input);
+
+        assert_eq!(compressed, "~~~\nspaced   out\n~~~\n");
+    }
+}
