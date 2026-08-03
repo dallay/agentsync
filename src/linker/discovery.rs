@@ -9,24 +9,15 @@ use walkdir::WalkDir;
 use super::{Linker, NestedGlobKey, NestedGlobMatches, ResolvedSource, SyncOptions, SyncResult};
 
 impl Linker {
-    /// Expands destination placeholders using a discovered file's path relative to the search root.
+    /// Expand a destination template for a single discovered file.
     ///
-    /// Supported placeholders are `{relative_path}`, `{file_name}`, `{stem}`, and `{ext}`.
-    /// Files directly inside the search root use `.` for `{relative_path}`. Unknown
-    /// placeholders and unmatched opening braces remain unchanged.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::path::Path;
-    ///
-    /// let destination = expand_destination_template(
-    ///     "{relative_path}/{stem}.{ext}",
-    ///     Path::new("clients/agent-runtime/AGENTS.md"),
-    /// );
-    ///
-    /// assert_eq!(destination, "clients/agent-runtime/AGENTS.md");
-    /// ```
+    /// Replaces the following placeholders:
+    /// * `{relative_path}` – parent directory of the matched file relative to
+    ///   the search root (e.g. `clients/agent-runtime`).  When the file is
+    ///   directly inside the search root, this is `.` (current directory).
+    /// * `{file_name}` – the file's name (e.g. `AGENTS.md`)
+    /// * `{stem}` – the file name without its extension (e.g. `AGENTS`)
+    /// * `{ext}` – the file's extension without the dot (e.g. `md`)
     pub(super) fn expand_destination_template(
         template: &str,
         rel_path: &Path, // path of the discovered file relative to search root
@@ -91,28 +82,13 @@ impl Linker {
         result
     }
 
-    /// Discovers files matching a nested glob and creates symlinks at their expanded destinations.
+    /// Process a `NestedGlob` target: discover matching files and dispatch the
+    /// existing symlink operation for each expanded destination.
     ///
-    /// Invalid search roots and individual matches with empty or unsafe destinations are skipped.
-    /// Discovery and symlink errors are returned.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// let result = linker.process_nested_glob(
-    ///     Path::new("assets"),
-    ///     "**/*.png",
-    ///     &[],
-    ///     "public/{relative_path}",
-    ///     &options,
-    /// )?;
-    /// assert!(result.created + result.updated + result.skipped > 0);
-    /// # Ok::<(), YourError>(())
-    /// ```
-    ///
-    /// `search_root` is the directory in which to search. `glob_pattern` selects matching files,
-    /// `excludes` omits matching paths, and `dest_template` determines each symlink destination.
-    /// `options` controls synchronization behaviour and output.
+    /// The per-match `create_symlink` call remains here because discovery and
+    /// destination expansion are already coupled to that existing dispatch in
+    /// the monolith. Overall sync/apply orchestration remains in `mod.rs` for
+    /// the following stacked layer.
     pub(super) fn process_nested_glob(
         &self,
         search_root: &Path,
@@ -179,27 +155,7 @@ impl Linker {
         Ok(result)
     }
 
-    /// Retrieves nested-glob discovery results, reusing results cached for the same search root, pattern, and exclusions.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// let matches = linker.get_nested_glob_matches(
-    ///     search_root,
-    ///     glob_pattern,
-    ///     excludes,
-    ///     options,
-    /// )?;
-    /// # Ok::<(), anyhow::Error>(())
-    /// ```
-    ///
-    /// # Returns
-    ///
-    /// The discovered matching paths and their relative paths.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if nested-glob discovery fails.
+    /// Internal helper to get cached nested-glob discovery results.
     pub(super) fn get_nested_glob_matches(
         &self,
         search_root: &Path,
@@ -238,29 +194,6 @@ impl Linker {
         Ok(rc_found)
     }
 
-    /// Visits each file under `search_root` that matches the nested glob pattern.
-    ///
-    /// Excluded paths are skipped, matching directories are not traversed, and the
-    /// callback receives each matching file's full and root-relative paths.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the callback returns an error.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// linker.for_each_nested_glob_match(
-    ///     Path::new("templates"),
-    ///     "**/*.hbs",
-    ///     &[],
-    ///     &options,
-    ///     |full_path, relative_path| {
-    ///         println!("{} -> {}", relative_path.display(), full_path.display());
-    ///         Ok(())
-    ///     },
-    /// )?;
-    /// ```
     fn for_each_nested_glob_match<F>(
         &self,
         search_root: &Path,
@@ -356,16 +289,10 @@ impl Linker {
     }
 }
 
-/// Matches a path segment against a glob pattern using `*` for zero or more
-/// characters and `?` for exactly one character.
+/// Simple glob pattern matching for path segments (supports `*` and `?`).
 ///
-/// # Examples
-///
-/// ```
-/// assert!(matches_pattern("file.txt", "*.txt"));
-/// assert!(matches_pattern("a1", "a?"));
-/// assert!(!matches_pattern("file.rs", "*.txt"));
-/// ```
+/// This remains the shared filename matcher used by both nested-glob discovery
+/// and symlink-contents filtering.
 pub(super) fn matches_pattern(name: &str, pattern: &str) -> bool {
     let mut name_it = name.chars();
     let mut pattern_it = pattern.chars();
@@ -403,36 +330,16 @@ pub(super) fn matches_pattern(name: &str, pattern: &str) -> bool {
     }
 }
 
-/// Matches a slash-separated path against a glob pattern with `**` support.
+/// Path-aware glob matching that supports the `**` double-star wildcard.
 ///
-/// The path and pattern use `/` as the separator. The `*` and `?` wildcards
-/// match within a single path segment, while `**` matches zero or more segments.
-///
-/// # Examples
-///
-/// ```
-/// assert!(matches_path_glob("src/lib.rs", "src/*.rs"));
-/// assert!(matches_path_glob("src/nested/lib.rs", "src/**/*.rs"));
-/// assert!(!matches_path_glob("tests/lib.rs", "src/**/*.rs"));
-/// ```
-///
-/// Returns `true` if the path matches the pattern, `false` otherwise.
+/// The `path` argument must use `/` as the path separator.
 #[cfg(test)]
 pub(super) fn matches_path_glob(path: &str, pattern: &str) -> bool {
     let pattern_parts: Vec<&str> = pattern.split('/').collect();
     path_glob_match_iter(path.split('/'), &pattern_parts)
 }
 
-/// Matches path segments against a glob pattern, supporting `*`, `?`, and `**`.
-///
-/// # Examples
-///
-/// ```
-/// let path = ["src", "nested", "main.rs"];
-/// let pattern = ["src", "**", "*.rs"];
-///
-/// assert!(path_glob_match_iter(path.into_iter(), &pattern));
-/// ```
+/// Core path-aware glob matching logic using iterators to avoid allocations.
 pub(super) fn path_glob_match_iter<'a, I>(mut path_it: I, pattern: &[&str]) -> bool
 where
     I: Iterator<Item = &'a str> + Clone,
@@ -466,42 +373,7 @@ where
     }
 }
 
-/// Advances path-pattern matching for one path segment, including `**`
-/// backtracking state.
-///
-/// # Arguments
-///
-/// * `segment` - The path segment to match.
-/// * `path_it` - The remaining path segments.
-/// * `pattern` - The remaining path-pattern segments.
-/// * `pat_idx` - The current pattern position.
-/// * `backtrack_path_it` - Saved path position for `**` backtracking.
-/// * `backtrack_pat_idx` - Saved pattern position for `**` backtracking.
-///
-/// # Returns
-///
-/// `true` if the segment can be matched and the matching state is advanced,
-/// `false` if no valid match exists.
-///
-/// # Examples
-///
-/// ```
-/// let mut path_it = "file.txt".split('/');
-/// let pattern = ["*.txt"];
-/// let mut pat_idx = 0;
-/// let mut backtrack_path_it = None;
-/// let mut backtrack_pat_idx = None;
-///
-/// assert!(try_match_segment(
-///     "file.txt",
-///     &mut path_it,
-///     &pattern,
-///     &mut pat_idx,
-///     &mut backtrack_path_it,
-///     &mut backtrack_pat_idx,
-/// ));
-/// assert_eq!(pat_idx, 1);
-/// ```
+/// Process a single path segment against the current pattern state.
 fn try_match_segment<'a, I>(
     segment: &str,
     path_it: &mut I,

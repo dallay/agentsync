@@ -11,43 +11,16 @@ impl Linker {
     /// Drop path canonicalization cache after filesystem mutations that can affect
     /// destination safety checks in the same run.
     // `pub(super)` is required by the root façade and future mutation siblings.
-    /// Clears cached canonical paths so subsequent path operations reflect filesystem mutations.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # let linker = /* an initialized Linker */ todo!();
-    /// linker.invalidate_path_cache();
-    /// ```
     pub(super) fn invalidate_path_cache(&self) {
         self.path_cache.borrow_mut().clear();
     }
 
-    /// Canonicalizes a path without consulting or updating the path cache.
-    ///
-    /// Adds the path to errors produced when canonicalization fails.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// let canonical = linker.canonicalize_uncached(Path::new("."))?;
-    /// assert!(canonical.is_absolute());
-    /// ```
     fn canonicalize_uncached(&self, path: &Path) -> Result<PathBuf> {
         fs::canonicalize(path)
             .with_context(|| format!("Failed to canonicalize path: {}", path.display()))
     }
 
-    /// Resolves and caches the canonical project root path.
-    ///
-    /// Returns an error if the project root cannot be canonicalized.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// let canonical_root = linker.get_canonical_project_root()?;
-    /// assert!(canonical_root.is_absolute());
-    /// ```
+    /// Get or compute the canonical project root path, using cache.
     fn get_canonical_project_root(&self) -> Result<Rc<PathBuf>> {
         let mut root_cache = self.canonical_project_root.borrow_mut();
         if let Some(ref root) = *root_cache {
@@ -109,24 +82,6 @@ impl Linker {
     /// Validate that a destination path is safe (relative and no traversal).
     /// Returns the resolved path within project_root if safe.
     // `pub(super)` is required by the root façade and future apply/clean siblings.
-    /// Validates a destination path and resolves it relative to the project root.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the destination is absolute, empty, contains invalid
-    /// components, or resolves outside the project root.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// let destination = linker.ensure_safe_destination("assets/logo.svg")?;
-    /// assert!(destination.ends_with("assets/logo.svg"));
-    /// # Ok::<(), anyhow::Error>(())
-    /// ```
-    ///
-    /// # Returns
-    ///
-    /// The validated destination path joined to the project root.
     pub(super) fn ensure_safe_destination(&self, dest_path: &str) -> Result<PathBuf> {
         let path = Path::new(dest_path);
 
@@ -161,16 +116,6 @@ impl Linker {
 
     /// Re-validate a previously joined path immediately before filesystem mutation.
     // `pub(super)` is required by the root façade and future apply/symlink siblings.
-    /// Revalidates a destination path before a filesystem mutation.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # fn example(linker: &Linker, destination: &Path) -> Result<()> {
-    /// linker.revalidate_path(destination)?;
-    /// # Ok(())
-    /// # }
-    /// ```
     pub(super) fn revalidate_path(&self, dest: &Path) -> Result<()> {
         self.ensure_safe_path(dest, &dest.display()).map(|_| ())
     }
@@ -180,19 +125,6 @@ impl Linker {
     /// allowing safe removal of symlinks that point outside project_root.
     /// The symlink entry itself must be within project_root, but its target can be anywhere.
     // `pub(super)` is required by the root façade and future symlink/clean siblings.
-    /// Revalidates a path before it is removed from the filesystem.
-    ///
-    /// Absolute paths are checked for project-root containment. Relative paths must not
-    /// contain parent-directory components and must have a safe existing parent.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # fn check(linker: &Linker) {
-    /// let result = linker.revalidate_unlink_path(Path::new("../outside"));
-    /// assert!(result.is_err());
-    /// # }
-    /// ```
     pub(super) fn revalidate_unlink_path(&self, path: &Path) -> Result<()> {
         let display_path = path.display().to_string();
 
@@ -214,21 +146,7 @@ impl Linker {
         self.validate_relative_unlink_parent(path, &display_path)
     }
 
-    /// Validates an absolute path before unlinking it.
-    ///
-    /// The path must be within the project root, and its canonicalized parent must
-    /// also remain within the canonical project root.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the path or its canonicalized parent is outside the
-    /// project root, or if the parent cannot be canonicalized.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// linker.validate_absolute_unlink_path(path, "/project/file")?;
-    /// ```
+    /// Validate an absolute path for unlinking: must be under project_root with valid parent.
     fn validate_absolute_unlink_path(&self, path: &Path, display_path: &str) -> Result<()> {
         if !path.starts_with(&self.project_root) {
             anyhow::bail!("Path is outside project root: {}", display_path);
@@ -250,18 +168,7 @@ impl Linker {
         Ok(())
     }
 
-    /// Validates that an existing parent of a relative path resolves within the project root.
-    ///
-    /// # Arguments
-    ///
-    /// * `display_path` - Path text included in errors when the parent resolves outside the project root.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// linker.validate_relative_unlink_parent(Path::new("build/output"), "build/output")?;
-    /// # Ok::<(), anyhow::Error>(())
-    /// ```
+    /// Validate that the parent of a relative path is within project_root.
     fn validate_relative_unlink_parent(&self, path: &Path, display_path: &str) -> Result<()> {
         let Some(parent) = path.parent() else {
             return Ok(());
@@ -301,18 +208,8 @@ impl Linker {
         Ok(())
     }
 
-    /// Canonicalizes a path and reuses cached results for repeated lookups.
-    ///
-    /// Filesystem errors are propagated to the caller.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// use std::path::Path;
-    ///
-    /// let canonical = linker.canonicalize_cached(Path::new("src/lib.rs"))?;
-    /// assert_eq!(canonical, linker.canonicalize_cached(Path::new("src/lib.rs"))?);
-    /// ```
+    /// Get the canonical path for a given path, using a cache to avoid
+    /// redundant I/O operations.
     fn canonicalize_cached(&self, path: &Path) -> Result<Rc<PathBuf>> {
         let mut cache = self.path_cache.borrow_mut();
         if let Some(cached) = cache.get(path) {
@@ -326,26 +223,6 @@ impl Linker {
 
     /// Calculate relative path from dest to source
     // `pub(super)` is required by the root façade and future symlink sibling.
-    /// Calculates the path to `to` relative to the directory containing `from`.
-    ///
-    /// Missing destination paths can be resolved when `allow_missing` is `true`.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// let relative = linker.relative_path(
-    ///     std::path::Path::new("src/main.rs"),
-    ///     std::path::Path::new("src/lib.rs"),
-    ///     false,
-    /// )?;
-    /// assert_eq!(relative, std::path::PathBuf::from("lib.rs"));
-    /// # Ok::<(), anyhow::Error>(())
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if either path cannot be resolved when missing paths are
-    /// not allowed, or if no relative path can be calculated.
     pub(super) fn relative_path(
         &self,
         from: &Path,
