@@ -221,6 +221,19 @@ impl Linker {
         Ok(canonical)
     }
 
+    fn canonical_fallback_path(&self, path: &Path) -> Result<PathBuf> {
+        let canonical_root = self.get_canonical_project_root()?;
+
+        if path.is_absolute() {
+            if let Ok(relative) = path.strip_prefix(&self.project_root) {
+                return Ok(canonical_root.join(relative));
+            }
+            return Ok(path.to_path_buf());
+        }
+
+        Ok(canonical_root.join(path))
+    }
+
     /// Calculate relative path from dest to source
     // `pub(super)` is required by the root façade and future symlink sibling.
     pub(super) fn relative_path(
@@ -239,18 +252,12 @@ impl Linker {
             let relative = from_dir
                 .strip_prefix(&self.project_root)
                 .unwrap_or(from_dir);
-            Rc::new(self.project_root.join(relative))
+            Rc::new(self.canonical_fallback_path(relative)?)
         };
 
         let to_abs = match self.canonicalize_cached(to) {
             Ok(path) => path,
-            Err(_) if allow_missing => {
-                if to.is_absolute() {
-                    Rc::new(to.to_path_buf())
-                } else {
-                    Rc::new(self.project_root.join(to))
-                }
-            }
+            Err(_) if allow_missing => Rc::new(self.canonical_fallback_path(to)?),
             Err(err) => {
                 return Err(err)
                     .with_context(|| format!("Source path does not exist: {}", to.display()));
@@ -436,11 +443,7 @@ mod tests {
         let dest = temp.path().join("link.md");
         let missing_source = temp.path().join("missing.md");
 
-        assert!(
-            linker
-                .relative_path(&dest, &missing_source, false)
-                .is_err()
-        );
+        assert!(linker.relative_path(&dest, &missing_source, false).is_err());
     }
 
     #[test]
@@ -451,9 +454,7 @@ mod tests {
         let dest = temp.path().join("link.md");
         let missing_source = temp.path().join("missing.md");
 
-        let rel = linker
-            .relative_path(&dest, &missing_source, true)
-            .unwrap();
+        let rel = linker.relative_path(&dest, &missing_source, true).unwrap();
 
         assert_eq!(rel, PathBuf::from("missing.md"));
     }
@@ -471,6 +472,32 @@ mod tests {
         let rel = linker.relative_path(&dest, &source, false).unwrap();
 
         assert_eq!(rel, PathBuf::from("../source.md"));
+    }
+
+    #[test]
+    fn canonical_fallback_path_canonicalizes_absolute_path_inside_project_root() {
+        let temp = TempDir::new().unwrap();
+        let linker = make_linker(temp.path());
+        let missing = temp.path().join("missing.md");
+
+        let fallback = linker.canonical_fallback_path(&missing).unwrap();
+
+        assert_eq!(
+            fallback,
+            fs::canonicalize(temp.path()).unwrap().join("missing.md")
+        );
+    }
+
+    #[test]
+    fn canonical_fallback_path_preserves_absolute_path_outside_project_root() {
+        let temp = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        let linker = make_linker(temp.path());
+        let missing = outside.path().join("missing.md");
+
+        let fallback = linker.canonical_fallback_path(&missing).unwrap();
+
+        assert_eq!(fallback, missing);
     }
 
     // ==========================================================================

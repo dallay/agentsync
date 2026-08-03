@@ -316,7 +316,11 @@ mod tests {
         let project_root = temp.path();
         fs::create_dir_all(project_root.join(".agents")).unwrap();
 
-        let target = make_target("source-dir", "dest-never-created", SyncType::SymlinkContents);
+        let target = make_target(
+            "source-dir",
+            "dest-never-created",
+            SyncType::SymlinkContents,
+        );
         let linker = make_linker(project_root, true, target);
 
         let result = linker.clean(&SyncOptions::default()).unwrap();
