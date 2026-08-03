@@ -115,19 +115,51 @@ impl Linker {
         &self.project_root
     }
 
-    /// Get the config
+    /// Provides access to the linker's configuration.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let config = linker.config();
+    /// assert_eq!(config, linker.config());
+    /// ```
+    ///
+    /// @returns The linker's configuration.
     pub fn config(&self) -> &Config {
         &self.config
     }
 
-    /// Drop discovery caches after filesystem mutations that can affect later
-    /// nested-glob walks. Symlink mutations do NOT require this as NestedGlob
-    /// discovery uses follow_links(false).
+    /// Clears cached nested-glob discovery results after filesystem mutations.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// linker.invalidate_glob_cache();
+    /// ```
     fn invalidate_glob_cache(&self) {
         self.glob_cache.borrow_mut().clear();
     }
 
-    /// Resolve the expected source path for status checks.
+    /// Determines which source path status checks should expect for a target.
+    ///
+    /// When `AGENTS.md` compression applies, an existing `AGENTS.compact.md` is
+    /// preferred. If the compact file does not exist, the original source path is
+    /// used when present.
+    ///
+    /// # Arguments
+    ///
+    /// * `source` - The source path to resolve.
+    /// * `target` - The target configuration that determines whether compression applies.
+    ///
+    /// # Returns
+    ///
+    /// The expected source path, or `None` when the source does not exist.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// let expected = linker.expected_source_path(source, target);
+    /// ```
     pub fn expected_source_path(&self, source: &Path, target: &TargetConfig) -> Option<PathBuf> {
         // expected_source_path feeds status/entry_is_problematic; when should_compress_agents_md
         // applies, only return compressed_agents_md_path if it already exists.
@@ -149,7 +181,23 @@ impl Linker {
         }
     }
 
-    /// Derive the child entries that a `symlink-contents` target manages.
+    /// Determines the source entries managed by a `symlink-contents` target.
+    ///
+    /// Returns `None` when `source_dir` does not exist or is not a directory. Otherwise,
+    /// returns matching entries sorted by name, excluding `AGENTS.compact.md` when agent
+    /// compression is enabled.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # let linker: Linker = todo!();
+    /// # let target: TargetConfig = todo!();
+    /// let result = linker.symlink_contents_expected_children(
+    ///     std::path::Path::new("config"),
+    ///     &target,
+    /// );
+    /// assert!(result.is_ok());
+    /// ```
     pub fn symlink_contents_expected_children(
         &self,
         source_dir: &Path,
@@ -195,8 +243,17 @@ impl Linker {
         Ok(Some(children))
     }
 
-    /// Ensure a directory exists, using the ensured_dirs cache to avoid redundant I/O.
-    /// Respects dry_run and verbose options.
+    /// Ensures that a directory is available for synchronization.
+    ///
+    /// In dry-run mode, reports missing directories without creating them. Repeated
+    /// requests for the same directory avoid redundant filesystem operations.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// linker.ensure_directory(Path::new("generated"), &options)?;
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
     fn ensure_directory(&self, dir: &Path, options: &SyncOptions) -> Result<()> {
         let mut ensured = self.ensured_dirs.borrow_mut();
         if !ensured.contains(dir) {

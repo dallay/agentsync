@@ -11,7 +11,29 @@ use super::matches_pattern;
 use super::{ExistingSymlinkAction, Linker, ResolvedSource, SyncOptions, SyncResult};
 
 impl Linker {
-    /// Create a single symlink
+    /// Creates one symlink from a resolved source path to a destination path.
+    ///
+    /// Missing sources are skipped. Existing correct symlinks are preserved; incorrect symlinks are
+    /// updated, and existing files or directories are backed up before replacement.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let result = linker.create_symlink(&source, &destination, &options)?;
+    /// assert_eq!(result.created, 1);
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the destination cannot be prepared, the source path cannot be resolved
+    /// relative to the destination, or the symlink cannot be created or updated.
+    ///
+    /// # Arguments
+    ///
+    /// * `source` - The resolved source entry to link.
+    /// * `dest` - The destination path for the symlink.
+    /// * `options` - Options controlling dry-run and synchronization behavior.
     pub(super) fn create_symlink(
         &self,
         source: &ResolvedSource,
@@ -97,7 +119,24 @@ impl Linker {
         Ok(result)
     }
 
-    /// Handle an existing symlink at the destination. Returns the action taken.
+    /// Determines whether an existing symlink already points to the requested source or needs updating.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::path::Path;
+    /// # let current_target = Path::new("../source");
+    /// # let requested_target = Path::new("../source");
+    /// assert_eq!(current_target, requested_target);
+    /// ```
+    ///
+    /// Returns [`ExistingSymlinkAction::AlreadyCorrect`] for a matching target and
+    /// [`ExistingSymlinkAction::Updated`] when the target differs. In a dry run,
+    /// an incorrect symlink is reported without being removed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the existing symlink cannot be read or removed.
     fn handle_existing_symlink(
         &self,
         dest: &Path,
@@ -136,7 +175,27 @@ impl Linker {
         Ok(ExistingSymlinkAction::Updated)
     }
 
-    /// Back up an existing regular file/directory at the destination.
+    /// Backs up an existing destination before it is replaced.
+    ///
+    /// In dry-run mode, reports the intended backup without modifying the filesystem.
+    /// Otherwise, moves the destination to a `.bak` path, replacing any existing backup.
+    ///
+    /// # Arguments
+    ///
+    /// * `dest` - The existing file or directory to back up.
+    /// * `options` - Synchronization options controlling whether changes are simulated.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if path validation, backup removal, or renaming fails.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # fn example(linker: &Linker, destination: &std::path::Path, options: &SyncOptions) {
+    /// let _ = linker.backup_existing_destination(destination, options);
+    /// # }
+    /// ```
     fn backup_existing_destination(&self, dest: &Path, options: &SyncOptions) -> Result<()> {
         if options.dry_run {
             println!(
@@ -162,7 +221,32 @@ impl Linker {
         Ok(())
     }
 
-    /// Create symlinks for all contents of a directory
+    /// Creates symlinks for matching entries in a source directory.
+    ///
+    /// Missing or invalid source directories are skipped. Existing destination
+    /// symlinks that resolve to the source directory are also skipped to prevent
+    /// circular links.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use std::path::Path;
+    ///
+    /// # let linker: Linker = todo!();
+    /// # let target: TargetConfig = todo!();
+    /// # let options: SyncOptions = todo!();
+    /// let result = linker.create_symlinks_for_contents(
+    ///     Path::new("source"),
+    ///     Path::new("destination"),
+    ///     Some("*.toml"),
+    ///     &target,
+    ///     &options,
+    /// )?;
+    /// # let _: SyncResult = result;
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
+    ///
+    /// `pattern` filters entries by name when provided.
     pub(super) fn create_symlinks_for_contents(
         &self,
         source_dir: &Path,
@@ -253,6 +337,19 @@ impl Linker {
     }
 }
 
+/// Constructs the backup path for a destination by appending `.bak`.
+///
+/// # Examples
+///
+/// ```
+/// use std::path::{Path, PathBuf};
+///
+/// let destination = Path::new("config");
+/// assert_eq!(
+///     backup_path_for_destination(destination),
+///     PathBuf::from("config.bak")
+/// );
+/// ```
 fn backup_path_for_destination(dest: &Path) -> PathBuf {
     // Performance: Use OsString::push to avoid string formatting and UTF-8 validation overhead.
     let mut os_string = dest.as_os_str().to_os_string();
@@ -260,6 +357,24 @@ fn backup_path_for_destination(dest: &Path) -> PathBuf {
     PathBuf::from(os_string)
 }
 
+/// Removes the path at `path`, including files, directories, and symbolic links.
+/// Missing paths are treated as already removed.
+///
+/// # Examples
+///
+/// ```
+/// use std::fs;
+///
+/// let path = std::env::temp_dir().join(format!(
+///     "remove-existing-path-{}",
+///     std::process::id()
+/// ));
+/// fs::write(&path, b"temporary file").unwrap();
+///
+/// remove_existing_path(&path).unwrap();
+///
+/// assert!(!path.exists());
+/// ```
 fn remove_existing_path(path: &Path) -> std::io::Result<()> {
     let metadata = match fs::symlink_metadata(path) {
         Ok(metadata) => metadata,
@@ -277,8 +392,30 @@ fn remove_existing_path(path: &Path) -> std::io::Result<()> {
     }
 }
 
-/// Remove a symlink, handling both file and directory symlinks cross-platform.
-/// On Windows, directory symlinks require `fs::remove_dir()` instead of `fs::remove_file()`.
+/// Removes a symbolic link on any supported platform.
+///
+/// Handles both file and directory symbolic links according to the platform's
+/// filesystem requirements.
+///
+/// # Examples
+///
+/// ```
+/// # use std::fs;
+/// # use std::path::Path;
+/// # let dir = std::env::temp_dir().join(format!("remove_symlink_{}", std::process::id()));
+/// # fs::create_dir_all(&dir)?;
+/// # let target = dir.join("target");
+/// # let link = dir.join("link");
+/// # fs::write(&target, b"content")?;
+/// # #[cfg(unix)]
+/// # std::os::unix::fs::symlink(&target, &link)?;
+/// # #[cfg(windows)]
+/// # std::os::windows::fs::symlink_file(&target, &link)?;
+/// remove_symlink(Path::new(&link))?;
+/// # fs::remove_file(target)?;
+/// # fs::remove_dir(dir)?;
+/// # Ok::<(), std::io::Error>(())
+/// ```
 pub(super) fn remove_symlink(path: &Path) -> std::io::Result<()> {
     #[cfg(windows)]
     {

@@ -9,7 +9,16 @@ use crate::config::SyncType;
 use super::{Linker, SyncOptions, SyncResult, symlinks};
 
 impl Linker {
-    /// Clean all symlinks managed by this configuration.
+    /// Removes all symlinks managed by the configuration, regardless of active filters.
+    ///
+    /// Cleanup processes every configured target and returns a summary of the removals.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let result = linker.clean(&options)?;
+    /// println!("Removed {} symlinks", result.removed);
+    /// ```
     pub fn clean(&self, options: &SyncOptions) -> Result<SyncResult> {
         let mut result = SyncResult::default();
 
@@ -44,7 +53,30 @@ impl Linker {
         Ok(result)
     }
 
-    /// Clean a single symlink target.
+    /// Removes the managed symlink for a target when its destination is safe.
+    ///
+    /// In dry-run mode, reports the removal without changing the filesystem. Unsafe
+    /// destinations are skipped.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if path revalidation or symlink removal fails.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// linker.clean_symlink_target(&target_config, &options, &mut result)?;
+    /// ```
+    ///
+    /// # Parameters
+    ///
+    /// * `target_config` - Configuration containing the symlink destination.
+    /// * `options` - Synchronization options, including dry-run behavior.
+    /// * `result` - Synchronization result updated with the removal count.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` after processing the target.
     fn clean_symlink_target(
         &self,
         target_config: &crate::config::TargetConfig,
@@ -69,7 +101,23 @@ impl Linker {
         Ok(())
     }
 
-    /// Clean symlink-contents: remove symlinks inside the destination directory.
+    /// Removes symlinks directly inside the configured destination directory and removes the
+    /// destination directory when it becomes empty.
+    ///
+    /// # Parameters
+    ///
+    /// * `target_config` — Target configuration containing the destination directory.
+    /// * `options` — Synchronization options, including whether to perform a dry run.
+    /// * `result` — Synchronization result updated with the number of removed symlinks.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// let mut result = SyncResult::default();
+    /// linker.clean_symlink_contents_target(&target_config, &options, &mut result)?;
+    /// assert!(result.removed >= 0);
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
     fn clean_symlink_contents_target(
         &self,
         target_config: &crate::config::TargetConfig,
@@ -108,7 +156,21 @@ impl Linker {
         Ok(())
     }
 
-    /// Clean nested-glob targets: re-discover matched files and remove symlinks.
+    /// Removes symlinks for files currently matching a nested-glob target.
+    ///
+    /// Matching files are rediscovered using the target's pattern and exclusions. Unsafe or
+    /// unavailable paths are skipped, and no files are removed in dry-run mode.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if matching files cannot be discovered or a path cannot be
+    /// revalidated or removed.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// linker.clean_nested_glob_target(&target_config, &options, &mut result)?;
+    /// ```
     fn clean_nested_glob_target(
         &self,
         target_config: &crate::config::TargetConfig,
@@ -161,7 +223,23 @@ impl Linker {
         Ok(())
     }
 
-    /// Clean module-map targets: remove symlinks for each mapping.
+    /// Removes symlinks described by module mappings for an agent.
+    ///
+    /// Unsafe destinations are skipped, and dry-run mode reports removals without changing the filesystem.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// // Invoke through the linker's cleanup operation.
+    /// # let _ = ();
+    /// ```
+    ///
+    /// # Arguments
+    ///
+    /// * `agent_name` - Agent whose module-map filenames are resolved.
+    /// * `target_config` - Module mappings whose destination symlinks are cleaned.
+    /// * `options` - Controls dry-run and verbose behavior.
+    /// * `result` - Accumulates the number of removed symlinks.
     fn clean_module_map_target(
         &self,
         agent_name: &str,
