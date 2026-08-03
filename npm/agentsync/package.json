@@ -45,7 +45,7 @@
 	},
 	"devDependencies": {
 		"@types/node": "^25.5.0",
-		"typescript": "^6.0.3"
+		"typescript": "^7.0.0"
 	},
 	"optionalDependencies": {
 		"@dallay/agentsync-darwin-arm64": "1.47.0",
