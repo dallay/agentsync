@@ -72,7 +72,85 @@ pub enum McpAgent {
     OpenCode,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct McpAgentDocumentation {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub destination: &'static str,
+    pub format: &'static str,
+    pub global: bool,
+    pub notes: &'static str,
+}
+
 impl McpAgent {
+    pub fn documentation(&self) -> McpAgentDocumentation {
+        match self {
+            Self::ClaudeCode => McpAgentDocumentation {
+                id: "claude",
+                name: "Claude Code",
+                destination: ".mcp.json",
+                format: "JSON",
+                global: false,
+                notes: "Standard format",
+            },
+            Self::ClaudeDesktop => McpAgentDocumentation {
+                id: "claude-desktop",
+                name: "Claude Desktop",
+                destination: "Global OS-dependent config",
+                format: "JSON",
+                global: true,
+                notes: "Global; disabled by default",
+            },
+            Self::GithubCopilot => McpAgentDocumentation {
+                id: "copilot",
+                name: "GitHub Copilot",
+                destination: ".vscode/mcp.json",
+                format: "JSON",
+                global: false,
+                notes: "Shared with VS Code",
+            },
+            Self::CodexCli => McpAgentDocumentation {
+                id: "codex",
+                name: "OpenAI Codex CLI",
+                destination: ".codex/config.toml",
+                format: "TOML",
+                global: false,
+                notes: "Maps headers to http_headers",
+            },
+            Self::GeminiCli => McpAgentDocumentation {
+                id: "gemini",
+                name: "Gemini CLI",
+                destination: ".gemini/settings.json",
+                format: "JSON",
+                global: false,
+                notes: "Adds trust: true",
+            },
+            Self::VsCode => McpAgentDocumentation {
+                id: "vscode",
+                name: "VS Code",
+                destination: ".vscode/mcp.json",
+                format: "JSON",
+                global: false,
+                notes: "Shared with GitHub Copilot",
+            },
+            Self::Cursor => McpAgentDocumentation {
+                id: "cursor",
+                name: "Cursor",
+                destination: ".cursor/mcp.json",
+                format: "JSON",
+                global: false,
+                notes: "Standard format",
+            },
+            Self::OpenCode => McpAgentDocumentation {
+                id: "opencode",
+                name: "OpenCode",
+                destination: "opencode.json",
+                format: "JSON",
+                global: false,
+                notes: "Standard format",
+            },
+        }
+    }
     /// Get all supported agents
     pub fn all() -> &'static [McpAgent] {
         &[

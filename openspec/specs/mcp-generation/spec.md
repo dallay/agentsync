@@ -1,5 +1,25 @@
 # Specification: MCP Configuration Generation
 
+<!-- agentsync:mcp:start -->
+- **Claude Code** — `.mcp.json` (agent id: `claude`) — JSON; Standard format
+- **Claude Desktop** — `Global OS-dependent config` (agent id: `claude-desktop`) — JSON; Global; disabled by default
+- **GitHub Copilot** — `.vscode/mcp.json` (agent id: `copilot`) — JSON; Shared with VS Code
+- **OpenAI Codex CLI** — `.codex/config.toml` (agent id: `codex`) — TOML; Maps headers to http_headers
+- **Gemini CLI** — `.gemini/settings.json` (agent id: `gemini`) — JSON; Adds trust: true
+- **VS Code** — `.vscode/mcp.json` (agent id: `vscode`) — JSON; Shared with GitHub Copilot
+- **Cursor** — `.cursor/mcp.json` (agent id: `cursor`) — JSON; Standard format
+- **OpenCode** — `opencode.json` (agent id: `opencode`) — JSON; Standard format
+<!-- agentsync:mcp:end -->
+
+### Requirement: Canonical Typed Native MCP Metadata
+
+The system MUST expose one typed canonical registry for native MCP agents. Each registry entry
+MUST define canonical ID, display name, documented destination, format classification, global path
+status, and documentation notes. Configurable-only agents MUST NOT be listed as native MCP agents.
+Runtime generation behavior, defaults, filters, aliases, and OS-specific path resolution MUST remain
+unchanged.
+
+
 **Type**: RETROSPEC  
 **Date**: 2026-04-01  
 **Status**: RETROSPEC  

@@ -1,0 +1,11 @@
+change: issue-494-500-output-doc-canonicalization
+current_phase: archive
+completed:
+  - explore
+  - propose
+  - tasks
+  - apply
+  - verify
+  - archive
+next: none
+updated: 2026-08-03
