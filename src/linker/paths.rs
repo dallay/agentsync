@@ -196,7 +196,7 @@ impl Linker {
     pub(super) fn revalidate_unlink_path(&self, path: &Path) -> Result<()> {
         let display_path = path.display().to_string();
 
-        // SECURITY: Reject absolute paths
+        // SECURITY: Validate absolute paths against project_root.
         if path.is_absolute() {
             return self.validate_absolute_unlink_path(path, &display_path);
         }

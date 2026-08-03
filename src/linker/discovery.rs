@@ -113,7 +113,6 @@ impl Linker {
     /// `search_root` is the directory in which to search. `glob_pattern` selects matching files,
     /// `excludes` omits matching paths, and `dest_template` determines each symlink destination.
     /// `options` controls synchronization behaviour and output.
-    pub(super) fn process_nested_glob
     pub(super) fn process_nested_glob(
         &self,
         search_root: &Path,
@@ -214,9 +213,11 @@ impl Linker {
             excludes.to_vec(),
         );
 
-        let mut cache = self.glob_cache.borrow_mut();
-        if let Some(cached) = cache.get(&key) {
-            return Ok(Rc::clone(cached));
+        {
+            let cache = self.glob_cache.borrow();
+            if let Some(cached) = cache.get(&key) {
+                return Ok(Rc::clone(cached));
+            }
         }
 
         let mut found = Vec::new();
@@ -231,7 +232,9 @@ impl Linker {
             },
         )?;
         let rc_found = Rc::new(found);
-        cache.insert(key, Rc::clone(&rc_found));
+        self.glob_cache
+            .borrow_mut()
+            .insert(key, Rc::clone(&rc_found));
         Ok(rc_found)
     }
 
@@ -430,7 +433,6 @@ pub(super) fn matches_path_glob(path: &str, pattern: &str) -> bool {
 ///
 /// assert!(path_glob_match_iter(path.into_iter(), &pattern));
 /// ```
-pub(super) fn path_glob_match_iter<'a, I>(mut path_it: I) -> bool
 pub(super) fn path_glob_match_iter<'a, I>(mut path_it: I, pattern: &[&str]) -> bool
 where
     I: Iterator<Item = &'a str> + Clone,

@@ -6,7 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use crate::config::{SyncType, TargetConfig};
+use crate::config::{ModuleMapping, SyncType, TargetConfig};
 
 use super::{Linker, ResolvedSource, SyncOptions, SyncResult};
 
@@ -139,6 +139,7 @@ impl Linker {
                         result.created += target_result.created;
                         result.updated += target_result.updated;
                         result.skipped += target_result.skipped;
+                        result.errors += target_result.errors;
                     }
                     Err(e) => {
                         tracing::error!(target = %target_name, error = %e, "Error processing target");
@@ -381,10 +382,8 @@ impl Linker {
             self.revalidate_path(&source_path)?; // SECURITY: Validate source
 
             // Resolve destination filename
-            let filename = crate::config::resolve_module_map_filename(mapping, agent_name);
-
             // SECURITY: Validate that the joined destination (dir + filename) is safe.
-            let dest_str = format!("{}/{}", mapping.destination, filename);
+            let dest_str = module_map_destination(mapping, agent_name);
             let dest = match self.ensure_safe_destination(&dest_str) {
                 Ok(d) => d,
                 Err(e) => {
@@ -410,10 +409,17 @@ impl Linker {
             result.created += item_result.created;
             result.updated += item_result.updated;
             result.skipped += item_result.skipped;
+            result.errors += item_result.errors;
         }
 
         Ok(result)
     }
+}
+
+/// Resolves the destination path for a module-map mapping.
+pub(super) fn module_map_destination(mapping: &ModuleMapping, agent_name: &str) -> String {
+    let filename = crate::config::resolve_module_map_filename(mapping, agent_name);
+    format!("{}/{}", mapping.destination, filename)
 }
 
 /// Identifies paths whose filename is exactly `AGENTS.md`.

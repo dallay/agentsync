@@ -136,14 +136,15 @@ impl Linker {
         {
             let entry =
                 entry.with_context(|| format!("Failed to read entry in: {}", dest.display()))?;
-            if entry.path().is_symlink() {
+            let entry_path = entry.path();
+            if entry_path.is_symlink() {
                 if options.dry_run {
-                    println!("  {} Would remove: {}", "→".cyan(), entry.path().display());
+                    println!("  {} Would remove: {}", "→".cyan(), entry_path.display());
                 } else {
-                    self.revalidate_unlink_path(&entry.path())?;
-                    symlinks::remove_symlink(&entry.path())?;
+                    self.revalidate_unlink_path(&entry_path)?;
+                    symlinks::remove_symlink(&entry_path)?;
                     self.invalidate_path_cache();
-                    println!("  {} Removed: {}", "✔".green(), entry.path().display());
+                    println!("  {} Removed: {}", "✔".green(), entry_path.display());
                 }
                 result.removed += 1;
             }
@@ -213,7 +214,7 @@ impl Linker {
                     println!("  {} Would remove: {}", "→".cyan(), dest.display());
                 } else {
                     self.revalidate_unlink_path(&dest)?;
-                    fs::remove_file(&dest)?;
+                    symlinks::remove_symlink(&dest)?;
                     self.invalidate_path_cache();
                     println!("  {} Removed: {}", "✔".green(), dest.display());
                 }
@@ -248,9 +249,7 @@ impl Linker {
         result: &mut SyncResult,
     ) -> Result<()> {
         for mapping in &target_config.mappings {
-            let filename = crate::config::resolve_module_map_filename(mapping, agent_name);
-
-            let dest_str = format!("{}/{}", mapping.destination, filename);
+            let dest_str = super::apply::module_map_destination(mapping, agent_name);
             let dest = match self.ensure_safe_destination(&dest_str) {
                 Ok(d) => d,
                 Err(e) => {

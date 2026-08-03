@@ -3,6 +3,8 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 use std::fs;
+#[cfg(windows)]
+use std::os::windows::fs::FileTypeExt;
 use std::path::{Path, PathBuf};
 
 use crate::config::TargetConfig;
@@ -100,9 +102,13 @@ impl Linker {
             #[cfg(windows)]
             {
                 if source.path.is_dir() {
-                    std::os::windows::fs::symlink_dir(&relative_source, dest)?;
+                    std::os::windows::fs::symlink_dir(&relative_source, dest).with_context(
+                        || format!("Failed to create directory symlink: {}", dest.display()),
+                    )?;
                 } else {
-                    std::os::windows::fs::symlink_file(&relative_source, dest)?;
+                    std::os::windows::fs::symlink_file(&relative_source, dest).with_context(
+                        || format!("Failed to create file symlink: {}", dest.display()),
+                    )?;
                 }
             }
 

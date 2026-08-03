@@ -1,7 +1,8 @@
-//! Symbolic link creation and management
+//! Linker façade for synchronizing AI-agent configuration files.
 //!
-//! Handles creating, updating, and removing symbolic links
-//! for AI agent configuration synchronization.
+//! [`Linker`] owns the shared configuration, state, caches, and public API while
+//! focused child modules implement apply orchestration, cleanup, nested-glob
+//! discovery, path safety, and symlink mutation.
 
 use anyhow::{Context, Result};
 use colored::Colorize;
@@ -223,8 +224,8 @@ impl Linker {
                 continue;
             }
 
-            // Skip AGENTS.compact.md when compression is enabled to avoid false drift in status
-            if self.config.compress_agents_md && item_name == "AGENTS.compact.md" {
+            // Skip the compressed file when compression is enabled to avoid false drift in status
+            if self.config.compress_agents_md && item_name == COMPRESSED_AGENTS_MD_NAME {
                 continue;
             }
 
