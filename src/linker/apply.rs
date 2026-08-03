@@ -11,6 +11,20 @@ use crate::config::{SyncType, TargetConfig};
 use super::{Linker, ResolvedSource, SyncOptions, SyncResult};
 
 impl Linker {
+    /// Determines whether `AGENTS.md` compression applies to a synchronization target.
+    ///
+    /// Compression is enabled only for `Symlink` and `SymlinkContents` targets whose
+    /// source filename is exactly `AGENTS.md`.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let should_compress = linker.should_compress_agents_md(
+    ///     Path::new("project/AGENTS.md"),
+    ///     &target,
+    /// );
+    /// assert!(should_compress);
+    /// ```
     pub(super) fn should_compress_agents_md(&self, source: &Path, target: &TargetConfig) -> bool {
         self.config.compress_agents_md
             && matches!(
@@ -20,11 +34,38 @@ impl Linker {
             && is_agents_md_path(source)
     }
 
+    /// Replaces a path's filename with the configured compressed `AGENTS.md` filename.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let path = std::path::Path::new("project/AGENTS.md");
+    /// let compressed = compressed_agents_md_path(path);
+    ///
+    /// assert_eq!(compressed.parent(), Some(std::path::Path::new("project")));
+    /// ```
     pub(super) fn compressed_agents_md_path(path: &Path) -> PathBuf {
         path.with_file_name(super::COMPRESSED_AGENTS_MD_NAME)
     }
 
-    /// Perform the sync operation.
+    /// Synchronizes all enabled and selected agents with their configured targets.
+    ///
+    /// Target-level errors are recorded in the result while processing continues for
+    /// the remaining targets.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # fn example(linker: &Linker) -> Result<SyncResult> {
+    /// let result = linker.sync(&SyncOptions::default())?;
+    /// assert_eq!(result.errors, 0);
+    /// Ok(result)
+    /// # }
+    /// ```
+    ///
+    /// # Returns
+    ///
+    /// A summary of created, updated, skipped, and failed target operations.
     pub fn sync(&self, options: &SyncOptions) -> Result<SyncResult> {
         // Clear caches at the start of every sync run to prevent stale state.
         self.compression_cache.borrow_mut().clear();
@@ -110,7 +151,23 @@ impl Linker {
         Ok(result)
     }
 
-    /// Process a single target configuration.
+    /// Processes one target configuration according to its synchronization type.
+    ///
+    /// Validates configured paths, resolves source files when needed, and returns
+    /// the aggregated result of the selected synchronization operation.
+    ///
+    /// # Arguments
+    ///
+    /// * `agent_name` - Name of the agent associated with the target.
+    /// * `target` - Synchronization configuration to process.
+    /// * `options` - Options controlling the synchronization operation.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let result = linker.process_target("agent", &target, &options)?;
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
     fn process_target(
         &self,
         agent_name: &str,
@@ -159,6 +216,28 @@ impl Linker {
         }
     }
 
+    /// Resolves the source path to use for synchronization, optionally generating a compressed `AGENTS.md`.
+    ///
+    /// Existing sources are returned unchanged. When compression is enabled for an `AGENTS.md`, the
+    /// compressed path is returned and its existence reflects the generated or prospective output.
+    ///
+    /// # Arguments
+    ///
+    /// * `source` - Source path to resolve.
+    /// * `target` - Target configuration controlling compression.
+    /// * `options` - Synchronization options, including dry-run behavior.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if compressed output cannot be generated.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let resolved = linker.resolve_source_path(source, target, options)?;
+    /// assert!(resolved.path.ends_with("AGENTS.compact.md"));
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
     pub(super) fn resolve_source_path(
         &self,
         source: &Path,
@@ -192,6 +271,27 @@ impl Linker {
         })
     }
 
+    /// Compresses an `AGENTS.md` source file and ensures the compressed content is written to the destination.
+    ///
+    /// Existing destination content is preserved when it already matches the compressed source.
+    /// Filesystem access and path validation use the provided synchronization options.
+    ///
+    /// # Parameters
+    ///
+    /// * `source` - Path to the source `AGENTS.md` file.
+    /// * `dest` - Path where the compressed content should be written.
+    /// * `options` - Synchronization options controlling directory creation.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// linker.write_compressed_agents_md(
+    ///     Path::new("AGENTS.md"),
+    ///     Path::new(".config/AGENTS.md"),
+    ///     &options,
+    /// )?;
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
     pub(super) fn write_compressed_agents_md(
         &self,
         source: &Path,
@@ -245,11 +345,19 @@ impl Linker {
         Ok(())
     }
 
-    /// Process a `module-map` target: iterate mappings and create a symlink
-    /// for each one, resolving the destination filename from:
-    /// 1. mapping.filename_override (explicit user choice)
-    /// 2. agent_convention_filename (per-agent convention)
-    /// 3. source file basename (fallback)
+    /// Processes a module-map target by creating symlinks for its configured mappings.
+    ///
+    /// Destination filenames are resolved using the mapping override, the agent's
+    /// convention, or the source filename as a fallback. Unsafe destinations are
+    /// skipped and included in the result counts.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let result = linker.process_module_map("agent", &target, &options)?;
+    /// assert_eq!(result.skipped, 0);
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
     fn process_module_map(
         &self,
         agent_name: &str,
@@ -308,11 +416,29 @@ impl Linker {
     }
 }
 
+/// Identifies paths whose filename is exactly `AGENTS.md`.
+///
+/// # Examples
+///
+/// ```
+/// use std::path::Path;
+///
+/// assert!(is_agents_md_path(Path::new("docs/AGENTS.md")));
+/// assert!(!is_agents_md_path(Path::new("docs/agents.md")));
+/// ```
 fn is_agents_md_path(path: &Path) -> bool {
     path.file_name() == Some(std::ffi::OsStr::new("AGENTS.md"))
 }
 
-/// Detect a code fence delimiter (``` or ~~~) at the start of a trimmed line.
+/// Identifies a backtick or tilde Markdown fence delimiter at the start of a trimmed line.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(detect_fence_delimiter("```rust"), Some("```"));
+/// assert_eq!(detect_fence_delimiter("~~~~"), Some("~~~~"));
+/// assert_eq!(detect_fence_delimiter("text"), None);
+/// ```
 fn detect_fence_delimiter(trimmed_start: &str) -> Option<&str> {
     if trimmed_start.starts_with("```") {
         let len = trimmed_start
@@ -329,7 +455,15 @@ fn detect_fence_delimiter(trimmed_start: &str) -> Option<&str> {
     }
 }
 
-/// Toggle fence state: open a new fence, close a matching one, or leave unchanged.
+/// Updates the active Markdown fence state for a delimiter.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(toggle_fence(None, "```"), Some("```"));
+/// assert_eq!(toggle_fence(Some("```"), "```"), None);
+/// assert_eq!(toggle_fence(Some("```"), "~~~"), Some("```"));
+/// ```
 fn toggle_fence<'a>(current: Option<&'a str>, delim: &'a str) -> Option<&'a str> {
     match current {
         None => Some(delim),
@@ -338,6 +472,16 @@ fn toggle_fence<'a>(current: Option<&'a str>, delim: &'a str) -> Option<&'a str>
     }
 }
 
+/// Compresses `AGENTS.md` content by normalizing whitespace and collapsing blank lines while preserving fenced code blocks.
+///
+/// # Examples
+///
+/// ```
+/// let input = "Title  \n\n\nCode:\n```text\n  keep   spacing  \n```\n";
+/// let output = compress_agents_md_content(input);
+///
+/// assert_eq!(output, "Title\n\nCode:\n```text\n  keep   spacing\n```\n");
+/// ```
 fn compress_agents_md_content(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     let mut fence_delim: Option<&str> = None;
@@ -380,6 +524,15 @@ fn compress_agents_md_content(input: &str) -> String {
     out
 }
 
+/// Splits a line into its leading spaces and tabs and the remaining content.
+///
+/// # Examples
+///
+/// ```
+/// let (whitespace, content) = split_leading_whitespace(" \tHello");
+/// assert_eq!(whitespace, " \t");
+/// assert_eq!(content, "Hello");
+/// ```
 fn split_leading_whitespace(line: &str) -> (&str, &str) {
     // Performance: Use byte operations to avoid UTF-8 decoding overhead
     // for common leading ASCII whitespace.
@@ -391,6 +544,15 @@ fn split_leading_whitespace(line: &str) -> (&str, &str) {
     line.split_at(idx)
 }
 
+/// Appends a copy of a line with consecutive spaces and tabs collapsed to single spaces.
+///
+/// # Examples
+///
+/// ```
+/// let mut output = String::new();
+/// normalize_inline_whitespace_to("hello  \tworld", &mut output);
+/// assert_eq!(output, "hello world");
+/// ```
 fn normalize_inline_whitespace_to(line: &str, out: &mut String) {
     let mut in_whitespace = false;
 
