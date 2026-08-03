@@ -131,4 +131,5 @@ None.
 ## Final verdict
 
 **PASS WITH WARNINGS** — no CRITICAL findings; the requested implementation is verified against the
-proposal, design, delta spec, tasks, base spec, and independent runtime evidence. Proceed to archive.
+proposal, design, delta spec, tasks, base spec, and independent runtime evidence. The change is
+archived.
