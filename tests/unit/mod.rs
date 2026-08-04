@@ -21,3 +21,6 @@ mod linker_security;
 
 #[cfg(test)]
 mod detect_coverage;
+
+#[cfg(test)]
+mod platform_symlink;
