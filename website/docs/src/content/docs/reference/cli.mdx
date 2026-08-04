@@ -17,7 +17,8 @@ functional `--json` output parseable in CI.
 - `--log-format human|json`: Render human-readable diagnostics (default) or one JSON event per
   stderr line.
 - `--log-level trace|debug|info|warn|error|off`: Set the minimum diagnostic level. This overrides
-  `RUST_LOG`; when omitted, `RUST_LOG` is used when it contains a single level, otherwise `info`.
+  `RUST_LOG`; when omitted, `RUST_LOG` supports target-aware EnvFilter directives and falls back to
+  `info` when invalid.
 
 The logging flags are independent from command-specific `--json`:
 

@@ -10,7 +10,7 @@ use std::io;
 use std::io::IsTerminal;
 use std::str::FromStr;
 
-use tracing_subscriber::filter::LevelFilter;
+use tracing_subscriber::filter::{EnvFilter, LevelFilter};
 use tracing_subscriber::fmt::format::FmtSpan;
 
 /// Log event rendering format, selected via the global `--log-format` flag.
@@ -50,14 +50,16 @@ impl fmt::Display for LogFormat {
 ///
 /// `rust_log` is passed in explicitly (rather than read via `std::env`) so the
 /// precedence logic stays pure and unit-testable without racing on process env.
-pub fn resolve_level_filter(flag: Option<LevelFilter>, rust_log: Option<&str>) -> LevelFilter {
+pub fn resolve_level_filter(flag: Option<LevelFilter>, rust_log: Option<&str>) -> EnvFilter {
     if let Some(level) = flag {
-        return level;
+        return EnvFilter::new(level.to_string());
     }
-    if let Ok(Some(level)) = rust_log.map(str::parse).transpose() {
-        return level;
+    if let Some(directives) = rust_log
+        && let Ok(filter) = EnvFilter::try_new(directives)
+    {
+        return filter;
     }
-    LevelFilter::INFO
+    EnvFilter::new("info")
 }
 
 /// Strip credentials and query strings from a URL for safe inclusion in log events.
@@ -71,13 +73,13 @@ pub fn redact_url(url: &str) -> String {
         // Only strip userinfo when it is preceded by a scheme (`://`), so plain
         // "user@host" emails / usernames in paths are not mangled.
         let prefix = &redacted[..at];
-        if prefix.contains("://")
-            && let Some(scheme_end) = prefix.rfind("://")
-        {
+        if let Some(scheme_end) = prefix.rfind("://") {
             redacted.replace_range(scheme_end + 3..at + 1, "");
+        } else if url.starts_with("//") {
+            redacted.replace_range(2..at + 1, "");
         }
     }
-    if let Some(query_start) = redacted.find('?') {
+    if let Some(query_start) = redacted.find(['?', '#']) {
         redacted.truncate(query_start);
     }
     redacted
@@ -91,14 +93,19 @@ pub fn redact_url(url: &str) -> String {
 /// `json` format additionally emits span-close events so span fields (agent id,
 /// target, outcome) are observable by machine consumers.
 pub fn init_logging(format: LogFormat, level: Option<LevelFilter>) {
-    let level = resolve_level_filter(level, std::env::var("RUST_LOG").ok().as_deref());
-    let builder = tracing_subscriber::fmt()
-        .with_writer(io::stderr)
-        .with_ansi(use_ansi())
-        .with_max_level(level);
+    let filter = resolve_level_filter(level, std::env::var("RUST_LOG").ok().as_deref());
     match format {
-        LogFormat::Human => builder.init(),
-        LogFormat::Json => builder.json().with_span_events(FmtSpan::CLOSE).init(),
+        LogFormat::Human => tracing_subscriber::fmt()
+            .with_writer(io::stderr)
+            .with_ansi(use_ansi())
+            .with_env_filter(filter)
+            .init(),
+        LogFormat::Json => tracing_subscriber::fmt()
+            .json()
+            .with_writer(io::stderr)
+            .with_span_events(FmtSpan::CLOSE)
+            .with_env_filter(filter)
+            .init(),
     }
 }
 
@@ -159,33 +166,47 @@ mod tests {
 
     #[test]
     fn resolve_level_filter_flag_beats_rust_log() {
-        assert_eq!(
-            resolve_level_filter(Some(LevelFilter::DEBUG), Some("info")),
-            LevelFilter::DEBUG
+        assert!(
+            resolve_level_filter(Some(LevelFilter::DEBUG), Some("info"))
+                .to_string()
+                .contains("debug")
         );
     }
 
     #[test]
     fn resolve_level_filter_rust_log_when_no_flag() {
-        assert_eq!(resolve_level_filter(None, Some("warn")), LevelFilter::WARN);
+        assert!(
+            resolve_level_filter(None, Some("warn"))
+                .to_string()
+                .contains("warn")
+        );
     }
 
     #[test]
     fn resolve_level_filter_rust_log_off() {
-        assert_eq!(resolve_level_filter(None, Some("off")), LevelFilter::OFF);
+        assert!(
+            resolve_level_filter(None, Some("off"))
+                .to_string()
+                .contains("off")
+        );
     }
 
     #[test]
-    fn resolve_level_filter_invalid_rust_log_falls_back_to_info() {
-        assert_eq!(
-            resolve_level_filter(None, Some("garbage-level")),
-            LevelFilter::INFO
+    fn resolve_level_filter_preserves_target_directives() {
+        assert!(
+            resolve_level_filter(None, Some("agentsync::linker=debug"))
+                .to_string()
+                .contains("agentsync::linker=debug")
         );
     }
 
     #[test]
     fn resolve_level_filter_defaults_to_info() {
-        assert_eq!(resolve_level_filter(None, None), LevelFilter::INFO);
+        assert!(
+            resolve_level_filter(None, None)
+                .to_string()
+                .contains("info")
+        );
     }
 
     #[test]
@@ -223,5 +244,17 @@ mod tests {
     #[test]
     fn redact_url_handles_url_without_scheme() {
         assert_eq!(redact_url("example.com/path"), "example.com/path");
+    }
+
+    #[test]
+    fn redact_url_strips_scheme_relative_credentials_and_preserves_fragment() {
+        assert_eq!(
+            redact_url("//user:pass@example.com/path?token=x#frag"),
+            "//example.com/path"
+        );
+        assert_eq!(
+            redact_url("https://example.com/path#token"),
+            "https://example.com/path"
+        );
     }
 }

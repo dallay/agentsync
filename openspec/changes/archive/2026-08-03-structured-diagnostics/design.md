@@ -4,7 +4,7 @@
 
 Replace `tracing_subscriber::fmt::init()` (main.rs:154) with an explicit `init_logging()` builder that always writes to `io::stderr` and switches between human/JSON format via global clap flags `--log-format`/`--log-level`. Instrument 8 operation points with `info_span!` + `.in_scope()`, migrate diagnostic `println!` to `info!`/`debug!`, enrich existing error events with structured fields, and add a `redact_url` helper. Functional stdout (human + per-command `--json`) is untouched; this fixes the latent bug where any WARN+ event during `--json` corrupts the machine-readable contract.
 
-    main() ──> Cli::parse() ──> init_logging(format, level) ──> subscriber → stderr
+    main() ──> run() ──> Cli::parse() ──> init_logging(format, level) ──> subscriber → stderr
       │
       ├── span root {operation} ──> dispatch handler
       │        └── span per agent {agent_id, operation, outcome}
@@ -18,7 +18,7 @@ Replace `tracing_subscriber::fmt::init()` (main.rs:154) with an explicit `init_l
 |---|----------|--------|----------|--------|
 | 1 | Where init lives | (a) main.rs inline (b) output.rs (c) **new `src/logging.rs`** | (a) bloats 450-line main (b) mixes formatting with subscriber setup (c) single-responsibility, unit-testable | **(c)** new `logging.rs`: `LogFormat`, `init_logging()`, `redact_url()` |
 | 2 | Flag shape | (a) **global args on `Cli`** (b) per-command (c) env-only | (a) one definition, readable before dispatch (b) repetitive (c) issue asks explicit flag | **(a)** `#[arg(long, global = true)]` on `struct Cli` (main.rs:43-54) |
-| 3 | Filter source | (a) flag only (b) **flag OR `RUST_LOG`** (c) EnvFilter directives | (a) drops existing RUST_LOG support (b) keeps it, no new feature (c) needs `env-filter` feature + more surface | **(b)** `--log-level` wins; else parse `RUST_LOG` as single LevelFilter; default INFO. Advanced directives out of scope |
+| 3 | Filter source | (a) flag only (b) **flag OR `RUST_LOG`** (c) EnvFilter directives | (a) drops existing RUST_LOG support (b) loses target-aware filtering (c) minimal feature and preserves subscriber semantics | **(c)** `--log-level` wins; otherwise `RUST_LOG` is parsed as an EnvFilter directive set; invalid input falls back to INFO. |
 | 4 | Spans | (a) `info_span!`+`.in_scope()` (b) `#[instrument]` | (a) no new direct dep, explicit control, no enter/exit leak (b) tracing-attributes proc-macro dep | **(a)** |
 | 5 | Error context | (a) **enrich fields only** (b) rewrite message | (a) human text identical, anyhow chain to stderr unchanged (b) breaks existing messages | **(a)** add `agent_id`/`target`/`path`/`config_path` fields |
 | 6 | Redaction | (a) **`redact_url` manual** (b) `url` crate | (a) zero new deps, strips userinfo+query (b) robust parse but new dep | **(a)** manual strip: `user:pass@` up to `@`, drop `?`-query |
@@ -32,7 +32,7 @@ Replace `tracing_subscriber::fmt::init()` (main.rs:154) with an explicit `init_l
 
 | File:lines | Span / Change |
 |-----------|----------------|
-| `main.rs` (dispatch 158-215) | Root span per subcommand: `operation = "apply\|clean\|init\|status\|doctor\|skill"`, `outcome` recorded at end |
+| `main.rs` (dispatch) | Root span per subcommand: `operation = "apply\|clean\|init\|status\|doctor\|skill"`, `outcome` recorded at end; runner renders errors through tracing and exits after span closure |
 | `main.rs:274-278` | `println!` "Using config" → `info!(config_path, "Using config")` |
 | `main.rs:381` | `error!(%e, ...)` → add `agent_id = agent.name()`, `config_path` |
 | `linker/apply.rs:43-109` | Span per agent: `operation="sync", agent_id`; `outcome` ok/skipped/error |
@@ -43,7 +43,7 @@ Replace `tracing_subscriber::fmt::init()` (main.rs:154) with an explicit `init_l
 | `linker/clean.rs:13-197` | Span per removed path: `operation="remove", path, outcome` |
 | `mcp.rs:1497-1522` (`generate_all`) | Span per agent: `operation="mcp", agent_id, outcome`; error (1518) add `config_path` |
 | `commands/skill.rs` (`run_install` 1015, `run_suggest` 785-899) | Span `operation="skill_install\|skill_suggest", skill_id, outcome`; reuse `{error,code,remediation}` envelope fields |
-| `update_check.rs:137` | Keep `eprintln!` (already stderr; not tracing to avoid JSON noise) |
+| `update_check.rs` | Update notices are emitted through tracing, keeping JSON diagnostics parseable. |
 
 ## Interfaces / Contracts
 
@@ -53,7 +53,7 @@ pub enum LogFormat { Human, Json }                       // FromStr from "--log-
 pub fn init_logging(format: LogFormat, level: Option<LevelFilter>); // .with_writer(io::stderr) always;
                                                             // .json() iff Json; filter = level
                                                             // .or_else(RUST_LOG).unwrap_or(INFO)
-pub fn resolve_level_filter(flag: Option<LevelFilter>, rust_log: Option<&str>) -> LevelFilter; // pure, testable
+pub fn resolve_level_filter(flag: Option<LevelFilter>, rust_log: Option<&str>) -> EnvFilter; // pure, testable
 pub fn redact_url(url: &str) -> String;                  // strip userinfo + query
 ```
 JSON event (stderr, one line per event):

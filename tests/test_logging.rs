@@ -1,3 +1,4 @@
+#![cfg(unix)]
 //! Black-box tests for structured diagnostics (#499).
 //!
 //! Core contract: log events ALWAYS go to stderr; functional stdout (human
@@ -9,12 +10,10 @@ use std::process::{Command, Output};
 
 use tempfile::TempDir;
 
-#[cfg(unix)]
 fn agentsync_bin() -> &'static str {
     env!("CARGO_BIN_EXE_agentsync")
 }
 
-#[cfg(unix)]
 fn run_agentsync(project_root: &Path, args: &[&str]) -> Output {
     Command::new(agentsync_bin())
         .current_dir(project_root)
@@ -117,7 +116,6 @@ fn has_field_with_suffix(event: &serde_json::Value, key: &str, suffix: &str) -> 
 }
 
 #[test]
-#[cfg(unix)]
 fn apply_default_logs_are_human_and_never_on_stdout() {
     let temp_dir = TempDir::new().unwrap();
     let project_root = temp_dir.path();
@@ -535,9 +533,8 @@ fn apply_json_failed_target_emits_error_outcome_with_context() {
 
     let output = run_agentsync(root, &["apply", "--log-format", "json"]);
     assert!(
-        output.status.success(),
-        "apply should report target errors in its summary: {}",
-        String::from_utf8_lossy(&output.stderr)
+        !output.status.success(),
+        "apply target errors must exit nonzero"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     let events = json_events(&stderr);
@@ -580,7 +577,7 @@ fn apply_json_mcp_failure_emits_agent_and_config_path() {
     let output = run_agentsync(root, &["apply", "--log-format", "json"]);
     assert!(
         output.status.success(),
-        "apply should preserve its existing summary behavior: {}",
+        "MCP generation preserves apply summary behavior: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -597,6 +594,94 @@ fn apply_json_mcp_failure_emits_agent_and_config_path() {
             has_field(event, "operation", "mcp") && has_field(event, "outcome", "error")
         }),
         "MCP error outcome missing: {stderr}"
+    );
+}
+
+#[test]
+fn apply_json_failure_exits_nonzero_and_keeps_error_protocol_on_stderr() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+    let agents_dir = root.join(".agents");
+    fs::create_dir_all(&agents_dir).unwrap();
+    fs::write(agents_dir.join("AGENTS.md"), "# instructions\n").unwrap();
+    fs::write(
+        agents_dir.join("agentsync.toml"),
+        r#"
+        [agents.claude]
+        enabled = true
+        [agents.claude.targets.instructions]
+        source = "AGENTS.md"
+        destination = "/outside/CLAUDE.md"
+        type = "symlink"
+    "#,
+    )
+    .unwrap();
+
+    let output = run_agentsync(root, &["apply", "--log-format", "json"]);
+    assert!(!output.status.success(), "failed apply must exit nonzero");
+    assert_stdout_has_no_tracing(&String::from_utf8_lossy(&output.stdout));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let events = json_events(&stderr);
+    assert!(!events.is_empty(), "expected JSON error events: {stderr}");
+    assert!(
+        events.iter().any(|event| {
+            has_field(event, "operation", "apply") && has_field(event, "outcome", "error")
+        }),
+        "root apply error span missing: {stderr}"
+    );
+    assert!(
+        events
+            .iter()
+            .any(|event| has_field(event, "outcome", "error")),
+        "target error event missing: {stderr}"
+    );
+    assert!(
+        stderr
+            .lines()
+            .all(|line| serde_json::from_str::<serde_json::Value>(line).is_ok()),
+        "stderr must contain only JSON events: {stderr}"
+    );
+    assert!(
+        !stderr.contains("Error: "),
+        "plaintext top-level error leaked: {stderr}"
+    );
+}
+
+#[test]
+fn status_json_failure_exits_nonzero_with_parseable_stdout_and_json_diagnostics() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+    write_apply_fixture(root);
+
+    let output = run_agentsync(root, &["status", "--log-format", "json", "--json"]);
+    assert!(!output.status.success(), "drifted status must exit nonzero");
+    let entries: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("status --json stdout must remain parseable");
+    assert!(
+        entries.as_array().is_some(),
+        "status output must be an array"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let events = json_events(&stderr);
+    assert!(
+        !events.is_empty(),
+        "expected JSON status diagnostics: {stderr}"
+    );
+    assert!(
+        events.iter().any(|event| {
+            has_field(event, "operation", "status") && has_field(event, "outcome", "error")
+        }),
+        "root status error span missing: {stderr}"
+    );
+    assert!(
+        stderr
+            .lines()
+            .all(|line| serde_json::from_str::<serde_json::Value>(line).is_ok()),
+        "stderr must contain only JSON events: {stderr}"
+    );
+    assert!(
+        !stderr.contains("Error: "),
+        "plaintext top-level error leaked: {stderr}"
     );
 }
 

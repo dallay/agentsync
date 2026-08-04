@@ -366,6 +366,7 @@ impl Provider for SkillsShProvider {
         // Deterministic subprocess hook for the CLI contract test that verifies
         // catalog fallback warnings stay on stderr. It is inert unless explicitly
         // enabled by a test environment.
+        #[cfg(debug_assertions)]
         if std::env::var_os("AGENTSYNC_TEST_INVALID_RECOMMENDATION_CATALOG").is_some() {
             anyhow::bail!("invalid recommendation catalog test fixture")
         }

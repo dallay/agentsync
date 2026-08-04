@@ -171,31 +171,37 @@ enum Commands {
     },
 }
 
-fn main() -> Result<()> {
+fn main() {
+    if run().is_err() {
+        std::process::exit(1);
+    }
+}
+
+fn run() -> Result<()> {
     // Initialize tracing subscriber for structured logging. Respects RUST_LOG env var.
     let cli = Cli::parse();
     agentsync::logging::init_logging(cli.log_format, cli.log_level);
     agentsync::update_check::spawn();
 
-    match cli.command {
+    let result = match cli.command {
         Commands::Skill { cmd, project_root } => run_in_root_span("skill", || {
             let root =
                 current_project_root(project_root, || env::current_dir().map_err(Into::into))?;
             run_skill(cmd, root)?;
             Ok(())
-        })?,
+        }),
         Commands::Status { args, project_root } => run_in_root_span("status", || {
             let project_root =
                 current_project_root(project_root, || env::current_dir().map_err(Into::into))?;
             run_status(args.json, project_root)?;
             Ok(())
-        })?,
+        }),
         Commands::Doctor { project_root } => run_in_root_span("doctor", || {
             let project_root =
                 current_project_root(project_root, || env::current_dir().map_err(Into::into))?;
             run_doctor(project_root)?;
             Ok(())
-        })?,
+        }),
         Commands::Init {
             path,
             force,
@@ -205,7 +211,7 @@ fn main() -> Result<()> {
         } => run_in_root_span("init", || {
             handle_init(path, force, wizard, experimental_tui, template)?;
             Ok(())
-        })?,
+        }),
         Commands::Apply {
             path,
             config,
@@ -225,7 +231,7 @@ fn main() -> Result<()> {
                 no_gitignore,
             })?;
             Ok(())
-        })?,
+        }),
         Commands::Clean {
             path,
             config,
@@ -234,7 +240,7 @@ fn main() -> Result<()> {
         } => run_in_root_span("clean", || {
             handle_clean(path, config, dry_run, verbose)?;
             Ok(())
-        })?,
+        }),
         Commands::DevInstall { skill_id, json } => run_in_root_span("skill", || {
             let project_root =
                 current_project_root(None, || env::current_dir().map_err(Into::into))?;
@@ -247,9 +253,12 @@ fn main() -> Result<()> {
             };
             run_install(args, project_root)?;
             Ok(())
-        })?,
+        }),
+    };
+    if let Err(error) = &result {
+        tracing::error!(error = %error, "Command failed");
     }
-    Ok(())
+    result
 }
 
 /// Run `f` inside a root span named `agentsync` that records `outcome`
@@ -319,7 +328,7 @@ fn handle_apply(args: ApplyArgs) -> Result<()> {
         None => Config::find_config(&start_dir)?,
     };
     if args.verbose {
-        tracing::info!(config_path = %config_path.display(), "Using config");
+        tracing::debug!(config_path = %config_path.display(), "Using config");
     }
     let config = Config::load(&config_path)?;
     let linker = Linker::new(config, config_path);
@@ -374,6 +383,12 @@ fn handle_apply(args: ApplyArgs) -> Result<()> {
         &result,
         use_color,
     ));
+    if result.errors > 0 {
+        return Err(anyhow::anyhow!(
+            "apply completed with {} error(s)",
+            result.errors
+        ));
+    }
     Ok(())
 }
 

@@ -123,20 +123,6 @@ fn test_module_map_cli_placeholder_happy_path() {
             .is_some_and(|source| source.ends_with(".agents/claude/api-context.md"))
     }));
 
-    let status_with_json_logs =
-        run_agentsync(project_root, &["status", "--log-format", "json", "--json"]);
-    assert_success(
-        &status_with_json_logs,
-        "agentsync status --log-format json --json",
-    );
-    let _: serde_json::Value = serde_json::from_slice(&status_with_json_logs.stdout)
-        .expect("status --json stdout must remain a JSON array");
-    for line in String::from_utf8_lossy(&status_with_json_logs.stderr).lines() {
-        assert!(
-            serde_json::from_str::<serde_json::Value>(line).is_ok(),
-            "status JSON logs must be line-parseable: {line}"
-        );
-    }
     assert!(entries.iter().any(|entry| {
         entry["expected_source"]
             .as_str()
@@ -163,4 +149,30 @@ fn test_module_map_cli_placeholder_happy_path() {
     );
     let clean_stdout = String::from_utf8_lossy(&clean.stdout);
     assert!(clean_stdout.contains("Removed: 2"), "{clean_stdout}");
+}
+
+#[test]
+#[cfg(unix)]
+fn test_module_map_status_json_logging_contract() {
+    let temp_dir = TempDir::new().unwrap();
+    let project_root = temp_dir.path();
+    write_module_map_fixture(project_root);
+
+    let apply = run_agentsync(project_root, &["apply"]);
+    assert_success(&apply, "agentsync apply");
+
+    let status_with_json_logs =
+        run_agentsync(project_root, &["status", "--log-format", "json", "--json"]);
+    assert_success(
+        &status_with_json_logs,
+        "agentsync status --log-format json --json",
+    );
+    let _: serde_json::Value = serde_json::from_slice(&status_with_json_logs.stdout)
+        .expect("status --json stdout must remain a JSON array");
+    for line in String::from_utf8_lossy(&status_with_json_logs.stderr).lines() {
+        assert!(
+            serde_json::from_str::<serde_json::Value>(line).is_ok(),
+            "status JSON logs must be line-parseable: {line}"
+        );
+    }
 }

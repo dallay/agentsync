@@ -83,15 +83,15 @@ impl Linker {
         } else {
             if let Err(e) = self.revalidate_unlink_path(dest) {
                 span.record("outcome", "error");
-                return Err(e).with_context(|| {
-                    format!("Failed to remove managed symlink: {}", dest.display())
-                });
+                result.errors += 1;
+                tracing::error!(error = %e, path = %dest.display(), "Failed to revalidate managed symlink removal");
+                return Ok(());
             }
             if let Err(e) = symlinks::remove_symlink(dest) {
                 span.record("outcome", "error");
-                return Err(e).with_context(|| {
-                    format!("Failed to remove managed symlink: {}", dest.display())
-                });
+                result.errors += 1;
+                tracing::error!(error = %e, path = %dest.display(), "Failed to remove managed symlink");
+                return Ok(());
             }
             self.invalidate_path_cache();
             println!("  {} Removed: {}", "✔".green(), dest.display());

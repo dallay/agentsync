@@ -4,9 +4,10 @@
 
 **PASS WITH WARNINGS**
 
-The requested final verification passed. The CRITICAL runtime gaps are covered by deterministic
-black-box tests, including the `skill suggest` WARN path, clean spans, apply/MCP error outcomes,
-log precedence, stream separation, and redaction. The repository still cannot provide independent
+The requested review follow-up is implemented with deterministic black-box coverage for failing
+`apply --log-format json` and failing `status --log-format json --json`: functional stdout remains
+parseable, stderr is newline-delimited JSON, root spans close with `outcome=error`, and the process
+exits nonzero. The repository still cannot provide independent
 timestamped evidence of historical test-first ordering, and some JSON event-shape assertions remain
 partial.
 
@@ -47,7 +48,8 @@ partial.
 | Piped human stderr has no ANSI | `src/logging.rs:105-111` | `warn_event_routes_to_stderr_not_stdout_and_stays_plain_when_piped` | PASS |
 | Functional stdout remains parseable/intact | Subscriber writer is stderr; contract tests | skill suggest and status JSON contract tests; apply human stdout test | PASS for covered commands |
 | WARN regression on `skill suggest --json` | `tests/test_logging.rs:605-628` induces invalid recommendation metadata and checks stdout JSON plus stderr WARN | `skill_suggest_json_warn_stays_on_stderr_and_stdout_remains_parseable` | PASS |
-| Functional `status --log-format json --json` separation | Global flags are independent from functional JSON; status contract remains covered by existing status CLI tests and full suite | Source inspection; no dedicated black-box stderr-content assertion | PASS WITH WARNING (partial coverage) |
+| Functional `status --log-format json --json` separation | `src/commands/status.rs:151-157` returns an error after printing JSON; top-level runner logs it through tracing | `status_json_failure_exits_nonzero_with_parseable_stdout_and_json_diagnostics` | PASS |
+| Top-level failure rendering | `src/main.rs:174-274, 384-389` closes root span, logs error, and exits nonzero; apply aggregates errors | `apply_json_failure_exits_nonzero_and_keeps_error_protocol_on_stderr`, `status_json_failure_exits_nonzero_with_parseable_stdout_and_json_diagnostics` | PASS |
 
 ## TDD evidence
 
@@ -94,8 +96,7 @@ None.
 
 ## Recommendation
 
-No CRITICAL follow-up remains. Archive is recommended. Keep the explicit TDD evidence limitation:
-repository history does not prove temporal RED-before-GREEN ordering. JSON event-shape and status
-stream-separation assertions are partial but do not block this verdict. Clean removal is covered;
+No CRITICAL follow-up remains. Archive is ready after the mandatory full validation commands pass.
+Keep the explicit TDD evidence limitation: repository history does not prove temporal RED-before-GREEN ordering. JSON event-shape assertions are partial. Clean removal is covered;
 a separate clean failure fixture was not added because the current safe-unlink path is difficult to
 fail deterministically without changing production behavior.
