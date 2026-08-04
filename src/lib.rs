@@ -9,6 +9,7 @@ pub mod config;
 pub mod gitignore;
 pub mod init;
 pub mod linker;
+pub mod logging;
 pub mod mcp;
 pub mod skills;
 pub mod skills_layout;

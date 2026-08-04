@@ -150,10 +150,11 @@ pub fn run_status(json: bool, project_root: PathBuf) -> Result<()> {
 
     if json {
         println!("{}", serde_json::to_string_pretty(&entries)?);
-        if problems > 0 {
-            std::process::exit(1);
-        }
-        return Ok(());
+        return if problems > 0 {
+            Err(anyhow::anyhow!("status found {problems} problem(s)"))
+        } else {
+            Ok(())
+        };
     }
 
     let use_color = match crate::output::output_mode(json) {
@@ -176,7 +177,7 @@ pub fn run_status(json: bool, project_root: PathBuf) -> Result<()> {
 
     if problems > 0 {
         println!("\n{}", render_status_summary(problems, &formatter));
-        std::process::exit(1);
+        return Err(anyhow::anyhow!("status found {problems} problem(s)"));
     }
 
     println!("\n{}", render_status_summary(0, &formatter));

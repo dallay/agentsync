@@ -7,6 +7,28 @@ import CommandTabs from '../../../components/CommandTabs.astro';
 
 `agentsync` provides a straightforward set of commands to manage your AI agent configurations.
 
+## Logging and diagnostics
+
+Diagnostic logs are always written to stderr, while command results remain on stdout. This keeps
+functional `--json` output parseable in CI.
+
+**Global options** (available before or after a subcommand):
+
+- `--log-format human|json`: Render human-readable diagnostics (default) or one JSON event per
+  stderr line.
+- `--log-level trace|debug|info|warn|error|off`: Set the minimum diagnostic level. This overrides
+  `RUST_LOG`; when omitted, `RUST_LOG` supports target-aware EnvFilter directives and falls back to
+  `info` when invalid.
+
+The logging flags are independent from command-specific `--json`:
+
+```bash
+agentsync status --log-format json --json >status.json 2>diagnostics.jsonl
+```
+
+The status array is written to `status.json`; structured diagnostic events are written to
+`diagnostics.jsonl`.
+
 If you run AgentSync from Windows and need symlink prerequisites, WSL setup positioning, or recovery help, use the <a href="/guides/windows-symlink-setup/">Windows Symlink Setup guide</a>. The command reference below stays focused on CLI behavior.
 
 ## Commands

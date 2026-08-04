@@ -3,6 +3,7 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 use std::fs;
+use std::path::Path;
 
 use crate::config::SyncType;
 
@@ -56,16 +57,47 @@ impl Linker {
             Err(_) => return Ok(()),
         };
         if dest.is_symlink() {
-            if options.dry_run {
-                println!("  {} Would remove: {}", "→".cyan(), dest.display());
-            } else {
-                self.revalidate_unlink_path(&dest)?;
-                symlinks::remove_symlink(&dest)?;
-                self.invalidate_path_cache();
-                println!("  {} Removed: {}", "✔".green(), dest.display());
-            }
-            result.removed += 1;
+            self.remove_managed_symlink(&dest, options.dry_run, result)?;
         }
+        Ok(())
+    }
+
+    /// Remove a single managed symlink, emitting a per-path span
+    /// (`operation="remove"`, `path`, `outcome`) around the decision.
+    fn remove_managed_symlink(
+        &self,
+        dest: &Path,
+        dry_run: bool,
+        result: &mut SyncResult,
+    ) -> Result<()> {
+        let span = tracing::info_span!(
+            "agentsync",
+            operation = "remove",
+            path = %dest.display(),
+            outcome = tracing::field::Empty
+        );
+        let _enter = span.enter();
+        if dry_run {
+            println!("  {} Would remove: {}", "→".cyan(), dest.display());
+            span.record("outcome", "would_remove");
+        } else {
+            if let Err(e) = self.revalidate_unlink_path(dest) {
+                span.record("outcome", "error");
+                result.errors += 1;
+                tracing::error!(error = %e, path = %dest.display(), "Failed to revalidate managed symlink removal");
+                return Ok(());
+            }
+            if let Err(e) = symlinks::remove_symlink(dest) {
+                span.record("outcome", "error");
+                result.errors += 1;
+                tracing::error!(error = %e, path = %dest.display(), "Failed to remove managed symlink");
+                return Ok(());
+            }
+            self.invalidate_path_cache();
+            println!("  {} Removed: {}", "✔".green(), dest.display());
+            span.record("outcome", "removed");
+        }
+        result.removed += 1;
         Ok(())
     }
 
@@ -90,15 +122,7 @@ impl Linker {
                 entry.with_context(|| format!("Failed to read entry in: {}", dest.display()))?;
             let entry_path = entry.path();
             if entry_path.is_symlink() {
-                if options.dry_run {
-                    println!("  {} Would remove: {}", "→".cyan(), entry_path.display());
-                } else {
-                    self.revalidate_unlink_path(&entry_path)?;
-                    symlinks::remove_symlink(&entry_path)?;
-                    self.invalidate_path_cache();
-                    println!("  {} Removed: {}", "✔".green(), entry_path.display());
-                }
-                result.removed += 1;
+                self.remove_managed_symlink(&entry_path, options.dry_run, result)?;
             }
         }
         // Try to remove the directory if empty
@@ -148,15 +172,7 @@ impl Linker {
                 Err(_) => continue,
             };
             if dest.is_symlink() {
-                if options.dry_run {
-                    println!("  {} Would remove: {}", "→".cyan(), dest.display());
-                } else {
-                    self.revalidate_unlink_path(&dest)?;
-                    symlinks::remove_symlink(&dest)?;
-                    self.invalidate_path_cache();
-                    println!("  {} Removed: {}", "✔".green(), dest.display());
-                }
-                result.removed += 1;
+                self.remove_managed_symlink(&dest, options.dry_run, result)?;
             }
         }
         Ok(())
@@ -188,15 +204,7 @@ impl Linker {
             };
 
             if dest.is_symlink() {
-                if options.dry_run {
-                    println!("  {} Would remove: {}", "→".cyan(), dest.display());
-                } else {
-                    self.revalidate_unlink_path(&dest)?;
-                    symlinks::remove_symlink(&dest)?;
-                    self.invalidate_path_cache();
-                    println!("  {} Removed: {}", "✔".green(), dest.display());
-                }
-                result.removed += 1;
+                self.remove_managed_symlink(&dest, options.dry_run, result)?;
             }
         }
         Ok(())

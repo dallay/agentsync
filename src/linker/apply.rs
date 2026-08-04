@@ -41,11 +41,18 @@ impl Linker {
         }
 
         for (agent_name, agent_config) in &self.config.agents {
+            let agent_span = tracing::info_span!(
+                "agentsync",
+                operation = "sync",
+                agent_id = %agent_name,
+                outcome = tracing::field::Empty
+            );
+            let _agent_enter = agent_span.enter();
+
             // Skip disabled agents
             if !agent_config.enabled {
-                if options.verbose {
-                    println!("  {} Skipping disabled agent: {}", "○".yellow(), agent_name);
-                }
+                tracing::debug!(reason = "disabled", "Skipping agent");
+                agent_span.record("outcome", "skipped");
                 continue;
             }
 
@@ -56,9 +63,8 @@ impl Linker {
                     .iter()
                     .any(|f| crate::agent_ids::sync_filter_matches(agent_name, f))
                 {
-                    if options.verbose {
-                        println!("  {} Skipping filtered agent: {}", "○".yellow(), agent_name);
-                    }
+                    tracing::debug!(reason = "filtered", "Skipping agent");
+                    agent_span.record("outcome", "skipped");
                     continue;
                 }
             } else if !self.config.default_agents.is_empty()
@@ -68,13 +74,8 @@ impl Linker {
                     .iter()
                     .any(|f| crate::agent_ids::sync_filter_matches(agent_name, f))
             {
-                if options.verbose {
-                    println!(
-                        "  {} Skipping agent (not in default_agents): {}",
-                        "○".yellow(),
-                        agent_name
-                    );
-                }
+                tracing::debug!(reason = "not in default_agents", "Skipping agent");
+                agent_span.record("outcome", "skipped");
                 continue;
             }
             // If neither --agents nor default_agents, process all enabled agents
@@ -87,11 +88,23 @@ impl Linker {
             };
             println!("\n{}{}", agent_name.bold(), desc.dimmed());
 
+            let mut agent_errors = 0usize;
+            let mut agent_created = 0usize;
+            let mut agent_updated = 0usize;
+
             // Process each target
             for (target_name, target_config) in &agent_config.targets {
-                if options.verbose {
-                    println!("  Processing target: {}", target_name.dimmed());
-                }
+                let target_span = tracing::info_span!(
+                    "agentsync",
+                    operation = "sync",
+                    agent_id = %agent_name,
+                    target = %target_name,
+                    path = %target_config.destination,
+                    outcome = tracing::field::Empty
+                );
+                let _target_enter = target_span.enter();
+
+                tracing::debug!(target = %target_name, "Processing target");
 
                 match self.process_target(agent_name, target_config, options) {
                     Ok(target_result) => {
@@ -99,13 +112,43 @@ impl Linker {
                         result.updated += target_result.updated;
                         result.skipped += target_result.skipped;
                         result.errors += target_result.errors;
+                        agent_errors += target_result.errors;
+                        agent_created += target_result.created;
+                        agent_updated += target_result.updated;
+                        let outcome = if target_result.errors > 0 {
+                            "error"
+                        } else if target_result.created > 0 {
+                            "created"
+                        } else if target_result.updated > 0 {
+                            "updated"
+                        } else {
+                            "skipped"
+                        };
+                        target_span.record("outcome", outcome);
                     }
                     Err(e) => {
-                        tracing::error!(target = %target_name, error = %e, "Error processing target");
+                        tracing::error!(
+                            agent_id = %agent_name,
+                            target = %target_name,
+                            path = %target_config.destination,
+                            error = %e,
+                            "Error processing target"
+                        );
+                        target_span.record("outcome", "error");
                         result.errors += 1;
+                        agent_errors += 1;
                     }
                 }
             }
+
+            let agent_outcome = if agent_errors > 0 {
+                "error"
+            } else if agent_created + agent_updated > 0 {
+                "ok"
+            } else {
+                "skipped"
+            };
+            agent_span.record("outcome", agent_outcome);
         }
 
         Ok(result)

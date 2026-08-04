@@ -8,7 +8,9 @@ use colored::Colorize;
 use std::env;
 use std::path::PathBuf;
 
+use agentsync::logging::LogFormat;
 use agentsync::{Linker, SyncOptions, SyncResult, config::Config, gitignore, init};
+use tracing_subscriber::filter::LevelFilter;
 mod commands;
 mod output;
 use commands::doctor::run_doctor;
@@ -38,7 +40,7 @@ fn merge_clean_result_into_apply_result(result: &mut SyncResult, clean_result: &
     result.errors += clean_result.errors;
 }
 
-// tracing_subscriber is used to initialize logging in main
+// Logging is initialized in main via agentsync::logging::init_logging (stderr, human/json).
 
 #[derive(Parser)]
 #[command(name = "agentsync")]
@@ -51,6 +53,26 @@ fn merge_clean_result_into_apply_result(result: &mut SyncResult, clean_result: &
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+
+    /// Log event format: human (default) or json (newline-delimited JSON to stderr)
+    #[arg(long, global = true, value_parser = parse_log_format, default_value = "human")]
+    log_format: LogFormat,
+
+    /// Minimum log level: trace, debug, info, warn, error, off (defaults to RUST_LOG or info)
+    #[arg(long, global = true, value_parser = parse_log_level)]
+    log_level: Option<LevelFilter>,
+}
+
+fn parse_log_format(s: &str) -> Result<LogFormat, String> {
+    s.parse()
+}
+
+fn parse_log_level(s: &str) -> Result<LevelFilter, String> {
+    s.parse().map_err(|_| {
+        format!(
+            "invalid log level '{s}' (expected 'trace', 'debug', 'info', 'warn', 'error', or 'off')"
+        )
+    })
 }
 
 #[derive(Subcommand)]
@@ -149,35 +171,47 @@ enum Commands {
     },
 }
 
-fn main() -> Result<()> {
-    // Initialize tracing subscriber for structured logging. Respects RUST_LOG env var.
-    tracing_subscriber::fmt::init();
-    agentsync::update_check::spawn();
-    let cli = Cli::parse();
+fn main() {
+    if run().is_err() {
+        std::process::exit(1);
+    }
+}
 
-    match cli.command {
-        Commands::Skill { cmd, project_root } => {
+fn run() -> Result<()> {
+    // Initialize tracing subscriber for structured logging. Respects RUST_LOG env var.
+    let cli = Cli::parse();
+    agentsync::logging::init_logging(cli.log_format, cli.log_level);
+    agentsync::update_check::spawn();
+
+    let result = match cli.command {
+        Commands::Skill { cmd, project_root } => run_in_root_span("skill", || {
             let root =
                 current_project_root(project_root, || env::current_dir().map_err(Into::into))?;
             run_skill(cmd, root)?;
-        }
-        Commands::Status { args, project_root } => {
+            Ok(())
+        }),
+        Commands::Status { args, project_root } => run_in_root_span("status", || {
             let project_root =
                 current_project_root(project_root, || env::current_dir().map_err(Into::into))?;
             run_status(args.json, project_root)?;
-        }
-        Commands::Doctor { project_root } => {
+            Ok(())
+        }),
+        Commands::Doctor { project_root } => run_in_root_span("doctor", || {
             let project_root =
                 current_project_root(project_root, || env::current_dir().map_err(Into::into))?;
             run_doctor(project_root)?;
-        }
+            Ok(())
+        }),
         Commands::Init {
             path,
             force,
             wizard,
             experimental_tui,
             template,
-        } => handle_init(path, force, wizard, experimental_tui, template)?,
+        } => run_in_root_span("init", || {
+            handle_init(path, force, wizard, experimental_tui, template)?;
+            Ok(())
+        }),
         Commands::Apply {
             path,
             config,
@@ -186,22 +220,28 @@ fn main() -> Result<()> {
             verbose,
             agents,
             no_gitignore,
-        } => handle_apply(ApplyArgs {
-            path,
-            config,
-            clean,
-            dry_run,
-            verbose,
-            agents,
-            no_gitignore,
-        })?,
+        } => run_in_root_span("apply", || {
+            handle_apply(ApplyArgs {
+                path,
+                config,
+                clean,
+                dry_run,
+                verbose,
+                agents,
+                no_gitignore,
+            })?;
+            Ok(())
+        }),
         Commands::Clean {
             path,
             config,
             dry_run,
             verbose,
-        } => handle_clean(path, config, dry_run, verbose)?,
-        Commands::DevInstall { skill_id, json } => {
+        } => run_in_root_span("clean", || {
+            handle_clean(path, config, dry_run, verbose)?;
+            Ok(())
+        }),
+        Commands::DevInstall { skill_id, json } => run_in_root_span("skill", || {
             let project_root =
                 current_project_root(None, || env::current_dir().map_err(Into::into))?;
             use commands::skill::SkillInstallArgs;
@@ -212,9 +252,25 @@ fn main() -> Result<()> {
                 json,
             };
             run_install(args, project_root)?;
-        }
+            Ok(())
+        }),
+    };
+    if let Err(error) = &result {
+        tracing::error!(error = %error, "Command failed");
     }
-    Ok(())
+    result
+}
+
+/// Run `f` inside a root span named `agentsync` that records `outcome`
+/// (ok/error) once it completes, so span-close JSON events expose the result.
+fn run_in_root_span<F>(operation: &'static str, f: F) -> Result<()>
+where
+    F: FnOnce() -> Result<()>,
+{
+    let span = tracing::info_span!("agentsync", operation, outcome = tracing::field::Empty);
+    let result = span.in_scope(f);
+    span.record("outcome", if result.is_ok() { "ok" } else { "error" });
+    result
 }
 
 fn handle_init(
@@ -272,10 +328,7 @@ fn handle_apply(args: ApplyArgs) -> Result<()> {
         None => Config::find_config(&start_dir)?,
     };
     if args.verbose {
-        println!(
-            "Using config: {}\n",
-            config_path.display().to_string().dimmed()
-        );
+        tracing::debug!(config_path = %config_path.display(), "Using config");
     }
     let config = Config::load(&config_path)?;
     let linker = Linker::new(config, config_path);
@@ -330,6 +383,12 @@ fn handle_apply(args: ApplyArgs) -> Result<()> {
         &result,
         use_color,
     ));
+    if result.errors > 0 {
+        return Err(anyhow::anyhow!(
+            "apply completed with {} error(s)",
+            result.errors
+        ));
+    }
     Ok(())
 }
 
@@ -378,7 +437,11 @@ fn handle_apply_mcp(
             }
         }
         Err(e) => {
-            tracing::error!(%e, "Error syncing MCP configs");
+            tracing::error!(
+                config_path = %linker.config_path().display(),
+                error = %e,
+                "Error syncing MCP configs"
+            );
             result.errors += 1;
         }
     }
@@ -420,7 +483,7 @@ fn handle_clean(
 
 #[cfg(test)]
 mod tests {
-    use super::{Cli, Commands, current_project_root};
+    use super::{Cli, Commands, LogFormat, current_project_root};
     use crate::output::{
         init_next_steps_lines, render_apply_summary_with_color, render_clean_phase_with_color,
         render_clean_summary_with_color, render_gitignore_phase_with_color,
@@ -428,6 +491,7 @@ mod tests {
     };
     use agentsync::{SyncResult, mcp::McpSyncResult};
     use clap::Parser;
+    use tracing_subscriber::filter::LevelFilter;
 
     fn render_apply_summary(dry_run: bool, result: &SyncResult) -> Vec<String> {
         render_apply_summary_with_color(dry_run, result, false)
@@ -665,5 +729,45 @@ mod tests {
         let rendered = standard.join("\n");
         assert!(rendered.contains("Edit .agents/AGENTS.md"));
         assert!(rendered.contains("Run agentsync apply"));
+    }
+
+    #[test]
+    fn cli_log_format_parses_json_after_subcommand() {
+        let cli = Cli::try_parse_from(["agentsync", "apply", "--log-format", "json"])
+            .expect("global --log-format should parse after the subcommand");
+        assert_eq!(cli.log_format, LogFormat::Json);
+    }
+
+    #[test]
+    fn cli_log_format_parses_json_before_subcommand() {
+        let cli = Cli::try_parse_from(["agentsync", "--log-format", "json", "status"])
+            .expect("global --log-format should parse before the subcommand");
+        assert_eq!(cli.log_format, LogFormat::Json);
+    }
+
+    #[test]
+    fn cli_log_format_defaults_to_human() {
+        let cli = Cli::try_parse_from(["agentsync", "status"])
+            .expect("status should parse without --log-format");
+        assert_eq!(cli.log_format, LogFormat::Human);
+    }
+
+    #[test]
+    fn cli_log_level_parses() {
+        let cli = Cli::try_parse_from(["agentsync", "apply", "--log-level", "debug"])
+            .expect("--log-level debug should parse");
+        assert_eq!(cli.log_level, Some(LevelFilter::DEBUG));
+    }
+
+    #[test]
+    fn cli_log_level_defaults_to_none() {
+        let cli = Cli::try_parse_from(["agentsync", "status"])
+            .expect("status should parse without --log-level");
+        assert_eq!(cli.log_level, None);
+    }
+
+    #[test]
+    fn cli_rejects_invalid_log_format() {
+        assert!(Cli::try_parse_from(["agentsync", "status", "--log-format", "xml"]).is_err());
     }
 }

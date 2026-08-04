@@ -18,6 +18,21 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 use tracing::error;
 
+fn with_skill_span<F>(operation: &'static str, skill_id: Option<&str>, f: F) -> Result<()>
+where
+    F: FnOnce() -> Result<()>,
+{
+    let span = match skill_id {
+        Some(id) => {
+            tracing::info_span!("agentsync", operation, skill_id = %id, outcome = tracing::field::Empty)
+        }
+        None => tracing::info_span!("agentsync", operation, outcome = tracing::field::Empty),
+    };
+    let result = span.in_scope(f);
+    span.record("outcome", if result.is_ok() { "ok" } else { "error" });
+    result
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SuggestInstallOutputMode {
     Json,
@@ -666,6 +681,13 @@ pub struct SkillSuggestArgs {
 }
 
 pub fn run_update(args: SkillUpdateArgs, project_root: PathBuf) -> Result<()> {
+    let skill_id = args.skill_id.clone();
+    with_skill_span("skill_update", Some(&skill_id), || {
+        run_update_inner(args, project_root)
+    })
+}
+
+fn run_update_inner(args: SkillUpdateArgs, project_root: PathBuf) -> Result<()> {
     let target_root = project_root.join(".agents").join("skills");
     std::fs::create_dir_all(&target_root)?;
 
@@ -783,13 +805,12 @@ fn run_registry_command(command: SkillRegistryCommand) -> Result<()> {
 }
 
 pub fn run_suggest(args: SkillSuggestArgs, project_root: PathBuf) -> Result<()> {
-    let service = SuggestionService;
-    let result = run_suggest_inner(&args, &project_root, &service);
-
-    match result {
-        Ok(()) => Ok(()),
-        Err(error) => handle_suggest_error(&args, error),
-    }
+    with_skill_span("skill_suggest", None, || {
+        match run_suggest_inner(&args, &project_root, &SuggestionService) {
+            Ok(()) => Ok(()),
+            Err(error) => handle_suggest_error(&args, error),
+        }
+    })
 }
 
 fn run_suggest_inner(
@@ -1013,6 +1034,13 @@ fn prompt_for_recommended_skills(
 }
 
 pub fn run_install(args: SkillInstallArgs, project_root: PathBuf) -> Result<()> {
+    let skill_id = args.skill_id.clone();
+    with_skill_span("skill_install", Some(&skill_id), || {
+        run_install_inner(args, project_root)
+    })
+}
+
+fn run_install_inner(args: SkillInstallArgs, project_root: PathBuf) -> Result<()> {
     let target_root = project_root.join(".agents").join("skills");
     std::fs::create_dir_all(&target_root)?;
 
@@ -1027,7 +1055,7 @@ pub fn run_install(args: SkillInstallArgs, project_root: PathBuf) -> Result<()> 
     // Unified logic: install from archive, URL, or local directory
     tracing::debug!(
         skill_id = %skill_id,
-        source = %source,
+        source = %agentsync::logging::redact_url(&source),
         target_root = %target_root.display(),
         "install"
     );
@@ -1158,6 +1186,13 @@ impl Provider for SuggestInstallProvider {
 }
 
 pub fn run_uninstall(args: SkillUninstallArgs, project_root: PathBuf) -> Result<()> {
+    let skill_id = args.skill_id.clone();
+    with_skill_span("skill_uninstall", Some(&skill_id), || {
+        run_uninstall_inner(args, project_root)
+    })
+}
+
+fn run_uninstall_inner(args: SkillUninstallArgs, project_root: PathBuf) -> Result<()> {
     let target_root = project_root.join(".agents").join("skills");
 
     let skill_id = &args.skill_id;
@@ -1232,7 +1267,11 @@ fn resolve_source(skill_id: &str, source_arg: Option<String>) -> Result<String> 
     if let Some(s) = source_arg {
         // Check if it's a GitHub URL that needs conversion to ZIP format
         if let Some(github_url) = try_convert_github_url(&s) {
-            tracing::info!(original = %s, converted = %github_url, "Converted GitHub URL to ZIP format");
+            tracing::info!(
+                original = %agentsync::logging::redact_url(&s),
+                converted = %agentsync::logging::redact_url(&github_url),
+                "Converted GitHub URL to ZIP format"
+            );
             return Ok(github_url);
         }
         return Ok(s);

@@ -3,10 +3,10 @@ use std::path::PathBuf;
 use std::thread;
 
 use anyhow::Context;
-use colored::Colorize;
 use is_terminal::IsTerminal;
 use semver::Version;
 use serde::{Deserialize, Serialize};
+use tracing::info;
 
 const CACHE_TTL_SECS: i64 = 24 * 60 * 60;
 const CRATES_IO_URL: &str = "https://crates.io/api/v1/crates/agentsync";
@@ -134,16 +134,10 @@ fn check_and_notify() {
         notified_for_version: Some(newest_version.clone()),
     };
 
-    eprintln!(
-        "{} {}",
-        "💡".yellow().bold(),
-        format!(
-            "A new version of agentsync is available: {} (you have {}). Run cargo install agentsync to update.",
-            newest_version.yellow().bold(),
-            env!("CARGO_PKG_VERSION").dimmed()
-        )
-        .yellow()
-        .bold()
+    info!(
+        latest_version = %newest_version,
+        current_version = env!("CARGO_PKG_VERSION"),
+        "A new version of agentsync is available; run cargo install agentsync to update"
     );
 
     let _ = cache.save(&new_cache);
