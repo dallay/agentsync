@@ -21,6 +21,47 @@
 * **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
 * **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
 
+## [1.48.0](https://github.com/dallay/agentsync/compare/v1.47.0...v1.48.0) (2026-08-03)
+
+
+### Features
+
+* **skills:** add curated verifiable registry ([867f81d](https://github.com/dallay/agentsync/commit/867f81def083e0741388ea9d7f1d17f92460cf01))
+* **skills:** add curated verifiable registry ([ebb2de5](https://github.com/dallay/agentsync/commit/ebb2de559d7284bb2e8dcfb8eaa427c6362f276c))
+
+
+### Bug Fixes
+
+* apply CodeRabbit auto-fixes ([a87ea06](https://github.com/dallay/agentsync/commit/a87ea06bd805d9843ac296380343dc3a195fab05))
+* **cli:** handle current directory errors ([4321314](https://github.com/dallay/agentsync/commit/43213144551ba2fe9583a11726226b6a5f59b88e))
+* **cli:** handle current directory errors ([d14c98b](https://github.com/dallay/agentsync/commit/d14c98b895b35bd5a2ccfe313a40ce8e210deae0))
+* **deps:** update dependency starlight-theme-black to ^0.7.0 ([#502](https://github.com/dallay/agentsync/issues/502)) ([d83f3d2](https://github.com/dallay/agentsync/commit/d83f3d289a62ab1e58562c2713753e750c72bad4))
+* **security:** harden curated registry validation ([bc641b2](https://github.com/dallay/agentsync/commit/bc641b2204a26ab9ccd58463f6f699f049e4c814))
+* **tests:** preserve curated fixture line endings ([03aa222](https://github.com/dallay/agentsync/commit/03aa2225cbb884eb0f8c9bb9538d89f675342974))
+
+
+### Code Refactoring
+
+* **cli:** canonicalize output and MCP documentation ([#501](https://github.com/dallay/agentsync/issues/501)) ([8d20b08](https://github.com/dallay/agentsync/commit/8d20b082d1cf8f126b8e57af1f5a919573cc0d75))
+* **linker:** establish focused module layout ([#506](https://github.com/dallay/agentsync/issues/506)) ([017f71d](https://github.com/dallay/agentsync/commit/017f71ddc5be203ed35f150ed90c9d86a0bf268e))
+
+
+### Tests
+
+* **cli:** cover project root resolution ([82cb302](https://github.com/dallay/agentsync/commit/82cb302cf4e5100b62ee853e28ea25041c157a3e))
+
+
+### Chores
+
+* **deps:** update dependency conventional-changelog-conventionalcommits to v10 ([#503](https://github.com/dallay/agentsync/issues/503)) ([64a2c18](https://github.com/dallay/agentsync/commit/64a2c18644c3506df8947e92acf99450a152ac30))
+* **deps:** update dependency typescript to v7 ([#504](https://github.com/dallay/agentsync/issues/504)) ([6403223](https://github.com/dallay/agentsync/commit/64032230fdcceac3c7e3328fef614f0a3394aa8a))
+* **deps:** update devdependencies ([a4dff2e](https://github.com/dallay/agentsync/commit/a4dff2e6ed88b600bf4744a3df1deb989f574405))
+* **deps:** update devdependencies ([abed2bd](https://github.com/dallay/agentsync/commit/abed2bd72305452a6a68a02b35fee1a0daadab84))
+* **deps:** update semantic-release monorepo ([#505](https://github.com/dallay/agentsync/issues/505)) ([a0eccc2](https://github.com/dallay/agentsync/commit/a0eccc2ee37b2c9b86fbcbd79b66f709d27ab866))
+* harden Renovate updates against pnpm minimum release age violations ([18fdeb1](https://github.com/dallay/agentsync/commit/18fdeb13fdf8ab94e9cbf38bb40da3bec7002d67))
+* Harden Renovate updates against pnpm minimum release age violations ([ea0fdc4](https://github.com/dallay/agentsync/commit/ea0fdc4c1b93e8c9fdbf1b939ebfcfe9e504c34d))
+* **security:** remove semgrep suppressions ([199fd02](https://github.com/dallay/agentsync/commit/199fd020eef1050b8d589b1a0cc039a766a7e6ee))
+
 ## [1.47.0](https://github.com/dallay/agentsync/compare/v1.46.3...v1.47.0) (2026-08-02)
 
 
