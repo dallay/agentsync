@@ -11,5 +11,4 @@ jobs:
     with:
       target: squash
       approve: true
-    secrets:
-      token: ${{ secrets.GITHUB_TOKEN }}
+    secrets: inherit
