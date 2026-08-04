@@ -169,7 +169,10 @@ fn test_module_map_status_json_logging_contract() {
     );
     let status: serde_json::Value = serde_json::from_slice(&status_with_json_logs.stdout)
         .expect("status --json stdout must remain a JSON array");
-    assert!(status.is_array(), "status --json stdout must be a JSON array");
+    assert!(
+        status.is_array(),
+        "status --json stdout must be a JSON array"
+    );
     for line in String::from_utf8_lossy(&status_with_json_logs.stderr).lines() {
         assert!(
             serde_json::from_str::<serde_json::Value>(line).is_ok(),
