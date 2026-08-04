@@ -106,15 +106,40 @@ fn test_symlink_creation_and_cleanup_file() {
         // sync must return an error containing our highly actionable advice.
         match result {
             Err(e) => {
-                let _err_msg = e.to_string();
+                let err_msg = e.to_string();
                 #[cfg(windows)]
                 {
-                    assert!(_err_msg.contains("Developer Mode") || _err_msg.contains("Administrator"),
-                            "Windows error message lacked actionable advice: {}", _err_msg);
+                    assert!(
+                        err_msg.contains("Developer Mode") || err_msg.contains("Administrator"),
+                        "Windows error message lacked Developer Mode/Administrator advice: {}",
+                        err_msg
+                    );
+                    assert!(
+                        err_msg.contains("windows-symlink-setup"),
+                        "Windows error message lacked troubleshooting URL: {}",
+                        err_msg
+                    );
+                }
+                #[cfg(not(windows))]
+                {
+                    // On non-Windows, just verify we got an error (platform-specific details vary)
+                    let _ = err_msg; // Use the variable to avoid warnings
                 }
             }
             Ok(r) => {
-                assert!(r.errors > 0, "Expected errors to be reported when symlinks are not supported");
+                #[cfg(windows)]
+                {
+                    // On Windows, if symlinks are not supported, we expect sync to fail hard (Err),
+                    // not return Ok with errors. If we reach here, fail explicitly.
+                    panic!(
+                        "Expected sync to return Err on Windows without symlink privileges, but got Ok with {} created, {} errors",
+                        r.created, r.errors
+                    );
+                }
+                #[cfg(not(windows))]
+                {
+                    assert!(r.errors > 0, "Expected errors to be reported when symlinks are not supported");
+                }
             }
         }
     }
