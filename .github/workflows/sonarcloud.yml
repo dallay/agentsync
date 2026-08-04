@@ -36,7 +36,7 @@ jobs:
           components: llvm-tools-preview
 
       - name: Cache cargo registry
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -76,7 +76,7 @@ jobs:
 
       - name: Analyze with SonarCloud
         if: ${{ env.SONAR_TOKEN != '' && (github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork) }}
-        uses: SonarSource/sonarqube-scan-action@7006c4492b2e0ee0f816d36501671557c97f5995 # v8.1.0
+        uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
         with:
           args: >-
             -Dsonar.projectBaseDir=.

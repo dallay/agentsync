@@ -7,7 +7,7 @@ permissions:
   pull-requests: write
 jobs:
   auto-merge:
-    uses: dallay/common-actions/.github/workflows/dependabot-auto-merge.yml@v2.1.0
+    uses: dallay/common-actions/.github/workflows/dependabot-auto-merge.yml@v2.2.2
     with:
       target: squash
       approve: true
