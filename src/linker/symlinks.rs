@@ -81,11 +81,17 @@ impl Linker {
             {
                 if source.path.is_dir() {
                     std::os::windows::fs::symlink_dir(&relative_source, dest).with_context(
-                        || format!("Failed to create directory symlink: {}", dest.display()),
+                        || format!(
+                            "Failed to create directory symlink: {}\nEnsure Windows Developer Mode is enabled or run as Administrator.\nSee https://dallay.github.io/agentsync/guides/windows-symlink-setup/ for details.",
+                            dest.display()
+                        ),
                     )?;
                 } else {
                     std::os::windows::fs::symlink_file(&relative_source, dest).with_context(
-                        || format!("Failed to create file symlink: {}", dest.display()),
+                        || format!(
+                            "Failed to create file symlink: {}\nEnsure Windows Developer Mode is enabled or run as Administrator.\nSee https://dallay.github.io/agentsync/guides/windows-symlink-setup/ for details.",
+                            dest.display()
+                        ),
                     )?;
                 }
             }
