@@ -21,6 +21,35 @@
 * **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
 * **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
 
+## [1.48.1](https://github.com/dallay/agentsync/compare/v1.48.0...v1.48.1) (2026-08-07)
+
+
+### Bug Fixes
+
+* **ci:** fix dependabot-auto-merge secrets context error ([#528](https://github.com/dallay/agentsync/issues/528)) ([45e82ef](https://github.com/dallay/agentsync/commit/45e82ef2f1b1cefc51af3f78cd67b4bbdf46fa6e))
+* **deps:** update dependency @astrojs/starlight to ^0.41.0 ([#517](https://github.com/dallay/agentsync/issues/517)) ([f8edef6](https://github.com/dallay/agentsync/commit/f8edef63fdd9ca1dd5202ea623a03748fc42f811))
+
+
+### Performance
+
+* optimize nested project detection in workspaces ([#531](https://github.com/dallay/agentsync/issues/531)) ([d2f9c89](https://github.com/dallay/agentsync/commit/d2f9c8978968e54722b5ad474b9d3e0a9013fbe5))
+
+
+### Tests
+
+* **platform:** strengthen symlink and filesystem coverage across operating systems ([#526](https://github.com/dallay/agentsync/issues/526)) ([f9a78c0](https://github.com/dallay/agentsync/commit/f9a78c099a0f368f89a356451d469eef5ac37d93))
+
+
+### Chores
+
+* **deps:** lock file maintenance ([#524](https://github.com/dallay/agentsync/issues/524)) ([bf4d796](https://github.com/dallay/agentsync/commit/bf4d796e044bb74c82a973a3c1f7d4fbb034b755))
+* **deps:** update actions/checkout digest to d23441a ([#518](https://github.com/dallay/agentsync/issues/518)) ([c8544fc](https://github.com/dallay/agentsync/commit/c8544fcb86b6745e83f5925ce28dd2110cba154e))
+* **deps:** update alpine docker tag to v3.24 ([#520](https://github.com/dallay/agentsync/issues/520)) ([a6a3c9f](https://github.com/dallay/agentsync/commit/a6a3c9f8106f847537c1a7c303398d1f9cee8fc7))
+* **deps:** update cargo dependencies ([#521](https://github.com/dallay/agentsync/issues/521)) ([74b9890](https://github.com/dallay/agentsync/commit/74b98909e13ba7b6e9dd647dc196203f001e6589))
+* **deps:** update dtolnay/rust-toolchain digest to e97e2d8 ([#519](https://github.com/dallay/agentsync/issues/519)) ([9e8c19c](https://github.com/dallay/agentsync/commit/9e8c19c9354576c5b30550eeadf9f12b120a63bf))
+* **deps:** update github actions ([#522](https://github.com/dallay/agentsync/issues/522)) ([86c756f](https://github.com/dallay/agentsync/commit/86c756f94a859bc5c719f51beb2feb931d3b5796))
+* **deps:** update rust docker tag to v1.97 ([#523](https://github.com/dallay/agentsync/issues/523)) ([3e8c8af](https://github.com/dallay/agentsync/commit/3e8c8afecb5fb21fba0d2c5bb2555a33b89d663b))
+
 ## [1.48.0](https://github.com/dallay/agentsync/compare/v1.47.0...v1.48.0) (2026-08-03)
 
 
