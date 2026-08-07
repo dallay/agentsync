@@ -168,3 +168,9 @@ from the path string (`split('/')`), we eliminated this per-file allocation enti
 
 **Action:** Prefer iterator-based pattern matching over `Vec` collection when processing large numbers
 of items in a loop. Use `Clone` bounds on iterators to support backtracking without re-allocation.
+
+## 2026-05-25 - Upfront Rule Filtering and Early Termination for Nested Projects
+
+**Learning:** Evaluating technology detection rules on many nested projects (workspaces) was performing redundant directory walking (`RepoMetadata::collect`) and parsing of files even when all candidate technologies had already been identified in previous discovery phases. By filtering rules to only undetected technologies upfront and checking if any remain undetected before proceeding, we can completely bypass expensive nested walks and terminate the scan early.
+
+**Action:** In discovery systems processing multiple hierarchical targets, always filter candidates to the undetected subset at each level, and break early when no targets remain to avoid redundant CPU and filesystem I/O.

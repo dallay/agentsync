@@ -398,15 +398,23 @@ fn detect_nested_projects(
     detections: &mut Vec<TechnologyDetection>,
 ) {
     for rel_nested_dir in &metadata.nested_projects {
+        // Optimization: Filter out technologies that have already been detected.
+        // If there are no undetected rules left, we can terminate early and avoid
+        // expensive nested walks and package.json parsing for subsequent nested projects.
+        let undetected_rules: Vec<_> = rules
+            .iter()
+            .filter(|(tech_id, _)| !detections.iter().any(|d| d.technology == *tech_id))
+            .collect();
+
+        if undetected_rules.is_empty() {
+            break;
+        }
+
         let nested_dir = project_root.join(rel_nested_dir);
         let nested_meta = RepoMetadata::collect(&nested_dir);
         let nested_pkgs = collect_package_names(&nested_dir, &nested_meta, cache);
 
-        for (tech_id, compiled) in rules {
-            if detections.iter().any(|d| d.technology == *tech_id) {
-                continue;
-            }
-
+        for (tech_id, compiled) in undetected_rules {
             if let Some(detection) = evaluate_rules(
                 &nested_dir,
                 tech_id,
