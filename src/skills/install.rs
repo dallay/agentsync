@@ -302,6 +302,7 @@ fn find_best_skill_dir(temp_path: &Path, skill_id: &str) -> PathBuf {
 
 /// Result of fetching a skill source — either we already copied a directory,
 /// or we have archive bytes to unpack.
+#[derive(Debug)]
 enum FetchedSource {
     DirectoryCopied,
     Archive(Vec<u8>),
@@ -368,6 +369,40 @@ fn fetch_local_data(
         return Err(SkillInstallError::Validation("empty file:// path".into()));
     }
     let path = Path::new(path_str);
+
+    // SECURITY: Prevent information disclosure by validating that file:// URL paths resolve within the project root.
+    if is_file {
+        let project_root = std::env::current_dir()
+            .ok()
+            .and_then(|cwd| crate::config::Config::find_config(&cwd).ok())
+            .map(|config_path| crate::config::Config::project_root(&config_path))
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+
+        let canonical_root = project_root.canonicalize().map_err(|e| {
+            SkillInstallError::Other(format!("Failed to canonicalize project root: {}", e))
+        })?;
+
+        let absolute_path = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            canonical_root.join(path)
+        };
+
+        let canonical_path = absolute_path.canonicalize().map_err(|_| {
+            SkillInstallError::Validation(format!(
+                "file:// URL path does not exist or is invalid: {}",
+                path.display()
+            ))
+        })?;
+
+        if !canonical_path.starts_with(&canonical_root) {
+            return Err(SkillInstallError::Validation(format!(
+                "file:// URL path resolves outside project root: {}",
+                url_base
+            )));
+        }
+    }
+
     let ext = path
         .extension()
         .and_then(|v| v.to_str())
@@ -945,14 +980,34 @@ mod tests {
 
     #[test]
     fn test_fetch_local_data_file_uri() {
+        let project_root = std::env::current_dir().unwrap();
+        let test_dir = project_root.join("target/tmp_test_file_uri");
+        std::fs::create_dir_all(&test_dir).unwrap();
+        let file_path = test_dir.join("archive.tar.gz");
+        std::fs::write(&file_path, b"fake tar data").unwrap();
+
+        let uri = format!("file://{}", file_path.to_str().unwrap());
+        let tmp = tempfile::tempdir().unwrap();
+        let (source, ext) = fetch_local_data(&uri, true, tmp.path()).unwrap();
+        assert!(matches!(source, FetchedSource::Archive(data) if data == b"fake tar data"));
+        assert_eq!(ext, "gz");
+
+        let _ = std::fs::remove_dir_all(test_dir);
+    }
+
+    #[test]
+    fn test_fetch_local_data_file_uri_escapes_project_root() {
         let tmp = tempfile::tempdir().unwrap();
         let file_path = tmp.path().join("archive.tar.gz");
         std::fs::write(&file_path, b"fake tar data").unwrap();
 
         let uri = format!("file://{}", file_path.to_str().unwrap());
-        let (source, ext) = fetch_local_data(&uri, true, tmp.path()).unwrap();
-        assert!(matches!(source, FetchedSource::Archive(data) if data == b"fake tar data"));
-        assert_eq!(ext, "gz");
+        let dest = tempfile::tempdir().unwrap();
+        let result = fetch_local_data(&uri, true, dest.path());
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("resolves outside project root"));
     }
 
     // --- unpack_zip end-to-end tests ---

@@ -37,3 +37,9 @@ tool that are known to contain user-provided credentials or sensitive environmen
 **Vulnerability:** The `copy_dir_all` function used during local skill updates followed symbolic links. A malicious update source could include a symlink to a sensitive file (e.g., `~/.ssh/id_rsa`), causing its content to be copied into the project.
 **Learning:** This was a regression of the pattern fixed in `install.rs` (2025-05-17), but in the `update.rs` module which used its own `copy_dir_all` implementation. Recursive copy logic must always be hardened against symlinks in this codebase.
 **Prevention:** Always check `entry.file_type()?.is_symlink()` and skip symlinks in any recursive directory copy operation used for untrusted content.
+
+## 2025-05-20 - Arbitrary File Disclosure via file:// URL in Skill Sources
+
+**Vulnerability:** A malicious repository or catalog could define a skill with a `file://` URL source pointing to arbitrary local files (e.g. `file:///etc/passwd`). When suggesting or installing such a skill, AgentSync would fetch and unpack it, copying sensitive local file contents into the project directory under `.agents/skills/`.
+**Learning:** Checking for `file://` or path traversal requires dynamic resolution of the project root during installation to establish a safe boundary. Unit tests can be affected by root boundaries if they write temporary files to system `/tmp` directories.
+**Prevention:** Canonicalize the target local path and ensure it is strictly nested within the project root directory when fetching local/file-based skill data.

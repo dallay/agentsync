@@ -217,3 +217,26 @@ fn test_skill_install_id_traversal() {
     let outside_path = agents_dir.join("outside_skill");
     assert!(!outside_path.exists());
 }
+
+#[test]
+fn test_skill_install_file_uri_traversal() {
+    let temp_dir = TempDir::new().unwrap();
+    let target_root = temp_dir.path().join("skills");
+    std::fs::create_dir_all(&target_root).unwrap();
+
+    // file:// URL outside of the project root
+    let outside_dir = temp_dir.path().join("outside_dir");
+    std::fs::create_dir_all(&outside_dir).unwrap();
+    std::fs::write(outside_dir.join("SKILL.md"), "---\nname: malicious\n---").unwrap();
+
+    let uri = format!("file://{}", outside_dir.display());
+
+    let result = agentsync::skills::install::blocking_fetch_and_install_skill(
+        "malicious",
+        &uri,
+        &target_root,
+    );
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(err.to_string().contains("resolves outside project root"));
+}
