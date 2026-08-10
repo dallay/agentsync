@@ -48,7 +48,10 @@ expected`.
 
 ### `nested-glob`
 
-Validates the expanded destination for each discovered match as a managed symlink.
+Emits a single target-level entry. The destination is the configured template (for example
+`packages/{relative_path}/CLAUDE.md`) and `expected_source` is the search root resolved from the
+project root. Individual expanded matches are **not** emitted as separate entries; run
+`agentsync apply` or inspect the filesystem to see per-match symlinks.
 
 ### `module-map`
 

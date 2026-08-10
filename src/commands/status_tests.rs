@@ -281,6 +281,59 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
+    fn test_collect_status_entries_nested_glob_emits_single_target_level_entry() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Search root lives at the project root (matching apply/doctor semantics).
+        let search_root = temp_dir.path().join("packages");
+        fs::create_dir_all(search_root.join("alpha")).unwrap();
+        fs::create_dir_all(search_root.join("beta")).unwrap();
+        fs::write(search_root.join("alpha").join("AGENTS.md"), "# Alpha").unwrap();
+        fs::write(search_root.join("beta").join("AGENTS.md"), "# Beta").unwrap();
+
+        let config = r#"
+            [agents.claude]
+            enabled = true
+
+            [agents.claude.targets.nested]
+            source = "packages"
+            pattern = "**/AGENTS.md"
+            destination = "packages/{relative_path}/CLAUDE.md"
+            type = "nested-glob"
+        "#;
+
+        let (linker, config_path) = load_linker(&temp_dir, config);
+        let entries = collect_status_entries(&linker, &config_path).unwrap();
+
+        // A single target-level entry, NOT one entry per discovered match.
+        assert_eq!(entries.len(), 1);
+        let entry = &entries[0];
+        assert_eq!(entry.sync_type, "nested-glob");
+        // The destination is the configured template, not an expanded match.
+        assert!(
+            entry
+                .destination
+                .ends_with("packages/{relative_path}/CLAUDE.md")
+        );
+        // The expected source resolves from the project root (where the search root lives).
+        assert!(
+            entry
+                .expected_source
+                .as_deref()
+                .unwrap()
+                .ends_with("packages")
+        );
+
+        let json = serde_json::to_value(&entries).unwrap();
+        let arr = json.as_array().unwrap();
+        assert_eq!(arr.len(), 1);
+        assert_eq!(arr[0]["sync_type"], "nested-glob");
+        assert_eq!(arr[0]["destination_kind"], "missing");
+        assert!(!arr[0]["issues"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    #[cfg(unix)]
     fn test_collect_status_hints_reports_recognized_mode_mismatch_without_problem() {
         use std::os::unix::fs as unix_fs;
 

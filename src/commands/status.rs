@@ -99,7 +99,13 @@ pub fn collect_status_entries(linker: &Linker, config_path: &Path) -> Result<Vec
             }
 
             let destination = linker.project_root().join(&target.destination);
-            let source_path = source_dir.join(&target.source);
+            // NestedGlob resolves `source` relative to the project root (matching apply and
+            // doctor); all other sync types resolve it relative to source_dir.
+            let source_path = if target.sync_type == SyncType::NestedGlob {
+                linker.project_root().join(&target.source)
+            } else {
+                source_dir.join(&target.source)
+            };
 
             let entry = match target.sync_type {
                 SyncType::Symlink => validate_symlink_entry(
