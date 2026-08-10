@@ -19,7 +19,8 @@
 	/* Text Colors */
 	--as-text-primary: #ffffff;
 	--as-text-secondary: #9aa7b3;
-	--as-text-muted: #6b7280;
+	/* AA contrast on --as-bg-elevated (#0d0d12): 5.85:1 (D2) */
+	--as-text-muted: #858e9a;
 
 	/* Borders & Accents */
 	--as-border: rgba(255, 255, 255, 0.08);
@@ -149,6 +150,7 @@ site-search button {
 	background: var(--as-bg-surface);
 	border: 1px solid var(--as-border);
 	border-radius: var(--as-radius-md);
+	min-height: 2.75rem; /* 44px touch target (D3) */
 }
 
 /* Theme toggle and social icons */
@@ -161,6 +163,20 @@ starlight-theme-select select,
 starlight-theme-select select:hover,
 .social-icons a:hover {
 	color: var(--as-primary);
+}
+
+/* --- Touch Targets (44px = 2.75rem @ 16px root) ---
+   IMPORTANT: keep these rules UNLAYERED (no @layer). Unlayered author
+   styles beat every Starlight @layer regardless of specificity. */
+/* D6 split: own rule for the theme selector only, so .social-icons a
+   (which shares the color rule above) does NOT grow to 44px. */
+starlight-theme-select select {
+	min-height: 2.75rem;
+}
+
+/* Broad selector: survives Starlight upgrades and covers every tab. */
+[role="tablist"] [role="tab"] {
+	min-height: 2.75rem;
 }
 
 /* --- Global Resets & Base Styles --- */
@@ -322,8 +338,25 @@ pre code {
 	outline-offset: 2px;
 }
 
+/* --- Reduced Motion (unlayered — must stay out of @layer) --- */
 @media (prefers-reduced-motion: reduce) {
 	html {
 		scroll-behavior: auto;
+	}
+
+	/* Scoped Hero rules ([data-astro-cid], 0,2,0) inject after custom.css —
+	   these selectors use (0,3,0) to win the unlayered tie-break. */
+	.hero .hero-badge .badge-dot,
+	.hero .robot-wrap .robot-glow,
+	.hero .robot-wrap .robot {
+		animation: none;
+	}
+
+	/* CRITICAL: .animate-fade-in-up starts at opacity: 0 (Hero.astro:390);
+	   killing fadeInUp without restoring opacity hides the hero. */
+	.hero .hero-copy.animate-fade-in-up,
+	.hero .hero-visual.animate-fade-in-up {
+		animation: none;
+		opacity: 1;
 	}
 }
