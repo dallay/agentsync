@@ -8,6 +8,7 @@ use std::rc::Rc;
 
 use crate::config::{ModuleMapping, SyncType, TargetConfig};
 
+use super::timing::{SpanKind, sync_type_name};
 use super::{Linker, ResolvedSource, SyncOptions, SyncResult};
 
 impl Linker {
@@ -161,6 +162,7 @@ impl Linker {
         target: &TargetConfig,
         options: &SyncOptions,
     ) -> Result<SyncResult> {
+        let _span = self.timing_span(SpanKind::Target(sync_type_name(target.sync_type)));
         let source = self.source_dir.join(&target.source);
 
         match target.sync_type {

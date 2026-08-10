@@ -1,0 +1,15 @@
+change: issue-498-linker-perf-benchmark
+current_phase: apply
+completed:
+  - explore
+  - propose
+  - spec
+  - design
+  - tasks
+next: apply
+apply_note: >-
+  Phase A (work unit 1 of 5; tasks 1.1-1.5, 2.1-2.2) implemented and validated:
+  dev-bench harness, timing sink, baseline captured in benchmark-baseline.md.
+  Phase B (tasks 3.1-3.4) and final bench/verification (4.1-4.2) are later
+  chained work units (PRs 2-5). Chain strategy in tasks.md still pending.
+updated: 2026-08-10

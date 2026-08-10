@@ -18,12 +18,14 @@ use discovery::matches_path_glob;
 use discovery::matches_pattern;
 #[cfg(test)]
 use discovery::path_glob_match_iter;
+pub use timing::TimingSink;
 
 mod apply;
 mod clean;
 mod discovery;
 mod paths;
 mod symlinks;
+pub mod timing;
 
 const COMPRESSED_AGENTS_MD_NAME: &str = "AGENTS.compact.md";
 
@@ -88,6 +90,10 @@ pub struct Linker {
     ensured_dirs: RefCell<HashSet<PathBuf>>,
     ensured_compressed: RefCell<HashSet<PathBuf>>,
     canonical_project_root: RefCell<Option<Rc<PathBuf>>>,
+    /// Timing sink for the developer-only benchmark harness. `None` in normal
+    /// runs, where the guarded spans short-circuit without any `Instant::now`
+    /// cost.
+    timing: RefCell<Option<Rc<RefCell<TimingSink>>>>,
 }
 
 impl Linker {
@@ -107,7 +113,18 @@ impl Linker {
             ensured_dirs: RefCell::new(HashSet::new()),
             ensured_compressed: RefCell::new(HashSet::new()),
             canonical_project_root: RefCell::new(None),
+            timing: RefCell::new(None),
         }
+    }
+
+    /// Install (or remove) the wall-clock timing sink used by the developer
+    /// benchmark harness.
+    ///
+    /// Bench-only: normal operation never calls this, so `timing_span` returns
+    /// `None` and the sync engine records no timings and pays no
+    /// `Instant::now` cost.
+    pub fn set_timing(&self, sink: Option<Rc<RefCell<TimingSink>>>) {
+        *self.timing.borrow_mut() = sink;
     }
 
     /// Get the project root path

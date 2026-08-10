@@ -6,6 +6,7 @@ use std::path::{Component, Path, PathBuf};
 use std::rc::Rc;
 
 use super::Linker;
+use super::timing::SpanKind;
 
 impl Linker {
     /// Drop path canonicalization cache after filesystem mutations that can affect
@@ -242,6 +243,7 @@ impl Linker {
         to: &Path,
         allow_missing: bool,
     ) -> Result<PathBuf> {
+        let _span = self.timing_span(SpanKind::Canonicalize);
         let from_dir = from.parent().unwrap_or(from);
 
         // Canonicalize paths for accurate relative calculation

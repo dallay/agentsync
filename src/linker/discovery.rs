@@ -6,6 +6,7 @@ use std::path::Path;
 use std::rc::Rc;
 use walkdir::WalkDir;
 
+use super::timing::SpanKind;
 use super::{Linker, NestedGlobKey, NestedGlobMatches, ResolvedSource, SyncOptions, SyncResult};
 
 impl Linker {
@@ -163,6 +164,7 @@ impl Linker {
         excludes: &[String],
         options: &SyncOptions,
     ) -> Result<NestedGlobMatches> {
+        let _span = self.timing_span(SpanKind::Discovery);
         let key: NestedGlobKey = (
             search_root.to_path_buf(),
             glob_pattern.to_string(),

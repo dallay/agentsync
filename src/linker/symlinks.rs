@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use crate::config::TargetConfig;
 
 use super::matches_pattern;
+use super::timing::SpanKind;
 use super::{ExistingSymlinkAction, Linker, ResolvedSource, SyncOptions, SyncResult};
 
 impl Linker {
@@ -21,6 +22,7 @@ impl Linker {
         options: &SyncOptions,
     ) -> Result<SyncResult> {
         let mut result = SyncResult::default();
+        let _span = self.timing_span(SpanKind::LinkCreation);
 
         // Check if source exists
         if !source.exists {
