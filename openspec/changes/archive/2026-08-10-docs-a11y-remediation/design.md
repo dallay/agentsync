@@ -94,13 +94,13 @@ custom.css (unlayered)                 Starlight layers           Hero scoped st
 |-------------|---------------|
 | Hero visible, no animation under reduced motion | DevTools emulate `prefers-reduced-motion: reduce` → screenshot: `opacity: 1`, no keyframe animations running |
 | Dark muted ≥ 4.5:1 | Computed 5.85:1 + DevTools contrast checker on footer tagline/copy (dark) |
-| Touch targets ≥ 44px | `getBoundingClientRect().height` on search button, theme select, tabs in `reference/cli.mdx` (72 buttons) |
+| Touch targets ≥ 44px | `getBoundingClientRect().height` on search button, theme select, tabs in `reference/cli.mdx` (68 tab buttons) |
 | No `.gradient-text` duplication | grep → single definition; logo still renders gradient |
-| Build | `pnpm run docs:build` passes; Lighthouse a11y spot-check |
+| Build | `pnpm run docs:build` passes |
 
 ## Migration / Rollout
 
-No migration. Single reversible commit (`git revert`), two files only. No flags.
+No migration. Single reversible commit: runtime implementation changes in two files only (`custom.css` + `Footer.astro`). `git revert` removes the complete commit including runtime changes, OpenSpec specifications, and archive records. No flags.
 
 ## Open Questions
 

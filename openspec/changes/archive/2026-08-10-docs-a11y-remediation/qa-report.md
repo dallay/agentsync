@@ -14,12 +14,12 @@
 
 Read in full before testing:
 
-- `openspec/changes/docs-a11y-remediation/proposal.md`
-- `openspec/changes/docs-a11y-remediation/spec.md` — 5 requirements, 11 scenarios (acceptance criteria)
-- `openspec/changes/docs-a11y-remediation/design.md`
-- `openspec/changes/docs-a11y-remediation/tasks.md`
-- `openspec/changes/docs-a11y-remediation/verify-report.md` — technical conformance **PASS** (5/5 reqs, 11/11 scenarios, no CRITICAL/WARNING). Handoff notes used: token `#858e9a`, block custom.css:342-361, touch rules :153/:174/:178-179, build exit 0, `.sl-anchor-link` hit area, `.card:hover` not live-exercised (SUGGESTION), mobile viewport not emulated (SUGGESTION).
-- `openspec/changes/docs-a11y-remediation/state.yaml`
+- `openspec/changes/archive/2026-08-10-docs-a11y-remediation/proposal.md`
+- `openspec/changes/archive/2026-08-10-docs-a11y-remediation/spec.md` — 5 requirements, 10 scenarios (acceptance criteria)
+- `openspec/changes/archive/2026-08-10-docs-a11y-remediation/design.md`
+- `openspec/changes/archive/2026-08-10-docs-a11y-remediation/tasks.md`
+- `openspec/changes/archive/2026-08-10-docs-a11y-remediation/verify-report.md` — technical conformance **PASS** (5/5 reqs, 10/10 scenarios, no CRITICAL/WARNING). Handoff notes used: token `#858e9a`, block custom.css:342-361, touch rules :153/:174/:178-179, build exit 0, `.sl-anchor-link` hit area, `.card:hover` not live-exercised (SUGGESTION), mobile viewport not emulated (SUGGESTION).
+- `openspec/changes/archive/2026-08-10-docs-a11y-remediation/state.yaml`
 - `openspec/config.yaml` — no QA-specific policy overrides.
 
 **Handoff contract**: verify owns technical conformance (static + live vs spec). QA evaluates the same contract from the acceptance perspective: does the delivered behavior satisfy what the user was promised, in the real running site? QA does not re-derive verify's static analysis; it independently exercises observable behavior and re-runs the build for acceptance evidence.
@@ -62,7 +62,7 @@ Read in full before testing:
 | Security / unauthorized-access scenarios | **Rejected (N/A)** | No auth or privilege surface; static content site |
 | Physical-device touch testing | **Unavailable** | Headless browser only; viewport emulation used instead |
 
-## 5. Scenario Matrix (11/11 tested)
+## 5. Scenario Matrix (10/10 tested)
 
 ### REQ 1 — Hero Remains Visible And Static Under Reduced Motion
 
@@ -101,7 +101,7 @@ Read in full before testing:
 
 ## 6. Untested Scope, Reason, Rerun Prerequisite
 
-**None of the 11 spec scenarios left untested — coverage 11/11 across all 5 requirements.**
+**None of the 10 spec scenarios left untested — coverage 10/10 across all 5 requirements.**
 
 Non-applicable categories recorded in the capability inventory (API, persistence, i18n, security): the change is a CSS-only visual remediation of a static docs site; no such user surface exists to exercise.
 
@@ -125,7 +125,7 @@ No CRITICAL, P0, P1, or P2 findings. Nothing breaks acceptance.
 
 ## 9. Verdict Rationale and Implementation Handoff
 
-**Rationale**: All 11 acceptance scenarios from the spec were exercised against the running site and passed with numeric, observable evidence. The user-facing promises hold in practice:
+**Rationale**: All 10 acceptance scenarios from the spec were exercised against the running site and passed with numeric, observable evidence. The user-facing promises hold in practice:
 
 - Reduced-motion users get a fully visible (`opacity: 1`) static hero with all four entrance/infinite animations disabled, and hover interactivity still responds; the majority (no-preference) still sees the animated hero.
 - Dark-mode footer text now measures 5.85:1 (was a failing ~4.01:1 per baseline diff), light mode untouched at 4.76:1.
