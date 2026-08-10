@@ -1,0 +1,302 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-10T10:11:04Z",
+  "title": "Design System: AgentSync Docs",
+  "extensions": {
+    "colorMeta": {
+      "neon-cyan": {
+        "role": "primary",
+        "displayName": "Neon Cyan",
+        "canonical": "#00e5c4",
+        "tonalRamp": [
+          "oklch(0.18 0.06 175)",
+          "oklch(0.28 0.09 175)",
+          "oklch(0.38 0.11 175)",
+          "oklch(0.50 0.14 175)",
+          "oklch(0.63 0.16 175)",
+          "oklch(0.77 0.15 175)",
+          "oklch(0.87 0.12 175)",
+          "oklch(0.97 0.04 175)"
+        ]
+      },
+      "data-violet": {
+        "role": "secondary",
+        "displayName": "Data Violet",
+        "canonical": "#7c4dff",
+        "tonalRamp": [
+          "oklch(0.20 0.08 285)",
+          "oklch(0.30 0.12 285)",
+          "oklch(0.40 0.16 285)",
+          "oklch(0.50 0.21 285)",
+          "oklch(0.58 0.24 285)",
+          "oklch(0.67 0.20 285)",
+          "oklch(0.80 0.12 285)",
+          "oklch(0.95 0.04 285)"
+        ]
+      },
+      "terminal-black": {
+        "role": "neutral",
+        "displayName": "Terminal Black",
+        "canonical": "#07070a",
+        "tonalRamp": [
+          "oklch(0.03 0 0)",
+          "oklch(0.06 0 0)",
+          "oklch(0.10 0 0)",
+          "oklch(0.18 0 0)",
+          "oklch(0.30 0 0)",
+          "oklch(0.48 0 0)",
+          "oklch(0.72 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "elevated-black": {
+        "role": "neutral",
+        "displayName": "Elevated Black",
+        "canonical": "#0d0d12",
+        "tonalRamp": [
+          "oklch(0.05 0.004 260)",
+          "oklch(0.08 0.006 260)",
+          "oklch(0.12 0.008 260)",
+          "oklch(0.20 0.010 260)",
+          "oklch(0.32 0.012 260)",
+          "oklch(0.50 0.012 260)",
+          "oklch(0.73 0.010 260)",
+          "oklch(0.95 0.005 260)"
+        ]
+      },
+      "slate-gray": {
+        "role": "neutral",
+        "displayName": "Slate Gray",
+        "canonical": "#9aa7b3",
+        "tonalRamp": [
+          "oklch(0.18 0.012 240)",
+          "oklch(0.28 0.016 240)",
+          "oklch(0.38 0.018 240)",
+          "oklch(0.48 0.020 240)",
+          "oklch(0.58 0.020 240)",
+          "oklch(0.68 0.018 240)",
+          "oklch(0.80 0.014 240)",
+          "oklch(0.95 0.006 240)"
+        ]
+      },
+      "muted-gray": {
+        "role": "neutral",
+        "displayName": "Muted Gray",
+        "canonical": "#858e9a",
+        "tonalRamp": [
+          "oklch(0.18 0.010 240)",
+          "oklch(0.28 0.012 240)",
+          "oklch(0.38 0.014 240)",
+          "oklch(0.48 0.015 240)",
+          "oklch(0.56 0.016 240)",
+          "oklch(0.64 0.015 240)",
+          "oklch(0.78 0.010 240)",
+          "oklch(0.94 0.004 240)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Hero title only — the signature expressive moment."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Section headings and page H1s."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Card titles, sidebar entries."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Documentation prose, hero sub."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Buttons, tabs, badges, footer links."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "All code: commands, config keys, inline code."
+      }
+    },
+    "shadows": [
+      {
+        "name": "shadow-sm",
+        "value": "0 2px 8px rgba(0, 0, 0, 0.3)",
+        "purpose": "Code blocks at rest."
+      },
+      {
+        "name": "shadow-md",
+        "value": "0 8px 24px rgba(0, 0, 0, 0.4)",
+        "purpose": "Card and feature-item hover lift."
+      },
+      {
+        "name": "shadow-lg",
+        "value": "0 16px 48px rgba(0, 0, 0, 0.5)",
+        "purpose": "Overlay-level emphasis."
+      },
+      {
+        "name": "shadow-glow",
+        "value": "0 0 40px rgba(0, 229, 196, 0.25)",
+        "purpose": "Pulse-glow animation on primary CTA."
+      }
+    ],
+    "motion": [
+      {
+        "name": "transition-fast",
+        "value": "150ms ease",
+        "purpose": "Color and micro-state transitions."
+      },
+      {
+        "name": "transition-base",
+        "value": "250ms ease",
+        "purpose": "Card hover lift and border changes."
+      },
+      {
+        "name": "transition-slow",
+        "value": "400ms ease",
+        "purpose": "Reserved for larger movements."
+      },
+      {
+        "name": "fadeInUp",
+        "value": "fadeInUp 0.8s ease forwards",
+        "purpose": "Hero copy + visual entrance; requires opacity:1 restore under reduced motion."
+      },
+      {
+        "name": "float",
+        "value": "float 6s ease-in-out infinite",
+        "purpose": "Hero robot vertical drift ±12px."
+      },
+      {
+        "name": "pulse",
+        "value": "pulse 2s ease-in-out infinite",
+        "purpose": "Hero badge dot opacity pulse."
+      },
+      {
+        "name": "glow-pulse",
+        "value": "glow-pulse 4s ease-in-out infinite",
+        "purpose": "Robot glow scale/opacity breath."
+      }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "hero-collapse", "value": "900px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single action call-to-action: cyan-to-violet gradient with dark text and a soft glow.",
+      "html": "<button class=\"ds-btn-primary\">Get started<svg width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"none\" aria-hidden=\"true\"><path d=\"M3 8h10m0 0L9 4m4 4L9 12\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg></button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; gap: 8px; padding: 14px 24px; border: none; border-radius: 10px; background: linear-gradient(135deg, #00e5c4, #7c4dff); color: #07070a; font-family: 'Geist Sans', system-ui, sans-serif; font-size: 0.95rem; font-weight: 600; text-decoration: none; cursor: pointer; box-shadow: 0 8px 24px rgba(0, 229, 196, 0.2); transition: transform 150ms ease, box-shadow 150ms ease, background 150ms ease; } .ds-btn-primary:hover { transform: translateY(-2px) scale(1.02); box-shadow: 0 12px 32px rgba(0, 229, 196, 0.3); } .ds-btn-primary:hover svg { transform: translateX(4px); } .ds-btn-primary svg { transition: transform 150ms ease; } .ds-btn-primary:focus-visible { outline: 2px solid #00e5c4; outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Ghost action on translucent glass with hairline border; hover fills the surface.",
+      "html": "<button class=\"ds-btn-secondary\">View on GitHub</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; gap: 8px; padding: 14px 24px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; background: rgba(18, 18, 24, 0.6); color: #ffffff; font-family: 'Geist Sans', system-ui, sans-serif; font-size: 0.95rem; font-weight: 600; text-decoration: none; cursor: pointer; transition: background 150ms ease, border-color 150ms ease, transform 150ms ease; } .ds-btn-secondary:hover { background: #121218; border-color: rgba(255, 255, 255, 0.15); } .ds-btn-secondary:focus-visible { outline: 2px solid #00e5c4; outline-offset: 2px; }"
+    },
+    {
+      "name": "Feature Card",
+      "kind": "card",
+      "refersTo": "feature-card",
+      "description": "Glassmorphism information card: translucent fill, hairline border, lifts on hover.",
+      "html": "<div class=\"ds-card\"><span class=\"ds-card-icon\">🔗</span><h3 class=\"ds-card-title\">Instant Propagation</h3><p class=\"ds-card-desc\">Uses symbolic links instead of copies. Change a file once, and every assistant sees it immediately.</p></div>",
+      "css": ".ds-card { display: flex; flex-direction: column; padding: 24px; border-radius: 16px; background: rgba(18, 18, 24, 0.6); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); font-family: 'Geist Sans', system-ui, sans-serif; transition: transform 250ms ease, border-color 250ms ease, box-shadow 250ms ease; } .ds-card:hover { transform: translateY(-4px); border-color: rgba(255, 255, 255, 0.15); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); } .ds-card-icon { font-size: 2rem; line-height: 1; margin-bottom: 8px; } .ds-card-title { font-size: 1.1rem; font-weight: 600; margin: 0 0 8px 0; color: #ffffff; } .ds-card-desc { font-size: 0.9rem; line-height: 1.5; margin: 0; color: #9aa7b3; }"
+    },
+    {
+      "name": "Tech Badge",
+      "kind": "chip",
+      "refersTo": "tech-badge",
+      "description": "Small tool/brand chip with cyan status dot; surface fills on hover.",
+      "html": "<span class=\"ds-tech-badge\"><span class=\"ds-tech-dot\" aria-hidden=\"true\"></span>Claude</span>",
+      "css": ".ds-tech-badge { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 6px; background: rgba(18, 18, 24, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); font-family: 'Geist Sans', system-ui, sans-serif; font-size: 0.8rem; color: #9aa7b3; transition: background 150ms ease, color 150ms ease, border-color 150ms ease; } .ds-tech-badge:hover { background: #121218; color: #ffffff; border-color: rgba(255, 255, 255, 0.15); } .ds-tech-dot { width: 6px; height: 6px; border-radius: 50%; background: #00e5c4; opacity: 0.8; flex-shrink: 0; }"
+    },
+    {
+      "name": "Hero Badge",
+      "kind": "chip",
+      "refersTo": "hero-badge",
+      "description": "Pill status badge with pulsing cyan dot — the signature hero eyebrow.",
+      "html": "<span class=\"ds-hero-badge\"><span class=\"ds-hero-dot\" aria-hidden=\"true\"></span>Open Source · MIT License</span>",
+      "css": ".ds-hero-badge { display: inline-flex; align-items: center; gap: 8px; padding: 4px 16px; border-radius: 999px; background: rgba(0, 229, 196, 0.08); border: 1px solid rgba(0, 229, 196, 0.2); font-family: 'Geist Sans', system-ui, sans-serif; font-size: 0.8rem; color: #00e5c4; width: fit-content; } .ds-hero-dot { width: 6px; height: 6px; border-radius: 50%; background: #00e5c4; animation: ds-pulse 2s ease-in-out infinite; } @keyframes ds-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } } @media (prefers-reduced-motion: reduce) { .ds-hero-dot { animation: none; } }"
+    },
+    {
+      "name": "Inline Code",
+      "kind": "custom",
+      "refersTo": "mono",
+      "description": "Mono code chip: surface fill, hairline border, 4px radius.",
+      "html": "<code class=\"ds-inline-code\">agentsync apply</code>",
+      "css": ".ds-inline-code { font-family: 'Geist Mono', ui-monospace, 'Cascadia Code', monospace; font-size: 0.9em; background: #121218; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.08); color: #ffffff; }"
+    },
+    {
+      "name": "Footer Link",
+      "kind": "nav",
+      "refersTo": "slate-gray",
+      "description": "Footer navigation link: slate gray, cyan hover with fast transition.",
+      "html": "<a class=\"ds-footer-link\" href=\"#\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z\"/></svg>GitHub</a>",
+      "css": ".ds-footer-link { display: inline-flex; align-items: center; gap: 4px; color: #9aa7b3; text-decoration: none; font-family: 'Geist Sans', system-ui, sans-serif; font-size: 0.9rem; transition: color 150ms ease; } .ds-footer-link:hover { color: #00e5c4; } .ds-footer-link svg { opacity: 0.8; } .ds-footer-link:focus-visible { outline: 2px solid #00e5c4; outline-offset: 2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "El Terminal Luminoso",
+    "overview": "AgentSync Docs is a dark-first developer documentation site that reads like a well-tuned terminal session: deep near-black backgrounds, a single confident neon-cyan accent paired with data violet, and precise, restrained motion. The system treats the docs as tooling, not marketing — every visual decision serves scanability and trust. Light mode is a faithful paper mirror of the same system: the terminal becomes warm slate and white, the cyan accent yields to violet, and the hierarchy survives unchanged.\n\nThe personality is precise and alive: glass surfaces with soft blur sit on layered blacks; shadows appear on hover as a response to state, never at rest; gradient text is reserved for the product name and primary CTA — a signature, not decoration. Density is documentation-standard with generous breathing room: 4–64px spacing scale, max-width containers around 1100–1200px, and touch targets hardened to 44px for every interactive control.",
+    "keyCharacteristics": [
+      "Dark-first: layered blacks (#07070a → #121218) build depth without shadows at rest",
+      "Dual-accent palette: neon cyan (primary) + data violet (secondary), used with rarity",
+      "Glass surfaces: 12px backdrop blur + translucent cards, elevated by border-lightening on hover",
+      "Micro-motion only: fade-in-up entrance, glow pulse, float — all killed under prefers-reduced-motion",
+      "Developer voice: Geist Sans for UI, Geist Mono for code, tight tracking on display type",
+      "WCAG 2.2 AA baseline: muted text at 5.85:1 on elevated black, 44px touch targets"
+    ],
+    "rules": [
+      {
+        "name": "The Terminal Rarity Rule",
+        "body": "Cyan touches ≤10% of any screen: one gradient CTA, the badge dot, focus rings. When cyan appears twice on a surface, one of them is wrong.",
+        "section": "colors"
+      },
+      {
+        "name": "The Layered-Black Rule",
+        "body": "Depth comes from stacking --as-bg-base → --as-bg-elevated → --as-bg-surface, not from shadowing the background. Surfaces are flat at rest; shadow is a hover response.",
+        "section": "colors"
+      },
+      {
+        "name": "The Mono Contract",
+        "body": "Every command, file path, and flag is set in Geist Mono — never in sans. Code blocks: surface background, hairline border, --as-shadow-sm at rest. In light mode, code text is forced to readable ink (#1e293b blocks / #334155 inline).",
+        "section": "typography"
+      },
+      {
+        "name": "The Tight Display Rule",
+        "body": "Display and headline weights go 700–800 with negative tracking (-0.03em display). Body never drops below 1rem.",
+        "section": "typography"
+      },
+      {
+        "name": "The Glass-At-Rest Rule",
+        "body": "Cards are translucent glass at rest. Hover = border lightens (08→15) + lift + shadow. Never shadow a resting surface; never blur a solid surface.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do build every surface from the --as-* token scale (custom.css); never hardcode a hex in a component.",
+      "Do keep all 44px touch-target rules (site-search button, starlight-theme-select select, [role=\"tablist\"] [role=\"tab\"]) unlayered — unlayered author styles beat every Starlight @layer regardless of specificity.",
+      "Do preserve the reduced-motion block with its opacity: 1 restore on .animate-fade-in-up elements — killing the animation without the restore hides the hero.",
+      "Do use the global .gradient-text utility for gradient type; never re-declare it scoped in a component (it was duplicated in Footer and removed).",
+      "Do keep --as-text-muted at AA: #858e9a on dark (5.85:1), #64748b on light (4.76:1).",
+      "Do use :focus-visible (2px cyan outline, 2px offset) for keyboard focus everywhere.",
+      "Do let hover color go cyan in dark mode and violet in light mode ([data-theme=\"light\"] a:hover)."
+    ],
+    "donts": [
+      "Don't add shadows to resting surfaces — the system is flat at rest, depth is layering + hover.",
+      "Don't use !important to beat Starlight; raise specificity (unlayered rules, or (0,3,0) scoped selectors) instead.",
+      "Don't invent new color roles beyond the --as-* palette; if it needs a new value, add a token.",
+      "Don't put display type (clamp up to 3.5rem) outside the hero title — it's the signature moment.",
+      "Don't set body text below 1rem or in Geist Mono (mono is for code only).",
+      "Don't introduce new entrance animations without adding their selectors to the reduced-motion block."
+    ]
+  }
+}
