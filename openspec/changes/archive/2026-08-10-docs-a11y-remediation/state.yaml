@@ -1,0 +1,5 @@
+change: docs-a11y-remediation
+current_phase: archive
+completed: [explore, propose, spec, design, tasks, apply, verify, qa, archive]
+next: none
+updated: 2026-08-10
