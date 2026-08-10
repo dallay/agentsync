@@ -27,3 +27,7 @@ minimumReleaseAgeExclude:
   - astro@6.1.6
   # Renovate security update: sharp@0.35.0
   - sharp@0.35.0
+
+allowBuilds:
+  esbuild: set this to true or false
+  lefthook: set this to true or false

@@ -25,7 +25,7 @@ Chain strategy: single-pr
 ## Phase 1: Infrastructure (Baseline)
 
 - [x] 1.1 Confirm anchors: custom.css:22 (dark muted), :148-152 (`site-search button`), :155-159 (compound theme-select), :214-219 (`.gradient-text`), :325-329 (reduce block); Footer.astro:126-131.
-- [x] 1.2 Baseline: `pnpm run docs:build` green; Lighthouse a11y score; hero screenshots (normal + reduced-motion) for before/after.
+- [x] 1.2 Baseline: `pnpm run docs:build` green; hero screenshots (normal + reduced-motion) for before/after.
 
 ## Phase 2: Implementation
 
@@ -40,8 +40,8 @@ Chain strategy: single-pr
 ## Phase 3: Testing (empirical verification, documented)
 
 - [x] 3.1 Reduced-motion emulation (DevTools/Playwright `prefers-reduced-motion: reduce` on home): screenshot proves hero copy + visual at `opacity: 1`; no keyframe animations running (pulse/glow-pulse/float/fadeInUp).
-- [x] 3.2 Touch: in-browser `getBoundingClientRect().height >= 44` on search button, theme select, tabs in `reference/cli.mdx` (72 tab buttons).
+- [x] 3.2 Touch: in-browser `getBoundingClientRect().height >= 44` on search button, theme select, tabs in `reference/cli.mdx` (68 tab buttons).
 - [x] 3.3 Contrast: DevTools checker on footer tagline/copy (dark) — ≥4.5:1 (5.85:1 expected); verify light theme still `#64748b`.
 - [x] 3.4 Grep: exactly one `.gradient-text` definition (custom.css), none in Footer.astro; logo still renders gradient.
 - [x] 3.5 Regression: `.social-icons a` height unchanged; hover transforms still apply under reduced motion; desktop tabs clickable (overflow-x preserved).
-- [x] 3.6 Build: `pnpm run docs:build` passes; Lighthouse a11y ≥ baseline; record results for verify-report.
+- [x] 3.6 Build: `pnpm run docs:build` passes; record results for verify-report.

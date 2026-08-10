@@ -78,7 +78,7 @@ global unlayered utility applies the same result.
   (`user-components/Tabs.astro`), `padding: 0.275rem 1.25rem` + `line-height:
   var(--sl-line-height-headings)` ≈ 28px. Override `[role="tablist"] [role="tab"] { min-height:
   2.75rem; }` in custom.css. CSS only. Blast radius: 58 CommandTabs instances across 6 pages
-  (`reference/cli.mdx` alone: 18 → 72 tab buttons); `.tablist-wrapper` already has
+  (`reference/cli.mdx` alone: 18 CommandTabs → 68 tab buttons); `.tablist-wrapper` already has
   `overflow-x: auto`, so taller tabs scroll instead of wrapping on mobile.
 - **Heading anchor links**: `.sl-anchor-link` (visible ≈20x29) BUT already expands its hit area via
   `::after { inset: -0.25rem -0.5rem }` (`style/anchor-links.css`). Effective target ≈ 36-40px

@@ -48,7 +48,7 @@ CSS-only (exploration Approach 1). Rules added **unlayered** in `website/docs/sr
 
 ## Rollback Plan
 
-Revert the single commit: all changes live in 2 files (`custom.css` + `Footer.astro`); no markup, config, or data migration. `git revert` suffices.
+Revert the single commit: all runtime implementation changes live in 2 files (`custom.css` + `Footer.astro`); no markup, config, or data migration. `git revert` removes the complete commit including runtime changes, OpenSpec specifications, and archive records.
 
 ## Dependencies
 
