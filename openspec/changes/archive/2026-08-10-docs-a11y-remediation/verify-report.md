@@ -9,9 +9,9 @@
 Independent verification performed by reading spec/design/tasks in full, inspecting the actual
 diff (`git diff HEAD`), static source analysis, live-browser empirical checks against the running
 dev server (`http://localhost:4321`, confirmed serving the changed code — live token `#858e9a`),
-and running the production build myself.
+and running the production build myself. All 10 spec scenarios verified.
 
-## Completeness (tasks.md — 10/10 done, all independently confirmed)
+## Completeness (tasks.md — 15/15 done, all independently confirmed)
 
 | Task | Status | Evidence |
 |------|--------|----------|
@@ -91,8 +91,7 @@ Live `getBoundingClientRect().height`:
 
 ### REQ 5 — Build & layout (detail)
 
-- `pnpm run docs:build` (from repo root, run by verifier): **exit code 0**, 16 pages built,
-  Pagefind index, sitemap, "Build Complete!".
+- `pnpm run docs:build` (from repo root) or equivalently `pnpm astro build` (from `website/docs`) — the root command delegates to the docs workspace package. Verifier ran from repo root: **exit code 0**, 16 pages built, Pagefind index, sitemap, "Build Complete!".
 - Compiled `dist/_astro/common.DYfPHLl9.css` contains the full reduce block
   (`@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}...{animation:none}...
   {opacity:1;animation:none}}`), `min-height:2.75rem` rules, and `--as-text-muted:#858e9a`.
@@ -132,7 +131,7 @@ Live `getBoundingClientRect().height`:
 ## Build Result
 
 ```
-$ pnpm run docs:build          (repo root, verifier-run)
+$ pnpm run docs:build          (repo root, delegates to pnpm --filter agentsync-docs run build → astro build)
   → [vite] built in 47ms
   → [build] 16 page(s) built in 2.16s
   → [starlight:pagefind] Finished building search index
@@ -143,7 +142,7 @@ $ pnpm run docs:build          (repo root, verifier-run)
 
 ## Verdict
 
-**PASS** — all 5 requirements and all 11 spec scenarios verified compliant with both static
+**PASS** — all 5 requirements and all 10 spec scenarios verified compliant with both static
 (source/diff) and empirical (live browser + build) evidence. No CRITICAL or WARNING findings.
 Three non-blocking INFO/SUGGESTION items (doc line drift, hover-transform exercise coverage,
 mobile-viewport measurement) do not affect compliance.

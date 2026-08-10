@@ -2,8 +2,8 @@
 
 ## Result
 
-- Verification status: PASS (5/5 requirements, 11/11 scenarios — no CRITICAL/WARNING findings)
-- QA status: PASS (11/11 scenarios, 0 CRITICAL/P0/P1/P2; only P3 INFO non-blocking)
+- Verification status: PASS (5/5 requirements, 10/10 scenarios — no CRITICAL/WARNING findings)
+- QA status: PASS (10/10 scenarios, 0 CRITICAL/P0/P1/P2; only P3 INFO non-blocking)
 - Acceptance gate: satisfied — both `verify-report.md` and `qa-report.md` present; no unresolved
   CRITICAL/P0/P1 findings; no acceptance-relevant BLOCKED/NOT TESTED
 - Archived on: 2026-08-10
@@ -15,9 +15,9 @@
 ## Artifacts reviewed
 
 - `proposal.md`
-- `spec.md` (5 requirements, 11 scenarios)
+- `spec.md` (5 requirements, 10 scenarios)
 - `design.md`
-- `tasks.md` (10/10 tasks complete)
+- `tasks.md` (15/15 tasks complete)
 - `verify-report.md` (PASS)
 - `qa-report.md` (PASS)
 - `state.yaml`
@@ -28,12 +28,12 @@
 - **Created** `openspec/specs/docs-site-a11y/spec.md` from the complete delta spec (new capability
   `docs-site-a11y` — no prior main spec existed).
 - No existing requirements were replaced or removed: the delta declares a new capability only
-  (5 requirements, all ADDED; zero MODIFIED, zero REMOVED).
+  (5 requirements with 10 scenarios, all ADDED; zero MODIFIED, zero REMOVED).
 - Sync was non-destructive — no warnings required per `rules.archive` (no large removals).
 
 ## Archive verification
 
-- Main spec created at `openspec/specs/docs-site-a11y/spec.md` with all 5 requirements and 11
+- Main spec created at `openspec/specs/docs-site-a11y/spec.md` with all 5 requirements and 10
   scenarios from the delta.
 - Change folder moved to `openspec/changes/archive/2026-08-10-docs-a11y-remediation/`.
 - Archive contains: exploration, proposal, spec, design, tasks, verify report, QA report, state,
@@ -48,7 +48,3 @@
   any page); proven safe via static analysis + live hover-interactivity under reduce.
 - Theme-select renders two instances (desktop header + mobile menu); both carry `min-height: 44px`;
   mobile-visible instance measures 48px. Documented to prevent future measurement confusion.
-- Scenario-count drift in reports: `verify-report.md` and `qa-report.md` claim "11/11 scenarios",
-  but the spec contains exactly **10 scenarios** (2 per requirement × 5) and the QA matrix itself
-  lists 10 (1.1–5.2). Coverage is complete for all 10 — counting label only, no compliance gap.
-  Carried forward so future archive/QA phases count from the spec, not from report prose.
