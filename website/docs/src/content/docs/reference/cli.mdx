@@ -287,6 +287,38 @@ List all installed skills.
 agentsync skill list
 ```
 
+#### `registry`
+
+Validate and refresh the maintainer curated registry.
+
+```bash
+agentsync skill registry <COMMAND>
+```
+
+##### `validate`
+
+Validate a curated registry manifest against its lockfile constraints.
+
+```bash
+agentsync skill registry validate [OPTIONS]
+```
+
+**Options**:
+- `--manifest <MANIFEST>`: Path to the registry manifest file (defaults to `src/skills/registry.v1.toml`).
+- `--lock <LOCK>`: Path to the registry lockfile (defaults to `src/skills/registry.lock.toml`).
+
+##### `sync`
+
+Validate a curated registry manifest and atomically regenerate its lockfile.
+
+```bash
+agentsync skill registry sync [OPTIONS]
+```
+
+**Options**:
+- `--manifest <MANIFEST>`: Path to the registry manifest file (defaults to `src/skills/registry.v1.toml`).
+- `--lock <LOCK>`: Path to the registry lockfile (defaults to `src/skills/registry.lock.toml`).
+
 ---
 
 ### `doctor`
