@@ -37,6 +37,7 @@ pnpm-debug.log
 perf_test_data/
 tmp
 .opencode/package-lock.json
+/.playwright-mcp/
 # START AI Agent Symlinks
 .agent/commands
 .agent/commands.bak.*
@@ -85,4 +86,3 @@ GEMINI.md
 GEMINI.md.bak.*
 opencode.json
 # END AI Agent Symlinks
-/.playwright-mcp/
