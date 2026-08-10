@@ -10,6 +10,36 @@ next: apply
 apply_note: >-
   Phase A (work unit 1 of 5; tasks 1.1-1.5, 2.1-2.2) implemented and validated:
   dev-bench harness, timing sink, baseline captured in benchmark-baseline.md.
-  Phase B (tasks 3.1-3.4) and final bench/verification (4.1-4.2) are later
-  chained work units (PRs 2-5). Chain strategy in tasks.md still pending.
+
+  Phase B unit 2 (task 3.1, B1 scoped path_cache invalidation) implemented and
+  validated: Linker::invalidate_path(path) drops exact key + starts_with keys via
+  BTreeMap range scan (path_cache switched HashMap -> BTreeMap after the initial
+  HashMap::retain implementation regressed to O(N^2) at N=5000 and was reverted).
+  Full clears replaced at symlinks.rs:99,138,165 (dest + backup), clean.rs:96,
+  apply.rs:283; full clear kept at sync() start. TDD: 4 unit tests (sibling
+  from_dir reuse mid-run; cleared after 2nd sync(); exact+descendant drop;
+  sibling survives). Gates: linker_security 11/11, full suite 889 passed 0
+  failed, fmt + clippy clean. Bench B1 row recorded in benchmark-baseline.md:
+  flat-5000 warm 625.6 -> 528.7 ms (-15.5%), canonicalize 134.2 -> 92.9 ms
+  (-30.8%); nested-glob-5000 warm 844.7 -> 700.0 ms (-17.1%); small gate N=4
+  within noise band.
+
+  Phase B unit 3 (task 3.2, B2 single existence probe) implemented and
+  validated: create_symlink (symlinks.rs:47-77) now collapses dest.is_symlink()
+  + dest.exists() into ONE fs::symlink_metadata(dest) match (symlink -> existing
+  symlink incl. broken, Ok(_) -> .bak backup, NotFound -> created, other -> Err
+  propagated with context). Broken-symlink semantics preserved (lstat succeeds,
+  symlink path, never backup); counters/output/exit code unchanged. TDD: 6 unit
+  tests (nonexistent->created; regular->.bak backup; broken symlink->no backup;
+  valid symlink already-correct->skipped; valid symlink wrong-target->updated;
+  ELOOP dest in dry-run->Err). Note: 5 contract tests are behavior-preserving
+  characterization (green pre-change by design); the ELOOP probe-error test was
+  the genuine RED (current code silently reported created=1 for an unprobeable
+  dest). Gates: linker_security 11/11, full suite 895 passed 0 failed, fmt +
+  clippy clean. Bench B2 row recorded in benchmark-baseline.md: fresh-fixture
+  win is small as predicted (warm -0.6% to -4.3% across cells; flat-5000 warm
+  528.7 -> 520.1 ms; nested-glob-5000 700.0 -> 675.8 ms); small gate N=4
+  0.541 -> 0.518 ms, no regression; larger effect expected on re-run (existing
+  dest) scenarios. Remaining: tasks 3.3-3.4 (PRs 4-5), 4.1-4.2 (final). Chain
+  strategy in tasks.md still pending.
 updated: 2026-08-10

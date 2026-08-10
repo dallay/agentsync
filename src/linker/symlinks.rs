@@ -44,23 +44,38 @@ impl Linker {
         let allow_missing = options.dry_run && !source.path.exists();
         let relative_source = self.relative_path(dest, &source.path, allow_missing)?;
 
-        // Handle existing destination
-        if dest.is_symlink() {
-            let action = self.handle_existing_symlink(dest, &relative_source, options)?;
-            match action {
-                ExistingSymlinkAction::AlreadyCorrect => {
-                    result.skipped += 1;
-                    return Ok(result);
-                }
-                ExistingSymlinkAction::Updated => {
-                    result.updated += 1;
+        // Handle existing destination with a SINGLE existence-class probe.
+        // `symlink_metadata` does not follow the final component: a broken
+        // symlink still lstat-succeeds with `is_symlink() == true`, so it
+        // takes the symlink path (never the backup path) — the same semantics
+        // the previous `dest.is_symlink()` + `dest.exists()` pair produced,
+        // but with one syscall instead of two. `NotFound` means the
+        // destination is fresh; any other probe error is propagated instead
+        // of silently claiming the destination was created.
+        match fs::symlink_metadata(dest) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                let action = self.handle_existing_symlink(dest, &relative_source, options)?;
+                match action {
+                    ExistingSymlinkAction::AlreadyCorrect => {
+                        result.skipped += 1;
+                        return Ok(result);
+                    }
+                    ExistingSymlinkAction::Updated => {
+                        result.updated += 1;
+                    }
                 }
             }
-        } else if dest.exists() {
-            self.backup_existing_destination(dest, options)?;
-            result.updated += 1;
-        } else {
-            result.created += 1;
+            Ok(_) => {
+                self.backup_existing_destination(dest, options)?;
+                result.updated += 1;
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                result.created += 1;
+            }
+            Err(err) => {
+                return Err(err)
+                    .with_context(|| format!("Failed to probe destination: {}", dest.display()));
+            }
         }
 
         // Create the symlink
@@ -78,7 +93,6 @@ impl Linker {
             #[cfg(unix)]
             std::os::unix::fs::symlink(&relative_source, dest)
                 .with_context(|| format!("Failed to create symlink: {}", dest.display()))?;
-
             #[cfg(windows)]
             {
                 if source.path.is_dir() {
@@ -98,7 +112,9 @@ impl Linker {
                 }
             }
 
-            self.invalidate_path_cache();
+            // Scoped invalidation: only the mutated dest's canonical identity
+            // can have changed; sibling/ancestor entries stay cached.
+            self.invalidate_path(dest);
 
             println!(
                 "  {} Linked: {} -> {}",
@@ -137,7 +153,7 @@ impl Linker {
         } else {
             self.revalidate_unlink_path(dest)?;
             remove_symlink(dest)?;
-            self.invalidate_path_cache();
+            self.invalidate_path(dest);
             if options.verbose {
                 println!(
                     "  {} Removed old symlink: {} (was -> {})",
@@ -164,7 +180,10 @@ impl Linker {
             self.revalidate_path(&backup)?;
             remove_existing_path(&backup)?;
             fs::rename(dest, &backup)?;
-            self.invalidate_path_cache();
+            // The rename moves `dest` (now absent) to `backup` (now present);
+            // both prefixes must be re-canonicalized on next use.
+            self.invalidate_path(dest);
+            self.invalidate_path(&backup);
             self.invalidate_glob_cache();
             println!(
                 "  {} Backed up: {} -> {}",
@@ -307,7 +326,226 @@ pub(super) fn remove_symlink(path: &Path) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::Config;
+    use std::collections::BTreeMap;
     use tempfile::TempDir;
+
+    // ==========================================================================
+    // test helpers
+    // ==========================================================================
+
+    /// Build a `Linker` rooted at `project_root` with an empty (unused) config,
+    /// mirroring the helper in `paths.rs` tests. `create_symlink` is called
+    /// directly with a `ResolvedSource`, so the config contents are irrelevant.
+    #[cfg(unix)]
+    fn make_linker(project_root: &Path) -> Linker {
+        let agents_dir = project_root.join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+        let config_path = agents_dir.join("agentsync.toml");
+
+        let config = Config {
+            source_dir: ".".to_string(),
+            compress_agents_md: false,
+            default_agents: vec![],
+            agents: BTreeMap::new(),
+            gitignore: Default::default(),
+            mcp: Default::default(),
+            mcp_servers: Default::default(),
+        };
+
+        Linker::new(config, config_path)
+    }
+
+    /// Standard fixture: a real source file and a destination whose parent
+    /// (the project root) already exists. Returns the `TempDir` FIRST so it
+    /// stays alive (and the tree stays on disk) for the whole test scope.
+    #[cfg(unix)]
+    fn make_single_link_fixture() -> (TempDir, Linker, PathBuf, PathBuf) {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        let linker = make_linker(root);
+
+        let source = root.join(".agents").join("source.md");
+        fs::write(&source, "# Source").unwrap();
+        let dest = root.join("dest.md");
+
+        (temp, linker, source, dest)
+    }
+
+    // ==========================================================================
+    // create_symlink — single existence probe (B2, REQ: No Redundant
+    // Existence Probe). One `symlink_metadata` lstat must decide the branch;
+    // behavior for broken symlinks (symlink path, never backup) is preserved.
+    // ==========================================================================
+
+    #[test]
+    #[cfg(unix)]
+    fn create_symlink_nonexistent_dest_creates() {
+        let (_temp, linker, source, dest) = make_single_link_fixture();
+        let resolved = ResolvedSource {
+            path: source.clone(),
+            exists: true,
+        };
+
+        let result = linker
+            .create_symlink(&resolved, &dest, &SyncOptions::default())
+            .unwrap();
+
+        assert_eq!(result.created, 1);
+        assert_eq!(result.updated, 0);
+        assert_eq!(result.skipped, 0);
+        assert!(dest.is_symlink());
+        // The link must point at the resolved source.
+        let expected = linker.relative_path(&dest, &source, false).unwrap();
+        assert_eq!(fs::read_link(&dest).unwrap(), expected);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn create_symlink_regular_file_dest_backs_up() {
+        let (_temp, linker, source, dest) = make_single_link_fixture();
+        fs::write(&dest, "old content").unwrap();
+        let resolved = ResolvedSource {
+            path: source.clone(),
+            exists: true,
+        };
+
+        let result = linker
+            .create_symlink(&resolved, &dest, &SyncOptions::default())
+            .unwrap();
+
+        assert_eq!(result.updated, 1, "regular file must be backed up");
+        assert_eq!(result.created, 0);
+        // The original content survives as `<dest>.bak`.
+        let backup = backup_path_for_destination(&dest);
+        assert_eq!(fs::read_to_string(&backup).unwrap(), "old content");
+        // The destination is now a symlink to the source.
+        assert!(dest.is_symlink());
+        let expected = linker.relative_path(&dest, &source, false).unwrap();
+        assert_eq!(fs::read_link(&dest).unwrap(), expected);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn create_symlink_broken_symlink_no_backup() {
+        use std::os::unix::fs::symlink;
+
+        let (_temp, linker, source, dest) = make_single_link_fixture();
+        // A symlink whose target does not exist: `exists()` is false but the
+        // entry IS a symlink. It must take the symlink path — never the
+        // backup path — and be replaced with the correct target.
+        symlink("missing-target.md", &dest).unwrap();
+        assert!(dest.is_symlink());
+        assert!(!dest.exists());
+        let resolved = ResolvedSource {
+            path: source.clone(),
+            exists: true,
+        };
+
+        let result = linker
+            .create_symlink(&resolved, &dest, &SyncOptions::default())
+            .unwrap();
+
+        assert_eq!(result.updated, 1, "broken symlink must be updated");
+        assert_eq!(result.created, 0);
+        assert!(
+            !backup_path_for_destination(&dest).exists(),
+            "broken symlink must NOT be backed up"
+        );
+        assert!(dest.is_symlink());
+        let expected = linker.relative_path(&dest, &source, false).unwrap();
+        assert_eq!(fs::read_link(&dest).unwrap(), expected);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn create_symlink_valid_symlink_already_correct_skips() {
+        use std::os::unix::fs::symlink;
+
+        let (_temp, linker, source, dest) = make_single_link_fixture();
+        // Pre-link the destination to exactly the target create_symlink computes.
+        let expected = linker.relative_path(&dest, &source, false).unwrap();
+        symlink(&expected, &dest).unwrap();
+        assert!(dest.is_symlink());
+        assert!(dest.exists(), "target exists so this is a valid symlink");
+        let resolved = ResolvedSource {
+            path: source.clone(),
+            exists: true,
+        };
+
+        let result = linker
+            .create_symlink(&resolved, &dest, &SyncOptions::default())
+            .unwrap();
+
+        assert_eq!(result.skipped, 1);
+        assert_eq!(result.created, 0);
+        assert_eq!(result.updated, 0);
+        assert_eq!(fs::read_link(&dest).unwrap(), expected, "link unchanged");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn create_symlink_valid_symlink_wrong_target_updates() {
+        use std::os::unix::fs::symlink;
+
+        let (_temp, linker, source, dest) = make_single_link_fixture();
+        // A valid symlink (target exists) pointing at the WRONG target.
+        let stale = dest.parent().unwrap().join("stale-target.md");
+        fs::write(&stale, "stale").unwrap();
+        symlink("stale-target.md", &dest).unwrap();
+        let resolved = ResolvedSource {
+            path: source.clone(),
+            exists: true,
+        };
+
+        let result = linker
+            .create_symlink(&resolved, &dest, &SyncOptions::default())
+            .unwrap();
+
+        assert_eq!(result.updated, 1, "wrong-target symlink must be updated");
+        assert_eq!(result.created, 0);
+        assert!(
+            !backup_path_for_destination(&dest).exists(),
+            "symlink must never be backed up"
+        );
+        let expected = linker.relative_path(&dest, &source, false).unwrap();
+        assert_eq!(fs::read_link(&dest).unwrap(), expected);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn create_symlink_propagates_probe_error_on_loop_dest() {
+        use std::os::unix::fs::symlink;
+
+        let (_temp, linker, source, _) = make_single_link_fixture();
+        let root = source.parent().unwrap().parent().unwrap().to_path_buf();
+
+        // `root/loop` is a self-referential symlink, so any path through it
+        // (including `root/loop/loop/dest.md`) fails `symlink_metadata` with
+        // ELOOP. The single-probe implementation must propagate this error
+        // instead of silently claiming the destination was created.
+        let loop_link = root.join("loop");
+        symlink("loop", &loop_link).unwrap();
+        let dest = loop_link.join("loop").join("dest.md");
+        let resolved = ResolvedSource {
+            path: source,
+            exists: true,
+        };
+
+        let result = linker.create_symlink(
+            &resolved,
+            &dest,
+            &SyncOptions {
+                dry_run: true,
+                ..Default::default()
+            },
+        );
+
+        assert!(
+            result.is_err(),
+            "unprobeable destination must fail, not report created"
+        );
+    }
 
     // ==========================================================================
     // backup_path_for_destination

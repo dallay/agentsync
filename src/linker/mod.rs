@@ -6,7 +6,7 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -83,7 +83,10 @@ pub struct Linker {
     config_path: PathBuf,
     project_root: PathBuf,
     source_dir: PathBuf,
-    path_cache: RefCell<HashMap<PathBuf, Rc<PathBuf>>>,
+    /// Canonicalize cache. `BTreeMap` (sorted keys) so scoped invalidation can
+    /// remove a path prefix via a contiguous range scan in O(log n + m) instead
+    /// of scanning the whole map per mutation.
+    path_cache: RefCell<BTreeMap<PathBuf, Rc<PathBuf>>>,
     compression_cache: RefCell<HashMap<PathBuf, Rc<str>>>,
     /// Cache for NestedGlob discovery results: (search_root, pattern, excludes) -> [(full_path, rel_path)]
     glob_cache: RefCell<HashMap<NestedGlobKey, NestedGlobMatches>>,
@@ -107,7 +110,7 @@ impl Linker {
             config_path,
             project_root,
             source_dir,
-            path_cache: RefCell::new(HashMap::new()),
+            path_cache: RefCell::new(BTreeMap::new()),
             compression_cache: RefCell::new(HashMap::new()),
             glob_cache: RefCell::new(HashMap::new()),
             ensured_dirs: RefCell::new(HashSet::new()),

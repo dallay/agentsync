@@ -282,7 +282,7 @@ impl Linker {
         }
         fs::write(dest, compressed.as_bytes())
             .with_context(|| format!("Failed to write compressed AGENTS.md: {}", dest.display()))?;
-        self.invalidate_path_cache();
+        self.invalidate_path(dest);
         self.invalidate_glob_cache();
 
         self.ensured_compressed

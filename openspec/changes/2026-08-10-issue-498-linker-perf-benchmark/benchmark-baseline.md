@@ -58,12 +58,41 @@ nested-glob          5000     5000    855.969ms    844.723ms    114.416ms     19
 - **Small-repo gate** (flat, N=4): warm 0.6 ms, cold 0.9 ms — comfortably inside the 3–5 ms no-regression band with margin.
 - **Biggest cost center**: link creation (incl. canonicalize) — 80–90% of total on the 5000 cells, consistent with per-link `source.exists()` probe + `relative_path` canonicalization. These are the Phase B targets (B1/B2/B3).
 
+## B2 observation (unit 3, PR 3)
+
+B2 collapses the `dest.is_symlink()` + `dest.exists()` pair in `create_symlink` into a single
+`fs::symlink_metadata` lstat. It removes exactly one existence-class syscall per destination, but
+the bench cells use FRESH fixtures (every link is a `created`), so the measured win is small
+(−0.6% to −4.3% warm) — the optimization's larger effect shows on re-run scenarios where the
+destination already exists (two probes → one). No regression on the small gate (N=4: 0.541 →
+0.518 ms). Note: the nested-glob N=5000 `discovery` attribution (206.4 ms this capture vs 129.2 ms
+baseline) is run variance in the final-run walk span, unrelated to B2 (B2 does not touch discovery).
+
 ## Before / After (Phase B commits — filled by units 2–5)
+
+B1 (unit 2, PR 2): scoped `path_cache` invalidation — `invalidate_path(path)` (exact key +
+descendants) replaces full clears after every symlink mutation; full clear kept at `sync()` start.
+`path_cache` moved to `BTreeMap` so prefix removal is a contiguous range scan (O(log n + m)) rather
+than a per-mutation full-map scan (the initial `HashMap::retain` implementation measured O(N²) at
+N=5000 and was reverted). After numbers = mean of two clean 5-run captures on the same machine
+(load avg ~8–11 during capture).
 
 | Opt | Cell | Before (baseline) | After | Delta |
 |---|---|---|---|---|
-| B1 path_cache invalidation | (pending) | | | |
-| B2 single existence probe | (pending) | | | |
+| B1 path_cache invalidation | flat N=4 (small gate) | warm 0.606 ms; canonicalize 0.104 ms | warm 0.541 ms; canonicalize 0.067 ms | −10.7% warm — within noise band, no regression |
+| B1 path_cache invalidation | flat N=100 | warm 13.492 ms; canonicalize 3.562 ms | warm 10.058 ms; canonicalize 1.500 ms | −25.5% warm; −57.9% canonicalize |
+| B1 path_cache invalidation | flat N=1000 | warm 126.419 ms; canonicalize 27.145 ms | warm 103.526 ms; canonicalize 18.034 ms | −18.1% warm; −33.6% canonicalize |
+| B1 path_cache invalidation | flat N=5000 | warm 625.598 ms; canonicalize 134.239 ms | warm 528.703 ms; canonicalize 92.900 ms | −15.5% warm; −30.8% canonicalize |
+| B1 path_cache invalidation | nested-glob N=100 | warm 21.967 ms; canonicalize 4.152 ms | warm 19.397 ms; canonicalize 3.046 ms | −11.7% warm; −26.6% canonicalize |
+| B1 path_cache invalidation | nested-glob N=1000 | warm 160.244 ms; canonicalize 37.807 ms | warm 134.435 ms; canonicalize 24.671 ms | −16.1% warm; −34.7% canonicalize |
+| B1 path_cache invalidation | nested-glob N=5000 | warm 844.723 ms; canonicalize 199.190 ms | warm 699.955 ms; canonicalize 125.038 ms | −17.1% warm; −37.2% canonicalize |
+| B2 single existence probe | flat N=4 (small gate) | warm 0.541 ms; canonicalize 0.067 ms | warm 0.518 ms; canonicalize 0.067 ms | −4.3% warm — within noise band, no regression |
+| B2 single existence probe | flat N=100 | warm 10.058 ms; canonicalize 1.500 ms | warm 9.960 ms; canonicalize 1.616 ms | −1.0% warm; canonicalize within noise |
+| B2 single existence probe | flat N=1000 | warm 103.526 ms; canonicalize 18.034 ms | warm 102.871 ms; canonicalize 17.430 ms | −0.6% warm; −3.3% canonicalize |
+| B2 single existence probe | flat N=5000 | warm 528.703 ms; canonicalize 92.900 ms | warm 520.139 ms; canonicalize 90.879 ms | −1.6% warm; −2.2% canonicalize |
+| B2 single existence probe | nested-glob N=100 | warm 19.397 ms; canonicalize 3.046 ms | warm 18.709 ms; canonicalize 3.041 ms | −3.5% warm |
+| B2 single existence probe | nested-glob N=1000 | warm 134.435 ms; canonicalize 24.671 ms | warm 132.077 ms; canonicalize 24.016 ms | −1.8% warm; −2.7% canonicalize |
+| B2 single existence probe | nested-glob N=5000 | warm 699.955 ms; canonicalize 125.038 ms | warm 675.811 ms; canonicalize 124.267 ms | −3.5% warm; −0.6% canonicalize |
 | B3 DirEntry reuse | (pending) | | | |
 | B4 sorted iteration + final metrics | (pending) | | | |
 
