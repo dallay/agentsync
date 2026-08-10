@@ -78,7 +78,6 @@ impl Linker {
             #[cfg(unix)]
             std::os::unix::fs::symlink(&relative_source, dest)
                 .with_context(|| format!("Failed to create symlink: {}", dest.display()))?;
-
             #[cfg(windows)]
             {
                 if source.path.is_dir() {
@@ -98,7 +97,9 @@ impl Linker {
                 }
             }
 
-            self.invalidate_path_cache();
+            // Scoped invalidation: only the mutated dest's canonical identity
+            // can have changed; sibling/ancestor entries stay cached.
+            self.invalidate_path(dest);
 
             println!(
                 "  {} Linked: {} -> {}",
@@ -137,7 +138,7 @@ impl Linker {
         } else {
             self.revalidate_unlink_path(dest)?;
             remove_symlink(dest)?;
-            self.invalidate_path_cache();
+            self.invalidate_path(dest);
             if options.verbose {
                 println!(
                     "  {} Removed old symlink: {} (was -> {})",
@@ -164,7 +165,10 @@ impl Linker {
             self.revalidate_path(&backup)?;
             remove_existing_path(&backup)?;
             fs::rename(dest, &backup)?;
-            self.invalidate_path_cache();
+            // The rename moves `dest` (now absent) to `backup` (now present);
+            // both prefixes must be re-canonicalized on next use.
+            self.invalidate_path(dest);
+            self.invalidate_path(&backup);
             self.invalidate_glob_cache();
             println!(
                 "  {} Backed up: {} -> {}",

@@ -34,7 +34,7 @@ Changed lines est.: 800–1,150 · delivery: ask-on-risk.
 
 ## Phase 3: Implementation — Phase B optimizations (TDD, one commit each)
 
-- [ ] 3.1 B1: failing unit (siblings reuse cached `from_dir` mid-run; empty after 2nd `sync()`) → `invalidate_path(path)` in `src/linker/paths.rs` (drop exact key + `starts_with` keys); replace full clears at `symlinks.rs:99,138,165`, `clean.rs:96`, `apply.rs:283`; keep full clear at `sync()` start; `cargo test --test all_tests unit::linker_security`.
+- [x] 3.1 B1: failing unit (siblings reuse cached `from_dir` mid-run; empty after 2nd `sync()`) → `invalidate_path(path)` in `src/linker/paths.rs` (drop exact key + `starts_with` keys); replace full clears at `symlinks.rs:99,138,165`, `clean.rs:96`, `apply.rs:283`; keep full clear at `sync()` start; `cargo test --test all_tests unit::linker_security`.
 - [ ] 3.2 B2: failing unit (nonexistent→created, regular→`.bak`, broken symlink→no backup) → single `fs::symlink_metadata(dest)` match in `create_symlink` (`symlinks.rs:46-57`); counters unchanged.
 - [ ] 3.3 B3: failing unit (no duplicate per-child stat; counters identical) → `resolve_source_path_with_hint(..., Some(true))` (`apply.rs:206/:235`) from contents loop (`symlinks.rs:255`); compression/revalidate unchanged.
 - [ ] 3.4 B4: failing integration (two runs → byte-identical stdout) → `read_dir` collect + `sort_by_key(file_name)` (`symlinks.rs:237`); `WalkDir::new(..).sort_by_file_name()` (`discovery.rs:213`); update order-asserting contracts (none exist); `cargo test --test all_tests`.
