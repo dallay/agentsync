@@ -31,6 +31,10 @@ export default defineConfig({
 			],
 			sidebar: [
 				{
+					label: "Core Concepts",
+					items: [{ label: "Sync Types", slug: "concepts/sync-types" }],
+				},
+				{
 					label: "Guides",
 					items: [
 						{ label: "Getting Started", slug: "guides/getting-started" },
@@ -48,13 +52,27 @@ export default defineConfig({
 						},
 						{ label: "MCP Integration", slug: "guides/mcp" },
 						{ label: "Skills", slug: "guides/skills" },
-						{ label: "Development", slug: "guides/development" },
-						{ label: "Contributing", slug: "guides/contributing" },
 					],
 				},
 				{
 					label: "Reference",
-					items: [{ autogenerate: { directory: "reference" } }],
+					items: [
+						{ label: "CLI", slug: "reference/cli" },
+						{ label: "Configuration", slug: "reference/configuration" },
+						{ label: "Status Output", slug: "reference/status-output" },
+					],
+				},
+				{
+					label: "For Developers",
+					items: [
+						{ label: "Contributing", slug: "contributing/contributing" },
+						{ label: "Development", slug: "contributing/development" },
+						{ label: "Workspaces", slug: "contributing/workspaces" },
+						{
+							label: "CLI and TUI Compatibility Contract",
+							slug: "contributing/cli-tui-contract",
+						},
+					],
 				},
 			],
 		}),

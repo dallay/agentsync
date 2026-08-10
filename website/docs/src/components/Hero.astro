@@ -1,6 +1,4 @@
 ---
-import { Icon } from "@astrojs/starlight/components";
-import Rust from "~icons/devicon-plain/rust";
 import { withBase } from "../utils/links";
 
 const heroFromProps = Astro.props?.hero;
@@ -26,7 +24,7 @@ const actions = (
 			link: "/guides/getting-started/",
 			variant: "primary",
 		},
-		{ text: "Contribute", link: "/guides/contributing/", variant: "secondary" },
+		{ text: "Contribute", link: "/contributing/contributing/", variant: "secondary" },
 	]
 ).map((action) => ({
 	...action,
@@ -77,23 +75,40 @@ const actions = (
       </div>
       <div class="hero-tech-badges">
         <span class="tech-badge">
-          <Icon name="pnpm" label="pnpm logo" />
-          pnpm
+          <span class="tech-dot" aria-hidden="true"></span>
+          Claude
         </span>
         <span class="tech-badge">
-          <Rust aria-hidden />
-          Cargo
+          <span class="tech-dot" aria-hidden="true"></span>
+          Copilot
         </span>
         <span class="tech-badge">
-          <Icon name="astro" label="Astro logo" />
-          Astro
+          <span class="tech-dot" aria-hidden="true"></span>
+          Cursor
+        </span>
+        <span class="tech-badge">
+          <span class="tech-dot" aria-hidden="true"></span>
+          Gemini
+        </span>
+        <span class="tech-badge">
+          <span class="tech-dot" aria-hidden="true"></span>
+          Codex
+        </span>
+        <span class="tech-badge">
+          <span class="tech-dot" aria-hidden="true"></span>
+          OpenCode
         </span>
       </div>
     </div>
     <div class="hero-visual animate-fade-in-up" style="animation-delay: 0.15s;">
       <div class="robot-wrap">
         <div class="robot-glow" aria-hidden="true"></div>
-        <img src={imageFile} alt="agentsync robot" class="robot" />
+        <img
+          src={imageFile}
+          alt="agentsync robot"
+          class="robot"
+          fetchpriority="high"
+        />
       </div>
     </div>
   </div>
@@ -290,18 +305,23 @@ const actions = (
     border: 1px solid var(--as-border, rgba(255, 255, 255, 0.08));
     border-radius: var(--as-radius-sm, 6px);
     font-size: 0.8rem;
-    color: var(--as-text-muted, #6b7280);
+    color: var(--as-text-secondary, #9aa7b3);
     transition: all var(--as-transition-fast, 150ms ease);
   }
 
   .tech-badge:hover {
     background: var(--as-bg-surface, rgba(255, 255, 255, 0.06));
-    color: var(--as-text-secondary, #9aa7b3);
+    color: var(--as-text-primary, #fff);
     border-color: var(--as-border-hover, rgba(255, 255, 255, 0.15));
   }
 
-  .tech-badge svg {
-    opacity: 0.7;
+  .tech-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--as-primary, #00e5c4);
+    opacity: 0.8;
+    flex-shrink: 0;
   }
 
   /* ===== Hero Visual ===== */

@@ -42,7 +42,8 @@ We use `thiserror` for defining custom, recoverable errors in the core logic and
 The JS workspace acts as a wrapper to provide an easy installation path via `pnpm/npm`. It manages platform-specific binary downloads and provides a programmatic API.
 
 ### Tools & Version
-- **Node.js**: v24.14.0+ (recommended for development)
+- **Node.js**: >=18 (required, matching `npm/agentsync`'s `engines`)
+- **Node.js (development)**: v24.14.0+ (optional recommendation, see `.nvmrc`)
 - **Package Manager**: `pnpm` 10+
 - **Location**: `npm/agentsync/`
 

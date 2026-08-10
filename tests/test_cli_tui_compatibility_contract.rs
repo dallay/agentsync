@@ -2,8 +2,9 @@ use std::fs;
 
 #[test]
 fn cli_tui_compatibility_contract_documents_required_topics() {
-    let contract = fs::read_to_string("website/docs/src/content/docs/cli-tui-compatibility.md")
-        .expect("CLI/TUI compatibility contract should be documented");
+    let contract =
+        fs::read_to_string("website/docs/src/content/docs/contributing/cli-tui-contract.md")
+            .expect("CLI/TUI compatibility contract should be documented");
 
     for required_topic in [
         "--json",

@@ -1,0 +1,126 @@
+---
+title: Sync Types
+description: The four sync types — symlink, symlink-contents, nested-glob, and module-map — with examples and when to use each.
+---
+
+import BaseLink from "../../../components/BaseLink.astro";
+
+Every target in your `agentsync.toml` config — every entry under
+`[agents.<name>.targets.*]` — has a **sync type**. The sync type defines how AgentSync turns a
+source into managed destination symlinks.
+
+| Sync type | What it does | Best for |
+| :--- | :--- | :--- |
+| `symlink` | One direct symlink from destination to source (file or whole directory) | The common case: `CLAUDE.md`, `.claude/skills/` |
+| `symlink-contents` | One symlink per eligible item inside a source directory | Command directories, skills when the destination must stay a real directory |
+| `nested-glob` | Recursively discover files by glob pattern, one symlink per match with template destinations | Monorepos with nested context files |
+| `module-map` | Map specific source files to specific module directories | Distributing context files across modules |
+
+## `symlink`
+
+Creates a direct symbolic link at `destination` pointing to `source`. If `source` is a directory,
+the entire directory is linked.
+
+```toml
+[agents.claude.targets.instructions]
+source = "AGENTS.md"
+destination = "CLAUDE.md"
+type = "symlink"
+```
+
+## `symlink-contents`
+
+Creates individual symbolic links for every eligible file *inside* the `source` directory, placed
+into the `destination` directory container. The destination stays a real directory.
+
+```toml
+[agents.claude.targets.commands]
+source = "commands"
+destination = ".claude/commands"
+type = "symlink-contents"
+```
+
+You can filter which items are linked with a glob `pattern`:
+
+```toml
+[agents.claude.targets.commands]
+source = "commands"
+destination = ".claude/commands"
+type = "symlink-contents"
+pattern = "*.agent.md"
+```
+
+When the source has zero eligible entries, the destination remains a valid empty directory —
+`agentsync status` does not treat it as missing or "not a symlink".
+
+## `nested-glob`
+
+Recursively discovers files matching a glob `pattern` under `source` and creates a symlink for each
+one at the path produced by expanding the `destination` template.
+
+> **Note:** For `nested-glob`, `source` is relative to the **project root** — not to `source_dir`.
+> All other sync types resolve `source` relative to `source_dir`.
+
+The `destination` template supports these placeholders:
+
+- `{relative_path}` — the parent directory of the matched file, relative to the search root
+  (e.g. `clients/runtime`). Files directly in the search root resolve to `.`.
+- `{file_name}` — the full name of the matched file (e.g. `AGENTS.md`).
+- `{stem}` — the filename without its extension (e.g. `AGENTS`).
+- `{ext}` — the file extension without the leading dot (e.g. `md`).
+
+Use `exclude` to prune entire subtrees from the search. Directory matches stop traversal, so
+`node_modules`, `node_modules/**`, `.git`, and `**/.git/**` all prevent descending into those
+directories.
+
+```toml
+[agents.claude.targets.monorepo]
+type = "nested-glob"
+source = "packages"
+pattern = "**/CONTEXT.md"
+destination = "packages/{relative_path}/CLAUDE.md"
+exclude = ["**/tests/**", "**/node_modules/**"]
+```
+
+## `module-map`
+
+Maps centrally-managed source files to specific module directories, creating a symlink per mapping
+with convention-based filenames.
+
+```toml
+[agents.claude.targets.modules]
+source = "."   # Base directory for source files, relative to source_dir
+destination = "."  # Base directory for destinations, relative to project root
+type = "module-map"
+
+[[agents.claude.targets.modules.mappings]]
+source = "api-context.md"
+destination = "src/api"
+
+[[agents.claude.targets.modules.mappings]]
+source = "ui-context.md"
+destination = "src/ui"
+filename_override = "CUSTOM-RULES.md"
+```
+
+The output filename is resolved with this priority:
+1. `filename_override` — always wins when set.
+2. The agent's convention filename (e.g. `CLAUDE.md` for Claude).
+3. The source file's basename.
+
+In the example above, `src/api/CLAUDE.md` points to `.agents/api-context.md` and
+`src/ui/CUSTOM-RULES.md` points to `.agents/ui-context.md`.
+
+## Which one should I use?
+
+| Situation | Sync type |
+| :--- | :--- |
+| One canonical file per agent (`AGENTS.md` → `CLAUDE.md`) | `symlink` |
+| Whole skills/commands directory as one link | `symlink` |
+| Destination must be a real directory with individual links | `symlink-contents` |
+| Nested context files across a monorepo | `nested-glob` |
+| Different context files to specific modules | `module-map` |
+
+These sync types behave the same on Windows. If your local Windows environment cannot create
+symlinks yet, fix the environment first — see the
+<BaseLink href="/guides/windows-symlink-setup/">Windows Symlink Setup guide</BaseLink>.
