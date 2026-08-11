@@ -56,7 +56,7 @@ nested-glob          5000     5000    855.969ms    844.723ms    114.416ms     19
   - `canonicalize` ⊂ `link-creation` in every cell (e.g., flat 5000: 134.2 ms of 535.7 ms) ✓
   - `metadata + link-creation + discovery ≈ cold/warm` (run-variance band) — no double counting ✓
 - **Small-repo gate** (flat, N=4): warm 0.6 ms, cold 0.9 ms — comfortably inside the 3–5 ms no-regression band with margin.
-- **Biggest cost center**: link creation (incl. canonicalize) — 80–90% of total on the 5000 cells, consistent with per-link `source.exists()` probe + `relative_path` canonicalization. These are the Phase B targets (B1/B2/B3).
+- **Biggest cost center**: link creation (incl. canonicalize) — 86% of total on flat 5000 cells, ~74% on nested-glob 5000 (lower due to discovery overhead), consistent with per-link `source.exists()` probe + `relative_path` canonicalization. These are the Phase B targets (B1/B2/B3).
 
 ## B2 observation (unit 3, PR 3)
 
