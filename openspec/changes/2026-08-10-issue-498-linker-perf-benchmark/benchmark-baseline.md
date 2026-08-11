@@ -68,6 +68,26 @@ destination already exists (two probes → one). No regression on the small gate
 0.518 ms). Note: the nested-glob N=5000 `discovery` attribution (206.4 ms this capture vs 129.2 ms
 baseline) is run variance in the final-run walk span, unrelated to B2 (B2 does not touch discovery).
 
+## B3 observation (unit 4, PR 4)
+
+B3 threads the `read_dir` `DirEntry` existence into `resolve_source_path_with_hint(...,
+Some(true))` for non-symlink children of a `symlink-contents` source, dropping the duplicate
+per-child `source.exists()` stat (`apply.rs` non-compression tail). Compression and revalidate
+paths unchanged; symlink children (incl. broken symlinks) still probe so the missing-source
+report is byte-identical.
+
+**Load caveat — do not read raw deltas literally.** This capture ran under heavy external machine
+load (load avg 31–144 on 12 cores during the three 5-run captures, vs 8–11 for B2), so EVERY cell
+drifted up ~19–22% raw, including the nested-glob cells that B3 does not touch (controls:
++18.9%/+22.1%/+22.1% at N=100/1000/5000). "After" = mean of three 5-run captures.
+
+**Drift-corrected result** (flat warm ÷ mean control drift ≈ 1.21): flat cells — where one stat per
+child is actually removed — show a small, consistent improvement: N=4 −8.4%, N=100 −2.2%,
+N=1000 −6.0%, N=5000 −3.9% warm. The direction matches the prediction (one existence stat saved
+per non-symlink child; ~1–2 µs × N ≈ low single-digit % at N=5000). The removed stat also lands in
+the `metadata` attribution (target − link-creation − discovery): flat-5000 metadata mean 104.2 ms
+vs 108.5 ms pre-B1 baseline. **No regression**; small gate mean 0.574 ms, far inside the 3–5 ms band.
+
 ## Before / After (Phase B commits — filled by units 2–5)
 
 B1 (unit 2, PR 2): scoped `path_cache` invalidation — `invalidate_path(path)` (exact key +
@@ -93,7 +113,13 @@ N=5000 and was reverted). After numbers = mean of two clean 5-run captures on th
 | B2 single existence probe | nested-glob N=100 | warm 19.397 ms; canonicalize 3.046 ms | warm 18.709 ms; canonicalize 3.041 ms | −3.5% warm |
 | B2 single existence probe | nested-glob N=1000 | warm 134.435 ms; canonicalize 24.671 ms | warm 132.077 ms; canonicalize 24.016 ms | −1.8% warm; −2.7% canonicalize |
 | B2 single existence probe | nested-glob N=5000 | warm 699.955 ms; canonicalize 125.038 ms | warm 675.811 ms; canonicalize 124.267 ms | −3.5% warm; −0.6% canonicalize |
-| B3 DirEntry reuse | (pending) | | | |
+| B3 DirEntry reuse | flat N=4 (small gate) | warm 0.518 ms; canonicalize 0.067 ms | warm 0.574 ms; canonicalize 0.075 ms | raw +10.9% (load drift; see note); drift-corrected −8.4%; 0.574 ms far inside 3–5 ms band |
+| B3 DirEntry reuse | flat N=100 | warm 9.960 ms; canonicalize 1.616 ms | warm 11.792 ms; canonicalize 1.659 ms | raw +18.4%; drift-corrected −2.2% warm |
+| B3 DirEntry reuse | flat N=1000 | warm 102.871 ms; canonicalize 17.430 ms | warm 117.069 ms; canonicalize 19.819 ms | raw +13.8%; drift-corrected −6.0% warm |
+| B3 DirEntry reuse | flat N=5000 | warm 520.139 ms; canonicalize 90.879 ms | warm 604.653 ms; canonicalize 109.130 ms | raw +16.2%; drift-corrected −3.9% warm |
+| B3 DirEntry reuse | nested-glob N=100 (control) | warm 18.709 ms | warm 22.249 ms | raw +18.9% — no code change (load drift) |
+| B3 DirEntry reuse | nested-glob N=1000 (control) | warm 132.077 ms | warm 161.221 ms | raw +22.1% — no code change (load drift) |
+| B3 DirEntry reuse | nested-glob N=5000 (control) | warm 675.811 ms | warm 825.056 ms | raw +22.1% — no code change (load drift) |
 | B4 sorted iteration + final metrics | (pending) | | | |
 
 ## Reproduce

@@ -273,7 +273,19 @@ impl Linker {
             let source_path = entry.path();
             let dest_path = dest_dir.join(entry.file_name());
 
-            let resolved = self.resolve_source_path(&source_path, target, options)?;
+            // B3 (REQ: Reuse DirEntry Existence): `read_dir` already proved
+            // the child dirent exists. For non-symlink children (the common
+            // case) `source.exists()` is guaranteed true, so thread it as a
+            // hint and drop the duplicate per-child stat. Symlink children
+            // must still be probed: `exists()` follows the link, so a
+            // broken-symlink child (dirent exists, target missing) keeps
+            // reporting "Source does not exist" unchanged.
+            let source_exists = match entry.file_type() {
+                Ok(file_type) if !file_type.is_symlink() => Some(true),
+                _ => None,
+            };
+            let resolved =
+                self.resolve_source_path_with_hint(&source_path, target, options, source_exists)?;
             // SECURITY: Validate each child source entry before creating symlink
             self.revalidate_path(&resolved.path)?;
             let item_result = self.create_symlink(&resolved, &dest_path, options)?;
@@ -544,6 +556,199 @@ mod tests {
         assert!(
             result.is_err(),
             "unprobeable destination must fail, not report created"
+        );
+    }
+
+    // ==========================================================================
+    // create_symlinks_for_contents — DirEntry existence reuse (B3, REQ: Reuse
+    // DirEntry Existence in Symlink-Contents). Characterization: these tests
+    // pin the CURRENT behavior and must stay green after the optimization.
+    // ==========================================================================
+
+    /// Build a `symlink-contents` target. `create_symlinks_for_contents` takes
+    /// source/dest paths directly, so only `sync_type` matters (compression is
+    /// off via `make_linker`'s config).
+    fn make_contents_target() -> TargetConfig {
+        TargetConfig {
+            source: "src".to_string(),
+            destination: "links".to_string(),
+            sync_type: crate::config::SyncType::SymlinkContents,
+            pattern: None,
+            exclude: vec![],
+            mappings: vec![],
+        }
+    }
+
+    #[test]
+    fn contents_regular_children_all_created() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        let linker = make_linker(root);
+
+        let source_dir = root.join(".agents").join("src");
+        fs::create_dir_all(&source_dir).unwrap();
+        for i in 0..4 {
+            fs::write(source_dir.join(format!("f{i:04}.md")), "FIXED\n").unwrap();
+        }
+        let dest_dir = root.join("links");
+
+        let result = linker
+            .create_symlinks_for_contents(
+                &source_dir,
+                &dest_dir,
+                None,
+                &make_contents_target(),
+                &SyncOptions::default(),
+            )
+            .unwrap();
+
+        assert_eq!(result.created, 4);
+        assert_eq!(result.updated, 0);
+        assert_eq!(result.skipped, 0);
+        assert_eq!(result.errors, 0);
+        assert_eq!(fs::read_dir(&dest_dir).unwrap().count(), 4);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn contents_broken_symlink_child_still_skipped() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        let linker = make_linker(root);
+
+        let source_dir = root.join(".agents").join("src");
+        fs::create_dir_all(&source_dir).unwrap();
+        fs::write(source_dir.join("a.md"), "A\n").unwrap();
+        fs::write(source_dir.join("b.md"), "B\n").unwrap();
+        fs::create_dir(source_dir.join("sub")).unwrap();
+        // A broken symlink child: read_dir yields the dirent (it exists) but
+        // `exists()` follows the target and returns false. It must keep
+        // reporting "Source does not exist" (skipped) — never error the run.
+        symlink("missing-target.md", source_dir.join("broken.md")).unwrap();
+        assert!(!source_dir.join("broken.md").exists());
+
+        let dest_dir = root.join("links");
+        let result = linker
+            .create_symlinks_for_contents(
+                &source_dir,
+                &dest_dir,
+                None,
+                &make_contents_target(),
+                &SyncOptions::default(),
+            )
+            .unwrap();
+
+        assert_eq!(result.created, 3, "a.md + b.md + sub");
+        assert_eq!(result.updated, 0);
+        assert_eq!(
+            result.skipped, 1,
+            "broken symlink child must be skipped, not errored"
+        );
+        assert_eq!(
+            result.errors, 0,
+            "broken symlink child must not fail the run"
+        );
+        assert_eq!(fs::read_dir(&dest_dir).unwrap().count(), 3);
+    }
+
+    #[test]
+    fn contents_missing_source_dir_skips_identically() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        let linker = make_linker(root);
+
+        let missing = root.join(".agents").join("does-not-exist");
+        let dest_dir = root.join("links");
+
+        let result = linker
+            .create_symlinks_for_contents(
+                &missing,
+                &dest_dir,
+                None,
+                &make_contents_target(),
+                &SyncOptions::default(),
+            )
+            .unwrap();
+
+        assert_eq!(result.created, 0);
+        assert_eq!(result.skipped, 1, "missing source dir must skip, not error");
+        assert_eq!(result.errors, 0);
+        assert!(
+            !dest_dir.exists(),
+            "no destination dir must be created for a missing source"
+        );
+    }
+
+    // ==========================================================================
+    // resolve_source_path_with_hint — B3 hint semantics (RED: these tests
+    // drive the new API). The `Some(true)` contract proves the duplicate
+    // per-child stat is skipped deterministically, without wall-clock timing.
+    // ==========================================================================
+
+    #[test]
+    fn resolve_source_path_with_hint_some_true_skips_duplicate_stat() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        let linker = make_linker(root);
+
+        let source = root.join(".agents").join("source.md");
+        fs::write(&source, "# S").unwrap();
+        let target = make_contents_target();
+
+        // A hint of Some(true) asserts existence without probing.
+        let resolved = linker
+            .resolve_source_path_with_hint(&source, &target, &SyncOptions::default(), Some(true))
+            .unwrap();
+        assert!(resolved.exists);
+
+        // Deterministic proof the hint skips the stat: delete the file; the
+        // hinted call must STILL report exists=true (it trusted the hint
+        // instead of re-stat-ing), while the unhinted call re-stats and
+        // reports false.
+        fs::remove_file(&source).unwrap();
+
+        let hinted = linker
+            .resolve_source_path_with_hint(&source, &target, &SyncOptions::default(), Some(true))
+            .unwrap();
+        assert!(
+            hinted.exists,
+            "hinted resolution must not re-stat the source"
+        );
+
+        let plain = linker
+            .resolve_source_path(&source, &target, &SyncOptions::default())
+            .unwrap();
+        assert!(
+            !plain.exists,
+            "unhinted resolution must still stat the source"
+        );
+    }
+
+    #[test]
+    fn resolve_source_path_with_hint_none_falls_back_to_stat() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        let linker = make_linker(root);
+
+        let source = root.join(".agents").join("source.md");
+        fs::write(&source, "# S").unwrap();
+        let target = make_contents_target();
+
+        let resolved = linker
+            .resolve_source_path_with_hint(&source, &target, &SyncOptions::default(), None)
+            .unwrap();
+        assert!(resolved.exists);
+
+        fs::remove_file(&source).unwrap();
+
+        let resolved = linker
+            .resolve_source_path_with_hint(&source, &target, &SyncOptions::default(), None)
+            .unwrap();
+        assert!(
+            !resolved.exists,
+            "None hint must fall back to source.exists()"
         );
     }
 

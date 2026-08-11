@@ -211,6 +211,30 @@ impl Linker {
         target: &TargetConfig,
         options: &SyncOptions,
     ) -> Result<ResolvedSource> {
+        self.resolve_source_path_with_hint(source, target, options, None)
+    }
+
+    /// Resolve a source path for linking, with an optional existence hint.
+    ///
+    /// `source_exists` lets callers that already proved the source exists
+    /// (e.g. a `symlink-contents` loop iterating `fs::read_dir` entries) skip
+    /// the duplicate per-child `source.exists()` stat — REQ: Reuse DirEntry
+    /// Existence in Symlink-Contents.
+    ///
+    /// * `Some(true)` asserts existence WITHOUT probing (sound only when the
+    ///   caller knows the path resolves to a real file/dir — never for a
+    ///   symlink, whose `exists()` follows the target and may be false).
+    /// * `Some(false)` asserts absence without probing.
+    /// * `None` (the default via [`Self::resolve_source_path`]) probes.
+    ///
+    /// The compression path always probes the source itself and is unchanged.
+    pub(super) fn resolve_source_path_with_hint(
+        &self,
+        source: &Path,
+        target: &TargetConfig,
+        options: &SyncOptions,
+        source_exists: Option<bool>,
+    ) -> Result<ResolvedSource> {
         if self.should_compress_agents_md(source, target) {
             if !source.exists() {
                 return Ok(ResolvedSource {
@@ -234,7 +258,7 @@ impl Linker {
 
         Ok(ResolvedSource {
             path: source.to_path_buf(),
-            exists: source.exists(),
+            exists: source_exists.unwrap_or_else(|| source.exists()),
         })
     }
 
