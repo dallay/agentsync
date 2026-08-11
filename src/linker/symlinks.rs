@@ -620,6 +620,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn contents_regular_children_all_created() {
         let temp = TempDir::new().unwrap();
         let root = temp.path();
@@ -694,6 +695,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn contents_missing_source_dir_skips_identically() {
         let temp = TempDir::new().unwrap();
         let root = temp.path();
@@ -728,6 +730,7 @@ mod tests {
     // ==========================================================================
 
     #[test]
+    #[cfg(unix)]
     fn resolve_source_path_with_hint_some_true_skips_duplicate_stat() {
         let temp = TempDir::new().unwrap();
         let root = temp.path();
@@ -767,6 +770,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn resolve_source_path_with_hint_none_falls_back_to_stat() {
         let temp = TempDir::new().unwrap();
         let root = temp.path();
