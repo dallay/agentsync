@@ -467,9 +467,9 @@ mod tests {
         assert_eq!(
             rels,
             vec![
-                "a/AGENTS.md".to_string(),
-                "b/AGENTS.md".to_string(),
-                "c/AGENTS.md".to_string(),
+                format!("a{}AGENTS.md", std::path::MAIN_SEPARATOR),
+                format!("b{}AGENTS.md", std::path::MAIN_SEPARATOR),
+                format!("c{}AGENTS.md", std::path::MAIN_SEPARATOR),
             ],
             "nested-glob discovery order must be sorted by file name"
         );
