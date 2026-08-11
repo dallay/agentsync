@@ -55,7 +55,9 @@ This mirrors exactly what `install.rs:244-253` does with `fetch_and_unpack_to_te
 The test function becomes `async fn` with `#[tokio::test]`. The blocking client builder is replaced with `reqwest::Client::builder()`. Retry logic stays the same. The test gate remains `RUN_E2E=1`.
 
 #### 4. `Cargo.toml`
+
 After all three conversions verified green, `"blocking"` was removed from the reqwest features:
+
 ```toml
 # Before
 reqwest = { version = "0.13.3", features = ["json", "gzip", "stream", "blocking"] }

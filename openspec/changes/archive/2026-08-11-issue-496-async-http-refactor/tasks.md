@@ -29,7 +29,7 @@ Chain strategy: single-pr
 
 - [x] 2.1 RED: Add test in `src/update_check.rs` — `test_fetch_latest_version_timeout` sets 1ms timeout, expects `UpdateCheckError::Timeout`
 - [x] 2.2 RED: Add test — `test_fetch_latest_version_invalid_json` mocks a non-JSON response, expects `UpdateCheckError::ParseError`
-- [x] 2.3 RED: Add test — `test_fetch_latest_version_404` returns HTTP 404, expects `UpdateCheckError::HttpStatus(404)`
+- [x] 2.3 RED: Add test — `test_fetch_latest_version_404` returns HTTP 404, expects `UpdateCheckError::HttpStatus { status: 404, .. }` (struct-style `{ url, status }` variant, url covered by `..`)
 - [x] 2.4 GREEN: Add `async fn fetch_latest_version_async() -> Result<String, UpdateCheckError>` using `reqwest::Client` (non-blocking) with 3s timeout; map reqwest timeout → `Timeout`, reqwest error → `Connection`, non-200 → `HttpStatus`, JSON parse fail → `ParseError` (a timeout during `.json()` also maps to `Timeout`, not `ParseError`)
 - [x] 2.5 GREEN: Add `async fn check_and_notify_async()` wrapping `fetch_latest_version_async()` with cache read/write (sync, std::fs — mark `// Note: sync path`); keep same notification logic
 - [x] 2.6 GREEN: Refactor `spawn()` in `src/update_check.rs` — replace `thread::Builder::spawn(check_and_notify)` with `std::thread::Builder::new().name("agentsync-update-check".to_string()).spawn(|| { let rt = tokio::runtime::Runtime::new().unwrap(); rt.block_on(check_and_notify_async()); });`
