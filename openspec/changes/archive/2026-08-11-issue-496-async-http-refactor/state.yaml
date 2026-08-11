@@ -1,0 +1,33 @@
+change: issue-496-async-http-refactor
+title: "refactor(network): standardize HTTP operations on async reqwest"
+url: https://github.com/dallay/agentsync/issues/496
+current_phase: archive
+completed:
+  - sdd-init
+  - sdd-explore
+  - sdd-propose
+  - sdd-spec
+  - sdd-design
+  - sdd-tasks
+  - sdd-apply
+  - sdd-verify
+  - sdd-qa
+  - sdd-archive
+next: none
+updated: "2026-08-11T00:00:00Z"
+
+scope:
+  - src/update_check.rs
+  - src/skills/provider.rs
+  - tests/test_catalog_integrity.rs
+
+summary: |
+  Convert reqwest::blocking to async reqwest across update_check.rs, skills/provider.rs,
+  and test_catalog_integrity.rs. Remove blocking feature from Cargo.toml. Add Tokio
+  async runtime. Cover success/timeout/invalid response cases in tests.
+
+  Affected:
+  - src/update_check.rs: fetch_latest_version() uses blocking reqwest in a spawned thread
+  - src/skills/provider.rs: resolve_via_search() uses blocking reqwest
+  - tests/test_catalog_integrity.rs: catalog integrity checks use blocking reqwest
+  - Cargo.toml: reqwest has "blocking" feature — must be removed after migration

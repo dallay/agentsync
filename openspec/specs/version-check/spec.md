@@ -60,27 +60,27 @@ exist.
 
 ### Requirement: Detached Background Thread
 
-The version check SHALL run on a detached background thread spawned via `std::thread::Builder`.
+The version check SHALL run on a detached Tokio task spawned via `tokio::spawn` instead of `std::thread::Builder`.
 
-The thread SHALL be named `"agentsync-update-check"`.
+The task SHALL be named implicitly by the Tokio runtime.
 
-The thread SHALL NOT be joined — it SHALL exit naturally when the process exits.
+The task SHALL NOT be joined — it SHALL exit naturally when the process exits.
 
-The thread SHALL NOT block the main CLI flow.
+The task SHALL NOT block the main CLI flow.
 
-#### Scenario: Thread spawns on CLI invocation
+#### Scenario: Tokio task spawns on CLI invocation
 
 - GIVEN a CLI invocation of `agentsync`
 - WHEN the program starts
-- THEN a background thread SHALL be spawned before CLI parsing
+- THEN a Tokio task SHALL be spawned for the version check before CLI parsing
 - AND the main thread SHALL continue immediately without waiting
 
-#### Scenario: Process exits cancels thread
+#### Scenario: Process exit cancels Tokio task
 
-- GIVEN a background version check thread is running
+- GIVEN a background Tokio task is running for version checking
 - WHEN the CLI command completes and the process exits
 - THEN any in-flight HTTP requests SHALL be cancelled
-- AND no `join()` call SHALL be made
+- AND no explicit task handle SHALL be retained
 
 ---
 
@@ -153,15 +153,15 @@ SHALL NOT print output.
 
 ### Requirement: crates.io API Query
 
-The system SHALL send a GET request to `https://crates.io/api/v1/crates/agentsync`.
-
-The request SHALL use `reqwest::blocking::Client`.
+The request SHALL use `reqwest::Client` (async) instead of `reqwest::blocking::Client`.
 
 The request timeout SHALL be 3 seconds.
 
 On success, the system SHALL parse the JSON response and extract the `crate.newest_version` field.
 
-#### Scenario: API request succeeds with newer version
+HTTP errors (timeout, connection failure, redirect, non-200 status) SHALL carry useful diagnostic context.
+
+#### Scenario: API request succeeds with async client
 
 - GIVEN the crates.io API returns a JSON response with `crate.newest_version = "0.4.0"`
 - AND the current binary version is `"0.3.1"`
@@ -169,7 +169,7 @@ On success, the system SHALL parse the JSON response and extract the `crate.newe
 - THEN the system SHALL parse `"0.4.0"` as the latest version
 - AND SHALL compare it against the current version
 
-#### Scenario: API request times out
+#### Scenario: API request times out with context
 
 - GIVEN the crates.io API does not respond within 3 seconds
 - WHEN the timeout is reached
@@ -177,18 +177,20 @@ On success, the system SHALL parse the JSON response and extract the `crate.newe
 - AND no hint SHALL be printed
 - AND no error SHALL propagate to the user
 
-#### Scenario: API request fails with network error
+#### Scenario: API request fails with connection error
 
-- GIVEN a network error occurs during the API request
+- GIVEN a connection error occurs during the API request
 - WHEN the error is caught
-- THEN the system SHALL log nothing to the user
+- THEN the system SHALL log diagnostic context for the error
 - AND SHALL continue the CLI execution silently
+- AND no hint SHALL be printed
 
-#### Scenario: API returns non-200 status
+#### Scenario: API returns non-200 status with context
 
 - GIVEN the crates.io API returns a 4xx or 5xx status
 - WHEN the response is received
-- THEN the system SHALL treat this as a failed check
+- THEN the system SHALL record the status code in the error context
+- AND SHALL treat this as a failed check
 - AND SHALL print no hint
 - AND SHALL continue silently
 
@@ -278,6 +280,17 @@ The hint SHALL use the emoji prefix `💡` followed by the format:
 ---
 
 ## Non-Functional Requirements
+
+### NF-0: Synchronous Path Documentation
+
+Any function in the update check path that MUST remain synchronous SHALL be documented with a `// SAFETY:` or `// Note: runs on sync path` comment.
+
+#### Scenario: Synchronous cache operations are documented
+
+- GIVEN the cache load and save operations
+- WHEN the code is reviewed
+- THEN each synchronous-only operation SHALL have a comment explaining why it cannot be async
+- OR the operation SHALL be marked with `// Note: sync path`
 
 ### NF-1: Performance
 

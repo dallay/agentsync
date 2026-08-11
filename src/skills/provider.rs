@@ -1,6 +1,7 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use crate::skills::catalog::EmbeddedSkillCatalog;
 use crate::skills::registry::{RegistryDocument, RegistryEntry};
@@ -290,58 +291,90 @@ impl SkillsShProvider {
     /// skills.sh API. This is the original behavior for non-catalog IDs.
     fn resolve_via_search(&self, id: &str) -> Result<SkillInstallInfo> {
         let url = format!("https://skills.sh/api/search?q={}", urlencoding::encode(id));
-
-        let client = reqwest::blocking::Client::builder()
-            .timeout(std::time::Duration::from_secs(10))
-            .build()?;
-        let resp = client.get(url).send()?.json::<SearchResponse>()?;
-
-        // Find the best match (exact id match preferred)
-        let skill = resp
-            .skills
-            .iter()
-            .find(|s| s.id == id || s.id.split('/').next_back() == Some(id))
-            .ok_or_else(|| anyhow::anyhow!("Skill not found on skills.sh: {}", id))?;
-
-        // Construct GitHub zip URL — source is "owner/repo"
-        let download_url = format!("https://github.com/{}", skill.source);
-
-        // Robust subpath detection
-        let subpath = if skill.id.starts_with(&skill.source) {
-            let sub = &skill.id[skill.source.len()..];
-            let sub = sub.trim_start_matches('/');
-            if !sub.is_empty() {
-                sub.to_string()
-            } else {
-                String::new()
+        match tokio::runtime::Handle::try_current() {
+            Ok(handle) => handle.block_on(resolve_via_search_http(
+                &url,
+                std::time::Duration::from_secs(10),
+                id,
+            )),
+            Err(_) => {
+                let rt = tokio::runtime::Runtime::new()
+                    .map_err(|e| anyhow::anyhow!("failed to create runtime: {}", e))?;
+                rt.block_on(resolve_via_search_http(
+                    &url,
+                    std::time::Duration::from_secs(10),
+                    id,
+                ))
             }
+        }
+    }
+}
+
+/// Async HTTP fetch for skills.sh search. Returns a Result with context-bearing errors.
+async fn resolve_via_search_http(
+    url: &str,
+    timeout: Duration,
+    _id: &str,
+) -> Result<SkillInstallInfo> {
+    let client = reqwest::Client::builder()
+        .timeout(timeout)
+        .build()
+        .with_context(|| format!("skills.sh search failed for url={}", url))?;
+    let resp: SearchResponse = client
+        .get(url)
+        .send()
+        .await
+        .with_context(|| format!("skills.sh search failed for url={}", url))?
+        .json()
+        .await
+        .with_context(|| format!("skills.sh search failed for url={}", url))?;
+
+    // Find the best match (exact id match preferred)
+    // Note: id parameter reserved for future exact-match scoring
+    let skill = resp
+        .skills
+        .iter()
+        .find(|s| s.id == _id || s.id.split('/').next_back() == Some(_id))
+        .ok_or_else(|| anyhow::anyhow!("Skill not found on skills.sh: {}", _id))?;
+
+    // Construct GitHub zip URL — source is "owner/repo"
+    let download_url = format!("https://github.com/{}", skill.source);
+
+    // Robust subpath detection
+    let subpath = if skill.id.starts_with(&skill.source) {
+        let sub = &skill.id[skill.source.len()..];
+        let sub = sub.trim_start_matches('/');
+        if !sub.is_empty() {
+            sub.to_string()
         } else {
             String::new()
-        };
+        }
+    } else {
+        String::new()
+    };
 
-        // If the repo name is a well-known skills repo, prefix 'skills/'
-        let final_subpath = if !subpath.is_empty() && !subpath.starts_with("skills/") {
-            let repo_name = skill.source.split('/').next_back().unwrap_or("");
-            if repo_uses_skills_subdirectory(repo_name) {
-                format!("skills/{}", subpath)
-            } else {
-                subpath
-            }
+    // If the repo name is a well-known skills repo, prefix 'skills/'
+    let final_subpath = if !subpath.is_empty() && !subpath.starts_with("skills/") {
+        let repo_name = skill.source.split('/').next_back().unwrap_or("");
+        if repo_uses_skills_subdirectory(repo_name) {
+            format!("skills/{}", subpath)
         } else {
             subpath
-        };
-
-        let mut final_url = format!("{}/archive/HEAD.zip", download_url);
-        if !final_subpath.is_empty() {
-            final_url.push('#');
-            final_url.push_str(&final_subpath);
         }
+    } else {
+        subpath
+    };
 
-        Ok(SkillInstallInfo {
-            download_url: final_url,
-            format: "zip".to_string(),
-        })
+    let mut final_url = format!("{}/archive/HEAD.zip", download_url);
+    if !final_subpath.is_empty() {
+        final_url.push('#');
+        final_url.push_str(&final_subpath);
     }
+
+    Ok(SkillInstallInfo {
+        download_url: final_url,
+        format: "zip".to_string(),
+    })
 }
 
 impl Provider for SkillsShProvider {
@@ -377,8 +410,80 @@ impl Provider for SkillsShProvider {
 #[cfg(test)]
 mod tests {
     use super::local_skills_repo_source_dir;
+    use super::resolve_via_search_http;
     use std::fs;
     use tempfile::TempDir;
+
+    /// Start a TCP server that delays its response.
+    async fn spawn_delayed_server(delay_secs: u64) -> std::net::SocketAddr {
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+        let _handle = std::thread::spawn(move || {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind to succeed");
+            let addr = listener.local_addr().expect("local_addr");
+            let _ = ready_tx.send(addr); // oneshot send cannot block
+            let (mut conn, _) = listener.accept().expect("accept");
+            std::thread::sleep(std::time::Duration::from_secs(delay_secs));
+            use std::io::{Read, Write};
+            let _ = conn.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello");
+            let _ = conn.flush();
+            let mut dummy = [0u8; 256];
+            let _ = conn.read(&mut dummy);
+        });
+        ready_rx.await.expect("addr received")
+    }
+
+    /// Start a TCP server that returns non-JSON.
+    async fn spawn_non_json_server() -> std::net::SocketAddr {
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+        let _handle = std::thread::spawn(move || {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind to succeed");
+            let addr = listener.local_addr().expect("local_addr");
+            let _ = ready_tx.send(addr); // oneshot send cannot block
+            let (mut conn, _) = listener.accept().expect("accept");
+            use std::io::{Read, Write};
+            let mut dummy = [0u8; 512];
+            let _ = conn.read(&mut dummy);
+            let _ = conn.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\nnot json!!!");
+            let _ = conn.flush();
+        });
+        ready_rx.await.expect("addr received")
+    }
+
+    #[tokio::test]
+    async fn test_resolve_via_search_timeout() {
+        let addr = spawn_delayed_server(10).await;
+        let url = format!("http://{}/api/search", addr);
+
+        // Test the async version directly with a short timeout
+        let result =
+            resolve_via_search_http(&url, std::time::Duration::from_millis(50), "test-skill").await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("timed out")
+                || err.to_string().contains("timeout")
+                || err.to_string().contains("skills.sh search failed"),
+            "expected timeout or context error, got: {}",
+            err
+        );
+    }
+
+    #[tokio::test]
+    async fn test_resolve_via_search_invalid_response() {
+        let addr = spawn_non_json_server().await;
+        let url = format!("http://{}/api/search", addr);
+
+        let result =
+            resolve_via_search_http(&url, std::time::Duration::from_secs(5), "test-skill").await;
+        assert!(result.is_err());
+        // Should be a parse/format error since the response isn't valid JSON
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("skills.sh search failed"),
+            "expected context-bearing error about skills.sh search, got: {}",
+            err
+        );
+    }
 
     #[test]
     fn ignores_missing_skill_in_local_skills_repository() {

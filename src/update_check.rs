@@ -6,7 +6,20 @@ use anyhow::Context;
 use is_terminal::IsTerminal;
 use semver::Version;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 use tracing::info;
+
+#[derive(Debug, Error)]
+pub enum UpdateCheckError {
+    #[error("update check timed out after {duration_secs}s for url {url}")]
+    Timeout { url: String, duration_secs: u64 },
+    #[error("connection failed for {url}: {reason}")]
+    Connection { url: String, reason: String },
+    #[error("unexpected HTTP status {status} for {url}")]
+    HttpStatus { url: String, status: u16 },
+    #[error("failed to parse version: {0}")]
+    ParseError(String),
+}
 
 const CACHE_TTL_SECS: i64 = 24 * 60 * 60;
 const CRATES_IO_URL: &str = "https://crates.io/api/v1/crates/agentsync";
@@ -27,11 +40,13 @@ struct Cache {
 }
 
 impl Cache {
+    /// Note: sync path — file I/O on small JSON cache; blocking is fast and appropriate.
     fn load(&self) -> Option<CheckedVersion> {
         let data = fs::read_to_string(&self.path).ok()?;
         serde_json::from_str(&data).ok()
     }
 
+    /// Note: sync path — file I/O on small JSON cache; blocking is fast and appropriate.
     fn save(&self, v: &CheckedVersion) -> anyhow::Result<()> {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent).context("failed to create cache directory")?;
@@ -81,7 +96,10 @@ fn should_skip_update_check() -> bool {
     should_skip(no_check.as_deref(), ci.as_deref(), is_terminal)
 }
 
-fn fetch_latest_version() -> Option<String> {
+async fn fetch_latest_version_async(
+    url: &str,
+    timeout: std::time::Duration,
+) -> Result<String, UpdateCheckError> {
     #[derive(Deserialize)]
     struct CratesIoResponse {
         #[serde(rename = "crate")]
@@ -94,27 +112,61 @@ fn fetch_latest_version() -> Option<String> {
         newest_version: String,
     }
 
-    let client = reqwest::blocking::Client::builder()
+    let client = reqwest::Client::builder()
         .user_agent(concat!("agentsync/", env!("CARGO_PKG_VERSION")))
-        .timeout(std::time::Duration::from_secs(3))
+        .timeout(timeout)
         .build()
-        .ok()?;
+        .map_err(|e| UpdateCheckError::Connection {
+            url: url.to_string(),
+            reason: e.to_string(),
+        })?;
 
-    let response = client.get(CRATES_IO_URL).send().ok()?;
-    let info: CratesIoResponse = response.json().ok()?;
-    Some(info.krate.newest_version)
+    let response = client.get(url).send().await.map_err(|e| {
+        if e.is_timeout() {
+            UpdateCheckError::Timeout {
+                url: url.to_string(),
+                duration_secs: timeout.as_secs(),
+            }
+        } else {
+            UpdateCheckError::Connection {
+                url: url.to_string(),
+                reason: e.to_string(),
+            }
+        }
+    })?;
+
+    let status = response.status();
+    if !status.is_success() {
+        return Err(UpdateCheckError::HttpStatus {
+            url: url.to_string(),
+            status: status.as_u16(),
+        });
+    }
+
+    let info: CratesIoResponse = response
+        .json()
+        .await
+        .map_err(|e| UpdateCheckError::ParseError(e.to_string()))?;
+
+    Ok(info.krate.newest_version)
 }
 
-fn check_and_notify() {
+async fn check_and_notify_async() {
     let cache = Cache { path: cache_path() };
 
+    // Note: sync path — file I/O on small JSON cache; blocking is fast and appropriate.
     if cache.load().is_some_and(|c| is_fresh(&c)) {
         return;
     }
 
-    let Some(newest_version) = fetch_latest_version() else {
-        return;
-    };
+    let newest_version =
+        match fetch_latest_version_async(CRATES_IO_URL, std::time::Duration::from_secs(3)).await {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::debug!(?e, "update check failed");
+                return;
+            }
+        };
 
     let Ok(current) = Version::parse(env!("CARGO_PKG_VERSION")) else {
         return;
@@ -140,6 +192,7 @@ fn check_and_notify() {
         "A new version of agentsync is available; run cargo install agentsync to update"
     );
 
+    // Note: sync path — file I/O on small JSON cache; blocking is fast and appropriate.
     let _ = cache.save(&new_cache);
 }
 
@@ -150,7 +203,10 @@ pub fn spawn() {
 
     let _ = thread::Builder::new()
         .name("agentsync-update-check".to_string())
-        .spawn(check_and_notify);
+        .spawn(|| {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(check_and_notify_async());
+        });
 }
 
 #[cfg(test)]
@@ -158,6 +214,104 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::TempDir;
+
+    /// Start a TCP server that delays its response by `delay_secs`.
+    async fn spawn_delayed_server(delay_secs: u64) -> std::net::SocketAddr {
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+        let _handle = std::thread::spawn(move || {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind to succeed");
+            let addr = listener.local_addr().expect("local_addr");
+            if ready_tx.send(addr).is_err() {
+                return;
+            }
+            let (mut conn, _) = listener.accept().expect("accept");
+            std::thread::sleep(std::time::Duration::from_secs(delay_secs));
+            use std::io::{Read, Write};
+            // Write response then read request (drain it) before closing
+            let _ = conn.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello");
+            let _ = conn.flush();
+            // Read to EOF to keep conn open until client is done
+            let mut dummy = [0u8; 256];
+            let _ = conn.read(&mut dummy);
+        });
+        ready_rx.await.expect("addr received")
+    }
+
+    /// Start a TCP server that returns non-JSON.
+    async fn spawn_non_json_server() -> std::net::SocketAddr {
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+        let _handle = std::thread::spawn(move || {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind to succeed");
+            let addr = listener.local_addr().expect("local_addr");
+            if ready_tx.send(addr).is_err() {
+                return;
+            }
+            let (mut conn, _) = listener.accept().expect("accept");
+            use std::io::{Read, Write};
+            // Read HTTP request to drain it, then send our response
+            let mut dummy = [0u8; 512];
+            let _ = conn.read(&mut dummy);
+            let _ = conn.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\nnot json!!!");
+            let _ = conn.flush();
+        });
+        ready_rx.await.expect("addr received")
+    }
+
+    /// Start a TCP server that returns HTTP 404.
+    async fn spawn_404_server() -> std::net::SocketAddr {
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+        let _handle = std::thread::spawn(move || {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind to succeed");
+            let addr = listener.local_addr().expect("local_addr");
+            if ready_tx.send(addr).is_err() {
+                return;
+            }
+            let (mut conn, _) = listener.accept().expect("accept");
+            use std::io::{Read, Write};
+            // Read HTTP request to drain it, then send 404
+            let mut dummy = [0u8; 512];
+            let _ = conn.read(&mut dummy);
+            let _ = conn.write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n");
+            let _ = conn.flush();
+        });
+        ready_rx.await.expect("addr received")
+    }
+
+    #[tokio::test]
+    async fn test_fetch_latest_version_timeout() {
+        let addr = spawn_delayed_server(5).await;
+        let url = format!("http://{}/api/v1/crates/agentsync", addr);
+
+        let result = fetch_latest_version_async(&url, std::time::Duration::from_millis(50)).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, UpdateCheckError::Timeout { .. }));
+    }
+
+    #[tokio::test]
+    async fn test_fetch_latest_version_invalid_json() {
+        let addr = spawn_non_json_server().await;
+        let url = format!("http://{}/api/v1/crates/agentsync", addr);
+
+        let result = fetch_latest_version_async(&url, std::time::Duration::from_secs(5)).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, UpdateCheckError::ParseError(_)));
+    }
+
+    #[tokio::test]
+    async fn test_fetch_latest_version_404() {
+        let addr = spawn_404_server().await;
+        let url = format!("http://{}/api/v1/crates/agentsync", addr);
+
+        let result = fetch_latest_version_async(&url, std::time::Duration::from_secs(5)).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(
+            err,
+            UpdateCheckError::HttpStatus { status: 404, .. }
+        ));
+    }
 
     #[test]
     fn test_cache_load_nonexistent() {

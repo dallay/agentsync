@@ -15,11 +15,12 @@
 //! ```
 
 use agentsync::skills::registry::load_curated_registry;
+use std::time::Duration;
 
 /// Verify that every dallay-owned skill in the catalog resolves to an existing
 /// `skills/{name}/SKILL.md` in the `dallay/agents-skills` repository.
-#[test]
-fn catalog_dallay_skill_urls_are_reachable() {
+#[tokio::test]
+async fn catalog_dallay_skill_urls_are_reachable() {
     if std::env::var("RUN_E2E").is_err() {
         eprintln!("Skipping catalog integrity test (set RUN_E2E=1 to enable)");
         return;
@@ -29,8 +30,8 @@ fn catalog_dallay_skill_urls_are_reachable() {
         .expect("shipped registry should validate");
     assert!(!registry.entries.is_empty());
 
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
         .build()
         .expect("failed to build HTTP client");
 
@@ -71,12 +72,12 @@ fn catalog_dallay_skill_urls_are_reachable() {
             req.send()
         };
 
-        let resp = match send_request() {
+        let resp = match send_request().await {
             Ok(r) => Ok(r),
             Err(_) => {
                 // Retry once after a short delay to avoid flaky CI failures.
-                std::thread::sleep(std::time::Duration::from_secs(2));
-                send_request()
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                send_request().await
             }
         };
 
