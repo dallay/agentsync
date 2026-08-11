@@ -577,4 +577,174 @@ mod tests {
             "deep sync must time the walk"
         );
     }
+
+
+    #[test]
+    fn median_of_empty_slice_is_none() {
+        let mut durations: Vec<Duration> = vec![];
+        assert_eq!(median(&mut durations), None);
+    }
+
+    #[test]
+    fn median_of_single_value_is_that_value() {
+        let mut durations = vec![Duration::from_millis(7)];
+        assert_eq!(median(&mut durations), Some(Duration::from_millis(7)));
+    }
+
+    #[test]
+    fn median_of_odd_count_is_middle_value() {
+        let mut durations = vec![
+            Duration::from_millis(30),
+            Duration::from_millis(10),
+            Duration::from_millis(20),
+        ];
+        assert_eq!(median(&mut durations), Some(Duration::from_millis(20)));
+    }
+
+    #[test]
+    fn median_of_even_count_is_average_of_middle_two() {
+        let mut durations = vec![
+            Duration::from_millis(10),
+            Duration::from_millis(40),
+            Duration::from_millis(20),
+            Duration::from_millis(30),
+        ];
+        // sorted: 10, 20, 30, 40 -> (20 + 30) / 2 = 25
+        assert_eq!(median(&mut durations), Some(Duration::from_millis(25)));
+    }
+
+    #[test]
+    fn ms_and_format_ms_convert_durations_correctly() {
+        assert_eq!(ms(Duration::from_millis(1500)), 1500.0);
+        assert_eq!(format_ms(Duration::from_micros(1234)), "1.234ms");
+        assert_eq!(format_ms(Duration::ZERO), "0.000ms");
+    }
+
+    #[test]
+    fn matrix_cells_contains_small_gate_and_full_matrix() {
+        let cells = matrix_cells();
+
+        // Small-repo no-regression gate: flat, N=4, must be first.
+        assert_eq!(cells[0], (fixtures::Shape::Flat, 4));
+
+        // Flat x Deep at each of 100 / 1,000 / 5,000.
+        for n in [100usize, 1_000, 5_000] {
+            assert!(
+                cells.contains(&(fixtures::Shape::Flat, n)),
+                "matrix must include flat at N={n}"
+            );
+            assert!(
+                cells.contains(&(fixtures::Shape::Deep, n)),
+                "matrix must include deep at N={n}"
+            );
+        }
+
+        // Gate cell + 3 sizes x 2 shapes = 7 cells total.
+        assert_eq!(cells.len(), 7);
+    }
+
+    #[test]
+    fn attribution_from_sink_extracts_all_four_fields() {
+        let sink = TimingSink::default();
+        sink.add_target("nested-glob", Duration::from_millis(100));
+        sink.add_link_creation(Duration::from_millis(30));
+        sink.add_canonicalize(Duration::from_millis(10));
+        sink.add_discovery(Duration::from_millis(20));
+
+        let attribution = Attribution::from_sink(&sink);
+
+        assert_eq!(attribution.canonicalize, Duration::from_millis(10));
+        assert_eq!(attribution.discovery, Duration::from_millis(20));
+        assert_eq!(attribution.link_creation, Duration::from_millis(30));
+        // metadata = target - link_creation - discovery = 100 - 30 - 20 = 50
+        assert_eq!(attribution.metadata, Duration::from_millis(50));
+    }
+
+    #[test]
+    fn deep_fixture_produces_unique_agents_md_relative_paths() {
+        // Exercise a size beyond the 8x8 fan-out (64) to ensure the {i:05}
+        // level (see fixtures::build) keeps every generated path unique
+        // instead of silently colliding and producing fewer files.
+        let fixture = fixtures::build(fixtures::Shape::Deep, 200);
+        let names = sorted_names(fixtures::Shape::Deep, &fixture);
+
+        assert_eq!(names.len(), 200, "no two deep fixture files may collide");
+        let mut deduped = names.clone();
+        deduped.dedup();
+        assert_eq!(deduped.len(), 200, "all deep fixture paths must be unique");
+        assert!(
+            names.iter().all(|name| name.ends_with("AGENTS.md")),
+            "every deep fixture file must be named AGENTS.md"
+        );
+    }
+
+    #[test]
+    fn run_cell_small_flat_produces_consistent_report() {
+        // Lightweight (non-ignored) regression check on the run_cell/median
+        // wiring, independent of the heavier #[ignore]d dev_bench_smoke test.
+        let report = run_cell(fixtures::Shape::Flat, 2, 2).unwrap();
+
+        assert_eq!(report.shape, "symlink-contents");
+        assert_eq!(report.n, 2);
+        assert_eq!(report.created, 2);
+        assert_eq!(report.errors, 0);
+        assert!(report.warm.is_some(), "2 runs must yield a warm median");
+        assert_eq!(
+            report.discovery,
+            Duration::ZERO,
+            "flat cells must not record discovery time"
+        );
+    }
+
+    #[test]
+    fn run_cell_single_run_has_no_warm_median() {
+        // Boundary case: --runs 1 means only a cold run, so warm must be None
+        // (median of an empty slice) rather than panicking or defaulting.
+        let report = run_cell(fixtures::Shape::Flat, 2, 1).unwrap();
+
+        assert_eq!(report.created, 2);
+        assert_eq!(report.errors, 0);
+        assert!(
+            report.warm.is_none(),
+            "a single run has no warm runs to take the median of"
+        );
+    }
+
+    #[test]
+    fn dev_bench_args_parses_defaults_and_overrides() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct TestCli {
+            #[command(flatten)]
+            args: DevBenchArgs,
+        }
+
+        let defaults = TestCli::parse_from(["dev-bench"]);
+        assert_eq!(defaults.args.runs, 5);
+        assert!(!defaults.args.json);
+
+        let overridden = TestCli::parse_from(["dev-bench", "--runs", "3", "--json"]);
+        assert_eq!(overridden.args.runs, 3);
+        assert!(overridden.args.json);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn suppressed_stdout_restores_fd_on_drop() {
+        use std::io::Write;
+
+        // Sanity: stdout is writable before suppression.
+        writeln!(std::io::stdout(), "before").unwrap();
+
+        {
+            let _suppressed = SuppressedStdout::suppress().unwrap();
+            // Writes here are redirected to /dev/null; must not error or panic.
+            writeln!(std::io::stdout(), "suppressed").unwrap();
+        }
+
+        // fd 1 must be restored and usable again after the guard drops.
+        writeln!(std::io::stdout(), "after").unwrap();
+    }
+
 }

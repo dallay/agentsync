@@ -20,6 +20,9 @@ mod suggest_install;
 mod linker_security;
 
 #[cfg(test)]
+mod linker_timing;
+
+#[cfg(test)]
 mod detect_coverage;
 
 #[cfg(test)]
