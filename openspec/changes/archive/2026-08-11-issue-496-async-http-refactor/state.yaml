@@ -1,0 +1,38 @@
+change: issue-496-async-http-refactor
+title: "refactor(network): standardize HTTP operations on async reqwest"
+url: https://github.com/dallay/agentsync/issues/496
+current_phase: archive
+completed:
+  - sdd-init
+  - sdd-explore
+  - sdd-propose
+  - sdd-spec
+  - sdd-design
+  - sdd-tasks
+  - sdd-apply
+  - sdd-verify
+  - sdd-qa
+  - sdd-archive
+next: none
+updated: "2026-08-11T00:00:00Z"
+
+scope:
+  - src/update_check.rs
+  - src/skills/provider.rs
+  - tests/test_catalog_integrity.rs
+  - Cargo.toml
+
+summary: |
+  Converted reqwest::blocking to async reqwest across update_check.rs, skills/provider.rs,
+  and test_catalog_integrity.rs. Removed the blocking feature from Cargo.toml and added the
+  Tokio "time" feature for direct tokio::time::sleep usage. Added the UpdateCheckError enum
+  (Timeout, Connection, HttpStatus, ParseError) and Tokio runtime bridging. Covered
+  success/timeout/invalid response/HTTP-status cases in tests.
+
+  Affected:
+  - src/update_check.rs: fetch_latest_version_async() uses async reqwest; spawn() runs on a
+    detached std::thread named "agentsync-update-check" with a dedicated Tokio runtime
+  - src/skills/provider.rs: resolve_via_search() bridges async resolve_via_search_http() via
+    Handle::try_current() or a temporary runtime; error_for_status() surfaces HTTP failures
+  - tests/test_catalog_integrity.rs: catalog integrity checks run on #[tokio::test] with async reqwest
+  - Cargo.toml: reqwest "blocking" feature removed; tokio "time" feature added

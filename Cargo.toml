@@ -52,8 +52,8 @@ pathdiff = "0.2"
 dirs = "6"
 
 # HTTP + async runtime (added for skills.sh integration feature)
-reqwest = { version = "0.13.3", features = ["json", "gzip", "stream", "blocking"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs"] }
+reqwest = { version = "0.13.3", features = ["json", "gzip", "stream"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "time"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 futures-util = "0.3"
