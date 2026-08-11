@@ -288,4 +288,182 @@ mod tests {
         // Exact arithmetic derivation: metadata + links == target.
         assert_eq!(sink.metadata() + sink.link_creation(), sink.target_total());
     }
+
+    fn make_config_with_nested_glob_target() -> Config {
+        let mut targets = BTreeMap::new();
+        targets.insert(
+            "target".to_string(),
+            TargetConfig {
+                source: ".agents/deep".to_string(),
+                destination: "docs/{relative_path}".to_string(),
+                sync_type: SyncType::NestedGlob,
+                pattern: Some("**/AGENTS.md".to_string()),
+                exclude: vec![],
+                mappings: vec![],
+            },
+        );
+
+        let agent_config = AgentConfig {
+            enabled: true,
+            description: String::new(),
+            targets,
+        };
+
+        let mut agents = BTreeMap::new();
+        agents.insert("test".to_string(), agent_config);
+
+        Config {
+            source_dir: ".agents".to_string(),
+            compress_agents_md: false,
+            default_agents: vec![],
+            agents,
+            gitignore: Default::default(),
+            mcp: Default::default(),
+            mcp_servers: Default::default(),
+        }
+    }
+
+    #[test]
+    fn sync_type_name_maps_every_variant_to_a_stable_name() {
+        assert_eq!(sync_type_name(SyncType::Symlink), "symlink");
+        assert_eq!(
+            sync_type_name(SyncType::SymlinkContents),
+            "symlink-contents"
+        );
+        assert_eq!(sync_type_name(SyncType::NestedGlob), "nested-glob");
+        assert_eq!(sync_type_name(SyncType::ModuleMap), "module-map");
+    }
+
+    #[test]
+    fn timing_sink_metadata_saturates_instead_of_underflowing() {
+        // Regression/boundary: link_creation + discovery exceeding target
+        // must saturate to zero rather than panicking on overflow in a debug
+        // build or wrapping in release.
+        let sink = TimingSink::default();
+        sink.add_target("nested-glob", Duration::from_millis(10));
+        sink.add_link_creation(Duration::from_millis(15));
+        sink.add_discovery(Duration::from_millis(5));
+
+        assert_eq!(sink.metadata(), Duration::ZERO);
+    }
+
+    #[test]
+    fn timing_sink_target_spans_preserve_insertion_order_and_sum() {
+        let sink = TimingSink::default();
+        sink.add_target("symlink-contents", Duration::from_millis(10));
+        sink.add_target("nested-glob", Duration::from_millis(20));
+        sink.add_target("symlink-contents", Duration::from_millis(30));
+
+        let spans = sink.target_spans();
+        assert_eq!(spans.len(), 3);
+        assert_eq!(spans[0].sync_type, "symlink-contents");
+        assert_eq!(spans[0].elapsed, Duration::from_millis(10));
+        assert_eq!(spans[1].sync_type, "nested-glob");
+        assert_eq!(spans[1].elapsed, Duration::from_millis(20));
+        assert_eq!(spans[2].sync_type, "symlink-contents");
+        assert_eq!(spans[2].elapsed, Duration::from_millis(30));
+
+        assert_eq!(sink.target_total(), Duration::from_millis(60));
+    }
+
+    #[test]
+    fn timing_span_returns_none_when_no_sink_is_installed() {
+        // Normal (non-bench) runs never call set_timing, so timing_span must
+        // short-circuit to None instead of allocating a guard.
+        let temp = TempDir::new().unwrap();
+        let config_path = temp.path().join("agentsync.toml");
+        fs::write(&config_path, "").unwrap();
+        let linker = Linker::new(make_config_with_contents_target(), config_path);
+
+        assert!(linker.timing_span(SpanKind::LinkCreation).is_none());
+        assert!(linker.timing_span(SpanKind::Canonicalize).is_none());
+        assert!(linker.timing_span(SpanKind::Discovery).is_none());
+        assert!(linker.timing_span(SpanKind::Target("symlink")).is_none());
+    }
+
+    #[test]
+    fn timing_span_guard_records_elapsed_into_the_matching_accumulator_on_drop() {
+        let temp = TempDir::new().unwrap();
+        let config_path = temp.path().join("agentsync.toml");
+        fs::write(&config_path, "").unwrap();
+        let linker = Linker::new(make_config_with_contents_target(), config_path);
+
+        let sink = Rc::new(RefCell::new(TimingSink::default()));
+        linker.set_timing(Some(Rc::clone(&sink)));
+
+        // Each span must feed exactly its own accumulator and leave the
+        // others untouched.
+        drop(linker.timing_span(SpanKind::LinkCreation));
+        assert!(sink.borrow().canonicalize().is_zero());
+        assert!(sink.borrow().discovery().is_zero());
+        assert!(sink.borrow().target_spans().is_empty());
+
+        drop(linker.timing_span(SpanKind::Canonicalize));
+        assert!(sink.borrow().discovery().is_zero());
+
+        drop(linker.timing_span(SpanKind::Discovery));
+
+        drop(linker.timing_span(SpanKind::Target("symlink-contents")));
+        let spans = sink.borrow().target_spans();
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].sync_type, "symlink-contents");
+    }
+
+    #[test]
+    fn set_timing_none_removes_a_previously_installed_sink() {
+        // Regression: after installing then clearing the sink, subsequent
+        // spans must return None again rather than keeping the old sink alive.
+        let temp = TempDir::new().unwrap();
+        let config_path = temp.path().join("agentsync.toml");
+        fs::write(&config_path, "").unwrap();
+        let linker = Linker::new(make_config_with_contents_target(), config_path);
+
+        let sink = Rc::new(RefCell::new(TimingSink::default()));
+        linker.set_timing(Some(Rc::clone(&sink)));
+        assert!(linker.timing_span(SpanKind::LinkCreation).is_some());
+
+        linker.set_timing(None);
+        assert!(linker.timing_span(SpanKind::LinkCreation).is_none());
+    }
+
+    #[test]
+    fn linker_sync_records_discovery_span_for_nested_glob() {
+        // Companion to `linker_sync_records_timing_spans`: exercises the
+        // discovery.rs guarded span (get_nested_glob_matches) end-to-end,
+        // which the flat/symlink-contents test above never reaches.
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        let deep = root.join(".agents").join("deep");
+        fs::create_dir_all(&deep).unwrap();
+        for i in 0..3 {
+            let dir = deep.join(format!("{i}"));
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join("AGENTS.md"), "FIXED\n").unwrap();
+        }
+
+        let config_path = root.join("agentsync.toml");
+        fs::write(&config_path, "").unwrap();
+        let linker = Linker::new(make_config_with_nested_glob_target(), config_path);
+
+        let sink = Rc::new(RefCell::new(TimingSink::default()));
+        linker.set_timing(Some(Rc::clone(&sink)));
+
+        let result = linker.sync(&SyncOptions::default()).unwrap();
+        assert_eq!(result.created, 3);
+
+        let sink = sink.borrow();
+        assert_eq!(sink.target_spans().len(), 1);
+        assert_eq!(sink.target_spans()[0].sync_type, "nested-glob");
+        assert!(
+            sink.discovery() > Duration::ZERO,
+            "nested-glob sync must time the walk"
+        );
+        assert!(sink.link_creation() > Duration::ZERO);
+        assert!(sink.canonicalize() > Duration::ZERO);
+        // No double counting: metadata + links + discovery == target.
+        assert_eq!(
+            sink.metadata() + sink.link_creation() + sink.discovery(),
+            sink.target_total()
+        );
+    }
 }
