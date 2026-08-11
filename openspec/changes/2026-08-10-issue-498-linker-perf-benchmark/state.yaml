@@ -40,8 +40,7 @@ apply_note: >-
   win is small as predicted (warm -0.6% to -4.3% across cells; flat-5000 warm
   528.7 -> 520.1 ms; nested-glob-5000 700.0 -> 675.8 ms); small gate N=4
   0.541 -> 0.518 ms, no regression; larger effect expected on re-run (existing
-  dest) scenarios. Remaining: tasks 3.3-3.4 (PRs 4-5), 4.1-4.2 (final). Chain
-  strategy in tasks.md still pending.
+  dest) scenarios.
 
   Phase B unit 4 (task 3.3, B3 DirEntry reuse) implemented and validated:
   resolve_source_path (apply.rs:208) refactored to delegate to new
@@ -63,7 +62,29 @@ apply_note: >-
   avg 31-144 vs 8-11 at B2), so raw deltas show +11-22% drift INCLUDING
   untouched nested-glob controls (+19-22%); drift-corrected flat cells -2.2%
   to -8.4% warm (N=5000 -3.9%), flat-5000 metadata 104.2ms vs 108.5ms pre-B1
-  baseline; small gate 0.574ms, no regression. Remaining: task 3.4 (B4
-  sorted iteration, PR 5), 4.1-4.2 (final bench + quality gate). Chain
-  strategy in tasks.md still pending.
+  baseline; small gate 0.574ms, no regression.
+
+  Phase B unit 5 (task 3.4, B4 sorted iteration + tasks 4.1-4.2 final metrics)
+  implemented and validated: deterministic directory iteration order across both
+  sync shapes. symlink-contents loop (symlinks.rs:258) now collects read_dir
+  entries into a new sorted_dir_entries() helper and sort_by_key(file_name);
+  nested-glob walk (discovery.rs:215) now uses WalkDir::sort_by_file_name().
+  No syscalls added/removed — in-memory sorts only, so perf-neutral by
+  construction. TDD with genuine RED evidence: (1) integration test
+  tests/test_b4_determinism.rs — two fresh apply runs -> byte-identical stdout
+  AND sorted "Linked:" order; pre-sort it failed the sorted-order pin (OS read_dir
+  order z,m,a; WalkDir a,c,b) even though byte-identical passed on APFS;
+  (2) unit sorted_dir_entries_returns_sorted_file_names (z,a,m -> a,m,z);
+  (3) unit get_nested_glob_matches_returns_sorted_rel_paths (b,a,c -> a,b,c).
+  Note: {relative_path} expands to the matched file's PARENT DIR (documented
+  behavior) -> dests docs/a, docs/b, docs/c. Gates: linker_security 11/11, full
+  suite 922 passed 0 failed (6 ignored), fmt + clippy clean, --help hides
+  dev-bench, exit-code contract untouched. Bench: B4 before/after recorded in
+  benchmark-baseline.md (median of 3 clean 5-run captures) with explicit load
+  caveat — captures ran at load 14-20 (1.4-1.7x cores) vs B1/B2's ~8-11, so all
+  cells read +40-51% warm; uniform elevation incl. flat cells (which B4 barely
+  touches) indicates load inflation, not B4 (in-memory sort of 1000 names cannot
+  cost 41 ms; zero added syscalls). Determinism contract proven by test suite.
+  All Phase B units (B1-B4) and final metrics (4.1-4.2) are implemented on this
+  chain; remaining work is merge-order strategy across PRs 3-5 (B2/B3/B4).
 updated: 2026-08-10

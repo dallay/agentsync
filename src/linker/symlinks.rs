@@ -254,12 +254,8 @@ impl Linker {
         // Create destination directory if needed
         self.ensure_directory(dest_dir, options)?;
 
-        // Iterate through source directory contents
-        for entry in fs::read_dir(source_dir)
-            .with_context(|| format!("Failed to read source directory: {}", source_dir.display()))?
-        {
-            let entry = entry
-                .with_context(|| format!("Failed to read entry in: {}", source_dir.display()))?;
+        // Iterate through source directory contents in deterministic order.
+        for entry in sorted_dir_entries(source_dir)? {
             let file_name = entry.file_name();
             let item_name = file_name.to_string_lossy();
 
@@ -296,6 +292,19 @@ impl Linker {
 
         Ok(result)
     }
+}
+
+/// Collect the entries of `dir`, returning them in deterministic sorted order.
+/// Directory iteration order from the OS is unspecified (often hash/creation
+/// order on APFS), so sorting by file name makes `symlink-contents` link
+/// creation and printed output reproducible across runs and platforms.
+fn sorted_dir_entries(dir: &Path) -> anyhow::Result<Vec<fs::DirEntry>> {
+    let mut entries: Vec<fs::DirEntry> = fs::read_dir(dir)
+        .with_context(|| format!("Failed to read source directory: {}", dir.display()))?
+        .collect::<Result<_, _>>()
+        .with_context(|| format!("Failed to read entry in: {}", dir.display()))?;
+    entries.sort_by_key(|entry| entry.file_name());
+    Ok(entries)
 }
 
 fn backup_path_for_destination(dest: &Path) -> PathBuf {
@@ -382,6 +391,37 @@ mod tests {
         let dest = root.join("dest.md");
 
         (temp, linker, source, dest)
+    }
+
+    // ==========================================================================
+    // B4 — deterministic directory iteration order (symlink-contents).
+    // The source fixture creates entries in NON-alphabetical order (`z`, `a`,
+    // `m`), so OS read_dir order (creation order on this filesystem) differs
+    // from sorted order (`a`, `m`, `z`). The helper must return sorted names
+    // so link creation order — and printed output — is reproducible.
+    // ==========================================================================
+
+    #[test]
+    #[cfg(unix)]
+    fn sorted_dir_entries_returns_sorted_file_names() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        for name in ["z.md", "a.md", "m.md"] {
+            let file = root.join(name);
+            fs::write(&file, format!("{name}\n")).unwrap();
+        }
+
+        let names: Vec<String> = sorted_dir_entries(root)
+            .unwrap()
+            .into_iter()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+
+        assert_eq!(
+            names,
+            vec!["a.md".to_string(), "m.md".to_string(), "z.md".to_string()],
+            "source directory iteration order must be sorted by file name"
+        );
     }
 
     // ==========================================================================
