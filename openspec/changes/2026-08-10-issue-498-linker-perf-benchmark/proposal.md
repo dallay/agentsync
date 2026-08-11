@@ -34,7 +34,9 @@ Two sequential phases, one change:
 |------|--------|-------------|
 | `src/commands/dev_bench.rs` | New | Hidden bench subcommand + fixtures |
 | `src/main.rs` | Modified | Wire hidden subcommand |
-| `src/linker/{paths,symlinks,discovery,apply}.rs` | Modified (B) | Cache scoping, stat removal, sorted walks |
+| `src/linker/timing.rs` | Modified (A) | Phase A timing sink + guarded spans |
+| `src/linker/{paths,symlinks,discovery,apply}.rs` | Modified (A), planned (B) | Phase A timing spans; Phase B cache scoping, stat removal, sorted walks |
+| `src/linker/clean.rs` | Planned (B) | Phase B cache-aware clean (future unit) |
 | `tests/unit/linker_security.rs` | Verified | TOCTOU/cache stays green |
 | `tests/contracts/` | Verified | Output contracts unchanged |
 | `openspec/specs/core-sync-engine/spec.md` | Reference | Delta in Phase B |

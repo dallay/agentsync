@@ -24,7 +24,7 @@ Changed lines est.: 800–1,150 · delivery: ask-on-risk.
 - [x] 1.1 Create `src/linker/timing.rs` (sink types, `reset`, add-* + getters); `cargo check --all-targets --all-features`.
 - [x] 1.2 TDD: failing unit asserting sink records spans; add private `timing` + `set_timing` to `Linker` (`mod.rs`); guarded spans at `process_target` (apply.rs:158), `create_symlink` (symlinks.rs:17), `relative_path` (paths.rs:239), `get_nested_glob_matches` (discovery.rs:159).
 - [x] 1.3 Create `src/commands/dev_bench.rs` with `mod fixtures` (BTreeMap `Config` + `TempDir`, names `f{0:04}.md`, content `"FIXED\n"`, no `rand`); wire `#[command(hide = true)]` in `main.rs` (precedent `DevInstall`); unit: two builds → identical sorted name sets.
-- [x] 1.4 Cell runner: matrix flat `symlink-contents` × deep `nested-glob` (`**/AGENTS.md`) × N=100/1,000/5,000 + small gate N=4; fresh `Linker`/cell; `--runs` default 5; cold=run1, warm=median(2..R); assert `created==N`; human table + `--json`; stdout `/dev/null` via `extern "C" dup2` (Unix; Windows skip).
+- [x] 1.4 Cell runner: matrix flat `symlink-contents` × deep `nested-glob` (`**/AGENTS.md`) × N=100/1,000/5,000 + small gate N=4; fresh `Linker`/cell; `--runs` default 5, min 2 (reject below, do not clamp); cold=run1, warm=median(2..R); assert `created==N`; human table + `--json`; stdout `/dev/null` via `extern "C" dup2` (Unix; Windows skip).
 - [x] 1.5 Add `#[ignore]`d `dev_bench_smoke`; verify `cargo test --release --bin agentsync dev_bench_smoke -- --ignored`.
 
 ## Phase 2: Implementation — baseline capture

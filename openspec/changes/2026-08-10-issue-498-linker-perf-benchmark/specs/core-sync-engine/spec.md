@@ -26,13 +26,13 @@ The system MUST provide a `dev-bench` subcommand (`src/commands/dev_bench.rs`) r
 
 ### Requirement: Deterministic Benchmark Fixtures
 
-Fixture generation MUST build an in-memory `Config` (BTreeMap-based) plus a `TempDir` file tree using fixed file names (e.g., `f0000.md`..`f4999.md`). It MUST NOT use `rand` or wall-clock-derived names, so identical parameters produce byte-identical fixtures across runs and machines.
+Fixture generation MUST build an in-memory `Config` (BTreeMap-based) plus a `TempDir` file tree using fixed file names (e.g., `f0000.md`..`f4999.md`). It MUST NOT use `rand` or wall-clock-derived names, so identical parameters produce identical relative paths and file contents across runs and machines; the `TempDir` root itself may vary.
 
 #### Scenario: Same parameters, identical fixtures
 
 - GIVEN fixed N and repo shape
 - WHEN fixtures are generated twice
-- THEN the file-name sets MUST be identical and in sorted order
+- THEN the sorted file-name lists and file contents MUST be identical
 
 #### Scenario: No randomness
 
@@ -92,9 +92,10 @@ The benchmark MUST run cold and warm, report the median of multiple runs, and be
 
 #### Scenario: Cold vs warm with median
 
-- GIVEN a matrix cell
-- WHEN the benchmark runs cold and warm
-- THEN both MUST be reported with the median of runs
+- GIVEN a matrix cell and a release binary
+- WHEN the benchmark runs cold and warm samples
+- THEN both cold and warm MUST be reported as the median of their respective samples
+- AND `--runs` below the required sample minimum MUST be rejected with an error instead of clamped
 
 #### Scenario: Baseline artifact created
 

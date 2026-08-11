@@ -12,7 +12,7 @@
 //! collides with `tests/contracts/` machine-readable output.
 //!
 //! Timing methodology (per design):
-//! * cold = run 1, warm = median of runs 2..=R (`--runs`, default 5)
+//! * cold = run 1, warm = median of runs 2..=R (`--runs`, default 5, min 2)
 //! * attribution from the final run: discovery = walk span, link creation =
 //!   Σ `create_symlink` spans, canonicalize = Σ `relative_path` spans,
 //!   metadata = target − links − discovery (no double counting)
@@ -84,6 +84,10 @@ pub(crate) mod fixtures {
         pub(crate) root: TempDir,
         pub(crate) config: Config,
         pub(crate) config_path: PathBuf,
+        /// Managed destination root (parent of all symlinks this fixture's
+        /// target creates). Warm runs reset ONLY this tree between runs; the
+        /// source tree under `.agents/` must survive.
+        pub(crate) dest_root: PathBuf,
     }
 
     /// Fixed source file name for the flat shape.
@@ -153,10 +157,16 @@ pub(crate) mod fixtures {
         // `Config::project_root` semantics at `{root}`.
         fs::write(&config_path, "").expect("failed to write config path marker");
 
+        let dest_root = match shape {
+            Shape::Flat => root_path.join("links"),
+            Shape::Deep => root_path.join("docs"),
+        };
+
         Fixture {
             root,
             config,
             config_path,
+            dest_root,
         }
     }
 
@@ -298,7 +308,15 @@ fn matrix_cells() -> Vec<(fixtures::Shape, usize)> {
 /// Run one matrix cell: a fresh fixture, linker, and sink per run. Cold = run
 /// 1; warm = median of runs 2..=R; attribution from the final run. Every run
 /// must create exactly `n` links with zero errors.
+///
+/// The source fixture is built ONCE per cell and reused across all runs;
+/// between runs only the managed destination tree is reset. Runs 2..=R
+/// therefore measure repeated synchronization of the same repository state
+/// (same sources, same config, same link targets) rather than fresh-fixture
+/// builds, which is what "warm" is documented to mean. A fresh [`Linker`] is
+/// created per run so link-time caches cannot leak between samples.
 fn run_cell(shape: fixtures::Shape, n: usize, runs: usize) -> Result<CellReport> {
+    let fixture = fixtures::build(shape, n);
     let mut cold = None;
     let mut warm_runs: Vec<Duration> = Vec::with_capacity(runs.saturating_sub(1));
     let mut attribution = None;
@@ -306,9 +324,11 @@ fn run_cell(shape: fixtures::Shape, n: usize, runs: usize) -> Result<CellReport>
     let mut errors = 0usize;
 
     for run in 1..=runs {
-        let fixture = fixtures::build(shape, n);
+        if run > 1 {
+            reset_managed_destination(&fixture)?;
+        }
         let sink = Rc::new(RefCell::new(TimingSink::default()));
-        let linker = Linker::new(fixture.config, fixture.config_path);
+        let linker = Linker::new(fixture.config.clone(), fixture.config_path.clone());
         linker.set_timing(Some(Rc::clone(&sink)));
         sink.borrow_mut().reset();
 
@@ -379,9 +399,70 @@ fn format_ms(duration: Duration) -> String {
     format!("{:.3}ms", ms(duration))
 }
 
+/// Reset the managed destination tree of a fixture between benchmark runs so
+/// warm samples re-sync the same repository state. Only the destination root
+/// created by the previous run is removed; the source tree under `.agents/`
+/// and the in-memory config survive, so runs 2..=R measure repeated
+/// synchronization instead of fresh-fixture builds.
+fn reset_managed_destination(fixture: &fixtures::Fixture) -> Result<()> {
+    if fixture.dest_root.exists() {
+        fs::remove_dir_all(&fixture.dest_root)
+            .with_context(|| format!("failed to reset {}", fixture.dest_root.display()))?;
+    }
+    Ok(())
+}
+
+/// Release-only contract: the benchmark exists to record release baseline
+/// data, so debug runs must fail loudly instead of labeling debug timings as
+/// `"profile": "release"` (see `emit_json`).
+#[cfg(debug_assertions)]
+fn ensure_release_profile() -> Result<()> {
+    anyhow::bail!(
+        "dev-bench is release-only: run `cargo run --release -- dev-bench` so timings cannot be recorded as release baseline data"
+    );
+}
+
+#[cfg(not(debug_assertions))]
+fn ensure_release_profile() -> Result<()> {
+    Ok(())
+}
+
+/// `--json` validity across platforms. On non-Unix targets per-link output
+/// cannot be suppressed (see [`SuppressedStdout`]), so a JSON document would
+/// be corrupt; reject early instead of emitting garbage.
+#[cfg(unix)]
+fn ensure_json_supported(_args: &DevBenchArgs) -> Result<()> {
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn ensure_json_supported(args: &DevBenchArgs) -> Result<()> {
+    if args.json {
+        anyhow::bail!(
+            "dev-bench --json is not supported on this platform: per-link output cannot be suppressed, so stdout would not contain a parseable JSON document"
+        );
+    }
+    Ok(())
+}
+
+/// The reported statistic is a median of cold samples (run 1) and warm
+/// samples (runs 2..=R). A run count below 2 cannot produce both, so it must
+/// be rejected instead of clamped with `.max(1)`.
+fn ensure_runs_sufficient(runs: usize) -> Result<()> {
+    anyhow::ensure!(
+        runs >= 2,
+        "dev-bench --runs must be at least 2 (one cold sample plus at least one warm sample for the median), got {runs}"
+    );
+    Ok(())
+}
+
 /// Run the hidden linker benchmark and emit the report.
 pub(crate) fn run_dev_bench(args: DevBenchArgs) -> Result<()> {
-    let runs = args.runs.max(1);
+    ensure_release_profile()?;
+    ensure_json_supported(&args)?;
+    ensure_runs_sufficient(args.runs)?;
+
+    let runs = args.runs;
 
     // Flush any buffered pre-bench output so it cannot be lost to /dev/null
     // once cell runs suppress per-link stdout.
@@ -744,5 +825,87 @@ mod tests {
 
         // fd 1 must be restored and usable again after the guard drops.
         writeln!(std::io::stdout(), "after").unwrap();
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn run_dev_bench_rejects_debug_builds() {
+        // Release-only contract: someone running `cargo run -- dev-bench`
+        // must get a clear error instead of silently recording debug timings
+        // as release baseline data (the `"profile": "release"` label).
+        let err = run_dev_bench(DevBenchArgs {
+            runs: 1,
+            json: true,
+        })
+        .unwrap_err();
+        let message = err.to_string();
+        assert!(
+            message.contains("release"),
+            "debug builds must be rejected with a release-profile message, got: {message}"
+        );
+    }
+
+    #[test]
+    fn ensure_runs_sufficient_rejects_below_two_and_accepts_two() {
+        // The statistic needs at least one cold and one warm sample; `--runs 1`
+        // (or 0) cannot produce a warm median, so it must be rejected rather
+        // than silently clamped with `.max(1)`.
+        assert!(
+            ensure_runs_sufficient(0).is_err(),
+            "--runs 0 must be rejected"
+        );
+        assert!(
+            ensure_runs_sufficient(1).is_err(),
+            "--runs 1 must be rejected"
+        );
+        assert!(
+            ensure_runs_sufficient(2).is_ok(),
+            "--runs 2 must be accepted"
+        );
+        assert!(
+            ensure_runs_sufficient(5).is_ok(),
+            "--runs 5 must be accepted"
+        );
+        let message = ensure_runs_sufficient(1).unwrap_err().to_string();
+        assert!(
+            message.contains("at least 2"),
+            "rejection must explain the sample minimum, got: {message}"
+        );
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn reset_managed_destination_clears_dest_but_keeps_sources() {
+        let fixture = fixtures::build(fixtures::Shape::Flat, 2);
+
+        // Simulate a completed first run: managed destination exists and the
+        // source tree still holds the fixture files.
+        fs::create_dir_all(&fixture.dest_root).unwrap();
+        fs::write(fixture.dest_root.join("f0000.md"), fixtures::FIXED_CONTENT).unwrap();
+        let source_file = fixture.root.path().join(".agents/flat/f0000.md");
+        assert!(source_file.exists());
+
+        reset_managed_destination(&fixture).unwrap();
+
+        assert!(
+            !fixture.dest_root.exists(),
+            "managed destination must be cleared between warm runs"
+        );
+        assert!(
+            source_file.exists(),
+            "source fixture tree must survive warm-run resets"
+        );
+    }
+
+    #[cfg(not(debug_assertions))]
+    #[test]
+    fn run_dev_bench_allows_release_profiles() {
+        // Compiles only in release builds: the release-only contract must NOT
+        // reject release runs (the smoke test exercises the same profile).
+        run_dev_bench(DevBenchArgs {
+            runs: 2,
+            json: false,
+        })
+        .unwrap();
     }
 }

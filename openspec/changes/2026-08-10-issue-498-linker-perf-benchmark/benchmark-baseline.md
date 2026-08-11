@@ -17,7 +17,7 @@ Every cell asserts `created == N` and `errors == 0` (asserted inside the benchma
 
 ## Results — human table (all timings in ms)
 
-```
+```text
 dev-bench: linker sync benchmark (5 runs per cell, all timings in ms)
 shape                   n  created         cold         warm     metadata  canonicalize    discovery link-creation
 symlink-contents        4        4      0.874ms      0.606ms      0.209ms       0.104ms      0.000ms       0.381ms

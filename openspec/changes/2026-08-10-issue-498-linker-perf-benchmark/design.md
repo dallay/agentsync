@@ -27,7 +27,8 @@ BTreeMap helpers and `Config::project_root`/`source_dir` semantics (`config.rs:3
 one target. Deterministic: `0..n`, content `"FIXED\n"`, names `f{0:04}.md`; no `rand`.
 
 - **flat**: `.agents/flat/`, N children; `SymlinkContents`, dest `links/` → N links.
-- **deep**: `.agents/deep/{i%8}/{i/8%8}/AGENTS.md`; `NestedGlob` `**/AGENTS.md`, template
+- **deep**: `.agents/deep/{i%8}/{i/8%8}/{i:05}/AGENTS.md`; the `{i:05}` per-file level keeps every
+  path unique for N > 64 (the 8×8 fan-out alone yields only 64 dirs); `NestedGlob` `**/AGENTS.md`, template
   `docs/{relative_path}` → N links.
 - **small gate**: flat, N=4 (3–5 band).
 
