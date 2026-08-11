@@ -7,18 +7,18 @@
 - **Date**: 2026-08-11
 
 ## Sources of Truth
-- **Proposal**: `openspec/changes/issue-496-async-http-refactor/proposal.md`
-- **Specifications**: `openspec/changes/issue-496-async-http-refactor/specs/` (no specs directory found; proposal defines acceptance criteria)
-- **Design**: `openspec/changes/issue-496-async-http-refactor/design.md`
-- **Tasks**: `openspec/changes/issue-496-async-http-refactor/tasks.md`
-- **Technical verification**: `openspec/changes/issue-496-async-http-refactor/verify-report.md` (not yet written)
+- **Proposal**: `openspec/changes/archive/2026-08-11-issue-496-async-http-refactor/proposal.md`
+- **Specifications**: `openspec/changes/archive/2026-08-11-issue-496-async-http-refactor/specs/` (4 delta specs: version-check, skill-recommendations, e2e-testing, dependency-management)
+- **Design**: `openspec/changes/archive/2026-08-11-issue-496-async-http-refactor/design.md`
+- **Tasks**: `openspec/changes/archive/2026-08-11-issue-496-async-http-refactor/tasks.md`
+- **Technical verification**: `openspec/changes/archive/2026-08-11-issue-496-async-http-refactor/verify-report.md` (written after this QA run; verdict PASS)
 - **Config**: `openspec/config.yaml`
 
 ## Target and Environment
 - **Target**: Rust CLI (`agentsync`) — async HTTP refactor (reqwest::blocking → async reqwest)
 - **Environment**: macOS, Rust 1.89+, Tokio async runtime
 - **Credentials/permissions**: None required for unit tests; GitHub token optional for E2E
-- **Limitations**: No `verify-report.md` exists yet — no upstream technical verification artifact
+- **Limitations**: QA ran before `sdd-verify` completed; `verify-report.md` was written after this QA run and its verdict is PASS — no unresolved verification findings remain
 
 ## Capability Inventory
 
@@ -65,7 +65,7 @@
 
 | ID | Severity | Scenario / location | Evidence | Status |
 |---|---|---|---|---|
-| QA-NOTE-1 | P3 | No `verify-report.md` exists | Technical verification has not been completed by `sdd-verify` phase | **Open** — this is a phase sequencing issue, not a code defect. QA verdict is based on direct code inspection and test execution. |
+| QA-NOTE-1 | P3 | `verify-report.md` was written after this QA run | QA ran before `sdd-verify` completed; the verification report now exists with verdict PASS, so this sequencing note is resolved | **Resolved** — phase sequencing issue, not a code defect. QA verdict is based on direct code inspection and test execution. |
 | QA-NOTE-2 | P3 | E2E test skipped without `RUN_E2E=1` | `test_catalog_integrity` returns early without running when `RUN_E2E` is not set | **Informational** — expected behavior per test design |
 
 ## Verdict
@@ -94,5 +94,5 @@ The acceptance criteria from issue #496 are satisfied:
 
 - **QA does not fix code** — No code modifications were made during this phase.
 - **Product acceptance is not claimed** — This is a CLI harness without an application-under-test in the traditional sense; `PASS` verdict is based on behavioral evidence (test execution, grep verification, CLI smoke tests).
-- **No `verify-report.md` exists** — The technical verification phase (`sdd-verify`) has not been completed. QA is providing independent behavioral acceptance evidence. The absence of `verify-report.md` does not block the change but should be addressed before archive if policy requires both reports.
+- **No `verify-report.md` existed when QA ran** — QA provided independent behavioral acceptance evidence; `sdd-verify` completed afterwards with verdict PASS. Both reports exist in the archive and agree.
 - **Follow-up for implementation**: None required — all acceptance criteria are satisfied.

@@ -143,10 +143,16 @@ async fn fetch_latest_version_async(
         });
     }
 
-    let info: CratesIoResponse = response
-        .json()
-        .await
-        .map_err(|e| UpdateCheckError::ParseError(e.to_string()))?;
+    let info: CratesIoResponse = response.json().await.map_err(|e| {
+        if e.is_timeout() {
+            UpdateCheckError::Timeout {
+                url: url.to_string(),
+                duration_secs: timeout.as_secs(),
+            }
+        } else {
+            UpdateCheckError::ParseError(e.to_string())
+        }
+    })?;
 
     Ok(info.krate.newest_version)
 }
@@ -257,6 +263,53 @@ mod tests {
         ready_rx.await.expect("addr received")
     }
 
+    /// Start a TCP server that returns a valid crates.io JSON body.
+    async fn spawn_success_server() -> std::net::SocketAddr {
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+        let _handle = std::thread::spawn(move || {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind to succeed");
+            let addr = listener.local_addr().expect("local_addr");
+            if ready_tx.send(addr).is_err() {
+                return;
+            }
+            let (mut conn, _) = listener.accept().expect("accept");
+            use std::io::{Read, Write};
+            let mut dummy = [0u8; 512];
+            let _ = conn.read(&mut dummy);
+            let body = br#"{"crate":{"newest_version":"9.9.9"}}"#;
+            let _ = conn.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n");
+            let _ = write!(conn, "Content-Length: {}\r\n\r\n", body.len());
+            let _ = conn.write_all(body);
+            let _ = conn.flush();
+        });
+        ready_rx.await.expect("addr received")
+    }
+
+    /// Start a TCP server that sends response headers but stalls the body,
+    /// so the client timeout fires while reading the response body.
+    async fn spawn_body_stall_server() -> std::net::SocketAddr {
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+        let _handle = std::thread::spawn(move || {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind to succeed");
+            let addr = listener.local_addr().expect("local_addr");
+            if ready_tx.send(addr).is_err() {
+                return;
+            }
+            let (mut conn, _) = listener.accept().expect("accept");
+            use std::io::{Read, Write};
+            let mut dummy = [0u8; 512];
+            let _ = conn.read(&mut dummy);
+            // Advertise a large body, then never send it and keep the socket open.
+            let _ = conn.write_all(
+                b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 65536\r\n\r\n",
+            );
+            let _ = conn.flush();
+            // Keep the connection open long enough for the client timeout to fire.
+            std::thread::sleep(std::time::Duration::from_secs(5));
+        });
+        ready_rx.await.expect("addr received")
+    }
+
     /// Start a TCP server that returns HTTP 404.
     async fn spawn_404_server() -> std::net::SocketAddr {
         let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
@@ -297,6 +350,32 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(matches!(err, UpdateCheckError::ParseError(_)));
+    }
+
+    #[tokio::test]
+    async fn test_fetch_latest_version_success() {
+        let addr = spawn_success_server().await;
+        let url = format!("http://{}/api/v1/crates/agentsync", addr);
+
+        let result = fetch_latest_version_async(&url, std::time::Duration::from_secs(5)).await;
+        assert_eq!(result.expect("successful fetch"), "9.9.9");
+    }
+
+    #[tokio::test]
+    async fn test_fetch_latest_version_body_stall_timeout() {
+        let addr = spawn_body_stall_server().await;
+        let url = format!("http://{}/api/v1/crates/agentsync", addr);
+
+        // Headers arrive quickly, but the body never arrives. The configured client
+        // timeout must surface as UpdateCheckError::Timeout, not ParseError.
+        let result = fetch_latest_version_async(&url, std::time::Duration::from_millis(100)).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, UpdateCheckError::Timeout { .. }),
+            "expected Timeout for stalled body, got: {:?}",
+            err
+        );
     }
 
     #[tokio::test]

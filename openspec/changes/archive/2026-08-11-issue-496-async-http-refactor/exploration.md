@@ -1,4 +1,4 @@
-## Exploration: issue-496-async-http-refactor
+# Exploration: issue-496-async-http-refactor
 
 ### Current State
 
@@ -90,10 +90,11 @@ reqwest = { version = "0.13.3", features = ["json", "gzip", "stream", "blocking"
 
 **tokio** (line 56):
 ```toml
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "time"] }
 ```
-- Features: `rt-multi-thread`, `macros`, `fs`
+- Features: `rt-multi-thread`, `macros`, `fs`, `time`
 - Already present for async file operations in `install.rs` (`tokio::fs`, `tokio::io::AsyncWriteExt`)
+- `time` is required for `tokio::time::sleep` in `tests/test_catalog_integrity.rs` and must be declared explicitly rather than relying on the transitive feature from reqwest
 - **No `#[tokio::main]` in the binary** — main.rs uses a plain `fn main()` / `fn run() -> Result<()>`
 
 ---
@@ -174,7 +175,7 @@ The skill registry and previous exploration docs confirm this is the complete li
 ### Risks
 
 - **`main.rs` has no Tokio runtime**: Converting `resolve_via_search()` to async means callers (all sync) must either spawn a runtime or the function must self-spawn like `blocking_fetch_and_install_skill` does
-- **`update_check.rs` already spawns a thread**: Converting to async there is straightforward — use `tokio::spawn` instead of `thread::spawn`
+- **`update_check.rs` already spawns a thread**: Converting to async there is straightforward — keep `std::thread::Builder` with the explicit name `"agentsync-update-check"` and run a dedicated Tokio runtime inside via `Runtime::block_on`
 - **`test_catalog_integrity.rs`**: Convert test to `#[tokio::test]` — straightforward
 - **`reqwest 0.13.3`**: The blocking client removal after migration must be done carefully — the async client features (`json`, `gzip`, `stream`) remain needed
 - **`skills/install.rs` already bridges sync→async**: The pattern of checking `Handle::try_current()` and falling back to `Runtime::new()` is already established and should be replicated
@@ -185,7 +186,7 @@ The skill registry and previous exploration docs confirm this is the complete li
 
 **Yes** — the codebase is well-understood. The refactor is straightforward:
 
-1. `update_check.rs`: Replace `thread::spawn` + blocking client with `tokio::spawn` + async client
+1. `update_check.rs`: Replace blocking client with async client, keeping `std::thread::Builder` + dedicated Tokio runtime via `Runtime::block_on`
 2. `provider.rs`: Add Tokio runtime detection (same pattern as `install.rs`) or make callers async
 3. `test_catalog_integrity.rs`: Convert to `#[tokio::test]` with async client
 4. `Cargo.toml`: Remove `blocking` feature from reqwest after all three conversions

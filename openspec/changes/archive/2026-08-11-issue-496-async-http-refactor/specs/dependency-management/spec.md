@@ -35,7 +35,7 @@ After the migration, `reqwest::blocking` SHALL NOT appear in any source file und
 
 ### Requirement: Error Context on HTTP Operations
 
-All HTTP error types (timeout, connection, redirect, non-200 status) SHALL carry useful context that enables diagnosis without guessing.
+All HTTP error types (timeout, connection, non-200 status) SHALL carry useful context that enables diagnosis without guessing.
 
 #### Scenario: HTTP errors carry timeout vs connection vs status context
 
@@ -43,6 +43,5 @@ All HTTP error types (timeout, connection, redirect, non-200 status) SHALL carry
 - WHEN the error is caught and logged or returned
 - THEN the error context SHALL distinguish between:
   - Timeout errors (request exceeded time limit)
-  - Connection errors (DNS, TCP, TLS failures)
-  - Redirect errors (too many redirects)
+  - Connection errors (DNS, TCP, TLS failures — including redirect loops, which surface with the reason text)
   - Non-200 status errors (4xx/5xx responses with status codes)

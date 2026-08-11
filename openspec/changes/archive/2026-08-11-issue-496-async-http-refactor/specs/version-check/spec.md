@@ -10,7 +10,7 @@ The request timeout SHALL be 3 seconds.
 
 On success, the system SHALL parse the JSON response and extract the `crate.newest_version` field.
 
-HTTP errors (timeout, connection failure, redirect, non-200 status) SHALL carry useful diagnostic context.
+HTTP errors (timeout, connection failure, non-200 status) SHALL carry useful diagnostic context. A timeout detected while decoding the response body SHALL map to `Timeout`, not `ParseError`.
 
 #### Scenario: API request succeeds with async client
 
@@ -25,6 +25,7 @@ HTTP errors (timeout, connection failure, redirect, non-200 status) SHALL carry 
 - GIVEN the crates.io API does not respond within 3 seconds
 - WHEN the timeout is reached
 - THEN the request SHALL be cancelled silently
+- AND the error SHALL carry timeout context (url and duration)
 - AND no hint SHALL be printed
 - AND no error SHALL propagate to the user
 
@@ -32,7 +33,7 @@ HTTP errors (timeout, connection failure, redirect, non-200 status) SHALL carry 
 
 - GIVEN a connection error occurs during the API request
 - WHEN the error is caught
-- THEN the system SHALL log diagnostic context for the error
+- THEN the error SHALL carry the URL and the connection reason
 - AND SHALL continue the CLI execution silently
 - AND no hint SHALL be printed
 
@@ -40,7 +41,7 @@ HTTP errors (timeout, connection failure, redirect, non-200 status) SHALL carry 
 
 - GIVEN the crates.io API returns a 4xx or 5xx status
 - WHEN the response is received
-- THEN the system SHALL record the status code in the error context
+- THEN the system SHALL record the URL and status code in the error context
 - AND SHALL treat this as a failed check
 - AND SHALL print no hint
 - AND SHALL continue silently
@@ -49,27 +50,29 @@ HTTP errors (timeout, connection failure, redirect, non-200 status) SHALL carry 
 
 ### Requirement: Detached Background Thread
 
-The version check SHALL run on a detached Tokio task spawned via `tokio::spawn` instead of `std::thread::Builder`.
+The version check SHALL run on a detached background thread spawned via `std::thread::Builder` with the explicit name `"agentsync-update-check"`.
 
-The task SHALL be named implicitly by the Tokio runtime.
+The thread SHALL create its own Tokio runtime with `tokio::runtime::Runtime::new()` and execute the async check with `Runtime::block_on`; the check SHALL NOT use `tokio::spawn` or rely on an external runtime.
 
-The task SHALL NOT be joined — it SHALL exit naturally when the process exits.
+The thread SHALL be spawned after `Cli::parse` returns, as implemented by `main.rs`.
 
-The task SHALL NOT block the main CLI flow.
+The thread SHALL NOT be joined — it SHALL exit naturally when the process exits.
 
-#### Scenario: Tokio task spawns on CLI invocation
+The thread SHALL NOT block the main CLI flow.
+
+#### Scenario: Detached thread spawns after CLI parsing
 
 - GIVEN a CLI invocation of `agentsync`
-- WHEN the program starts
-- THEN a Tokio task SHALL be spawned for the version check before CLI parsing
+- WHEN the program has parsed the CLI arguments
+- THEN a detached background thread SHALL be spawned for the version check
 - AND the main thread SHALL continue immediately without waiting
 
-#### Scenario: Process exit cancels Tokio task
+#### Scenario: Process exit terminates detached thread
 
-- GIVEN a background Tokio task is running for version checking
+- GIVEN a background thread is running the version check
 - WHEN the CLI command completes and the process exits
-- THEN any in-flight HTTP requests SHALL be cancelled
-- AND no explicit task handle SHALL be retained
+- THEN the thread SHALL NOT prevent process exit
+- AND no explicit thread handle SHALL be retained
 
 ---
 

@@ -38,7 +38,7 @@ let result = match tokio::runtime::Handle::try_current() {
 
 ### Decision: `update_check.rs` spawn strategy
 
-**Choice**: `spawn()` creates a new `tokio::runtime::Runtime` scoped to the task, using `tokio::spawn` for the background task. No detection needed — `main.rs` has no Tokio runtime at all, so the bridge pattern is unnecessary here.
+**Choice**: `spawn()` creates a new `tokio::runtime::Runtime` scoped to the task and runs the async check via `Runtime::block_on` on a detached `std::thread`. No detection needed — `main.rs` has no Tokio runtime at all, so the bridge pattern is unnecessary here.
 
 ```rust
 pub fn spawn() {
@@ -49,11 +49,11 @@ pub fn spawn() {
         .name("agentsync-update-check".to_string())
         .spawn(|| {
             let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async_check_and_notify());
+            rt.block_on(check_and_notify_async());
         });
 }
 
-async fn async_check_and_notify() {
+async fn check_and_notify_async() {
     // fetch_latest_version becomes async fn using async Client
 }
 ```
@@ -64,17 +64,17 @@ async fn async_check_and_notify() {
 
 ### Decision: Error context on HTTP failures
 
-**Choice**: Add a new `UpdateCheckError` enum with variants `Timeout`, `ConnectionFailed`, `HttpStatus(u16)`, `ParseError` — replacing the silent `.ok()?` fallthrough in `fetch_latest_version`.
+**Choice**: Add a new `UpdateCheckError` enum with variants `Timeout`, `Connection`, `HttpStatus`, `ParseError` — replacing the silent `.ok()?` fallthrough in `fetch_latest_version`. Each network variant carries `url` plus a contextual field so diagnostics identify the failing request.
 
 ```rust
 #[derive(Debug, thiserror::Error)]
 pub enum UpdateCheckError {
-    #[error("update check timed out")]
-    Timeout,
-    #[error("connection failed: {0}")]
-    ConnectionFailed(#[from] reqwest::Error),
-    #[error("unexpected HTTP status {0}")]
-    HttpStatus(u16),
+    #[error("update check timed out after {duration_secs}s for url {url}")]
+    Timeout { url: String, duration_secs: u64 },
+    #[error("connection failed for {url}: {reason}")]
+    Connection { url: String, reason: String },
+    #[error("unexpected HTTP status {status} for {url}")]
+    HttpStatus { url: String, status: u16 },
     #[error("failed to parse version: {0}")]
     ParseError(String),
 }
@@ -82,15 +82,15 @@ pub enum UpdateCheckError {
 
 **Alternatives considered**: Using `anyhow` for all errors — rejected; the success criteria requires categorizing errors (timeout vs. connection vs. status). `thiserror` gives structured variants for QA and logging.
 
-**Rationale**: Aligns with `SkillInstallError` in `install.rs` which already uses `thiserror` with `Network` variants. Structured errors make the acceptance criteria verifiable.
+**Rationale**: Aligns with `SkillInstallError` in `install.rs` which already uses `thiserror` with `Network` variants. Structured errors make the acceptance criteria verifiable. A timeout detected while decoding the response body (`response.json().await` with `e.is_timeout()`) maps to `Timeout` as well, not `ParseError`.
 
 ## Data Flow
 
-```
+```text
 main.rs:run()
   └── update_check::spawn()          [std::thread, named "agentsync-update-check"]
         └── tokio::runtime::Runtime  [new, single-use]
-              └── tokio::spawn(async_check_and_notify())
+              └── rt.block_on(check_and_notify_async())
                     └── async fetch via reqwest::Client (non-blocking)
                           └── Cache read/write (sync, std::fs)
 
@@ -123,12 +123,12 @@ test_catalog_integrity.rs
 ```rust
 #[derive(Debug, thiserror::Error)]
 pub enum UpdateCheckError {
-    #[error("update check timed out")]
-    Timeout,
-    #[error("connection failed: {0}")]
-    ConnectionFailed(#[from] reqwest::Error),
-    #[error("unexpected HTTP status {0}")]
-    HttpStatus(u16),
+    #[error("update check timed out after {duration_secs}s for url {url}")]
+    Timeout { url: String, duration_secs: u64 },
+    #[error("connection failed for {url}: {reason}")]
+    Connection { url: String, reason: String },
+    #[error("unexpected HTTP status {status} for {url}")]
+    HttpStatus { url: String, status: u16 },
     #[error("failed to parse version: {0}")]
     ParseError(String),
 }

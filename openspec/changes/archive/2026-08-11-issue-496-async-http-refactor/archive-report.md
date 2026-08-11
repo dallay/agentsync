@@ -24,14 +24,14 @@
 
 | Domain | Action | Details |
 |--------|--------|---------|
-| `version-check` | MODIFIED | Replaced `reqwest::blocking::Client` with `reqwest::Client` (async) in `crates.io API Query` requirement; updated `Detached Background Thread` to use `tokio::spawn` instead of `std::thread::Builder` |
+| `version-check` | MODIFIED | Replaced `reqwest::blocking::Client` with `reqwest::Client` (async) in `crates.io API Query` requirement; updated `Detached Background Thread` to document the dedicated Tokio runtime (`Runtime::block_on`) while keeping `std::thread::Builder` with the explicit thread name |
 | `skill-recommendations` | MODIFIED | Added new requirement `Provider Skill Resolution Uses Async HTTP` with bridge pattern (Handle::try_current) |
 | `e2e-testing` | CREATED | New spec created — E2E catalog integrity tests now use `#[tokio::test]` with async reqwest |
 | `dependency-management` | CREATED | New spec created — `blocking` feature removed from Cargo.toml, no `reqwest::blocking` in src/tests |
 
 ### version-check — Changes Applied
 - `crates.io API Query`: MODIFIED — async client replaces blocking, HTTP errors carry diagnostic context
-- `Detached Background Thread`: MODIFIED — Tokio spawn replaces std::thread, implicit naming
+- `Detached Background Thread`: MODIFIED — keeps `std::thread::Builder` with explicit name `"agentsync-update-check"`, documents dedicated Tokio runtime via `Runtime::block_on` (no `tokio::spawn`)
 - `Synchronous Path Documentation`: ADDED (new requirement) — cache I/O documented with `// Note: sync path`
 
 ### skill-recommendations — Changes Applied

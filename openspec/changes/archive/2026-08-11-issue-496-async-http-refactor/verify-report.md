@@ -44,8 +44,8 @@ Implementation fully matches all four delta specs. All acceptance criteria pass,
 | API request times out with context | `test_fetch_latest_version_timeout` asserts `UpdateCheckError::Timeout { .. }` | ✅ PASS |
 | API request fails with connection error | `UpdateCheckError::Connection` captures `url` + `reason` | ✅ PASS |
 | API returns non-200 status with context | `test_fetch_latest_version_404` asserts `UpdateCheckError::HttpStatus { status: 404, .. }` | ✅ PASS |
-| Tokio task spawns on CLI invocation | `spawn()` uses `thread::Builder::new().name("agentsync-update-check")` + `tokio::runtime::Runtime::new()` | ✅ PASS |
-| Process exit cancels Tokio task | Task is detached; no `.join()` retained | ✅ PASS |
+| Detached thread spawns after CLI parsing | `spawn()` uses `thread::Builder::new().name("agentsync-update-check")` + `tokio::runtime::Runtime::new()` | ✅ PASS |
+| Process exit terminates detached thread | Task is detached; no `.join()` retained | ✅ PASS |
 | Synchronous cache operations are documented | `Cache::load`, `Cache::save`, and cache I/O in `check_and_notify_async` all have `// Note: sync path` | ✅ PASS |
 
 ### skill-recommendations (6 scenarios)
@@ -100,7 +100,7 @@ Implementation fully matches all four delta specs. All acceptance criteria pass,
 | Bridge pattern `Handle::try_current` in `resolve_via_search` | ✅ Confirmed | ✅ Confirmed | CRITICAL | Confirmed |
 | All 575 unit tests pass | ✅ Confirmed | ✅ Confirmed | CRITICAL | Confirmed |
 | Clippy clean (`-D warnings`) | ✅ Confirmed | ✅ Confirmed | CRITICAL | Confirmed |
-| State.yaml `current_phase` not updated after apply | ⚠️ `propose` not `verify` | INFO | WARNING | Detected (artifact issue, not implementation) |
+| State.yaml `current_phase` not updated after apply | ⚠️ `propose` not `verify` | INFO | WARNING | Detected (artifact issue, not implementation) — resolved during archive (state.yaml `current_phase: archive`) |
 
 ---
 
@@ -108,7 +108,7 @@ Implementation fully matches all four delta specs. All acceptance criteria pass,
 
 | Finding | Severity | Status |
 |---------|----------|--------|
-| State.yaml `current_phase` still `propose` despite all tasks complete | WARNING | Informational — artifact not updated by apply phase |
+| State.yaml `current_phase` still `propose` despite all tasks complete | WARNING | Informational — artifact not updated by apply phase; resolved during archive (state.yaml `current_phase: archive`) |
 
 No CRITICAL issues found.
 

@@ -23,14 +23,14 @@ Chain strategy: single-pr
 
 ## Phase 1: Infrastructure — New Error Type
 
-- [x] 1.1 Add `UpdateCheckError` enum to `src/update_check.rs` with `Timeout`, `ConnectionFailed(#[from] reqwest::Error)`, `HttpStatus(u16)`, `ParseError(String)` variants using `thiserror`
+- [x] 1.1 Add `UpdateCheckError` enum to `src/update_check.rs` with `Timeout { url, duration_secs }`, `Connection { url, reason }`, `HttpStatus { url, status }`, `ParseError(String)` variants using `thiserror`
 
 ## Phase 2: Core — update_check.rs
 
 - [x] 2.1 RED: Add test in `src/update_check.rs` — `test_fetch_latest_version_timeout` sets 1ms timeout, expects `UpdateCheckError::Timeout`
 - [x] 2.2 RED: Add test — `test_fetch_latest_version_invalid_json` mocks a non-JSON response, expects `UpdateCheckError::ParseError`
 - [x] 2.3 RED: Add test — `test_fetch_latest_version_404` returns HTTP 404, expects `UpdateCheckError::HttpStatus(404)`
-- [x] 2.4 GREEN: Add `async fn fetch_latest_version_async() -> Result<String, UpdateCheckError>` using `reqwest::Client` (non-blocking) with 3s timeout; map reqwest timeout → `Timeout`, reqwest error → `ConnectionFailed`, non-200 → `HttpStatus`, JSON parse fail → `ParseError`
+- [x] 2.4 GREEN: Add `async fn fetch_latest_version_async() -> Result<String, UpdateCheckError>` using `reqwest::Client` (non-blocking) with 3s timeout; map reqwest timeout → `Timeout`, reqwest error → `Connection`, non-200 → `HttpStatus`, JSON parse fail → `ParseError` (a timeout during `.json()` also maps to `Timeout`, not `ParseError`)
 - [x] 2.5 GREEN: Add `async fn check_and_notify_async()` wrapping `fetch_latest_version_async()` with cache read/write (sync, std::fs — mark `// Note: sync path`); keep same notification logic
 - [x] 2.6 GREEN: Refactor `spawn()` in `src/update_check.rs` — replace `thread::Builder::spawn(check_and_notify)` with `std::thread::Builder::new().name("agentsync-update-check".to_string()).spawn(|| { let rt = tokio::runtime::Runtime::new().unwrap(); rt.block_on(check_and_notify_async()); });`
 - [x] 2.7 REFACTOR: Mark `Cache::load` and `Cache::save` with `// Note: sync path` comments per spec
@@ -38,9 +38,9 @@ Chain strategy: single-pr
 
 ## Phase 3: Core — provider.rs (Bridge Pattern)
 
-- [x] 3.1 RED: Add test in `src/skills/provider.rs` — `test_resolve_via_search_timeout` uses `AGENTSYNC_TEST_INVALID_RECOMMENDATION_CATALOG` env-var mock hook to simulate timeout, expects context-bearing error
-- [x] 3.2 RED: Add test — `test_resolve_via_search_invalid_response` mock returns non-JSON, expects parse/format error with context
-- [x] 3.3 GREEN: In `SkillsShProvider`, extract `async fn resolve_via_search_http(id: &str) -> Result<SkillInstallInfo>` using `reqwest::Client` with 10s timeout; apply `.with_context(|| format!("skills.sh search failed for id={}", id))` on errors
+- [x] 3.1 RED: Add test in `src/skills/provider.rs` — `test_resolve_via_search_timeout` uses an in-process delayed TCP server (`spawn_delayed_server`) with a 50ms client timeout, expects context-bearing error
+- [x] 3.2 RED: Add test — `test_resolve_via_search_invalid_response` uses an in-process TCP server returning non-JSON, expects parse/format error with context
+- [x] 3.3 GREEN: In `SkillsShProvider`, extract `async fn resolve_via_search_http(id: &str) -> Result<SkillInstallInfo>` using `reqwest::Client` with 10s timeout; apply `.with_context(|| format!("skills.sh search failed for url={}", url))` on errors
 - [x] 3.4 GREEN: Refactor `resolve_via_search()` to use bridge pattern: `match tokio::runtime::Handle::try_current() { Ok(handle) => handle.block_on(resolve_via_search_http(id)), Err(_) => { let rt = tokio::runtime::Runtime::new().map_err(|e| anyhow::anyhow!("failed to create runtime: {}", e))?; rt.block_on(resolve_via_search_http(id)) } }`
 - [x] 3.5 REFACTOR: Verify `resolve_deterministic` is unchanged (no network call, no async needed)
 - [x] 3.6 VERIFY: Run `cargo test --lib` — all provider tests pass

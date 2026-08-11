@@ -60,27 +60,32 @@ exist.
 
 ### Requirement: Detached Background Thread
 
-The version check SHALL run on a detached Tokio task spawned via `tokio::spawn` instead of `std::thread::Builder`.
+The version check SHALL run on a detached background thread spawned via `std::thread::Builder` with
+the explicit name `"agentsync-update-check"`.
 
-The task SHALL be named implicitly by the Tokio runtime.
+The thread SHALL create its own Tokio runtime with `tokio::runtime::Runtime::new()` and execute the
+async check with `Runtime::block_on`; the check SHALL NOT use `tokio::spawn` or rely on an external
+runtime.
 
-The task SHALL NOT be joined — it SHALL exit naturally when the process exits.
+The thread SHALL be spawned after `Cli::parse` returns, as implemented by `main.rs`.
 
-The task SHALL NOT block the main CLI flow.
+The thread SHALL NOT be joined — it SHALL exit naturally when the process exits.
 
-#### Scenario: Tokio task spawns on CLI invocation
+The thread SHALL NOT block the main CLI flow.
+
+#### Scenario: Detached thread spawns after CLI parsing
 
 - GIVEN a CLI invocation of `agentsync`
-- WHEN the program starts
-- THEN a Tokio task SHALL be spawned for the version check before CLI parsing
+- WHEN the program has parsed the CLI arguments
+- THEN a detached background thread SHALL be spawned for the version check
 - AND the main thread SHALL continue immediately without waiting
 
-#### Scenario: Process exit cancels Tokio task
+#### Scenario: Process exit terminates detached thread
 
-- GIVEN a background Tokio task is running for version checking
+- GIVEN a background thread is running the version check
 - WHEN the CLI command completes and the process exits
-- THEN any in-flight HTTP requests SHALL be cancelled
-- AND no explicit task handle SHALL be retained
+- THEN the thread SHALL NOT prevent process exit
+- AND no explicit thread handle SHALL be retained
 
 ---
 
@@ -159,7 +164,7 @@ The request timeout SHALL be 3 seconds.
 
 On success, the system SHALL parse the JSON response and extract the `crate.newest_version` field.
 
-HTTP errors (timeout, connection failure, redirect, non-200 status) SHALL carry useful diagnostic context.
+HTTP errors (timeout, connection failure, non-200 status) SHALL carry useful diagnostic context. A timeout detected while decoding the response body SHALL map to `Timeout`, not `ParseError`.
 
 #### Scenario: API request succeeds with async client
 
@@ -402,7 +407,7 @@ immediately.
 
 ## Acceptance Criteria
 
-1. `spawn_version_check()` is called from `main()` before CLI parsing
+1. `update_check::spawn()` is called from `main()` after `Cli::parse` returns
 2. Background thread is spawned with name `"agentsync-update-check"` and detached (no `join()`)
 3. HTTP request goes to `https://crates.io/api/v1/crates/agentsync` with 3s timeout
 4. Cache file is stored at `~/.cache/agentsync/update-check.json` with correct format

@@ -20,14 +20,19 @@ scope:
   - src/update_check.rs
   - src/skills/provider.rs
   - tests/test_catalog_integrity.rs
+  - Cargo.toml
 
 summary: |
-  Convert reqwest::blocking to async reqwest across update_check.rs, skills/provider.rs,
-  and test_catalog_integrity.rs. Remove blocking feature from Cargo.toml. Add Tokio
-  async runtime. Cover success/timeout/invalid response cases in tests.
+  Converted reqwest::blocking to async reqwest across update_check.rs, skills/provider.rs,
+  and test_catalog_integrity.rs. Removed the blocking feature from Cargo.toml and added the
+  Tokio "time" feature for direct tokio::time::sleep usage. Added the UpdateCheckError enum
+  (Timeout, Connection, HttpStatus, ParseError) and Tokio runtime bridging. Covered
+  success/timeout/invalid response/HTTP-status cases in tests.
 
   Affected:
-  - src/update_check.rs: fetch_latest_version() uses blocking reqwest in a spawned thread
-  - src/skills/provider.rs: resolve_via_search() uses blocking reqwest
-  - tests/test_catalog_integrity.rs: catalog integrity checks use blocking reqwest
-  - Cargo.toml: reqwest has "blocking" feature — must be removed after migration
+  - src/update_check.rs: fetch_latest_version_async() uses async reqwest; spawn() runs on a
+    detached std::thread named "agentsync-update-check" with a dedicated Tokio runtime
+  - src/skills/provider.rs: resolve_via_search() bridges async resolve_via_search_http() via
+    Handle::try_current() or a temporary runtime; error_for_status() surfaces HTTP failures
+  - tests/test_catalog_integrity.rs: catalog integrity checks run on #[tokio::test] with async reqwest
+  - Cargo.toml: reqwest "blocking" feature removed; tokio "time" feature added

@@ -325,6 +325,8 @@ async fn resolve_via_search_http(
         .send()
         .await
         .with_context(|| format!("skills.sh search failed for url={}", url))?
+        .error_for_status()
+        .with_context(|| format!("skills.sh search failed for url={}", url))?
         .json()
         .await
         .with_context(|| format!("skills.sh search failed for url={}", url))?;
@@ -481,6 +483,49 @@ mod tests {
         assert!(
             err.to_string().contains("skills.sh search failed"),
             "expected context-bearing error about skills.sh search, got: {}",
+            err
+        );
+    }
+
+    /// Start a TCP server that returns an HTTP 500 with a non-JSON body.
+    async fn spawn_error_server() -> std::net::SocketAddr {
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+        let _handle = std::thread::spawn(move || {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind to succeed");
+            let addr = listener.local_addr().expect("local_addr");
+            let _ = ready_tx.send(addr); // oneshot send cannot block
+            let (mut conn, _) = listener.accept().expect("accept");
+            use std::io::{Read, Write};
+            let mut dummy = [0u8; 512];
+            let _ = conn.read(&mut dummy);
+            let _ = conn.write_all(
+                b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 12\r\n\r\nserver boom!",
+            );
+            let _ = conn.flush();
+        });
+        ready_rx.await.expect("addr received")
+    }
+
+    #[tokio::test]
+    async fn test_resolve_via_search_http_error_status() {
+        let addr = spawn_error_server().await;
+        let url = format!("http://{}/api/search", addr);
+
+        // A 5xx with a non-JSON body must surface as an HTTP status error
+        // (via error_for_status), not as a JSON parse or not-found error.
+        let result =
+            resolve_via_search_http(&url, std::time::Duration::from_secs(5), "test-skill").await;
+        assert!(result.is_err());
+        // Use the alternate Display ({:#}) to include the full anyhow cause chain.
+        let err = format!("{:#}", result.unwrap_err());
+        assert!(
+            err.contains("status") || err.contains("500"),
+            "expected HTTP status error, got: {}",
+            err
+        );
+        assert!(
+            !err.contains("failed to parse") && !err.contains("Skill not found"),
+            "must not report a JSON parse or not-found error for HTTP 500, got: {}",
             err
         );
     }
