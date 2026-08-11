@@ -21,6 +21,18 @@
 * **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
 * **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
 
+## [1.49.1](https://github.com/dallay/agentsync/compare/v1.49.0...v1.49.1) (2026-08-11)
+
+
+### Code Refactoring
+
+* **network:** standardize HTTP operations on async reqwest ([#496](https://github.com/dallay/agentsync/issues/496)) ([#548](https://github.com/dallay/agentsync/issues/548)) ([1839fe0](https://github.com/dallay/agentsync/commit/1839fe06e02ada035d4323cb8ba60e1409789ef0))
+
+
+### Chores
+
+* **deps:** lock file maintenance ([#547](https://github.com/dallay/agentsync/issues/547)) ([50463af](https://github.com/dallay/agentsync/commit/50463affc81a6872b0b822503901c318e7fb3324))
+
 ## [1.49.0](https://github.com/dallay/agentsync/compare/v1.48.0...v1.49.0) (2026-08-11)
 
 
