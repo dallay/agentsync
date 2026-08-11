@@ -93,7 +93,7 @@ impl Linker {
                 tracing::error!(error = %e, path = %dest.display(), "Failed to remove managed symlink");
                 return Ok(());
             }
-            self.invalidate_path_cache();
+            self.invalidate_path(dest);
             println!("  {} Removed: {}", "✔".green(), dest.display());
             span.record("outcome", "removed");
         }

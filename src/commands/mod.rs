@@ -1,3 +1,4 @@
+pub mod dev_bench;
 pub mod doctor;
 #[cfg(test)]
 mod doctor_tests;

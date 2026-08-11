@@ -326,7 +326,10 @@ mod tests {
     #[test]
     fn sync_type_name_maps_every_variant_to_a_stable_name() {
         assert_eq!(sync_type_name(SyncType::Symlink), "symlink");
-        assert_eq!(sync_type_name(SyncType::SymlinkContents), "symlink-contents");
+        assert_eq!(
+            sync_type_name(SyncType::SymlinkContents),
+            "symlink-contents"
+        );
         assert_eq!(sync_type_name(SyncType::NestedGlob), "nested-glob");
         assert_eq!(sync_type_name(SyncType::ModuleMap), "module-map");
     }

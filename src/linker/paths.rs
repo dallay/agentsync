@@ -6,13 +6,44 @@ use std::path::{Component, Path, PathBuf};
 use std::rc::Rc;
 
 use super::Linker;
+use super::timing::SpanKind;
 
 impl Linker {
-    /// Drop path canonicalization cache after filesystem mutations that can affect
-    /// destination safety checks in the same run.
+    /// Drop every path canonicalization cache entry. Called at the start of
+    /// each `sync()` so filesystem changes between runs are always reflected
+    /// (REQ-023: caches never survive across runs).
     // `pub(super)` is required by the root façade and future mutation siblings.
     pub(super) fn invalidate_path_cache(&self) {
         self.path_cache.borrow_mut().clear();
+    }
+
+    /// Drop the path canonicalization cache entries whose canonical identity
+    /// may have changed because of a filesystem mutation at `path`: the exact
+    /// key and every key at or below it (prefix-based, REQ-023 scoped
+    /// invalidation).
+    ///
+    /// Unlike [`Self::invalidate_path_cache`], unrelated paths stay cached —
+    /// e.g. a sibling destination's parent directory — so `canonicalize_cached`
+    /// keeps hitting for unchanged paths within the same run (SC-023b), while
+    /// any path mutated by create/update/backup/remove is re-canonicalized on
+    /// next use (SC-023c). `ensure_safe_path`/`revalidate_path` are unaffected:
+    /// they use `canonicalize_uncached`, which always bypasses the cache.
+    ///
+    /// The cache is a `BTreeMap`, so keys sharing `path` as a prefix sort
+    /// contiguously: a `range(path..)` scan with a `starts_with` filter removes
+    /// only the affected entries in O(log n + m) (m = matches, usually 0 for
+    /// leaf destinations) instead of scanning the whole map per mutation.
+    // `pub(super)` is required by the root façade and mutation siblings.
+    pub(super) fn invalidate_path(&self, path: &Path) {
+        let mut cache = self.path_cache.borrow_mut();
+        let to_remove: Vec<PathBuf> = cache
+            .range(path.to_path_buf()..)
+            .take_while(|(key, _)| key.starts_with(path))
+            .map(|(key, _)| key.clone())
+            .collect();
+        for key in to_remove {
+            cache.remove(&key);
+        }
     }
 
     fn canonicalize_uncached(&self, path: &Path) -> Result<PathBuf> {
@@ -242,6 +273,7 @@ impl Linker {
         to: &Path,
         allow_missing: bool,
     ) -> Result<PathBuf> {
+        let _span = self.timing_span(SpanKind::Canonicalize);
         let from_dir = from.parent().unwrap_or(from);
 
         // Canonicalize paths for accurate relative calculation
@@ -535,5 +567,183 @@ mod tests {
 
         let rel_fresh = linker.relative_path(&dest, &source_link, false).unwrap();
         assert_eq!(rel_fresh, PathBuf::from("real-b.md"));
+    }
+
+    // ==========================================================================
+    // scoped invalidate_path (REQ-023, work unit B1)
+    // ==========================================================================
+
+    /// Build a linker with a `symlink-contents` target linking
+    /// `.agents/flat/` → `links/` (4 fixed children), mirroring the benchmark
+    /// flat fixture. Returns `(linker, links_dir)`.
+    fn make_contents_linker(project_root: &Path) -> (Linker, PathBuf) {
+        use crate::config::{AgentConfig, SyncType, TargetConfig};
+
+        let flat = project_root.join(".agents").join("flat");
+        fs::create_dir_all(&flat).unwrap();
+        for i in 0..4 {
+            fs::write(flat.join(format!("f{i:04}.md")), "FIXED\n").unwrap();
+        }
+
+        let mut targets = BTreeMap::new();
+        targets.insert(
+            "target".to_string(),
+            TargetConfig {
+                source: "flat".to_string(),
+                destination: "links".to_string(),
+                sync_type: SyncType::SymlinkContents,
+                pattern: None,
+                exclude: vec![],
+                mappings: vec![],
+            },
+        );
+        let agent_config = AgentConfig {
+            enabled: true,
+            description: String::new(),
+            targets,
+        };
+        let mut agents = BTreeMap::new();
+        agents.insert("test".to_string(), agent_config);
+
+        let config = Config {
+            source_dir: ".agents".to_string(),
+            compress_agents_md: false,
+            default_agents: vec![],
+            agents,
+            gitignore: Default::default(),
+            mcp: Default::default(),
+            mcp_servers: Default::default(),
+        };
+
+        let config_path = project_root.join("agentsync.toml");
+        fs::write(&config_path, "").unwrap();
+        let linker = Linker::new(config, config_path);
+        (linker, project_root.join("links"))
+    }
+
+    #[test]
+    fn invalidate_path_drops_exact_and_descendant_keys_only() {
+        let temp = TempDir::new().unwrap();
+        let linker = make_linker(temp.path());
+        let root = temp.path();
+
+        let dir = root.join("dir");
+        let dir_child = dir.join("child.md");
+        let sibling = root.join("sibling.md");
+
+        {
+            let mut cache = linker.path_cache.borrow_mut();
+            cache.insert(dir.clone(), Rc::new(dir.clone()));
+            cache.insert(dir_child.clone(), Rc::new(dir_child.clone()));
+            cache.insert(sibling.clone(), Rc::new(sibling.clone()));
+        }
+
+        linker.invalidate_path(&dir);
+
+        let cache = linker.path_cache.borrow();
+        assert!(!cache.contains_key(&dir), "exact key must be dropped");
+        assert!(
+            !cache.contains_key(&dir_child),
+            "descendant keys must be dropped"
+        );
+        assert!(
+            cache.contains_key(&sibling),
+            "unrelated keys must survive scoped invalidation"
+        );
+    }
+
+    #[test]
+    fn scoped_invalidation_keeps_sibling_from_dir_cached() {
+        let temp = TempDir::new().unwrap();
+        let linker = make_linker(temp.path());
+
+        let source = temp.path().join("source.md");
+        fs::write(&source, "x").unwrap();
+        let dest_dir = temp.path().join("links");
+        fs::create_dir_all(&dest_dir).unwrap();
+        let dest_a = dest_dir.join("a.md");
+        let dest_b = dest_dir.join("b.md");
+
+        // First link populates the cache for `links/` (from_dir) and `source.md`.
+        let rel_a = linker.relative_path(&dest_a, &source, false).unwrap();
+        assert_eq!(rel_a, PathBuf::from("../source.md"));
+
+        // Post-mutation scoped invalidation — exactly what create_symlink now does.
+        linker.invalidate_path(&dest_a);
+
+        // The unchanged from_dir and source entries MUST survive.
+        assert!(
+            linker.path_cache.borrow().contains_key(&dest_dir),
+            "from_dir must stay cached after mutating a child dest"
+        );
+        assert!(
+            linker.path_cache.borrow().contains_key(&source),
+            "source must stay cached after mutating a child dest"
+        );
+
+        // Second sibling reuses the surviving from_dir entry → same result.
+        let rel_b = linker.relative_path(&dest_b, &source, false).unwrap();
+        assert_eq!(rel_b, PathBuf::from("../source.md"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn sync_retains_path_cache_entries_within_run() {
+        let temp = TempDir::new().unwrap();
+        let (linker, links_dir) = make_contents_linker(temp.path());
+
+        let result = linker.sync(&super::super::SyncOptions::default()).unwrap();
+        assert_eq!(result.created, 4);
+
+        // The last create_symlink only invalidates its own dest key; the
+        // from_dir and source entries computed for it must survive the run.
+        let cache = linker.path_cache.borrow();
+        assert!(
+            !cache.is_empty(),
+            "scoped invalidation must leave cached entries within a run"
+        );
+        assert!(
+            cache.contains_key(&links_dir),
+            "from_dir must remain cached after the run's last mutation"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn sync_clears_path_cache_between_runs() {
+        let temp = TempDir::new().unwrap();
+        let (linker, links_dir) = make_contents_linker(temp.path());
+
+        let first_source = temp.path().join(".agents/flat/f0000.md");
+        let first_dest = links_dir.join("f0000.md");
+        let expected_target = PathBuf::from("../.agents/flat/f0000.md");
+
+        let result1 = linker.sync(&super::super::SyncOptions::default()).unwrap();
+        assert_eq!(result1.created, 4);
+        assert_eq!(fs::read_link(&first_dest).unwrap(), expected_target);
+
+        // Poison the cache with wrong canonical identities, simulating stale
+        // entries a previous run could have left behind.
+        {
+            let mut cache = linker.path_cache.borrow_mut();
+            cache.insert(
+                first_source.clone(),
+                Rc::new(PathBuf::from("/wrong/canonical/source")),
+            );
+            cache.insert(
+                links_dir.clone(),
+                Rc::new(PathBuf::from("/wrong/canonical/dir")),
+            );
+        }
+
+        // Run 2 must clear the cache at sync() start: the poison entries must
+        // never be served, so the links keep their correct targets.
+        let result2 = linker.sync(&super::super::SyncOptions::default()).unwrap();
+        assert_eq!(result2.created, 0, "second run must skip correct links");
+        assert_eq!(
+            fs::read_link(&first_dest).unwrap(),
+            expected_target,
+            "run 2 must not serve run 1's cache entries"
+        );
     }
 }

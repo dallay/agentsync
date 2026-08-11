@@ -17,7 +17,7 @@ pub const CONFIG_FILE_NAME: &str = "agentsync.toml";
 pub const DEFAULT_SOURCE_DIR: &str = ".agents";
 
 /// Represents the root of the `agentsync.toml` configuration file.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Config {
     /// The directory where source files for agents are stored, relative to the
     /// configuration file. Defaults to ".".
@@ -60,7 +60,7 @@ fn default_source_dir() -> String {
 
 /// Defines the configuration for a single AI agent, such as Claude or GitHub Copilot.
 /// Corresponds to a `[agents.agent_name]` section in `agentsync.toml`.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct AgentConfig {
     /// If `true`, this agent's configuration will be processed. Defaults to `true`.
     #[serde(default = "default_true")]
@@ -82,7 +82,7 @@ fn default_true() -> bool {
 
 /// Specifies a single file or directory synchronization rule for an agent.
 /// Corresponds to a `[agents.agent_name.targets.target_name]` section.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct TargetConfig {
     /// The source file or directory, relative to `Config.source_dir`.
     /// For `nested-glob` targets this is the root directory to search, relative
@@ -183,7 +183,7 @@ pub fn resolve_module_map_filename(mapping: &ModuleMapping, agent_name: &str) ->
 
 /// Configuration for managing the `.gitignore` file.
 /// Corresponds to the `[gitignore]` section in `agentsync.toml`.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct GitignoreConfig {
     /// If `true`, agentsync will add symlink destinations to `.gitignore`. Defaults to `true`.
     #[serde(default = "default_true")]

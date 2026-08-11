@@ -198,7 +198,10 @@ fn set_timing_none_stops_recording_into_a_previously_installed_sink() {
     sink.borrow_mut().reset();
 
     let result = linker.sync(&SyncOptions::default());
-    assert!(result.is_ok(), "sync must still succeed with no sink installed");
+    assert!(
+        result.is_ok(),
+        "sync must still succeed with no sink installed"
+    );
     assert!(
         sink.borrow().target_spans().is_empty(),
         "a detached sink must not receive further updates"

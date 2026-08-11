@@ -6,6 +6,7 @@ use std::path::Path;
 use std::rc::Rc;
 use walkdir::WalkDir;
 
+use super::timing::SpanKind;
 use super::{Linker, NestedGlobKey, NestedGlobMatches, ResolvedSource, SyncOptions, SyncResult};
 
 impl Linker {
@@ -163,6 +164,7 @@ impl Linker {
         excludes: &[String],
         options: &SyncOptions,
     ) -> Result<NestedGlobMatches> {
+        let _span = self.timing_span(SpanKind::Discovery);
         let key: NestedGlobKey = (
             search_root.to_path_buf(),
             glob_pattern.to_string(),
@@ -210,7 +212,10 @@ impl Linker {
         let split_excludes: Vec<Vec<&str>> =
             excludes.iter().map(|e| e.split('/').collect()).collect();
 
-        let mut it = WalkDir::new(search_root).follow_links(false).into_iter();
+        let mut it = WalkDir::new(search_root)
+            .follow_links(false)
+            .sort_by_file_name()
+            .into_iter();
 
         while let Some(entry) = it.next() {
             let entry = match entry {
@@ -411,6 +416,64 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::Config;
+    use std::collections::BTreeMap;
+    use std::fs;
+    use tempfile::TempDir;
+
+    // ==========================================================================
+    // B4 — deterministic directory iteration order (nested-glob walk).
+    // WalkDir must traverse in sorted file-name order so discovered match
+    // order (and therefore link creation + printed output) is deterministic.
+    // The fixture creates dirs in NON-alphabetical order (`b`, `a`, `c`), so
+    // OS read_dir order differs from sorted order (`a`, `b`, `c`).
+    // ==========================================================================
+
+    fn make_config() -> Config {
+        Config {
+            source_dir: ".agents".to_string(),
+            compress_agents_md: false,
+            default_agents: vec![],
+            agents: BTreeMap::new(),
+            gitignore: Default::default(),
+            mcp: Default::default(),
+            mcp_servers: Default::default(),
+        }
+    }
+
+    #[test]
+    fn get_nested_glob_matches_returns_sorted_rel_paths() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        let search_root = root.join("deep");
+        for name in ["b", "a", "c"] {
+            let dir = search_root.join(name);
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join("AGENTS.md"), "FIXED\n").unwrap();
+        }
+
+        let config_path = root.join("agentsync.toml");
+        fs::write(&config_path, "").unwrap();
+        let linker = Linker::new(make_config(), config_path);
+
+        let matches = linker
+            .get_nested_glob_matches(&search_root, "**/AGENTS.md", &[], &SyncOptions::default())
+            .unwrap();
+
+        let rels: Vec<String> = matches
+            .iter()
+            .map(|(_, rel)| rel.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            rels,
+            vec![
+                format!("a{}AGENTS.md", std::path::MAIN_SEPARATOR),
+                format!("b{}AGENTS.md", std::path::MAIN_SEPARATOR),
+                format!("c{}AGENTS.md", std::path::MAIN_SEPARATOR),
+            ],
+            "nested-glob discovery order must be sorted by file name"
+        );
+    }
 
     // ==========================================================================
     // expand_destination_template edge cases

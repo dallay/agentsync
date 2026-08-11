@@ -13,6 +13,7 @@ use agentsync::{Linker, SyncOptions, SyncResult, config::Config, gitignore, init
 use tracing_subscriber::filter::LevelFilter;
 mod commands;
 mod output;
+use commands::dev_bench::{DevBenchArgs, run_dev_bench};
 use commands::doctor::run_doctor;
 use commands::skill::{SkillCommand, run_skill};
 use commands::status::{StatusArgs, run_status};
@@ -169,6 +170,9 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Developer-only: run the linker performance benchmark (hidden)
+    #[command(hide = true)]
+    DevBench(DevBenchArgs),
 }
 
 fn main() {
@@ -252,6 +256,10 @@ fn run() -> Result<()> {
                 json,
             };
             run_install(args, project_root)?;
+            Ok(())
+        }),
+        Commands::DevBench(args) => run_in_root_span("dev-bench", || {
+            run_dev_bench(args)?;
             Ok(())
         }),
     };
