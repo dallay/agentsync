@@ -42,6 +42,28 @@ apply_note: >-
   0.541 -> 0.518 ms, no regression; larger effect expected on re-run (existing
   dest) scenarios.
 
+  Phase B unit 4 (task 3.3, B3 DirEntry reuse) implemented and validated:
+  resolve_source_path (apply.rs:208) refactored to delegate to new
+  resolve_source_path_with_hint(source, target, options, source_exists:
+  Option<bool>); the symlink-contents loop (symlinks.rs) threads the read_dir
+  DirEntry as Some(true) for NON-SYMLINK children only (entry.file_type() =
+  d_type, no syscall on local fs), dropping the duplicate per-child
+  source.exists() stat; symlink children (incl. broken symlinks) keep hint
+  None -> probe -> identical "Source does not exist" skip report; compression
+  + revalidate paths unchanged; apply.rs:172 (Symlink type) unchanged via
+  None default. TDD: 5 tests - 2 hint-API RED tests (Some(true) skips stat
+  deterministically: hinted call still reports exists=true after file
+  deletion while unhinted re-stats to false; None falls back to
+  source.exists()) + 3 behavior-pinning characterization tests (regular
+  children all created; broken symlink child skipped not errored - created
+  3/skipped 1/errors 0; missing source dir skips). Gates: linker_security
+  11/11, full suite 900 passed 0 failed, fmt + clippy clean. Bench B3 row
+  recorded in benchmark-baseline.md: captured under heavy external load (load
+  avg 31-144 vs 8-11 at B2), so raw deltas show +11-22% drift INCLUDING
+  untouched nested-glob controls (+19-22%); drift-corrected flat cells -2.2%
+  to -8.4% warm (N=5000 -3.9%), flat-5000 metadata 104.2ms vs 108.5ms pre-B1
+  baseline; small gate 0.574ms, no regression.
+
   Phase B unit 5 (task 3.4, B4 sorted iteration + tasks 4.1-4.2 final metrics)
   implemented and validated: deterministic directory iteration order across both
   sync shapes. symlink-contents loop (symlinks.rs:258) now collects read_dir
@@ -63,30 +85,6 @@ apply_note: >-
   cells read +40-51% warm; uniform elevation incl. flat cells (which B4 barely
   touches) indicates load inflation, not B4 (in-memory sort of 1000 names cannot
   cost 41 ms; zero added syscalls). Determinism contract proven by test suite.
-  Remaining: task 3.3 (B3, PR 4) — not on this branch, stays pending. Chain
-  strategy in tasks.md still pending.
-
-  Phase B unit 4 (task 3.3, B3 DirEntry reuse) implemented and validated:
-  resolve_source_path (apply.rs:208) refactored to delegate to new
-  resolve_source_path_with_hint(source, target, options, source_exists:
-  Option<bool>); the symlink-contents loop (symlinks.rs) threads the read_dir
-  DirEntry as Some(true) for NON-SYMLINK children only (entry.file_type() =
-  d_type, no syscall on local fs), dropping the duplicate per-child
-  source.exists() stat; symlink children (incl. broken symlinks) keep hint
-  None -> probe -> identical "Source does not exist" skip report; compression
-  + revalidate paths unchanged; apply.rs:172 (Symlink type) unchanged via
-  None default. TDD: 5 tests - 2 hint-API RED tests (Some(true) skips stat
-  deterministically: hinted call still reports exists=true after file
-  deletion while unhinted re-stats to false; None falls back to
-  source.exists()) + 3 behavior-pinning characterization tests (regular
-  children all created; broken symlink child skipped not errored - created
-  3/skipped 1/errors 0; missing source dir skips). Gates: linker_security
-  11/11, full suite 900 passed 0 failed, fmt + clippy clean. Bench B3 row
-  recorded in benchmark-baseline.md: captured under heavy external load (load
-  avg 31-144 vs 8-11 at B2), so raw deltas show +11-22% drift INCLUDING
-  untouched nested-glob controls (+19-22%); drift-corrected flat cells -2.2%
-  to -8.4% warm (N=5000 -3.9%), flat-5000 metadata 104.2ms vs 108.5ms pre-B1
-  baseline; small gate 0.574ms, no regression. Remaining: task 3.4 (B4
-  sorted iteration, PR 5), 4.1-4.2 (final bench + quality gate). Chain
-  strategy in tasks.md still pending.
+  All Phase B units (B1-B4) and final metrics (4.1-4.2) are implemented on this
+  chain; remaining work is merge-order strategy across PRs 3-5 (B2/B3/B4).
 updated: 2026-08-10
