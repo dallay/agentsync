@@ -13,6 +13,16 @@ Captured: 2026-08-10 · hidden `dev-bench` subcommand, release profile only
 | Runs/cell | 5 — **cold** = run 1, **warm** = median of runs 2..=5 |
 | Attribution | from the final run: `discovery` = walk span; `link-creation` = Σ `create_symlink` (incl. canonicalize); `canonicalize` = Σ `relative_path` (subset of link-creation); `metadata` = target span − link-creation − discovery |
 
+> **Methodology note (post-CodeRabbit fix, base `9d644b1`)**: every row in this document
+> was captured with the ORIGINAL harness, which rebuilt the source fixture on every run
+> ("fresh fixtures"). Since the fix, `run_cell` builds the fixture ONCE per cell and
+> `reset_managed_destination` only clears the managed destination between runs, so
+> `warm` now measures RE-SYNC against an existing destination instead of fresh-fixture
+> builds. The before/after deltas below remain internally consistent (both sides of
+> every row used the same harness), but absolute `warm` values are NOT directly
+> comparable with future captures on the fixed harness — treat them as a trend, not a
+> regression contract.
+
 Every cell asserts `created == N` and `errors == 0` (asserted inside the benchmark).
 
 ## Results — human table (all timings in ms)
