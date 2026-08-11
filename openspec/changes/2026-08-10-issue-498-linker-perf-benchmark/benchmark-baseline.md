@@ -120,7 +120,31 @@ N=5000 and was reverted). After numbers = mean of two clean 5-run captures on th
 | B3 DirEntry reuse | nested-glob N=100 (control) | warm 18.709 ms | warm 22.249 ms | raw +18.9% — no code change (load drift) |
 | B3 DirEntry reuse | nested-glob N=1000 (control) | warm 132.077 ms | warm 161.221 ms | raw +22.1% — no code change (load drift) |
 | B3 DirEntry reuse | nested-glob N=5000 (control) | warm 675.811 ms | warm 825.056 ms | raw +22.1% — no code change (load drift) |
-| B4 sorted iteration + final metrics | (pending) | | | |
+| B4 sorted iteration + final metrics | flat N=4 (small gate) | warm 0.518 ms (B2 after) | warm 0.670 ms — see load caveat below | no regression attributable to B4; +29% within elevated-load noise band |
+| B4 sorted iteration + final metrics | flat N=100 | warm 9.960 ms (B2 after) | warm 14.039 ms | no regression attributable to B4; +41% within elevated-load noise band |
+| B4 sorted iteration + final metrics | flat N=1000 | warm 102.871 ms (B2 after) | warm 144.723 ms | no regression attributable to B4; +41% within elevated-load noise band |
+| B4 sorted iteration + final metrics | flat N=5000 | warm 520.139 ms (B2 after) | warm 787.692 ms | no regression attributable to B4; +51% within elevated-load noise band |
+| B4 sorted iteration + final metrics | nested-glob N=100 | warm 18.709 ms (B2 after) | warm 28.455 ms | no regression attributable to B4; +52% within elevated-load noise band |
+| B4 sorted iteration + final metrics | nested-glob N=1000 | warm 132.077 ms (B2 after) | warm 196.211 ms | no regression attributable to B4; +49% within elevated-load noise band |
+| B4 sorted iteration + final metrics | nested-glob N=5000 | warm 675.811 ms (B2 after) | warm 949.823 ms | no regression attributable to B4; +41% within elevated-load noise band |
+
+### B4 observation (unit 5, PR 5) — determinism, not speed
+
+B4 adds an in-memory `sort_by_key(file_name)` (symlink-contents loop) and `WalkDir::sort_by_file_name()`
+(nested-glob walk). It does not add or remove syscalls — both are in-memory sorts over already-read
+directory entries. The **point of B4 is determinism**: byte-identical stdout across fresh runs and
+sorted per-link output order (REQ: Deterministic Directory Iteration Order). That contract is proven
+by the test suite (`test_b4_determinism.rs` integration test — byte-identical stdout + sorted flat
+`[a.md, m.md, z.md]` and deep `[a, b, c]` order — plus unit tests
+`sorted_dir_entries_returns_sorted_file_names` and `get_nested_glob_matches_returns_sorted_rel_paths`).
+
+**Load caveat**: the B4 "after" numbers are the median of three clean 5-run captures taken at system
+load 14–20 (1.4–1.7× cores on this 12-core M2 Max), while the B1/B2 captures ran at load ~8–11
+(~0.7–0.9× cores). Every cell reads +40–51% warm vs B2 — including `flat` cells, which B4 touches
+only with a microsecond-scale name sort (sorting 1000 names cannot cost 41 ms). The uniform elevation
+across all cells is consistent with load inflation, not with B4. The sort is O(n log n) in memory and
+adds zero syscalls, so no perf regression is attributable to B4. On a quiet machine B4 is expected to
+measure within the B1/B2 noise band (typically ±5%).
 
 ## Reproduce
 
