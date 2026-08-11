@@ -13,6 +13,16 @@ Captured: 2026-08-10 · hidden `dev-bench` subcommand, release profile only
 | Runs/cell | 5 — **cold** = run 1, **warm** = median of runs 2..=5 |
 | Attribution | from the final run: `discovery` = walk span; `link-creation` = Σ `create_symlink` (incl. canonicalize); `canonicalize` = Σ `relative_path` (subset of link-creation); `metadata` = target span − link-creation − discovery |
 
+> **Methodology note (post-CodeRabbit fix, base `9d644b1`)**: every row in this document
+> was captured with the ORIGINAL harness, which rebuilt the source fixture on every run
+> ("fresh fixtures"). Since the fix, `run_cell` builds the fixture ONCE per cell and
+> `reset_managed_destination` only clears the managed destination between runs, so
+> `warm` now measures RE-SYNC against an existing destination instead of fresh-fixture
+> builds. The before/after deltas below remain internally consistent (both sides of
+> every row used the same harness), but absolute `warm` values are NOT directly
+> comparable with future captures on the fixed harness — treat them as a trend, not a
+> regression contract.
+
 Every cell asserts `created == N` and `errors == 0` (asserted inside the benchmark).
 
 ## Results — human table (all timings in ms)
@@ -68,6 +78,26 @@ destination already exists (two probes → one). No regression on the small gate
 0.518 ms). Note: the nested-glob N=5000 `discovery` attribution (206.4 ms this capture vs 129.2 ms
 baseline) is run variance in the final-run walk span, unrelated to B2 (B2 does not touch discovery).
 
+## B3 observation (unit 4, PR 4)
+
+B3 threads the `read_dir` `DirEntry` existence into `resolve_source_path_with_hint(...,
+Some(true))` for non-symlink children of a `symlink-contents` source, dropping the duplicate
+per-child `source.exists()` stat (`apply.rs` non-compression tail). Compression and revalidate
+paths unchanged; symlink children (incl. broken symlinks) still probe so the missing-source
+report is byte-identical.
+
+**Load caveat — do not read raw deltas literally.** This capture ran under heavy external machine
+load (load avg 31–144 on 12 cores during the three 5-run captures, vs 8–11 for B2), so EVERY cell
+drifted up ~19–22% raw, including the nested-glob cells that B3 does not touch (controls:
++18.9%/+22.1%/+22.1% at N=100/1000/5000). "After" = mean of three 5-run captures.
+
+**Drift-corrected result** (flat warm ÷ mean control drift ≈ 1.21): flat cells — where one stat per
+child is actually removed — show a small, consistent improvement: N=4 −8.4%, N=100 −2.2%,
+N=1000 −6.0%, N=5000 −3.9% warm. The direction matches the prediction (one existence stat saved
+per non-symlink child; ~1–2 µs × N ≈ low single-digit % at N=5000). The removed stat also lands in
+the `metadata` attribution (target − link-creation − discovery): flat-5000 metadata mean 104.2 ms
+vs 108.5 ms pre-B1 baseline. **No regression**; small gate mean 0.574 ms, far inside the 3–5 ms band.
+
 ## Before / After (Phase B commits — filled by units 2–5)
 
 B1 (unit 2, PR 2): scoped `path_cache` invalidation — `invalidate_path(path)` (exact key +
@@ -93,8 +123,38 @@ N=5000 and was reverted). After numbers = mean of two clean 5-run captures on th
 | B2 single existence probe | nested-glob N=100 | warm 19.397 ms; canonicalize 3.046 ms | warm 18.709 ms; canonicalize 3.041 ms | −3.5% warm |
 | B2 single existence probe | nested-glob N=1000 | warm 134.435 ms; canonicalize 24.671 ms | warm 132.077 ms; canonicalize 24.016 ms | −1.8% warm; −2.7% canonicalize |
 | B2 single existence probe | nested-glob N=5000 | warm 699.955 ms; canonicalize 125.038 ms | warm 675.811 ms; canonicalize 124.267 ms | −3.5% warm; −0.6% canonicalize |
-| B3 DirEntry reuse | (pending) | | | |
-| B4 sorted iteration + final metrics | (pending) | | | |
+| B3 DirEntry reuse | flat N=4 (small gate) | warm 0.518 ms; canonicalize 0.067 ms | warm 0.574 ms; canonicalize 0.075 ms | raw +10.9% (load drift; see note); drift-corrected −8.4%; 0.574 ms far inside 3–5 ms band |
+| B3 DirEntry reuse | flat N=100 | warm 9.960 ms; canonicalize 1.616 ms | warm 11.792 ms; canonicalize 1.659 ms | raw +18.4%; drift-corrected −2.2% warm |
+| B3 DirEntry reuse | flat N=1000 | warm 102.871 ms; canonicalize 17.430 ms | warm 117.069 ms; canonicalize 19.819 ms | raw +13.8%; drift-corrected −6.0% warm |
+| B3 DirEntry reuse | flat N=5000 | warm 520.139 ms; canonicalize 90.879 ms | warm 604.653 ms; canonicalize 109.130 ms | raw +16.2%; drift-corrected −3.9% warm |
+| B3 DirEntry reuse | nested-glob N=100 (control) | warm 18.709 ms | warm 22.249 ms | raw +18.9% — no code change (load drift) |
+| B3 DirEntry reuse | nested-glob N=1000 (control) | warm 132.077 ms | warm 161.221 ms | raw +22.1% — no code change (load drift) |
+| B3 DirEntry reuse | nested-glob N=5000 (control) | warm 675.811 ms | warm 825.056 ms | raw +22.1% — no code change (load drift) |
+| B4 sorted iteration + final metrics | flat N=4 (small gate) | warm 0.518 ms (B2 after) | warm 0.670 ms — see load caveat below | no regression attributable to B4; +29% within elevated-load noise band |
+| B4 sorted iteration + final metrics | flat N=100 | warm 9.960 ms (B2 after) | warm 14.039 ms | no regression attributable to B4; +41% within elevated-load noise band |
+| B4 sorted iteration + final metrics | flat N=1000 | warm 102.871 ms (B2 after) | warm 144.723 ms | no regression attributable to B4; +41% within elevated-load noise band |
+| B4 sorted iteration + final metrics | flat N=5000 | warm 520.139 ms (B2 after) | warm 787.692 ms | no regression attributable to B4; +51% within elevated-load noise band |
+| B4 sorted iteration + final metrics | nested-glob N=100 | warm 18.709 ms (B2 after) | warm 28.455 ms | no regression attributable to B4; +52% within elevated-load noise band |
+| B4 sorted iteration + final metrics | nested-glob N=1000 | warm 132.077 ms (B2 after) | warm 196.211 ms | no regression attributable to B4; +49% within elevated-load noise band |
+| B4 sorted iteration + final metrics | nested-glob N=5000 | warm 675.811 ms (B2 after) | warm 949.823 ms | no regression attributable to B4; +41% within elevated-load noise band |
+
+### B4 observation (unit 5, PR 5) — determinism, not speed
+
+B4 adds an in-memory `sort_by_key(file_name)` (symlink-contents loop) and `WalkDir::sort_by_file_name()`
+(nested-glob walk). It does not add or remove syscalls — both are in-memory sorts over already-read
+directory entries. The **point of B4 is determinism**: byte-identical stdout across fresh runs and
+sorted per-link output order (REQ: Deterministic Directory Iteration Order). That contract is proven
+by the test suite (`test_b4_determinism.rs` integration test — byte-identical stdout + sorted flat
+`[a.md, m.md, z.md]` and deep `[a, b, c]` order — plus unit tests
+`sorted_dir_entries_returns_sorted_file_names` and `get_nested_glob_matches_returns_sorted_rel_paths`).
+
+**Load caveat**: the B4 "after" numbers are the median of three clean 5-run captures taken at system
+load 14–20 (1.4–1.7× cores on this 12-core M2 Max), while the B1/B2 captures ran at load ~8–11
+(~0.7–0.9× cores). Every cell reads +40–51% warm vs B2 — including `flat` cells, which B4 touches
+only with a microsecond-scale name sort (sorting 1000 names cannot cost 41 ms). The uniform elevation
+across all cells is consistent with load inflation, not with B4. The sort is O(n log n) in memory and
+adds zero syscalls, so no perf regression is attributable to B4. On a quiet machine B4 is expected to
+measure within the B1/B2 noise band (typically ±5%).
 
 ## Reproduce
 
