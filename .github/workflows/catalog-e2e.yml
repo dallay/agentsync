@@ -23,8 +23,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
           toolchain: stable
+      - name: Fetch locked dependencies before offline test
+        run: cargo fetch --locked
       - name: Run offline fixtures with network disabled
-        run: cargo test --test test_catalog_integration --offline -- --nocapture
+        run: cargo test --test test_catalog_integration --locked --offline -- --nocapture
 
   catalog-installation:
     name: Verify catalog skill installation
@@ -57,8 +59,9 @@ jobs:
       - name: Run catalog installation E2E
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_E2E: 1
         run: |
-          cargo test --test test_catalog_integration -- --ignored --nocapture
+          cargo test --test test_catalog_integration --locked -- --ignored --nocapture
 
   remote-refresh:
     name: Explicit opt-in pinned-commit remote E2E
