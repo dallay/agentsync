@@ -17,6 +17,11 @@
 	},
 	"packageRules": [
 		{
+			"description": "Group all @dallay/agentsync packages and platform-specific binaries into a single PR.",
+			"matchPackageNames": ["@dallay/agentsync*"],
+			"groupName": "agentsync"
+		},
+		{
 			"description": "Baseline rule enforcing 3-day minimum release age for supported package updates (dependencies, devDependencies, etc.). Note: pnpm-workspace.yaml controls release age validation for lockfile maintenance.",
 			"matchManagers": ["npm", "pnpm"],
 			"minimumReleaseAge": "3 days"
