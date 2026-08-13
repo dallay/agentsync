@@ -5,8 +5,9 @@
 - Strategy: `single-pr` with explicit user-approved `size-exception`.
 - Branch: `feat/migrate-catalog-skills-phase1`; base: `main`.
 - Scope: only the three MIT-backed Bobmatnyc entries `drizzle-orm`, `pydantic`, and `sqlalchemy`.
-- Sibling source: `agents-skills` commit `70298da` (PR #18) contains the three migrated skill
-  directories and `PROVENANCE.md`.
+- Sibling source: `agents-skills` commit `c2e79fbb72d146305f82a8e979270795557d24fd` (PR #18)
+  contains the three migrated skill directories and `PROVENANCE.md`; CI checks out this committed
+  revision into `agents-skills` for deterministic resolution.
 
 ## Completed
 

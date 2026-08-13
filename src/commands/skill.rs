@@ -1551,7 +1551,11 @@ mod tests {
         let _env = SourceOverrideEnvGuard::new();
         let root = tempfile::TempDir::new().unwrap();
         let project_root = root.path().join("project");
-        let source = root.path().join("agents-skills/skills/drizzle-orm");
+        let source = root
+            .path()
+            .join("agents-skills")
+            .join("skills")
+            .join("drizzle-orm");
         std::fs::create_dir_all(&source).unwrap();
 
         let resolved = resolve_source("drizzle-orm", None, &project_root).unwrap();
@@ -1565,7 +1569,11 @@ mod tests {
         let _env = SourceOverrideEnvGuard::new();
         let root = tempfile::TempDir::new().unwrap();
         let project_root = root.path().join("project");
-        let source = root.path().join("agents-skills/skills/pydantic");
+        let source = root
+            .path()
+            .join("agents-skills")
+            .join("skills")
+            .join("pydantic");
         std::fs::create_dir_all(&source).unwrap();
 
         let provider = SuggestInstallProvider::new(&project_root);

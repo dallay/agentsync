@@ -7,6 +7,10 @@ permissions:
   pull-requests: write
 jobs:
   auto-merge:
+    if: |
+      github.actor == 'renovate[bot]' ||
+      github.actor == 'dependabot[bot]' ||
+      github.actor == 'dependabot-preview[bot]'
     uses: dallay/common-actions/.github/workflows/dependabot-auto-merge.yml@v2.2.2
     with:
       target: squash

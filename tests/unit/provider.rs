@@ -288,7 +288,7 @@ fn phase1_catalog_source_uses_agentsync_local_skills_repo_before_provider() {
     let _lock = ENV_LOCK.lock().unwrap();
     let _env = SourceOverrideEnvGuard::new();
     let repo = tempfile::TempDir::new().unwrap();
-    let source = repo.path().join("skills/drizzle-orm");
+    let source = repo.path().join("skills").join("drizzle-orm");
     fs::create_dir_all(&source).unwrap();
 
     unsafe { std::env::set_var("AGENTSYNC_LOCAL_SKILLS_REPO", repo.path()) };
@@ -309,7 +309,11 @@ fn phase1_catalog_source_uses_sibling_agents_skills_checkout() {
     let _env = SourceOverrideEnvGuard::new();
     let root = tempfile::TempDir::new().unwrap();
     let project_root = root.path().join("project");
-    let source = root.path().join("agents-skills/skills/pydantic");
+    let source = root
+        .path()
+        .join("agents-skills")
+        .join("skills")
+        .join("pydantic");
     fs::create_dir_all(&source).unwrap();
 
     let resolved = resolve_catalog_install_source(
