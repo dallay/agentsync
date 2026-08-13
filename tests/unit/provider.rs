@@ -8,6 +8,36 @@ use std::sync::Mutex;
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
 
+const SOURCE_OVERRIDE_ENV_VARS: [&str; 2] = [
+    "AGENTSYNC_LOCAL_SKILLS_REPO",
+    "AGENTSYNC_TEST_SKILL_SOURCE_DIR",
+];
+
+struct SourceOverrideEnvGuard {
+    previous: [(&'static str, Option<std::ffi::OsString>); 2],
+}
+
+impl SourceOverrideEnvGuard {
+    fn new() -> Self {
+        let previous = SOURCE_OVERRIDE_ENV_VARS.map(|name| (name, std::env::var_os(name)));
+        for name in SOURCE_OVERRIDE_ENV_VARS {
+            unsafe { std::env::remove_var(name) };
+        }
+        Self { previous }
+    }
+}
+
+impl Drop for SourceOverrideEnvGuard {
+    fn drop(&mut self) {
+        for (name, value) in &mut self.previous {
+            match value.take() {
+                Some(value) => unsafe { std::env::set_var(*name, value) },
+                None => unsafe { std::env::remove_var(*name) },
+            }
+        }
+    }
+}
+
 struct DummyProvider;
 
 impl Provider for DummyProvider {
@@ -229,7 +259,7 @@ fn pinned_provider_rejects_ambiguous_provider_or_local_identifier() {
 #[test]
 fn phase1_catalog_source_fails_closed_when_curated_content_is_missing() {
     let _lock = ENV_LOCK.lock().unwrap();
-    let previous = std::env::var_os("AGENTSYNC_LOCAL_SKILLS_REPO");
+    let _env = SourceOverrideEnvGuard::new();
     let missing_repo = tempfile::TempDir::new().unwrap();
     unsafe {
         std::env::set_var("AGENTSYNC_LOCAL_SKILLS_REPO", missing_repo.path());
@@ -245,11 +275,6 @@ fn phase1_catalog_source_fails_closed_when_curated_content_is_missing() {
     )
     .unwrap_err();
 
-    match previous {
-        Some(value) => unsafe { std::env::set_var("AGENTSYNC_LOCAL_SKILLS_REPO", value) },
-        None => unsafe { std::env::remove_var("AGENTSYNC_LOCAL_SKILLS_REPO") },
-    }
-
     assert!(
         error
             .to_string()
@@ -261,11 +286,11 @@ fn phase1_catalog_source_fails_closed_when_curated_content_is_missing() {
 #[test]
 fn phase1_catalog_source_uses_agentsync_local_skills_repo_before_provider() {
     let _lock = ENV_LOCK.lock().unwrap();
+    let _env = SourceOverrideEnvGuard::new();
     let repo = tempfile::TempDir::new().unwrap();
     let source = repo.path().join("skills/drizzle-orm");
     fs::create_dir_all(&source).unwrap();
 
-    let previous = std::env::var_os("AGENTSYNC_LOCAL_SKILLS_REPO");
     unsafe { std::env::set_var("AGENTSYNC_LOCAL_SKILLS_REPO", repo.path()) };
     let resolved = resolve_catalog_install_source(
         &EmbeddedSkillCatalog::default(),
@@ -274,10 +299,6 @@ fn phase1_catalog_source_uses_agentsync_local_skills_repo_before_provider() {
         "drizzle-orm",
         None,
     );
-    match previous {
-        Some(value) => unsafe { std::env::set_var("AGENTSYNC_LOCAL_SKILLS_REPO", value) },
-        None => unsafe { std::env::remove_var("AGENTSYNC_LOCAL_SKILLS_REPO") },
-    }
 
     assert_eq!(resolved.unwrap(), source.display().to_string());
 }
@@ -285,8 +306,7 @@ fn phase1_catalog_source_uses_agentsync_local_skills_repo_before_provider() {
 #[test]
 fn phase1_catalog_source_uses_sibling_agents_skills_checkout() {
     let _lock = ENV_LOCK.lock().unwrap();
-    let previous = std::env::var_os("AGENTSYNC_LOCAL_SKILLS_REPO");
-    unsafe { std::env::remove_var("AGENTSYNC_LOCAL_SKILLS_REPO") };
+    let _env = SourceOverrideEnvGuard::new();
     let root = tempfile::TempDir::new().unwrap();
     let project_root = root.path().join("project");
     let source = root.path().join("agents-skills/skills/pydantic");
@@ -301,18 +321,13 @@ fn phase1_catalog_source_uses_sibling_agents_skills_checkout() {
     )
     .unwrap();
 
-    if let Some(value) = previous {
-        unsafe { std::env::set_var("AGENTSYNC_LOCAL_SKILLS_REPO", value) };
-    }
-
     assert_eq!(resolved, source.display().to_string());
 }
 
 #[test]
 fn unrelated_curated_catalog_entries_keep_provider_fallback_behavior() {
     let _lock = ENV_LOCK.lock().unwrap();
-    let previous = std::env::var_os("AGENTSYNC_LOCAL_SKILLS_REPO");
-    unsafe { std::env::remove_var("AGENTSYNC_LOCAL_SKILLS_REPO") };
+    let _env = SourceOverrideEnvGuard::new();
 
     let resolved = resolve_catalog_install_source(
         &EmbeddedSkillCatalog::default(),
@@ -321,10 +336,6 @@ fn unrelated_curated_catalog_entries_keep_provider_fallback_behavior() {
         "docker-expert",
         None,
     );
-
-    if let Some(value) = previous {
-        unsafe { std::env::set_var("AGENTSYNC_LOCAL_SKILLS_REPO", value) };
-    }
 
     assert_eq!(
         resolved.unwrap(),

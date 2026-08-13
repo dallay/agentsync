@@ -80,7 +80,7 @@ fn phase1_bobmatnyc_catalog_entries_install_offline_and_register_local_ids() {
         (
             "dallay/agents-skills/pydantic",
             "pydantic",
-            Vec::<&str>::new(),
+            Vec::<&str>::from(["references/full-source.md"]),
         ),
         (
             "dallay/agents-skills/sqlalchemy",

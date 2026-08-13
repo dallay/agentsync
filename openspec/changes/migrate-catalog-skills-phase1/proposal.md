@@ -3,26 +3,24 @@
 ## Intent
 
 Replace brittle external resolution for broken catalog entries with deterministic local-sibling
-resolution from `/Users/acosta/Dev/dallay/agents-skills`, preserving `local_skill_id`, `title`,
-and `summary`. This is not a catalog redesign or a full-health claim.
+resolution from a sibling `agents-skills` checkout, with `AGENTSYNC_LOCAL_SKILLS_REPO` as the
+explicit local override, preserving `local_skill_id`, `title`, and `summary`. This is not a catalog
+redesign or a full-health claim.
 
 ## Scope
 
 ### In Scope
-- Migrate these Clerk entries when provenance gates pass: `clerk-setup`, `clerk-custom-ui`,
-  `clerk-nextjs-patterns`, `clerk-react-patterns`, `clerk-vue-patterns`, `clerk-astro-patterns`,
-  `clerk-orgs`, `clerk-webhooks`, `clerk-testing`.
 - Migrate `drizzle-orm`, `pydantic`, and `sqlalchemy` only after verifying the recorded source paths
   and MIT evidence at commit `718070a7d622921b01687799a1f9613f36c6f615`.
 - Remap accepted definitions to `dallay/agents-skills/{local_skill_id}`, update affected mappings,
   and test sibling plus `AGENTSYNC_LOCAL_SKILLS_REPO` paths.
-- For Clerk, record repo/path, commit/blob, attribution, MIT evidence or permission, and companion
-  status. If evidence is unavailable, block that entry.
 
 ### Out of Scope
 - Re-enabling or claiming the full catalog E2E; remaining external failures stay out of scope.
-- **Base `clerk` router recommendation: exclude from Phase 1.** No verified sibling source is
-  present; retain its external mapping and revisit separately. The Wispbit SQLAlchemy entry remains.
+- **Clerk migration remains blocked and out of scope for Phase 1.** The nine Clerk entries and the
+  base `clerk` router retain their external mappings because the required committed source,
+  license evidence or permission, and companion gates are not satisfied. Revisit them separately.
+  The Wispbit SQLAlchemy entry remains external.
 - Registry redesign, unrelated sibling files, production code, or skill-content edits.
 
 ## Capabilities
@@ -36,9 +34,10 @@ None.
 
 ## Approach
 
-Validate a committed sibling revision and manifests first. Audit Clerk `references/`,
-`templates/`, and eval companions; migrate each with provenance or block dependent entries. Remap
-approved entries and add focused subset install/resolution coverage. Keep the full-catalog skip.
+Validate a committed sibling revision and manifests first. Audit the blocked Clerk
+`references/`, `templates/`, and eval companions for a later change; keep those entries unmigrated.
+Remap the approved DB entries and add focused subset install/resolution coverage. Keep the
+full-catalog skip.
 
 ## Affected Areas
 

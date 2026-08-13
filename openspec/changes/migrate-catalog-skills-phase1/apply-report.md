@@ -5,14 +5,15 @@
 - Strategy: `single-pr` with explicit user-approved `size-exception`.
 - Branch: `feat/migrate-catalog-skills-phase1`; base: `main`.
 - Scope: only the three MIT-backed Bobmatnyc entries `drizzle-orm`, `pydantic`, and `sqlalchemy`.
-- No commit or push performed.
+- Sibling source: `agents-skills` commit `70298da` (PR #18) contains the three migrated skill
+  directories and `PROVENANCE.md`.
 
 ## Completed
 
 - Added the three canonical sibling skill directories under `agents-skills/skills/`, including all
   source-declared reference files and explicit full-source companions for the long Pydantic and
-  SQLAlchemy documents. The sibling content remains uncommitted because the user explicitly said not
-  to commit; the provenance record pins the upstream immutable source and target file hashes.
+  SQLAlchemy documents. These directories are committed in `agents-skills` commit `70298da` (PR
+  #18); the provenance record pins the upstream immutable source and target file hashes.
 - Added `agents-skills/PROVENANCE.md` with immutable repository commit, source paths, Git blob/tree
   identities, attribution, MIT license evidence, materialized file inventory, and companion status.
 - Remapped only the three catalog definitions and their Drizzle/Pydantic/SQLAlchemy technology

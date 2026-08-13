@@ -1484,6 +1484,38 @@ mod tests {
     };
     use std::sync::{Arc, Mutex};
 
+    static SOURCE_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    const SOURCE_OVERRIDE_ENV_VARS: [&str; 2] = [
+        "AGENTSYNC_LOCAL_SKILLS_REPO",
+        "AGENTSYNC_TEST_SKILL_SOURCE_DIR",
+    ];
+
+    struct SourceOverrideEnvGuard {
+        previous: [(&'static str, Option<std::ffi::OsString>); 2],
+    }
+
+    impl SourceOverrideEnvGuard {
+        fn new() -> Self {
+            let previous = SOURCE_OVERRIDE_ENV_VARS.map(|name| (name, std::env::var_os(name)));
+            for name in SOURCE_OVERRIDE_ENV_VARS {
+                unsafe { std::env::remove_var(name) };
+            }
+            Self { previous }
+        }
+    }
+
+    impl Drop for SourceOverrideEnvGuard {
+        fn drop(&mut self) {
+            for (name, value) in &mut self.previous {
+                match value.take() {
+                    Some(value) => unsafe { std::env::set_var(*name, value) },
+                    None => unsafe { std::env::remove_var(*name) },
+                }
+            }
+        }
+    }
+
     #[test]
     fn validate_skill_id_accepts_simple_names() {
         assert!(validate_skill_id("weather-skill").is_ok());
@@ -1515,6 +1547,8 @@ mod tests {
 
     #[test]
     fn direct_catalog_install_resolution_uses_the_sibling_agents_skills_checkout() {
+        let _lock = SOURCE_ENV_LOCK.lock().unwrap();
+        let _env = SourceOverrideEnvGuard::new();
         let root = tempfile::TempDir::new().unwrap();
         let project_root = root.path().join("project");
         let source = root.path().join("agents-skills/skills/drizzle-orm");
@@ -1527,6 +1561,8 @@ mod tests {
 
     #[test]
     fn suggestion_catalog_install_resolution_uses_the_project_root() {
+        let _lock = SOURCE_ENV_LOCK.lock().unwrap();
+        let _env = SourceOverrideEnvGuard::new();
         let root = tempfile::TempDir::new().unwrap();
         let project_root = root.path().join("project");
         let source = root.path().join("agents-skills/skills/pydantic");
