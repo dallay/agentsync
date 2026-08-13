@@ -6,4 +6,4 @@ on:
     types: [opened, edited, synchronize]
 jobs:
   main:
-    uses: dallay/common-actions/.github/workflows/semantic-pull-request.yml@v2.2.2
+    uses: dallay/common-actions/.github/workflows/semantic-pr.yml@v2.2.2

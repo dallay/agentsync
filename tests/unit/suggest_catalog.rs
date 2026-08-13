@@ -75,6 +75,82 @@ fn embedded_catalog_loads_expected_baseline_entries() {
 }
 
 #[test]
+fn phase1_bobmatnyc_entries_use_curated_sources_and_preserve_boundaries() {
+    let catalog = EmbeddedSkillCatalog::default();
+    let expected = [
+        (
+            "dallay/agents-skills/drizzle-orm",
+            "drizzle-orm",
+            "Drizzle ORM",
+            "Use Drizzle ORM for type-safe database access.",
+        ),
+        (
+            "dallay/agents-skills/pydantic",
+            "pydantic",
+            "Pydantic",
+            "Model and validate data with Pydantic.",
+        ),
+        (
+            "dallay/agents-skills/sqlalchemy",
+            "sqlalchemy",
+            "SQLAlchemy",
+            "Use SQLAlchemy for Python database access.",
+        ),
+    ];
+
+    for (provider_skill_id, local_skill_id, title, summary) in expected {
+        let definition = catalog
+            .get_skill_definition(provider_skill_id)
+            .unwrap_or_else(|| panic!("missing migrated definition: {provider_skill_id}"));
+        assert_eq!(definition.local_skill_id, local_skill_id);
+        assert_eq!(definition.title, title);
+        assert_eq!(definition.summary, summary);
+        assert_eq!(definition.install_source, None);
+    }
+
+    assert!(
+        catalog
+            .get_skill_definition("bobmatnyc/claude-mpm-skills/drizzle-orm")
+            .is_none()
+    );
+    assert!(
+        catalog
+            .get_skill_definition("bobmatnyc/claude-mpm-skills/pydantic")
+            .is_none()
+    );
+    assert!(
+        catalog
+            .get_skill_definition("bobmatnyc/claude-mpm-skills/sqlalchemy")
+            .is_none()
+    );
+
+    assert_eq!(
+        catalog
+            .get_technology(&TechnologyId::new("drizzle"))
+            .unwrap()
+            .skills,
+        vec!["dallay/agents-skills/drizzle-orm"]
+    );
+    assert_eq!(
+        catalog
+            .get_technology(&TechnologyId::new("pydantic"))
+            .unwrap()
+            .skills,
+        vec!["dallay/agents-skills/pydantic"]
+    );
+    assert_eq!(
+        catalog
+            .get_technology(&TechnologyId::new("sqlalchemy"))
+            .unwrap()
+            .skills,
+        vec![
+            "dallay/agents-skills/sqlalchemy",
+            "wispbit-ai/skills/sqlalchemy-alembic-expert-best-practices-code-review",
+        ]
+    );
+}
+
+#[test]
 fn invalid_embedded_catalog_fails_explicitly() {
     let error = parse_embedded_catalog(
         r#"

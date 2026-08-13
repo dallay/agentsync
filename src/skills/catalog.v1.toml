@@ -464,11 +464,10 @@ install_source = "https://github.com/mindrally/skills/archive/HEAD.zip#deno-type
 # --- Drizzle ---
 
 [[skills]]
-provider_skill_id = "bobmatnyc/claude-mpm-skills/drizzle-orm"
+provider_skill_id = "dallay/agents-skills/drizzle-orm"
 local_skill_id = "drizzle-orm"
 title = "Drizzle ORM"
 summary = "Use Drizzle ORM for type-safe database access."
-install_source = "https://github.com/bobmatnyc/claude-mpm-skills/archive/HEAD.zip#skills/drizzle-orm"
 
 # --- .NET ---
 
@@ -863,18 +862,16 @@ summary = "Develop APIs with Flask."
 install_source = "https://github.com/aj-geddes/useful-ai-prompts/archive/HEAD.zip#skills/flask-api-development"
 
 [[skills]]
-provider_skill_id = "bobmatnyc/claude-mpm-skills/pydantic"
+provider_skill_id = "dallay/agents-skills/pydantic"
 local_skill_id = "pydantic"
 title = "Pydantic"
 summary = "Model and validate data with Pydantic."
-install_source = "https://github.com/bobmatnyc/claude-mpm-skills/archive/HEAD.zip#skills/pydantic"
 
 [[skills]]
-provider_skill_id = "bobmatnyc/claude-mpm-skills/sqlalchemy"
+provider_skill_id = "dallay/agents-skills/sqlalchemy"
 local_skill_id = "sqlalchemy"
 title = "SQLAlchemy"
 summary = "Use SQLAlchemy for Python database access."
-install_source = "https://github.com/bobmatnyc/claude-mpm-skills/archive/HEAD.zip#skills/sqlalchemy"
 
 [[skills]]
 provider_skill_id = "wispbit-ai/skills/sqlalchemy-alembic-expert-best-practices-code-review"
@@ -1547,7 +1544,7 @@ patterns = ["flask", "Flask"]
 [[technologies]]
 id = "pydantic"
 name = "Pydantic"
-skills = ["bobmatnyc/claude-mpm-skills/pydantic"]
+skills = ["dallay/agents-skills/pydantic"]
 min_confidence = "medium"
 
 [technologies.detect]
@@ -1560,7 +1557,7 @@ patterns = ["pydantic", "Pydantic"]
 [[technologies]]
 id = "sqlalchemy"
 name = "SQLAlchemy"
-skills = ["bobmatnyc/claude-mpm-skills/sqlalchemy", "wispbit-ai/skills/sqlalchemy-alembic-expert-best-practices-code-review"]
+skills = ["dallay/agents-skills/sqlalchemy", "wispbit-ai/skills/sqlalchemy-alembic-expert-best-practices-code-review"]
 min_confidence = "medium"
 
 [technologies.detect]
@@ -2566,7 +2563,7 @@ packages = ["hono"]
 [[technologies]]
 id = "drizzle"
 name = "Drizzle ORM"
-skills = ["bobmatnyc/claude-mpm-skills/drizzle-orm"]
+skills = ["dallay/agents-skills/drizzle-orm"]
 min_confidence = "medium"
 
 [technologies.detect]

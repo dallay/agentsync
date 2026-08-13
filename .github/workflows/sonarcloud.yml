@@ -21,12 +21,21 @@ jobs:
     env:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      AGENTSYNC_LOCAL_SKILLS_REPO: ${{ github.workspace }}/agents-skills
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
+
+      - name: Checkout committed agents-skills source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: dallay/agents-skills
+          ref: c2e79fbb72d146305f82a8e979270795557d24fd
+          path: agents-skills
           persist-credentials: false
 
       - name: Setup Rust toolchain

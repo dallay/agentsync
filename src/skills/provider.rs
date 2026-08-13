@@ -170,6 +170,8 @@ impl Provider for PinnedProvider<'_> {
 
 pub const DALLAY_AGENTS_SKILLS_PREFIX: &str = "dallay/agents-skills/";
 
+const PHASE1_MIGRATED_LOCAL_SKILL_IDS: &[&str] = &["drizzle-orm", "pydantic", "sqlalchemy"];
+
 /// Well-known repo names where skills live in a `skills/` subdirectory.
 const SKILLS_REPO_NAMES: &[&str] = &["skills", "agent-skills", "agentic-skills", "agents-skills"];
 
@@ -237,6 +239,14 @@ pub fn resolve_catalog_install_source(
 
     if let Some(install_source) = catalog.get_install_source(provider_skill_id) {
         return Ok(install_source.to_string());
+    }
+
+    if provider_skill_id.starts_with(DALLAY_AGENTS_SKILLS_PREFIX)
+        && PHASE1_MIGRATED_LOCAL_SKILL_IDS.contains(&local_skill_id)
+    {
+        anyhow::bail!(
+            "curated local source is missing for `{local_skill_id}` ({provider_skill_id}); refusing external fallback"
+        );
     }
 
     Ok(provider.resolve(provider_skill_id)?.download_url)
