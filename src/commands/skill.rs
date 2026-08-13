@@ -695,7 +695,7 @@ fn run_update_inner(args: SkillUpdateArgs, project_root: PathBuf) -> Result<()> 
     // Validate skill_id to prevent path traversal or invalid path segments
     validate_skill_id(skill_id)?;
 
-    let source = resolve_source(skill_id, args.source.clone())?;
+    let source = resolve_source(skill_id, args.source.clone(), &project_root)?;
     let update_source_path = std::path::Path::new(&source);
     let result = if let Ok(handle) = tokio::runtime::Handle::try_current() {
         handle.block_on(agentsync::skills::update::update_skill_async(
@@ -825,7 +825,7 @@ fn run_suggest_inner(
         return print_suggest_output(args.json, &response);
     }
 
-    let provider = SuggestInstallProvider::default();
+    let provider = SuggestInstallProvider::new(project_root);
     let install_response = run_suggest_install(
         args,
         project_root,
@@ -1050,7 +1050,7 @@ fn run_install_inner(args: SkillInstallArgs, project_root: PathBuf) -> Result<()
     // Validate skill_id to prevent path traversal or invalid path segments
     validate_skill_id(skill_id)?;
 
-    let source = resolve_source(skill_id, args.source.clone())?;
+    let source = resolve_source(skill_id, args.source.clone(), &project_root)?;
 
     // Unified logic: install from archive, URL, or local directory
     tracing::debug!(
@@ -1131,12 +1131,14 @@ fn run_install_inner(args: SkillInstallArgs, project_root: PathBuf) -> Result<()
 
 struct SuggestInstallProvider {
     fallback: SkillsShProvider,
+    project_root: PathBuf,
 }
 
-impl Default for SuggestInstallProvider {
-    fn default() -> Self {
+impl SuggestInstallProvider {
+    fn new(project_root: &Path) -> Self {
         Self {
             fallback: SkillsShProvider,
+            project_root: project_root.to_path_buf(),
         }
     }
 }
@@ -1154,7 +1156,7 @@ impl Provider for SuggestInstallProvider {
                 &self.fallback,
                 &definition.provider_skill_id,
                 &definition.local_skill_id,
-                None,
+                Some(&self.project_root),
             )?;
 
             return Ok(agentsync::skills::provider::SkillInstallInfo {
@@ -1263,7 +1265,11 @@ fn run_uninstall_inner(args: SkillUninstallArgs, project_root: PathBuf) -> Resul
     }
 }
 
-fn resolve_source(skill_id: &str, source_arg: Option<String>) -> Result<String> {
+fn resolve_source(
+    skill_id: &str,
+    source_arg: Option<String>,
+    project_root: &Path,
+) -> Result<String> {
     if let Some(s) = source_arg {
         // Check if it's a GitHub URL that needs conversion to ZIP format
         if let Some(github_url) = try_convert_github_url(&s) {
@@ -1287,7 +1293,7 @@ fn resolve_source(skill_id: &str, source_arg: Option<String>) -> Result<String> 
                 &provider,
                 &definition.provider_skill_id,
                 &definition.local_skill_id,
-                None,
+                Some(project_root),
             )
             .map_err(|e| {
                 tracing::warn!(skill_id = %skill_id, provider_skill_id = %definition.provider_skill_id, ?e, "Failed to resolve catalog skill via skills provider");
@@ -1505,6 +1511,32 @@ mod tests {
         // absolute path (windows)
         assert!(validate_skill_id("C:\\path").is_err());
         assert!(validate_skill_id("C:/path").is_err());
+    }
+
+    #[test]
+    fn direct_catalog_install_resolution_uses_the_sibling_agents_skills_checkout() {
+        let root = tempfile::TempDir::new().unwrap();
+        let project_root = root.path().join("project");
+        let source = root.path().join("agents-skills/skills/drizzle-orm");
+        std::fs::create_dir_all(&source).unwrap();
+
+        let resolved = resolve_source("drizzle-orm", None, &project_root).unwrap();
+
+        assert_eq!(resolved, source.display().to_string());
+    }
+
+    #[test]
+    fn suggestion_catalog_install_resolution_uses_the_project_root() {
+        let root = tempfile::TempDir::new().unwrap();
+        let project_root = root.path().join("project");
+        let source = root.path().join("agents-skills/skills/pydantic");
+        std::fs::create_dir_all(&source).unwrap();
+
+        let provider = SuggestInstallProvider::new(&project_root);
+        let resolved = provider.resolve("dallay/agents-skills/pydantic").unwrap();
+
+        assert_eq!(resolved.download_url, source.display().to_string());
+        assert_eq!(resolved.format, "dir");
     }
 
     #[test]

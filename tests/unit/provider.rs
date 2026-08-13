@@ -1,5 +1,12 @@
-use agentsync::skills::provider::{Provider, SkillInstallInfo, SkillsShProvider};
+use agentsync::skills::catalog::EmbeddedSkillCatalog;
+use agentsync::skills::provider::{
+    Provider, SkillInstallInfo, SkillsShProvider, resolve_catalog_install_source,
+};
 use agentsync::skills::registry::load_curated_registry;
+use std::fs;
+use std::sync::Mutex;
+
+static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 struct DummyProvider;
 
@@ -217,4 +224,110 @@ fn pinned_provider_rejects_ambiguous_provider_or_local_identifier() {
     let provider = agentsync::skills::provider::PinnedProvider::new(registry, root.path());
     let error = provider.resolve("valid-skill").unwrap_err();
     assert!(error.to_string().contains("ambiguous"));
+}
+
+#[test]
+fn phase1_catalog_source_fails_closed_when_curated_content_is_missing() {
+    let _lock = ENV_LOCK.lock().unwrap();
+    let previous = std::env::var_os("AGENTSYNC_LOCAL_SKILLS_REPO");
+    let missing_repo = tempfile::TempDir::new().unwrap();
+    unsafe {
+        std::env::set_var("AGENTSYNC_LOCAL_SKILLS_REPO", missing_repo.path());
+    }
+
+    let catalog = EmbeddedSkillCatalog::default();
+    let error = resolve_catalog_install_source(
+        &catalog,
+        &DummyProvider,
+        "dallay/agents-skills/drizzle-orm",
+        "drizzle-orm",
+        None,
+    )
+    .unwrap_err();
+
+    match previous {
+        Some(value) => unsafe { std::env::set_var("AGENTSYNC_LOCAL_SKILLS_REPO", value) },
+        None => unsafe { std::env::remove_var("AGENTSYNC_LOCAL_SKILLS_REPO") },
+    }
+
+    assert!(
+        error
+            .to_string()
+            .contains("curated local source is missing")
+    );
+    assert!(error.to_string().contains("drizzle-orm"));
+}
+
+#[test]
+fn phase1_catalog_source_uses_agentsync_local_skills_repo_before_provider() {
+    let _lock = ENV_LOCK.lock().unwrap();
+    let repo = tempfile::TempDir::new().unwrap();
+    let source = repo.path().join("skills/drizzle-orm");
+    fs::create_dir_all(&source).unwrap();
+
+    let previous = std::env::var_os("AGENTSYNC_LOCAL_SKILLS_REPO");
+    unsafe { std::env::set_var("AGENTSYNC_LOCAL_SKILLS_REPO", repo.path()) };
+    let resolved = resolve_catalog_install_source(
+        &EmbeddedSkillCatalog::default(),
+        &DummyProvider,
+        "dallay/agents-skills/drizzle-orm",
+        "drizzle-orm",
+        None,
+    );
+    match previous {
+        Some(value) => unsafe { std::env::set_var("AGENTSYNC_LOCAL_SKILLS_REPO", value) },
+        None => unsafe { std::env::remove_var("AGENTSYNC_LOCAL_SKILLS_REPO") },
+    }
+
+    assert_eq!(resolved.unwrap(), source.display().to_string());
+}
+
+#[test]
+fn phase1_catalog_source_uses_sibling_agents_skills_checkout() {
+    let _lock = ENV_LOCK.lock().unwrap();
+    let previous = std::env::var_os("AGENTSYNC_LOCAL_SKILLS_REPO");
+    unsafe { std::env::remove_var("AGENTSYNC_LOCAL_SKILLS_REPO") };
+    let root = tempfile::TempDir::new().unwrap();
+    let project_root = root.path().join("project");
+    let source = root.path().join("agents-skills/skills/pydantic");
+    fs::create_dir_all(&source).unwrap();
+
+    let resolved = resolve_catalog_install_source(
+        &EmbeddedSkillCatalog::default(),
+        &DummyProvider,
+        "dallay/agents-skills/pydantic",
+        "pydantic",
+        Some(&project_root),
+    )
+    .unwrap();
+
+    if let Some(value) = previous {
+        unsafe { std::env::set_var("AGENTSYNC_LOCAL_SKILLS_REPO", value) };
+    }
+
+    assert_eq!(resolved, source.display().to_string());
+}
+
+#[test]
+fn unrelated_curated_catalog_entries_keep_provider_fallback_behavior() {
+    let _lock = ENV_LOCK.lock().unwrap();
+    let previous = std::env::var_os("AGENTSYNC_LOCAL_SKILLS_REPO");
+    unsafe { std::env::remove_var("AGENTSYNC_LOCAL_SKILLS_REPO") };
+
+    let resolved = resolve_catalog_install_source(
+        &EmbeddedSkillCatalog::default(),
+        &DummyProvider,
+        "dallay/agents-skills/docker-expert",
+        "docker-expert",
+        None,
+    );
+
+    if let Some(value) = previous {
+        unsafe { std::env::set_var("AGENTSYNC_LOCAL_SKILLS_REPO", value) };
+    }
+
+    assert_eq!(
+        resolved.unwrap(),
+        "https://example.org/dallay/agents-skills/docker-expert/download.zip"
+    );
 }
