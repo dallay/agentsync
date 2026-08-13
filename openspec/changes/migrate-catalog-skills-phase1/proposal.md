@@ -10,15 +10,17 @@ redesign or a full-health claim.
 ## Scope
 
 ### In Scope
+
 - Migrate `drizzle-orm`, `pydantic`, and `sqlalchemy` only after verifying the recorded source paths
   and MIT evidence at commit `718070a7d622921b01687799a1f9613f36c6f615`.
 - Remap accepted definitions to `dallay/agents-skills/{local_skill_id}`, update affected mappings,
   and test sibling plus `AGENTSYNC_LOCAL_SKILLS_REPO` paths.
 
 ### Out of Scope
+
 - Re-enabling or claiming the full catalog E2E; remaining external failures stay out of scope.
 - **Clerk migration remains blocked and out of scope for Phase 1.** The nine Clerk entries and the
-  base `clerk` router retain their external mappings because the required committed source,
+  base `clerk` router retain their external mappings because the required source commit,
   license evidence or permission, and companion gates are not satisfied. Revisit them separately.
   The Wispbit SQLAlchemy entry remains external.
 - Registry redesign, unrelated sibling files, production code, or skill-content edits.
@@ -44,7 +46,9 @@ full-catalog skip.
 | Area | Impact | Description |
 |---|---|---|
 | `src/skills/catalog.v1.toml` | Modified | Approved Phase 1 definitions and mappings. |
+| `src/commands/skill.rs` | Modified | Skill command handling for catalog entries. |
 | `tests/test_catalog_integration.rs`, `tests/unit/suggest_catalog.rs`, `tests/unit/suggest_install.rs` | Modified | Focused local tests only. |
+| `tests/unit/provider.rs` | Modified | Provider unit tests for local resolution. |
 | `../agents-skills` | Dependency | Must provide committed, validated, attributable content. |
 
 ## Risks
