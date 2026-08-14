@@ -11,7 +11,8 @@ JS_WORKSPACE := $(PNPM) --filter agentsync
 
 .PHONY: help all install js-install js-test js-build \
         rust-build rust-test rust-run e2e-test fmt docs-dev docs-build docs-preview \
-        agents-sync agents-sync-clean clean verify-all check-all check-rust check-js check-docs check-e2e
+        agents-sync agents-sync-clean clean verify-all check-all check-rust check-js check-docs \
+        check-e2e acceptance-phase1
 
 help:
 	@echo "Makefile for agentsync"
@@ -38,6 +39,7 @@ help:
 	@echo "Examples:"
 	@echo "  make js-test"
 	@echo "  make rust-test"
+	@echo "  make acceptance-phase1 AGENTSYNC_BIN=target/release/agentsync"
 
 all: install js-build
 
@@ -115,6 +117,13 @@ e2e-test:
 	if [ $$status -eq 0 ]; then docker compose -f tests/e2e/docker-compose.yml up --no-build --abort-on-container-exit --exit-code-from test-runner-ubuntu test-runner-ubuntu || status=$$?; fi; \
 	docker compose -f tests/e2e/docker-compose.yml down --volumes --remove-orphans; \
 	exit $$status
+
+# Narrow black-box acceptance for the Phase 1 catalog migration. The script requires an external
+# release-like binary and copies only the three approved skill directories into temporary fixtures.
+acceptance-phase1:
+	@AGENTSYNC_BIN="$(AGENTSYNC_BIN)" \
+	AGENTSYNC_SOURCE_REPO="$(AGENTSYNC_SOURCE_REPO)" \
+	tests/acceptance/phase1_catalog.sh
 
 # Formatting
 fmt:
