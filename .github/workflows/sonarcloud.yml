@@ -2,9 +2,27 @@ name: Code Quality Analysis
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - 'fix/**'
+      - 'feat/**'
+      - 'docs/**'
+      - 'qa/**'
+      - 'refactor/**'
+      - 'perf/**'
+      - 'chore/**'
+      - 'ci/**'
   pull_request:
-    branches: [main]
+    branches:
+      - main
+      - 'fix/**'
+      - 'feat/**'
+      - 'docs/**'
+      - 'qa/**'
+      - 'refactor/**'
+      - 'perf/**'
+      - 'chore/**'
+      - 'ci/**'
   workflow_dispatch:
 
 permissions:
