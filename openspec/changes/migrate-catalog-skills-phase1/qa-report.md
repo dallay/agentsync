@@ -4,125 +4,167 @@
 
 - Change: `migrate-catalog-skills-phase1`
 - Mode: `openspec`
-- QA phase: `qa`
-- Date: `2026-08-13`
+- QA phase: `qa` (rerun after approved remediation)
+- Date: `2026-08-14`
 
-## Sources of Truth
+## Sources of Truth and Technical Verification Handoff
 
-- Exploration: `openspec/changes/migrate-catalog-skills-phase1/exploration.md`
 - Proposal: `openspec/changes/migrate-catalog-skills-phase1/proposal.md`
 - Specification: `openspec/changes/migrate-catalog-skills-phase1/specs/skill-recommendations/spec.md`
 - Design: `openspec/changes/migrate-catalog-skills-phase1/design.md`
 - Tasks: `openspec/changes/migrate-catalog-skills-phase1/tasks.md`
 - Apply handoff: `openspec/changes/migrate-catalog-skills-phase1/apply-report.md`
-- Technical verification: `openspec/changes/migrate-catalog-skills-phase1/verify-report.md` (`PASS WITH WARNINGS`)
+- Technical verification: `openspec/changes/migrate-catalog-skills-phase1/verify-report.md`
 - State: `openspec/changes/migrate-catalog-skills-phase1/state.yaml`
 - Policy: `openspec/config.yaml`
+- Previous QA: this report replaces the stale prior `NOT TESTED` claims.
 
-## Target and Environment
+The `sdd-verify` handoff is `PASS WITH WARNINGS`. It reports that the release build, focused
+tests, provenance refresh, and the new external acceptance target are technically executable. This
+QA rerun independently exercised the documented external target and does not reinterpret static
+inspection or in-process Rust tests as acceptance evidence.
 
-- Target: No launchable application or operator acceptance target was supplied. The inspected surfaces were the local `agentsync` checkout and the sibling `agents-skills` checkout; the Rust test binaries were used only as technical evidence, not as a product-acceptance target.
-- `agentsync`: `/Users/acosta/Dev/dallay/agentsync`, branch `feat/migrate-catalog-skills-phase1`, with six tracked source/test files modified and OpenSpec artifacts untracked.
-- `agents-skills`: `/Users/acosta/Dev/dallay/agents-skills`, branch `feat/phase1-auth-db-skills`, `HEAD 17db5a3`; the three migrated directories and `PROVENANCE.md` are untracked, alongside nine Clerk and two unrelated candidate directories.
-- Environment: macOS/Darwin, local filesystem, Rust/Cargo toolchain, Python 3.14 validator environment.
-- Credentials/permissions: local repository access only; no product credentials, deployed endpoint, or external acceptance permission was available.
-- Refresh focus: the three generated entrypoint SHA-256 values in `agents-skills/PROVENANCE.md` were corrected and recomputed successfully during this QA refresh.
-- Limitations: There is no supported black-box acceptance harness, deployed target, browser surface, API target, or committed sibling revision for this QA run. Local tests and static/worktree inspection provide technical evidence but cannot establish user/operator acceptance under the QA policy.
+## Target, Environment, Permissions, and Limitations
+
+- Target: `/Users/acosta/Dev/dallay/agentsync/target/release/agentsync`, rebuilt locally with
+  `cargo build --release` and launched by the shell harness as a separate process.
+- AgentSync source reality: local `HEAD` is `8408753`; its tree matches `origin/main` at merged
+  commit `7465d920b6c801b17c232e551a954041890c60f9`.
+- Curated source: working `/Users/acosta/Dev/dallay/agents-skills` checkout. The three migrated
+  skill directories match the supplied `agents-skills` merge commit `be4570aa...`; only the
+  remediation provenance/wrapper files are dirty. The harness copies only those three directories
+  into isolated sibling, override, and empty-source fixtures.
+- Environment: macOS/Darwin; local release binary, Bash, Python 3, and temporary filesystem
+  project roots. The harness sets a temporary `HOME`, disables update checks, and uses local source
+  fixtures.
+- Permissions: local read/execute and filesystem-write permissions for temporary fixtures; no
+  deployed endpoint, product credentials, external operator account, or authorization target.
+- Limitations: the acceptance target does not intercept packets, simulate an interrupted process,
+  or assert retry/resume behavior. The full-catalog E2E remains intentionally early-returned and is
+  not a catalog-health result. The remediation is intentionally uncommitted, so final committed
+  provenance bytes require a later recheck before archive.
 
 ## Capability Inventory
 
 | Capability | Availability | Selected? | Rationale / rejection reason |
 |---|---|---:|---|
-| Local filesystem and Git inspection | available | selected | Required to inspect both repositories, uncommitted diffs, source isolation, and provenance state. Evidence is not product acceptance by itself. |
-| Rust/Cargo focused test runner | available | selected | Executed focused resolver, catalog, caller, install, and harness checks as technical evidence only. No black-box product target was attached. |
-| Offline/local-source execution | available | selected | `CARGO_NET_OFFLINE=true` and local sibling/override paths exercised the technical local-resolution paths. |
-| Temporary install and `registry.json` inspection | available | selected | Focused integration test observed copied files and local registry keys in temporary directories; treated as technical evidence only. |
-| Pinned `skills-ref` validation | available | selected | Validated the three migrated sibling directories individually. |
-| Target repository validator | available | selected | Ran the documented whole-repository validator; its failures were limited to pre-existing Clerk candidates. |
-| Browser/Playwright/Chrome | available | rejected | The target is a Rust CLI/catalog flow with no browser UI target. |
-| API/client acceptance calls | unavailable | rejected | No API service or endpoint was supplied. |
-| Manual operator CLI session against a real project | unavailable | rejected | No executable acceptance target/project invocation was supplied. |
-| Accessibility, responsive, and locale checks | unavailable | rejected | No UI or localization surface is in scope for this CLI change. |
-| Credential/authorization testing | unavailable | rejected | No authenticated target or permission model was supplied. |
-| Interrupted/repeated exploratory acceptance session | unavailable | rejected | No launchable target or supported black-box harness was available. |
+| External release-like CLI process | available | selected | `make acceptance-phase1` launches the executable externally and observes exit status, JSON, stderr, files, and registry state. |
+| Isolated filesystem fixtures | available | selected | The harness creates temporary sibling, override, missing-source, command-CWD, and project-root fixtures and copies only the approved three skills. |
+| Shell/JSON/registry assertions | available | selected | The harness asserts install results, provider identity, local IDs, companions, source markers, and absence of unintended paths. |
+| Provenance validator | available | selected | Both the acceptance wrapper and direct Python validator recompute all ten current materialized hashes. |
+| Release build | available | selected | Rebuilt the executable used by the external acceptance run. |
+| Rust/Cargo technical tests | available | rejected for acceptance | Already owned by `sdd-verify`; in-process tests are not used to manufacture acceptance `PASS` results here. |
+| Full-catalog integration boundary | available | selected for scope evidence | The ignored test was run only to confirm the intentional early-return message, not to claim catalog health. |
+| Network interception | unavailable | rejected | No packet-blocking/proxy capability is provided by the repository harness. |
+| Interrupted/retry operator flow | unavailable | rejected | The documented harness has no process interruption or resume scenario. |
+| Browser/Playwright/Chrome | available | rejected | This is a CLI-only change with no browser surface. |
+| Accessibility/responsive checks | unavailable | rejected | No UI, viewport, or screen-reader surface is in scope. |
+| Locale/internationalization checks | unavailable | rejected | No locale-enabled target or requirement is supplied. |
+| Credentials/authorization checks | unavailable | rejected | No authenticated target or permission model is supplied. |
+| Manual release-operator session | unavailable | rejected | The approved target is the reproducible external harness, not a deployed operator environment. |
+
+## Evidence Commands and Results
+
+These are the exact commands run for this QA rerun:
+
+| Command | Result |
+|---|---|
+| `cargo build --release` | PASS — release profile finished successfully. |
+| `make acceptance-phase1 AGENTSYNC_BIN=target/release/agentsync AGENTSYNC_SOURCE_REPO=../agents-skills` | PASS — external harness completed sibling installs, override precedence, missing-source fail-closed, and suggestion project-root checks. |
+| `tests/acceptance/test_phase1_catalog_harness.sh` | PASS — missing-binary contract rejected the absent executable. |
+| `AGENTSYNC_SOURCE_REPO=../agents-skills tests/acceptance/test_phase1_provenance.sh` | PASS — `[OK] validated materialized hashes`. |
+| `python3 scripts/validate_provenance.py --root .` from `agents-skills` | PASS — `[OK] validated materialized hashes`. |
+| `bash -n tests/acceptance/*.sh && git diff --check` | PASS — no output/errors. |
+| `git diff --check` from `agents-skills` | PASS — no output/errors. |
+| `CARGO_NET_OFFLINE=true RUN_E2E=1 cargo test --all-features --test test_catalog_integration every_catalog_skill_installs_successfully -- --ignored --nocapture` | PASS only for the intentional early return: `Skipping full catalog installation E2E: Phase 1 focused coverage is scoped to the three migrated Bobmatnyc skills`. No full-catalog health claim. |
+| `git diff --exit-code be4570aa6f23931f51692661d163ddd663b57488 -- skills/drizzle-orm skills/pydantic skills/sqlalchemy` from `agents-skills` | PASS — migrated skill content matches the supplied merge commit. |
+
+The post-run worktree still shows only the intended remediation files plus the pre-existing
+untracked Clerk/Angular/TypeScript candidate paths. The harness did not modify or copy those
+unrelated candidates into any acceptance fixture.
 
 ## Scenario Matrix
 
-Every acceptance scenario is `NOT TESTED`: the commands below produced technical evidence, but there was no application-under-test or black-box acceptance target. Static inspection and local test binaries are not promoted to product `PASS` results.
+Every scenario has one allowed result. `PASS` below is reserved for behavior observed by the
+external harness; static inspection and technical-only checks are not promoted to acceptance.
 
 | ID | Capability | Acceptance scenario | Result | Evidence or reason |
 |---|---|---|---|---|
-| QA-01 | Offline/local-source execution | Happy path: each migrated skill resolves from the local sibling `agents-skills` checkout without external resolution. | NOT TESTED | Technical checks passed, including `phase1_catalog_source_uses_sibling_agents_skills_checkout` and the focused three-skill install test; no launchable operator target was available. |
-| QA-02 | Offline/local-source execution | Happy path/boundary: `AGENTSYNC_LOCAL_SKILLS_REPO/skills/{local_skill_id}` takes precedence and resolves each migrated skill locally. | NOT TESTED | Technical check `phase1_catalog_source_uses_agentsync_local_skills_repo_before_provider` passed; no product acceptance target or network-observation harness was available. |
-| QA-03 | Negative/security boundary | Missing curated content fails closed and does not fall back to a mutable external source. | NOT TESTED | Technical check `phase1_catalog_source_fails_closed_when_curated_content_is_missing` passed; no black-box install target was available to observe the operator-facing error. |
-| QA-04 | Persistence/install evidence | Offline installation of `drizzle-orm`, `pydantic`, and `sqlalchemy` copies `SKILL.md`, required companions, and records local IDs in `registry.json`. | NOT TESTED | Current refresh passed the focused integration test for all three entries and checked companion files plus local registry keys; this is technical test-harness evidence, not product acceptance. |
-| QA-05 | Catalog identity/metadata | Recommendations retain local IDs, titles, summaries, install identities, and metadata while provider IDs become `dallay/agents-skills/{local_skill_id}` and stale sources are removed. | NOT TESTED | Catalog-boundary test passed; no user-facing recommendation target was available. |
-| QA-06 | Caller propagation | Direct install/update and suggestion install propagate the real project root so sibling resolution is reachable. | NOT TESTED | Direct and suggestion project-root regression tests passed; update propagation was inspected in the diff, but no black-box CLI session was available. |
-| QA-07 | Unauthorized/security boundary | A missing approved local source cannot silently resolve through provider/network fallback, while unrelated catalog entries retain their existing fallback behavior. | NOT TESTED | Technical fail-closed and unrelated-fallback tests passed; no network interception or operator target was available. |
-| QA-08 | Scope/exclusion | Unrelated skills and blocked Clerk files are not remapped or included in the three-skill migration. | NOT TESTED | Git/diff inspection found no Clerk catalog remap and the target worktree still contains the nine Clerk plus two unrelated untracked candidates; static evidence cannot produce acceptance `PASS`. |
-| QA-09 | State transition | Repeated, interrupted, or partially completed installation leaves a safe, predictable state and retry behavior. | NOT TESTED | No dedicated black-box repeated/interrupted acceptance scenario or target was available. Existing technical retry/install tests are part of verification evidence only. |
-| QA-10 | Harness preservation | The full-catalog E2E retains `#[ignore]`, its guard, and the explicit early return while unrelated external entries remain broken. | NOT TESTED | Current `RUN_E2E=1 cargo test ... --ignored --nocapture` emitted `Skipping full catalog installation E2E: Phase 1 focused coverage is scoped to the three migrated Bobmatnyc skills` and returned `ok`; this validates harness preservation, not product acceptance or full-catalog health. |
-| QA-11 | Browser | Browser installation/recommendation behavior. | NOT TESTED | No browser target; CLI change has no browser surface. |
-| QA-12 | Accessibility | Keyboard/screen-reader/contrast behavior. | NOT TESTED | No UI target or accessibility surface. |
-| QA-13 | Responsive | Narrow/wide viewport behavior. | NOT TESTED | No UI target or responsive surface. |
-| QA-14 | Internationalization | Locale/translation behavior for recommendations and install errors. | NOT TESTED | No locale-enabled target or acceptance requirement was supplied. |
-| QA-15 | Exploratory/manual | End-to-end operator workflow across both repositories with a real project root. | NOT TESTED | No launchable target, installed release binary workflow, or acceptance harness was supplied. |
-
-## Exact Checks Run
-
-The following commands were run during this QA refresh. Their results are technical evidence only and
-do not change the scenario results above:
-
-- SHA-256 recomputation for the three materialized entrypoints, with the recorded values checked against
-  `agents-skills/PROVENANCE.md` — all matched:
-  - `drizzle-orm/SKILL.md`: `31aab8f3fff9dc3b4dd0ac593f33d6b5e6583885db5a373dbcfd805b3732714f`
-  - `pydantic/SKILL.md`: `6769a7817671c8673e94221357d2e2058867594a006fdc05b3d551850cf4ff99`
-  - `sqlalchemy/SKILL.md`: `35e1956c80ec9b8644d6b67de13909696ee83191534a51bf0d7dbfdfca65df4b`
-- `PYTHONPATH=.tools/skills-ref/lib/python3.14/site-packages python3.14 .tools/skills-ref/bin/skills-ref validate skills/drizzle-orm` — `Valid skill`.
-- Same pinned `skills-ref validate` command for `skills/pydantic` — `Valid skill`.
-- Same pinned `skills-ref validate` command for `skills/sqlalchemy` — `Valid skill`.
-- `python3 scripts/validate_skills.py` in `agents-skills` — exit 1 as expected; exactly nine pre-existing Clerk directories failed the exact `Use when` activation-cue check, and no migrated database skill was reported.
-- `CARGO_NET_OFFLINE=true cargo test --all-features --test test_catalog_integration phase1_bobmatnyc_catalog_entries_install_offline_and_register_local_ids` — `1 passed`.
-- `CARGO_NET_OFFLINE=true cargo test --all-features --test all_tests 'unit::provider::'` — `16 passed`, including local override precedence, sibling lookup, fail-closed behavior, and unrelated fallback.
-- `CARGO_NET_OFFLINE=true cargo test --all-features --test all_tests phase1_bobmatnyc_entries_use_curated_sources_and_preserve_boundaries` — `1 passed`.
-- `CARGO_NET_OFFLINE=true cargo test --all-features --test all_tests unit::suggest_install::` — `10 passed`.
-- `CARGO_NET_OFFLINE=true cargo test --all-features commands::skill::tests::direct_catalog_install_resolution_uses_the_sibling_agents_skills_checkout` — `1 passed`.
-- `CARGO_NET_OFFLINE=true cargo test --all-features commands::skill::tests::suggestion_catalog_install_resolution_uses_the_project_root` — `1 passed`.
-- `CARGO_NET_OFFLINE=true RUN_E2E=1 cargo test --all-features --test test_catalog_integration every_catalog_skill_installs_successfully -- --ignored --nocapture` — intentional early-return message emitted; harness test returned `ok`; no full-catalog pass claimed.
-- `git status --short --branch`, `git diff --name-status`, `git diff --stat`, and `git diff --check` in `agentsync`, plus `git status --short --branch` in `agents-skills` — confirmed the current uncommitted state, no commit/push, six modified `agentsync` source/test files, untracked OpenSpec artifacts, and untracked sibling content/provenance.
+| QA-01 | External CLI / sibling fixture | Each approved Phase 1 entry (`drizzle-orm`, `pydantic`, `sqlalchemy`) installs through the external CLI from the sibling fixture. | PASS | `make acceptance-phase1 ...` ran all three installs, asserted JSON `status=installed`, checked installed `SKILL.md`, and verified local registry entries. |
+| QA-02 | Persistence / companions | Installed state uses each local ID for the destination folder and `registry.json`, and required companions survive recursive installation. | PASS | The harness asserted all three local registry keys plus Drizzle's four references, Pydantic's `references/full-source.md`, and SQLAlchemy's two required references. |
+| QA-03 | Override precedence | A valid `AGENTSYNC_LOCAL_SKILLS_REPO` source takes precedence over a sibling source. | PASS | The external override install contained the override marker and did not contain the sibling marker. |
+| QA-04 | Negative / fail-closed boundary | An empty curated source fails closed without mutable external fallback or an installed directory. | PASS | The external process failed, stderr contained `refusing external fallback`, and the expected `pydantic` directory was absent. |
+| QA-05 | Suggestion / project-root propagation | Suggestion installation uses the supplied project root, preserves qualified provider identity, and installs the local ID. | PASS | The harness created a `pyproject.toml`, observed `pydantic` with provider ID `dallay/agents-skills/pydantic`, installed it under the supplied project root, checked its companion and registry key, and confirmed no install in the command CWD. |
+| QA-06 | Suggestion negative/boundary | The Phase 1 suggestion fixture does not attempt unrelated skill installs or report failed installs. | PASS | The harness asserted result IDs were limited to the explicitly allowed preinstalled generic skills plus `pydantic`, and asserted no result had `status=failed`. |
+| QA-07 | Repeated / interrupted / retry | A partial or interrupted installation can be retried with a safe operator-visible state. | NOT TESTED | The documented harness uses fresh temporary roots and has no interruption or resume assertion. Rerun prerequisite: add a dedicated external process-kill and retry fixture. |
+| QA-08 | Network boundary | Network traffic is intercepted/denied while local resolution succeeds and external fallback is proven absent. | NOT TESTED | The harness uses local fixtures and disables update checks but does not intercept packets. Rerun prerequisite: add a network-denial or proxy-observation capability. |
+| QA-09 | Authorization/security | Unauthorized access or permissions cannot bypass curated-source gating. | NOT TESTED | No authenticated or multi-user target exists; QA-04 covers the observable missing-source gate only. Rerun prerequisite: provide a permissioned operator target if this surface becomes applicable. |
+| QA-10 | Full-catalog boundary | Full-catalog execution reports health while unrelated external entries remain unresolved. | NOT TESTED | Intentionally out of scope; the ignored test early-returns. The command confirms scope preservation, not full-catalog health. Rerun prerequisite: a later catalog-health change that removes the early return and supplies all required sources. |
+| QA-11 | Browser/accessibility/responsive | Browser, keyboard, screen-reader, viewport, and responsive behavior. | NOT TESTED | Not applicable to this CLI; no browser or UI surface exists. |
+| QA-12 | Internationalization | Locale-specific recommendation and installation behavior. | NOT TESTED | No locale-enabled target or requirement exists. |
+| QA-13 | Exploratory/manual operator flow | A human release operator completes the workflow against a deployed or approved release environment. | NOT TESTED | The approved evidence surface is the reproducible external harness; no deployed target or operator credentials were supplied. |
 
 ## Untested Scope
 
-- Scope: Product/user/operator acceptance of the three skill migrations, including a real CLI invocation, network-denial observation, repeat/interruption behavior, and release-like installation from a committed sibling revision.
-- Reason: No target, deployed artifact, black-box acceptance harness, credentials, or committed `agents-skills` revision was supplied. The repository-level Rust tests are technical verification evidence, not a substitute for product acceptance in this QA phase.
-- Re-run prerequisite: Provide a launchable CLI acceptance target or approved black-box harness, and a clean/committed sibling snapshot containing only the gated migrated content. The corrected provenance hashes are now verified. Then rerun `sdd-qa` before archive.
+- Scope: interruption/retry semantics, packet-level network interception, authenticated permission
+  behavior, full-catalog health, manual release operation, and UI/locale categories that do not
+  apply to this CLI.
+- Reason: these behaviors are not asserted by the documented Phase 1 black-box target, are
+  explicitly out of scope, or have no applicable target/capability. The harness-covered Phase 1
+  install, persistence, companion, override, fail-closed, and project-root scenarios do have
+  observable evidence.
+- Rerun prerequisites: extend the external harness with a controlled interruption/retry scenario
+  and network-denial observation if those acceptance risks become required; provide a permissioned
+  target for authorization checks; and remove the full-catalog early return only in a later catalog
+  health change.
+- Archive prerequisite: persist the intended remediation and re-run provenance validation against
+  the final committed sibling bytes before treating the source as immutable release input.
 
 ## Findings
 
 | ID | Severity | Scenario / location | Evidence | Status |
 |---|---|---|---|---|
-| QA-F-001 | P2 | Release readiness: `agents-skills` migrated content and `PROVENANCE.md` | Target branch `feat/phase1-auth-db-skills` has the three migrated directories and provenance record untracked; no immutable sibling revision exists yet. | Open warning; does not invalidate the technical three-skill test evidence. |
-| QA-F-002 | P2 | Release readiness: `agents-skills/PROVENANCE.md` materialized file hashes | Current SHA-256 values for `drizzle-orm/SKILL.md`, `pydantic/SKILL.md`, and `sqlalchemy/SKILL.md` match the corrected values recorded in `PROVENANCE.md`. | Resolved during this QA refresh; final committed bytes still require a post-commit provenance recheck. |
-| QA-F-003 | P2 | Target repository validation: pre-existing Clerk candidates | Whole-repository validator reports nine Clerk directories missing the exact `Use when` cue. The migrated Bobmatnyc directories are valid individually and are not in the failures. | Open pre-existing warning; Clerk remains blocked and out of scope. |
-| QA-F-004 | P2 | Full-catalog E2E | Full-catalog test remains ignored and returns early because unrelated external entries remain broken. | Accepted scope warning; preserve until a later catalog-health change. |
-| QA-F-005 | P2 | Source isolation | The sibling worktree also contains untracked Clerk, `angular-architecture`, and `typescript-strict-patterns` candidates. | Open warning; provenance excludes them, but the source snapshot is not release-isolated. |
-| QA-F-006 | P3 | Coverage boundary: install-all provider/local identity | No new dedicated three-recommendation `install-all` test was added in this change; existing install-all technical coverage passed. | Coverage suggestion; not an observed acceptance failure. |
+| QA-F-001 | P2 | `agents-skills/PROVENANCE.md` and remediation tooling | All ten hashes pass against the current working-tree bytes, but the refreshed provenance and validator wiring are intentionally uncommitted. | Open warning; recheck final committed bytes before archive/release. |
+| QA-F-002 | P2 | Full-catalog integration | The ignored full-catalog test intentionally early-returns while unrelated external entries remain unresolved. | Accepted scope warning; no full-catalog health claim. |
+| QA-F-003 | P2 | Acceptance coverage boundary | The external target does not cover interruption/retry or packet-level network interception. | Accepted non-blocking warning; add capabilities if those risks become acceptance requirements. |
+| QA-F-004 | P3 | Local `agents-skills` worktree hygiene | Pre-existing Clerk, Angular, and TypeScript candidates remain untracked. The harness copies only the three approved Phase 1 directories and the post-run status confirms they remain untouched. | Preserved/excluded; not a Phase 1 behavior failure. |
+| QA-F-005 | P3 | Repository-wide sibling validation | The broad wrapper enumerates unrelated candidates and is not used as the focused acceptance result; the provenance-specific validator and migrated-skill checks pass. | Environment limitation; keep unrelated candidates out of this change. |
 
-No unresolved `CRITICAL`, `P0`, or `P1` product findings were observed. The missing acceptance target is a QA testability limitation, not evidence of a product defect.
-
-**CRITICAL/P0/P1 findings:** None.
+No `CRITICAL`, `P0`, or `P1` findings were observed. No harness-covered scenario failed or was
+blocked.
 
 ## Verdict
 
-`NOT TESTED`
+`PASS WITH WARNINGS`
 
 ### Rationale
 
-The technical evidence is consistent with the verify report: the three migrated entries resolve locally, fail closed when absent, install with companions and local registry keys, preserve catalog identity, propagate project roots, exclude Clerk/unrelated mappings, and retain the full-catalog early return in the available Rust test harness. However, this repository run had no application-under-test, launchable operator target, or supported black-box acceptance harness. Per the QA gate, those technical checks cannot be represented as product acceptance `PASS`; the release-readiness warnings also remain open.
+The approved external acceptance target now exists and was run against the rebuilt release-like
+executable. It observed the CLI as an external process and passed the Phase 1 behaviors it claims:
+all three local installs, companions and registry state, override precedence, missing-source
+fail-closed behavior, and direct/suggestion project-root and provider/local-ID propagation. The
+refreshed working-tree provenance also validates all ten materialized hashes.
 
-## Limitations and Handoff
+The verdict is deliberately scoped. It does not claim full-catalog health, interruption/retry
+coverage, packet-level network interception, authorization behavior, or UI acceptance. It also does
+not claim that the harness itself is a product acceptance surface. Those limitations are recorded
+as non-blocking warnings, and there are no unresolved `CRITICAL`, `P0`, or `P1` findings.
 
-- QA did not modify source code, skill content, provenance, or registry files; only this report and the phase state handoff are produced.
-- This report does not claim product acceptance for the AgentSync harness or the full catalog.
-- Implementation/release handoff: commit and isolate the three sibling skill directories plus provenance, keep the corrected hashes synchronized with final committed bytes, keep Clerk and unrelated candidates excluded, and preserve the full-catalog early return.
-- Archive is not recommended yet. Rerun `sdd-qa` with a launchable acceptance target and committed sibling snapshot; only then evaluate `sdd-archive`.
+## Archive Readiness and Implementation Handoff
+
+- QA gate: **policy-allowed `PASS WITH WARNINGS`**. `verify-report.md` and this report exist, and
+  no unresolved `CRITICAL`/`P0`/`P1` finding remains.
+- Archive action: **not run**. The user explicitly requested no archive, and the remediation files
+  remain intentionally uncommitted. Before archive, persist only the intended changes and rerun
+  provenance against the final committed bytes.
+- Handoff: preserve the full-catalog early return and the unrelated untracked candidates; do not
+  broaden Phase 1 to Clerk or claim full-catalog green status. Extend the harness only if retry,
+  network-interception, or authorization behavior becomes a required acceptance contract.
+- QA did not modify production source, catalog data, registry manifests, skill content, commit
+  history, or remediated candidate files.
+
+## Limitations
+
+- QA is an auditable acceptance record for the documented target, not a claim that the harness itself
+  has product acceptance.
+- No source code or skill content was changed to fix findings during QA.
