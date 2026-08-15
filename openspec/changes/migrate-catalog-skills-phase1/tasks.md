@@ -47,3 +47,10 @@ Size exception: Approved by user for the coherent three-skill Phase 1 unit; bran
 - [x] 3.2 Preserve the known full-catalog early return, `#[ignore]`, and `RUN_E2E` gate in `tests/test_catalog_integration.rs`; distinguish subset results from full-catalog status.
 - [x] 3.3 Run both-repo validation against the committed sibling revision: target validator/companion audit plus AgentSync focused/unit tests and formatting checks.
 - [x] 3.4 Verify `src/skills/registry.v1.toml`, `src/skills/registry.lock.toml`, unrelated sibling skills, and installed-state semantics remain unchanged.
+
+## QA Remediation
+
+- [x] 4.1 Add a reproducible external-CLI acceptance harness with isolated sibling, override, and missing-source fixtures for the three migrated skills.
+- [x] 4.2 Exercise direct and suggestion installs through an explicit project root, assert companions and local registry keys, and preserve the full-catalog early return by keeping the harness Phase 1-only.
+- [x] 4.3 Refresh the eight stale materialized SHA-256 entries in `../agents-skills/PROVENANCE.md` and add focused provenance validation to the sibling validation wrapper.
+- [x] 4.4 Document the acceptance command and hand off results without changing production source or promoting QA to PASS.

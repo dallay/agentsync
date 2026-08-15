@@ -5,7 +5,7 @@
 - Strategy: `single-pr` with explicit user-approved `size-exception`.
 - Branch: `feat/migrate-catalog-skills-phase1`; base: `main`.
 - Scope: only the three MIT-backed Bobmatnyc entries `drizzle-orm`, `pydantic`, and `sqlalchemy`.
-- Sibling source: `agents-skills` commit `c2e79fbb72d146305f82a8e979270795557d24fd` (PR #18)
+- Sibling source: `agents-skills` merge commit `be4570aa6f23931f51692661d163ddd663b57488` (PR #18)
   contains the three migrated skill directories and `PROVENANCE.md`; CI checks out this committed
   revision into `agents-skills` for deterministic resolution.
 
@@ -13,8 +13,8 @@
 
 - Added the three canonical sibling skill directories under `agents-skills/skills/`, including all
   source-declared reference files and explicit full-source companions for the long Pydantic and
-  SQLAlchemy documents. These directories are committed in `agents-skills` commit `70298da` (PR
-  #18); the provenance record pins the upstream immutable source and target file hashes.
+  SQLAlchemy documents. These directories are committed in the `agents-skills` PR #18 merge; the
+  provenance record pins the upstream immutable source and target file hashes.
 - Added `agents-skills/PROVENANCE.md` with immutable repository commit, source paths, Git blob/tree
   identities, attribution, MIT license evidence, materialized file inventory, and companion status.
 - Remapped only the three catalog definitions and their Drizzle/Pydantic/SQLAlchemy technology
@@ -27,6 +27,27 @@
   registry-key tests.
 - Preserved the ignored full-catalog E2E early return because unrelated external entries remain
   broken.
+
+## QA Remediation Handoff (2026-08-14)
+
+- Added `tests/acceptance/phase1_catalog.sh`, a narrow black-box harness that launches an external
+  `agentsync` executable, copies only `drizzle-orm`, `pydantic`, and `sqlalchemy` into temporary
+  source fixtures, and asserts local installation, companions, registry keys, override precedence,
+  fail-closed missing-source behavior, and direct/suggestion project-root propagation.
+- Documented the explicit target as
+  `make acceptance-phase1 AGENTSYNC_BIN=target/release/agentsync AGENTSYNC_SOURCE_REPO=../agents-skills`.
+  The harness fails clearly when the release-like binary is absent and never calls Rust modules
+  directly. The full-catalog early return remains untouched.
+- Refreshed the eight stale materialized hashes in the merged `agents-skills` Phase 1 provenance
+  record and added `scripts/validate_provenance.py`, wired into `scripts/validate-skills.sh`, so
+  future materialized-byte drift is caught by a focused check. Run
+  `AGENTSYNC_SOURCE_REPO=../agents-skills tests/acceptance/test_phase1_provenance.sh` to invoke it.
+- TDD evidence: the missing-binary harness contract failed before the harness existed and passed
+  after implementation; provenance validation first failed on the eight stale hashes and passed
+  after the refresh.
+- No production source, catalog, registry manifest, full-catalog test, or unrelated untracked
+  sibling candidates were changed. QA remains `NOT TESTED`; `sdd-qa` must rerun against the
+  documented external target before any acceptance or archive decision.
 
 ## Verification
 
