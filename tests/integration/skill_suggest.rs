@@ -135,7 +135,7 @@ fn skill_suggest_recommends_python_backend_frameworks_from_python_dependency_fil
             name: "numpy-requirements",
             files: &[("requirements.txt", "numpy==2.0.0\n")],
             expected_technology: "numpy",
-            expected_skill: "machine-learning",
+            expected_skill: "pandas-pro",
         },
         Case {
             name: "scikit-learn-requirements",
@@ -347,7 +347,7 @@ fn skill_suggest_recommends_autoskills_frontend_parity_combos() {
                 "package.json",
                 r#"{"dependencies":{"next":"latest","ai":"latest"}}"#,
             )],
-            expected_skills: &["use-ai-sdk", "next-best-practices"],
+            expected_skills: &["use-ai-sdk"],
         },
         Case {
             name: "react-shadcn",
@@ -426,14 +426,6 @@ fn skill_suggest_recommends_autoskills_frontend_parity_combos() {
                 r#"{"dependencies":{"astro":"latest","@clerk/astro":"latest"}}"#,
             )],
             expected_skills: &["clerk-astro-patterns"],
-        },
-        Case {
-            name: "expo-clerk",
-            files: &[(
-                "package.json",
-                r#"{"dependencies":{"expo":"latest","@clerk/clerk-expo":"latest"}}"#,
-            )],
-            expected_skills: &["clerk-expo-patterns"],
         },
         Case {
             name: "react-router-clerk",

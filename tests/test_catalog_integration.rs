@@ -132,18 +132,11 @@ fn phase1_bobmatnyc_catalog_entries_install_offline_and_register_local_ids() {
 
 #[test]
 #[ignore]
-#[allow(unreachable_code)]
 fn every_catalog_skill_installs_successfully() {
     if std::env::var("RUN_E2E").is_err() {
         eprintln!("Skipping catalog installation test (set RUN_E2E=1 to enable)");
         return;
     }
-
-    // Keep the full-catalog E2E disabled while unrelated external catalog entries remain broken.
-    eprintln!(
-        "Skipping full catalog installation E2E: Phase 1 focused coverage is scoped to the three migrated Bobmatnyc skills"
-    );
-    return;
 
     let catalog = EmbeddedSkillCatalog::default();
     let provider = SkillsShProvider;
