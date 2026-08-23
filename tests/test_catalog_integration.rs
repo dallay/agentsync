@@ -7,9 +7,40 @@ use agentsync::skills::install::{blocking_fetch_and_install_skill, install_from_
 use agentsync::skills::provider::{SkillsShProvider, resolve_catalog_install_source};
 use agentsync::skills::registry::read_registry;
 use std::path::Path;
+use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 use tempfile::TempDir;
+
+/// Serialises tests that mutate `AGENTSYNC_LOCAL_SKILLS_REPO` so they cannot race the focused
+/// Phase 1 test (which silently inherits whatever env var the surrounding `cargo test`
+/// invocation set). The same mutex pattern lives in `tests/unit/provider.rs`.
+static LOCAL_SKILLS_REPO_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+/// RAII guard that snapshots `AGENTSYNC_LOCAL_SKILLS_REPO` on construction and restores it on
+/// drop. Reuses the contract documented in `src/skills/provider.rs:206-208`: the env var is
+/// the second priority in the resolver, falling through to the sibling `<project_root_parent>/agents-skills`
+/// checkout only when the var is unset.
+struct LocalSkillsRepoEnvGuard {
+    previous: Option<std::ffi::OsString>,
+}
+
+impl LocalSkillsRepoEnvGuard {
+    fn new() -> Self {
+        let previous = std::env::var_os("AGENTSYNC_LOCAL_SKILLS_REPO");
+        unsafe { std::env::remove_var("AGENTSYNC_LOCAL_SKILLS_REPO") };
+        Self { previous }
+    }
+}
+
+impl Drop for LocalSkillsRepoEnvGuard {
+    fn drop(&mut self) {
+        match self.previous.take() {
+            Some(value) => unsafe { std::env::set_var("AGENTSYNC_LOCAL_SKILLS_REPO", value) },
+            None => unsafe { std::env::remove_var("AGENTSYNC_LOCAL_SKILLS_REPO") },
+        }
+    }
+}
 
 fn project_root() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -126,6 +157,104 @@ fn phase1_bobmatnyc_catalog_entries_install_offline_and_register_local_ids() {
                 .skills
                 .unwrap_or_default()
                 .contains_key(local_skill_id)
+        );
+    }
+}
+
+/// Regression for REQ-SKILLREC-001 / REQ-SKILLREC-002 — codifies the contract that the
+/// resolver MUST honour `AGENTSYNC_LOCAL_SKILLS_REPO` when set and MUST fall back to the
+/// sibling `<project_root_parent>/agents-skills` checkout when the env var is unset. The
+/// CI workflow in `.github/workflows/catalog-e2e.yml` is the canonical place where the env
+/// var is set today; the sibling fallback is what a developer workstation relies on when
+/// running this test outside CI.
+#[test]
+fn phase1_bobmatnyc_catalog_resolver_uses_env_var_or_sibling_fallback() {
+    let _lock = LOCAL_SKILLS_REPO_ENV_LOCK.lock().unwrap();
+    let _env_guard = LocalSkillsRepoEnvGuard::new();
+
+    let catalog = EmbeddedSkillCatalog::default();
+    let provider = SkillsShProvider;
+    let phase1_ids: [(&str, &str); 3] = [
+        ("dallay/agents-skills/drizzle-orm", "drizzle-orm"),
+        ("dallay/agents-skills/pydantic", "pydantic"),
+        ("dallay/agents-skills/sqlalchemy", "sqlalchemy"),
+    ];
+
+    // ---- Case A: AGENTSYNC_LOCAL_SKILLS_REPO unset, project_root has the sibling. ----
+    // The agentsync worktree sits one level below the agents-skills checkout, so the
+    // sibling fallback MUST resolve each Phase 1 directory. This is the contract that a
+    // developer workstation relies on when `cargo test` is run without CI env vars.
+    for (provider_skill_id, local_skill_id) in phase1_ids {
+        let resolved = resolve_catalog_install_source(
+            &catalog,
+            &provider,
+            provider_skill_id,
+            local_skill_id,
+            Some(project_root()),
+        )
+        .unwrap_or_else(|err| {
+            panic!(
+                "sibling fallback must resolve {local_skill_id} when AGENTSYNC_LOCAL_SKILLS_REPO is unset: {err}"
+            )
+        });
+        let resolved_path = Path::new(&resolved);
+        assert!(
+            resolved_path.is_dir(),
+            "{local_skill_id}: sibling fallback returned non-directory {resolved}"
+        );
+        let canonical =
+            std::fs::canonicalize(resolved_path).unwrap_or_else(|_| resolved_path.to_path_buf());
+        let canonical_str = canonical.to_string_lossy();
+        assert!(
+            canonical_str.contains("agents-skills"),
+            "{local_skill_id}: sibling fallback did not resolve under an agents-skills \
+             directory (got {canonical:?})"
+        );
+        assert!(
+            canonical.ends_with(format!("skills/{local_skill_id}").as_str()),
+            "{local_skill_id}: sibling fallback returned {canonical:?}, expected .../skills/{local_skill_id}"
+        );
+    }
+
+    // ---- Case B: AGENTSYNC_LOCAL_SKILLS_REPO set, project_root has NO sibling. ----
+    // The resolver MUST use the env var path. We point project_root at an isolated temp
+    // directory so the sibling fallback cannot accidentally satisfy the assertion.
+    let temp_root = TempDir::new().unwrap();
+    let skills_root = temp_root.path().join("skills");
+    for (_, local_skill_id) in phase1_ids {
+        let skill_dir = skills_root.join(local_skill_id);
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            "# regression fixture — not a real skill\n",
+        )
+        .unwrap();
+    }
+    let isolated_root = TempDir::new().unwrap();
+    unsafe { std::env::set_var("AGENTSYNC_LOCAL_SKILLS_REPO", temp_root.path()) };
+
+    for (provider_skill_id, local_skill_id) in phase1_ids {
+        let resolved = resolve_catalog_install_source(
+            &catalog,
+            &provider,
+            provider_skill_id,
+            local_skill_id,
+            Some(isolated_root.path()),
+        )
+        .unwrap_or_else(|err| {
+            panic!("AGENTSYNC_LOCAL_SKILLS_REPO must drive resolution for {local_skill_id}: {err}")
+        });
+        let expected = temp_root.path().join("skills").join(local_skill_id);
+        let resolved_path = Path::new(&resolved);
+        assert_eq!(
+            resolved_path, expected,
+            "{local_skill_id}: resolver must return exactly the env var path \
+             (expected {expected:?}, got {resolved_path:?})"
+        );
+        assert!(
+            resolved_path.starts_with(temp_root.path()),
+            "{local_skill_id}: resolver must not silently fall back to the sibling \
+             checkout when AGENTSYNC_LOCAL_SKILLS_REPO is set (got {resolved_path:?})"
         );
     }
 }
