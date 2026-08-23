@@ -17,27 +17,34 @@ use tempfile::TempDir;
 /// invocation set). The same mutex pattern lives in `tests/unit/provider.rs`.
 static LOCAL_SKILLS_REPO_ENV_LOCK: Mutex<()> = Mutex::new(());
 
-/// RAII guard that snapshots `AGENTSYNC_LOCAL_SKILLS_REPO` on construction and restores it on
-/// drop. Reuses the contract documented in `src/skills/provider.rs:206-208`: the env var is
-/// the second priority in the resolver, falling through to the sibling `<project_root_parent>/agents-skills`
-/// checkout only when the var is unset.
+/// RAII guard that snapshots the source override variables on construction and restores them on
+/// drop. Reuses the precedence contract documented in `src/skills/provider.rs:191-218`.
+const SOURCE_OVERRIDE_ENV_VARS: [&str; 2] = [
+    "AGENTSYNC_LOCAL_SKILLS_REPO",
+    "AGENTSYNC_TEST_SKILL_SOURCE_DIR",
+];
+
 struct LocalSkillsRepoEnvGuard {
-    previous: Option<std::ffi::OsString>,
+    previous: [(&'static str, Option<std::ffi::OsString>); 2],
 }
 
 impl LocalSkillsRepoEnvGuard {
     fn new() -> Self {
-        let previous = std::env::var_os("AGENTSYNC_LOCAL_SKILLS_REPO");
-        unsafe { std::env::remove_var("AGENTSYNC_LOCAL_SKILLS_REPO") };
+        let previous = SOURCE_OVERRIDE_ENV_VARS.map(|name| (name, std::env::var_os(name)));
+        for name in SOURCE_OVERRIDE_ENV_VARS {
+            unsafe { std::env::remove_var(name) };
+        }
         Self { previous }
     }
 }
 
 impl Drop for LocalSkillsRepoEnvGuard {
     fn drop(&mut self) {
-        match self.previous.take() {
-            Some(value) => unsafe { std::env::set_var("AGENTSYNC_LOCAL_SKILLS_REPO", value) },
-            None => unsafe { std::env::remove_var("AGENTSYNC_LOCAL_SKILLS_REPO") },
+        for (name, value) in &mut self.previous {
+            match value.take() {
+                Some(value) => unsafe { std::env::set_var(*name, value) },
+                None => unsafe { std::env::remove_var(*name) },
+            }
         }
     }
 }
@@ -95,6 +102,7 @@ fn offline_catalog_e2e_is_reproducible() {
 
 #[test]
 fn phase1_bobmatnyc_catalog_entries_install_offline_and_register_local_ids() {
+    let _lock = LOCAL_SKILLS_REPO_ENV_LOCK.lock().unwrap();
     let catalog = EmbeddedSkillCatalog::default();
     let provider = SkillsShProvider;
     let expected = [
@@ -181,16 +189,25 @@ fn phase1_bobmatnyc_catalog_resolver_uses_env_var_or_sibling_fallback() {
     ];
 
     // ---- Case A: AGENTSYNC_LOCAL_SKILLS_REPO unset, project_root has the sibling. ----
-    // The agentsync worktree sits one level below the agents-skills checkout, so the
-    // sibling fallback MUST resolve each Phase 1 directory. This is the contract that a
-    // developer workstation relies on when `cargo test` is run without CI env vars.
+    // Build an isolated sibling checkout so this assertion does not depend on the caller's
+    // filesystem layout. This is the contract that a developer workstation relies on when
+    // `cargo test` is run without CI env vars.
+    let sibling_parent = TempDir::new().unwrap();
+    let sibling_project_root = sibling_parent.path().join("agentsync");
+    let sibling_skills_root = sibling_parent.path().join("agents-skills").join("skills");
+    for (_, local_skill_id) in phase1_ids {
+        let skill_dir = sibling_skills_root.join(local_skill_id);
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# sibling fallback fixture\n").unwrap();
+    }
+
     for (provider_skill_id, local_skill_id) in phase1_ids {
         let resolved = resolve_catalog_install_source(
             &catalog,
             &provider,
             provider_skill_id,
             local_skill_id,
-            Some(project_root()),
+            Some(&sibling_project_root),
         )
         .unwrap_or_else(|err| {
             panic!(
