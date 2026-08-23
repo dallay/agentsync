@@ -11,8 +11,12 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
+use std::future::Future;
+use std::io::Write;
 use std::path::{Component, Path, PathBuf};
+use std::time::Duration;
 use tempfile::{NamedTempFile, TempDir};
+use toml_edit::{DocumentMut, Item, Table, value};
 use walkdir::WalkDir;
 
 const PLUGIN_LOCK_SCHEMA_VERSION: &str = "v1";
@@ -166,23 +170,8 @@ impl PluginLock {
         fs::create_dir_all(parent).with_context(|| {
             format!("failed to create lockfile directory: {}", parent.display())
         })?;
-        let temporary = NamedTempFile::new_in(parent).with_context(|| {
-            format!(
-                "failed to create temporary plugin lockfile in {}",
-                parent.display()
-            )
-        })?;
-        fs::write(temporary.path(), body).with_context(|| {
-            format!(
-                "failed to write temporary plugin lockfile: {}",
-                temporary.path().display()
-            )
-        })?;
-        temporary
-            .persist(path)
-            .map_err(|error| error.error)
-            .with_context(|| format!("failed to replace plugin lockfile: {}", path.display()))?;
-        Ok(())
+        write_atomic_file(path, body.as_bytes())
+            .with_context(|| format!("failed to replace plugin lockfile: {}", path.display()))
     }
 
     pub fn validate(&self) -> Result<()> {
@@ -256,6 +245,7 @@ pub struct PluginApplyResult {
 }
 
 /// Repository-owned plugin operations.
+#[derive(Clone)]
 pub struct PluginManager {
     project_root: PathBuf,
     config_path: PathBuf,
@@ -299,6 +289,7 @@ impl PluginManager {
             .map(PluginSelection::key)
             .collect();
         let mut result = PluginApplyResult::default();
+        let mut pending_skills = Vec::new();
 
         for key in selections {
             let locked = lock
@@ -350,27 +341,51 @@ impl PluginManager {
                 }
             }
 
-            if dry_run {
-                result.updated += discovered.skills.len();
-                result.skipped += usize::from(discovered.skills.is_empty());
-            } else {
-                for skill in &discovered.skills {
-                    let locked_skill = locked
-                        .skills
-                        .iter()
-                        .find(|candidate| candidate.id == skill.id)
-                        .with_context(|| {
-                            format!("skill missing from plugin lock: {key}/{}", skill.id)
-                        })?;
-                    ensure!(
-                        locked_skill.content_sha256 == skill.content_sha256,
-                        "skill content drift detected for {key}/{}",
-                        skill.id
-                    );
-                    materialize_skill(&self.project_root, locked, skill, &mut result)?;
+            for skill in &discovered.skills {
+                let locked_skill = locked
+                    .skills
+                    .iter()
+                    .find(|candidate| candidate.id == skill.id)
+                    .with_context(|| {
+                        format!("skill missing from plugin lock: {key}/{}", skill.id)
+                    })?;
+                ensure!(
+                    locked_skill.content_sha256 == skill.content_sha256,
+                    "skill content drift detected for {key}/{}",
+                    skill.id
+                );
+                validate_skill_for_materialization(&self.project_root, locked, skill)?;
+                if dry_run {
+                    result.updated += 1;
+                } else {
+                    pending_skills.push((locked.clone(), skill.clone()));
                 }
             }
-            drop(source);
+            if dry_run && discovered.skills.is_empty() {
+                result.skipped += 1;
+            }
+        }
+
+        if dry_run {
+            return Ok(result);
+        }
+
+        let skills = pending_skills
+            .iter()
+            .map(|(_, skill)| skill.clone())
+            .collect::<Vec<_>>();
+        let transaction = ApplyTransaction::begin(&self.project_root, &skills)?;
+        for (locked, skill) in pending_skills {
+            if let Err(error) = materialize_skill(&self.project_root, &locked, &skill, &mut result)
+            {
+                let rollback = transaction.rollback();
+                return match rollback {
+                    Ok(()) => Err(error),
+                    Err(rollback_error) => Err(anyhow::anyhow!(
+                        "plugin apply failed: {error}; rollback failed: {rollback_error}"
+                    )),
+                };
+            }
         }
 
         Ok(result)
@@ -378,11 +393,23 @@ impl PluginManager {
 
     /// Resolve and lock a selected plugin from the configured marketplace.
     pub fn add(&self, selection: &PluginSelection) -> Result<PluginApplyResult> {
-        self.lock_selection(selection)
+        let manager = self.clone();
+        let selection = selection.clone();
+        run_async(move || async move { manager.add_async(&selection).await })
     }
 
     pub fn update(&self, selection: &PluginSelection) -> Result<PluginApplyResult> {
-        self.lock_selection(selection)
+        let manager = self.clone();
+        let selection = selection.clone();
+        run_async(move || async move { manager.update_async(&selection).await })
+    }
+
+    pub async fn add_async(&self, selection: &PluginSelection) -> Result<PluginApplyResult> {
+        self.lock_selection(selection).await
+    }
+
+    pub async fn update_async(&self, selection: &PluginSelection) -> Result<PluginApplyResult> {
+        self.lock_selection(selection).await
     }
 
     pub fn load_lock(&self) -> Result<PluginLock> {
@@ -521,7 +548,7 @@ impl PluginManager {
         Ok(result)
     }
 
-    fn lock_selection(&self, selection: &PluginSelection) -> Result<PluginApplyResult> {
+    async fn lock_selection(&self, selection: &PluginSelection) -> Result<PluginApplyResult> {
         validate_selection(selection)?;
         ensure!(
             self.config.enabled,
@@ -532,7 +559,7 @@ impl PluginManager {
             .marketplaces
             .get(&selection.marketplace)
             .with_context(|| format!("unknown plugin marketplace: {}", selection.marketplace))?;
-        let source = resolve_marketplace_source(&self.config_path, marketplace, true)?;
+        let source = resolve_marketplace_source_async(&self.config_path, marketplace, true).await?;
         let discovered = discover_plugin(source.root(), &selection.marketplace, &selection.plugin)?;
         ensure!(
             discovered.unsupported_components.is_empty(),
@@ -679,7 +706,7 @@ impl PluginManager {
                     "local plugin source drift detected: {}",
                     root.display()
                 );
-                Ok(ResolvedSource { root, temp: None })
+                Ok(ResolvedSource { root })
             }
             LockedSourceKind::Git => {
                 let root = self.git_source_cache_path(source)?;
@@ -688,7 +715,7 @@ impl PluginManager {
                     "offline Git plugin source snapshot is unavailable: {} (run `agentsync plugin update` first)",
                     root.display()
                 );
-                Ok(ResolvedSource { root, temp: None })
+                Ok(ResolvedSource { root })
             }
         }
     }
@@ -696,7 +723,6 @@ impl PluginManager {
 
 struct ResolvedSource {
     root: PathBuf,
-    temp: Option<TempDir>,
 }
 
 impl ResolvedSource {
@@ -705,18 +731,99 @@ impl ResolvedSource {
     }
 }
 
-impl Drop for ResolvedSource {
-    fn drop(&mut self) {
-        let _ = self.temp.take();
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct DiscoveredSkill {
     id: String,
     path: PathBuf,
     relative_path: String,
     content_sha256: String,
+}
+
+struct ApplyTransaction {
+    target_root: PathBuf,
+    registry_path: PathBuf,
+    target_root_existed: bool,
+    original_registry: Option<Vec<u8>>,
+    _backup: TempDir,
+    snapshots: Vec<(PathBuf, Option<PathBuf>)>,
+}
+
+impl ApplyTransaction {
+    fn begin(project_root: &Path, skills: &[DiscoveredSkill]) -> Result<Self> {
+        let target_root = project_root.join(".agents/skills");
+        let target_root_metadata = fs::symlink_metadata(&target_root).ok();
+        let target_root_existed = target_root_metadata.is_some();
+        if let Some(metadata) = &target_root_metadata {
+            ensure!(
+                metadata.is_dir() && !metadata.file_type().is_symlink(),
+                "refusing to materialize skills through a symlinked root: {}",
+                target_root.display()
+            );
+        }
+        let registry_path = target_root.join("registry.json");
+        let original_registry = if registry_path.is_file() {
+            Some(fs::read(&registry_path).with_context(|| {
+                format!("failed to read skill registry: {}", registry_path.display())
+            })?)
+        } else {
+            None
+        };
+        let backup = TempDir::new().context("failed to create plugin apply rollback directory")?;
+        let mut snapshots = Vec::new();
+        let mut skill_ids = BTreeSet::new();
+        for skill in skills {
+            if !skill_ids.insert(&skill.id) {
+                continue;
+            }
+            let target = target_root.join(&skill.id);
+            let metadata = fs::symlink_metadata(&target).ok();
+            let backup_path = if let Some(metadata) = metadata {
+                ensure!(
+                    metadata.is_dir() && !metadata.file_type().is_symlink(),
+                    "refusing to snapshot unsafe skill destination: {}",
+                    target.display()
+                );
+                let backup_path = backup.path().join(&skill.id);
+                copy_directory_without_symlinks(&target, &backup_path)?;
+                Some(backup_path)
+            } else {
+                None
+            };
+            snapshots.push((target, backup_path));
+        }
+        Ok(Self {
+            target_root,
+            registry_path,
+            target_root_existed,
+            original_registry,
+            _backup: backup,
+            snapshots,
+        })
+    }
+
+    fn rollback(&self) -> Result<()> {
+        for (target, backup_path) in self.snapshots.iter().rev() {
+            if fs::symlink_metadata(target).is_ok() {
+                remove_path_safely(target)?;
+            }
+            if let Some(backup_path) = backup_path {
+                copy_directory_without_symlinks(backup_path, target)?;
+            }
+        }
+        if let Some(original_registry) = &self.original_registry {
+            write_atomic_file(&self.registry_path, original_registry)?;
+        } else if fs::symlink_metadata(&self.registry_path).is_ok() {
+            remove_path_safely(&self.registry_path)?;
+        }
+        if !self.target_root_existed
+            && fs::symlink_metadata(&self.target_root)
+                .is_ok_and(|metadata| metadata.is_dir() && !metadata.file_type().is_symlink())
+            && fs::read_dir(&self.target_root)?.next().is_none()
+        {
+            fs::remove_dir(&self.target_root)?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -801,7 +908,20 @@ impl Drop for ResolvedMarketplaceSource {
     }
 }
 
+#[cfg(test)]
 fn resolve_marketplace_source(
+    config_path: &Path,
+    marketplace: &MarketplaceConfig,
+    allow_network: bool,
+) -> Result<ResolvedMarketplaceSource> {
+    let config_path = config_path.to_path_buf();
+    let marketplace = marketplace.clone();
+    run_async(move || async move {
+        resolve_marketplace_source_async(&config_path, &marketplace, allow_network).await
+    })
+}
+
+async fn resolve_marketplace_source_async(
     config_path: &Path,
     marketplace: &MarketplaceConfig,
     allow_network: bool,
@@ -848,9 +968,11 @@ fn resolve_marketplace_source(
         .as_deref()
         .filter(|reference| !reference.trim().is_empty())
         .ok_or_else(|| anyhow::anyhow!("Git plugin marketplace requires a reference"))?;
-    let revision = resolve_git_reference(source, reference)?;
+    let revision = resolve_git_reference(source, reference).await?;
     let archive = github_archive_url(source, &revision)?;
-    let temp = blocking_fetch_archive(&archive)?;
+    let temp = crate::skills::install::fetch_and_unpack_to_tempdir(&archive)
+        .await
+        .context("failed to fetch plugin marketplace archive")?;
     Ok(ResolvedMarketplaceSource {
         root: temp.path().to_path_buf(),
         locked_source: LockedSource {
@@ -918,6 +1040,13 @@ fn discover_plugin(root: &Path, marketplace: &str, plugin_name: &str) -> Result<
         .ok_or_else(|| anyhow::anyhow!("plugin entry has no local source: {plugin_name}"))?;
     let relative_plugin_path = normalize_relative_path(&source_path)?;
     let plugin_root = root.join(&relative_plugin_path);
+    let plugin_metadata = fs::symlink_metadata(&plugin_root)
+        .with_context(|| format!("plugin source is not accessible: {}", plugin_root.display()))?;
+    ensure!(
+        !plugin_metadata.file_type().is_symlink(),
+        "plugin source must not be a symlink: {}",
+        plugin_root.display()
+    );
     ensure!(
         plugin_root.is_dir(),
         "plugin source is not a directory: {}",
@@ -1070,6 +1199,48 @@ fn parse_plugin_source(value: &Value) -> Result<Option<String>> {
         }
     }
     Ok(None)
+}
+
+fn validate_skill_for_materialization(
+    project_root: &Path,
+    locked: &LockedPlugin,
+    skill: &DiscoveredSkill,
+) -> Result<()> {
+    crate::skills::manifest::parse_skill_manifest(&skill.path.join("SKILL.md"))
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    let target_root = project_root.join(".agents/skills");
+    let Some(root_metadata) = fs::symlink_metadata(&target_root).ok() else {
+        return Ok(());
+    };
+    ensure!(
+        root_metadata.is_dir() && !root_metadata.file_type().is_symlink(),
+        "refusing to materialize skills through a symlinked root: {}",
+        target_root.display()
+    );
+    let target = target_root.join(&skill.id);
+    let Some(metadata) = fs::symlink_metadata(&target).ok() else {
+        return Ok(());
+    };
+    ensure!(
+        metadata.is_dir() && !metadata.file_type().is_symlink(),
+        "refusing to replace unsafe skill destination: {}",
+        target.display()
+    );
+    if hash_tree(&target)? == skill.content_sha256 {
+        return Ok(());
+    }
+    let registry_path = target_root.join("registry.json");
+    let owned = crate::skills::registry::read_registry(&registry_path)
+        .ok()
+        .and_then(|registry| registry.skills)
+        .and_then(|skills| skills.get(&skill.id).cloned())
+        .is_some_and(|entry| entry_is_owned_by(&entry, locked));
+    ensure!(
+        owned,
+        "skill collision with unmanaged content: {}",
+        target.display()
+    );
+    Ok(())
 }
 
 fn materialize_skill(
@@ -1297,6 +1468,27 @@ fn rollback_plugin_lock(path: &Path, previous: Option<&PluginLock>) -> Result<()
     }
 }
 
+fn run_async<F, Fut, T>(factory: F) -> Result<T>
+where
+    F: FnOnce() -> Fut + Send + 'static,
+    Fut: Future<Output = Result<T>> + Send + 'static,
+    T: Send + 'static,
+{
+    if tokio::runtime::Handle::try_current().is_ok() {
+        std::thread::spawn(move || {
+            let runtime = tokio::runtime::Runtime::new()
+                .context("failed to create runtime for plugin operation")?;
+            runtime.block_on(factory())
+        })
+        .join()
+        .map_err(|_| anyhow::anyhow!("plugin operation runtime thread panicked"))?
+    } else {
+        let runtime = tokio::runtime::Runtime::new()
+            .context("failed to create runtime for plugin operation")?;
+        runtime.block_on(factory())
+    }
+}
+
 fn add_selection_to_config(config_path: &Path, selection: &PluginSelection) -> Result<()> {
     // nosemgrep: rust.actix.path-traversal.tainted-path.tainted-path -- config_path is the discovered project config
     let content = fs::read_to_string(config_path).with_context(|| {
@@ -1305,33 +1497,31 @@ fn add_selection_to_config(config_path: &Path, selection: &PluginSelection) -> R
             config_path.display()
         )
     })?;
-    let document: toml::Value = toml::from_str(&content)
+    let mut document: DocumentMut = content
+        .parse()
         .with_context(|| format!("failed to parse plugin config: {}", config_path.display()))?;
-    let already_selected = document
-        .get("plugins")
-        .and_then(|plugins| plugins.get("selections"))
-        .and_then(toml::Value::as_array)
-        .is_some_and(|selections| {
-            selections.iter().any(|value| {
-                value.get("marketplace").and_then(toml::Value::as_str)
-                    == Some(selection.marketplace.as_str())
-                    && value.get("plugin").and_then(toml::Value::as_str)
-                        == Some(selection.plugin.as_str())
-            })
-        });
-    if already_selected {
+    let plugins = document["plugins"]
+        .or_insert(Item::Table(Table::new()))
+        .as_table_mut()
+        .ok_or_else(|| anyhow::anyhow!("plugin config [plugins] must be a table"))?;
+    let selections = plugins
+        .entry("selections")
+        .or_insert(Item::ArrayOfTables(toml_edit::ArrayOfTables::new()))
+        .as_array_of_tables_mut()
+        .ok_or_else(|| {
+            anyhow::anyhow!("plugin config [[plugins.selections]] must be an array of tables")
+        })?;
+    if selections.iter().any(|table| {
+        table.get("marketplace").and_then(Item::as_str) == Some(selection.marketplace.as_str())
+            && table.get("plugin").and_then(Item::as_str) == Some(selection.plugin.as_str())
+    }) {
         return Ok(());
     }
-    let separator = if content.ends_with('\n') {
-        "\n"
-    } else {
-        "\n\n"
-    };
-    let body = format!(
-        "{}{separator}[[plugins.selections]]\nmarketplace = {:?}\nplugin = {:?}\n",
-        content, selection.marketplace, selection.plugin
-    );
-    write_atomic_file(config_path, body.as_bytes())
+    let mut entry = Table::new();
+    entry["marketplace"] = value(selection.marketplace.clone());
+    entry["plugin"] = value(selection.plugin.clone());
+    selections.push(entry);
+    write_atomic_file(config_path, document.to_string().as_bytes())
 }
 
 fn remove_plugin_owner_entries_atomic(
@@ -1397,69 +1587,39 @@ fn remove_selection_from_config(config_path: &Path, selection: &PluginSelection)
             config_path.display()
         )
     })?;
-    let lines: Vec<&str> = content.lines().collect();
-    let mut output = Vec::with_capacity(lines.len());
-    let mut index = 0;
-    let mut removed = false;
-
-    while index < lines.len() {
-        if lines[index].trim() != "[[plugins.selections]]" {
-            output.push(lines[index]);
-            index += 1;
-            continue;
-        }
-
-        let start = index;
-        index += 1;
-        while index < lines.len()
-            && !lines[index]
-                .trim_start()
-                .starts_with("[[plugins.selections]]")
-            && !lines[index].trim_start().starts_with('[')
-        {
-            index += 1;
-        }
-        let block = lines[start..index].join("\n");
-        let value: toml::Value = toml::from_str(&block).with_context(|| {
-            format!(
-                "invalid plugin selection block in {}",
-                config_path.display()
-            )
-        })?;
-        let matches = value
-            .get("plugins")
-            .and_then(|plugins| plugins.get("selections"))
-            .and_then(toml::Value::as_array)
-            .and_then(|selections| selections.first())
-            .is_some_and(|selection_value| {
-                selection_value
-                    .get("marketplace")
-                    .and_then(toml::Value::as_str)
-                    == Some(selection.marketplace.as_str())
-                    && selection_value.get("plugin").and_then(toml::Value::as_str)
-                        == Some(selection.plugin.as_str())
-            });
-        if matches {
-            removed = true;
-        } else {
-            output.extend(lines[start..index].iter().copied());
-        }
-    }
-
-    if !removed {
-        return Ok(());
-    }
-    let body = format!("{}\n", output.join("\n"));
-    write_atomic_file(config_path, body.as_bytes())
+    let mut document: DocumentMut = content
+        .parse()
+        .with_context(|| format!("failed to parse plugin config: {}", config_path.display()))?;
+    let selections = document
+        .get_mut("plugins")
+        .and_then(Item::as_table_mut)
+        .and_then(|plugins| plugins.get_mut("selections"))
+        .and_then(Item::as_array_of_tables_mut)
+        .ok_or_else(|| anyhow::anyhow!("plugin selection not found: {}", selection.key()))?;
+    let index = selections.iter().position(|table| {
+        table.get("marketplace").and_then(Item::as_str) == Some(selection.marketplace.as_str())
+            && table.get("plugin").and_then(Item::as_str) == Some(selection.plugin.as_str())
+    });
+    let Some(index) = index else {
+        bail!("plugin selection not found: {}", selection.key());
+    };
+    selections.remove(index);
+    write_atomic_file(config_path, document.to_string().as_bytes())
 }
 
 fn write_atomic_file(path: &Path, body: &[u8]) -> Result<()> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
-    let temporary = NamedTempFile::new_in(parent)
+    let mut temporary = NamedTempFile::new_in(parent)
         .with_context(|| format!("failed to create temporary file in {}", parent.display()))?;
-    fs::write(temporary.path(), body).with_context(|| {
+    temporary.as_file_mut().write_all(body).with_context(|| {
         format!(
             "failed to write temporary file: {}",
+            temporary.path().display()
+        )
+    })?;
+    temporary.as_file_mut().flush().with_context(|| {
+        format!(
+            "failed to flush temporary file: {}",
             temporary.path().display()
         )
     })?;
@@ -1591,13 +1751,13 @@ fn hash_tree(root: &Path) -> Result<String> {
                 .strip_prefix(root)?
                 .to_string_lossy()
                 .replace('\\', "/");
-            let bytes = fs::read(entry.path())?;
-            entries.push((relative, bytes));
+            entries.push(relative);
         }
     }
-    entries.sort_by(|left, right| left.0.cmp(&right.0));
+    entries.sort();
     let mut hasher = Sha256::new();
-    for (path, bytes) in entries {
+    for path in entries {
+        let bytes = fs::read(root.join(&path))?;
         hasher.update(path.as_bytes());
         hasher.update([0]);
         hasher.update((bytes.len() as u64).to_be_bytes());
@@ -1614,7 +1774,7 @@ fn format_digest(digest: impl AsRef<[u8]>) -> String {
         .collect()
 }
 
-fn resolve_git_reference(repository: &str, reference: &str) -> Result<String> {
+async fn resolve_git_reference(repository: &str, reference: &str) -> Result<String> {
     ensure!(
         !reference.trim().eq_ignore_ascii_case("HEAD"),
         "Git reference HEAD is not allowed; use a branch, tag, or full commit SHA"
@@ -1629,7 +1789,8 @@ fn resolve_git_reference(repository: &str, reference: &str) -> Result<String> {
         github.1,
         urlencoding::encode(reference)
     );
-    let client = reqwest::blocking::Client::builder()
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
         .user_agent("agentsync-plugin-resolver")
         .build()
         .context("failed to create GitHub API client")?;
@@ -1639,10 +1800,12 @@ fn resolve_git_reference(repository: &str, reference: &str) -> Result<String> {
     }
     let response: Value = request
         .send()
+        .await
         .context("failed to resolve Git reference")?
         .error_for_status()
         .context("Git reference resolution failed")?
         .json()
+        .await
         .context("invalid GitHub commit response")?;
     let sha = response
         .get("sha")
@@ -1681,15 +1844,6 @@ fn github_repo_parts(repository: &str) -> Result<(String, String)> {
     Ok((segments[0].to_string(), repo.to_string()))
 }
 
-fn blocking_fetch_archive(url: &str) -> Result<TempDir> {
-    let future = crate::skills::install::fetch_and_unpack_to_tempdir(url);
-    let result = match tokio::runtime::Handle::try_current() {
-        Ok(handle) => tokio::task::block_in_place(|| handle.block_on(future)),
-        Err(_) => tokio::runtime::Runtime::new()?.block_on(future),
-    }?;
-    Ok(result)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1709,18 +1863,27 @@ mod tests {
         assert_eq!(first, fs::read_to_string(path).unwrap());
     }
 
-    #[test]
-    fn mutable_git_reference_resolves_to_a_commit_shape() {
+    #[tokio::test]
+    async fn mutable_git_reference_resolves_to_a_commit_shape() {
         assert_eq!(
             resolve_git_reference(
                 "https://github.com/example/repo",
                 "0123456789abcdef0123456789abcdef01234567"
             )
+            .await
             .unwrap(),
             "0123456789abcdef0123456789abcdef01234567"
         );
-        assert!(resolve_git_reference("https://gitlab.com/example/repo", "main").is_err());
-        assert!(resolve_git_reference("https://github.com/example/repo", "HEAD").is_err());
+        assert!(
+            resolve_git_reference("https://gitlab.com/example/repo", "main")
+                .await
+                .is_err()
+        );
+        assert!(
+            resolve_git_reference("https://github.com/example/repo", "HEAD")
+                .await
+                .is_err()
+        );
     }
 
     #[test]
@@ -2128,6 +2291,23 @@ mod tests {
         assert!(discover_plugin(root, "internal", "traversal").is_err());
         assert!(discover_plugin(root, "internal", "file").is_err());
         assert!(discover_plugin(root, "internal", "bad-manifest").is_err());
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::symlink;
+            let real_plugin = root.join("real-plugin");
+            fs::create_dir_all(&real_plugin).unwrap();
+            symlink(&real_plugin, root.join("symlink-plugin")).unwrap();
+            fs::write(
+                root.join(".agents/plugins/marketplace.json"),
+                serde_json::to_vec(&serde_json::json!({
+                    "plugins": [{"name": "symlink", "source": "./symlink-plugin"}]
+                }))
+                .unwrap(),
+            )
+            .unwrap();
+            assert!(discover_plugin(root, "internal", "symlink").is_err());
+        }
     }
 
     #[test]
@@ -2279,7 +2459,8 @@ mod tests {
             marketplace: "missing".to_string(),
             plugin: "plugin".to_string(),
         };
-        remove_selection_from_config(&config_path, &nonmatching).unwrap();
+        let error = remove_selection_from_config(&config_path, &nonmatching).unwrap_err();
+        assert!(error.to_string().contains("selection not found"));
         remove_selection_from_config(&config_path, &selection).unwrap();
         assert!(
             !fs::read_to_string(&config_path)
@@ -2294,6 +2475,17 @@ mod tests {
         let no_newline_config = temp.path().join("no-newline.toml");
         fs::write(&no_newline_config, "[plugins]\nenabled = true").unwrap();
         add_selection_to_config(&no_newline_config, &selection).unwrap();
+        let preserved_config = temp.path().join("preserved-config.toml");
+        fs::write(
+            &preserved_config,
+            "# keep this comment\n[plugins]\nenabled = true\n\n[[plugins.selections]]\n# keep this entry comment\nmarketplace = \"other\"\nplugin = \"plugin\"\n",
+        )
+        .unwrap();
+        add_selection_to_config(&preserved_config, &selection).unwrap();
+        let preserved = fs::read_to_string(&preserved_config).unwrap();
+        assert!(preserved.contains("# keep this comment"));
+        assert!(preserved.contains("# keep this entry comment"));
+        assert_eq!(preserved.matches("[[plugins.selections]]").count(), 2);
 
         let rollback_path = temp.path().join("rollback.lock");
         rollback_plugin_lock(&rollback_path, None).unwrap();

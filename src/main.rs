@@ -9,7 +9,10 @@ use std::env;
 use std::path::PathBuf;
 
 use agentsync::logging::LogFormat;
-use agentsync::{Linker, PluginManager, SyncOptions, SyncResult, config::Config, gitignore, init};
+use agentsync::{
+    Linker, PluginManager, SyncOptions, SyncResult, config::Config, gitignore, init,
+    plugins::PluginApplyResult,
+};
 use tracing_subscriber::filter::LevelFilter;
 mod commands;
 mod output;
@@ -40,6 +43,17 @@ fn merge_clean_result_into_apply_result(result: &mut SyncResult, clean_result: &
     result.skipped += clean_result.skipped;
     result.removed += clean_result.removed;
     result.errors += clean_result.errors;
+}
+
+fn merge_plugin_result_into_apply_result(
+    result: &mut SyncResult,
+    plugin_result: &PluginApplyResult,
+) {
+    result.created += plugin_result.created;
+    result.updated += plugin_result.updated;
+    result.skipped += plugin_result.skipped;
+    result.removed += plugin_result.removed;
+    result.errors += plugin_result.errors;
 }
 
 // Logging is initialized in main via agentsync::logging::init_logging (stderr, human/json).
@@ -206,8 +220,9 @@ fn run() -> Result<()> {
         Commands::Plugin { cmd, project_root } => run_in_root_span("plugin", || {
             let root =
                 current_project_root(project_root, || env::current_dir().map_err(Into::into))?;
-            run_plugin(cmd, root)?;
-            Ok(())
+            let runtime = tokio::runtime::Runtime::new()
+                .context("failed to create runtime for plugin command")?;
+            runtime.block_on(run_plugin(cmd, root))
         }),
         Commands::Status { args, project_root } => run_in_root_span("status", || {
             let project_root =
@@ -391,6 +406,7 @@ fn handle_apply(args: ApplyArgs) -> Result<()> {
         agents: args.agents,
     };
     let mut result = linker.sync(&options)?;
+    merge_plugin_result_into_apply_result(&mut result, &plugin_result);
     if let Some(clean_result) = &clean_result {
         merge_clean_result_into_apply_result(&mut result, clean_result);
     }
@@ -725,6 +741,33 @@ mod tests {
         super::merge_clean_result_into_apply_result(&mut result, &clean_result);
 
         assert_eq!(result.created, 3);
+        assert_eq!(result.updated, 24);
+        assert_eq!(result.skipped, 30);
+        assert_eq!(result.removed, 40);
+        assert_eq!(result.errors, 44);
+    }
+
+    #[test]
+    fn test_merge_plugin_result_into_apply_result_preserves_all_counts() {
+        let mut result = SyncResult {
+            created: 3,
+            updated: 5,
+            skipped: 7,
+            removed: 11,
+            errors: 13,
+        };
+        let plugin_result = agentsync::plugins::PluginApplyResult {
+            created: 17,
+            updated: 19,
+            skipped: 23,
+            removed: 29,
+            errors: 31,
+            mcp_servers: Default::default(),
+        };
+
+        super::merge_plugin_result_into_apply_result(&mut result, &plugin_result);
+
+        assert_eq!(result.created, 20);
         assert_eq!(result.updated, 24);
         assert_eq!(result.skipped, 30);
         assert_eq!(result.removed, 40);

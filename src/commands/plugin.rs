@@ -34,7 +34,7 @@ pub struct PluginOutputArgs {
     pub json: bool,
 }
 
-pub fn run_plugin(command: PluginCommand, project_root: PathBuf) -> Result<()> {
+pub async fn run_plugin(command: PluginCommand, project_root: PathBuf) -> Result<()> {
     let config_path = Config::find_config(&project_root)?;
     let config = Config::load(&config_path)?;
     let manager = PluginManager::new(
@@ -44,24 +44,24 @@ pub fn run_plugin(command: PluginCommand, project_root: PathBuf) -> Result<()> {
     );
 
     match command {
-        PluginCommand::Add(args) => run_lock_operation(&manager, &args, false),
-        PluginCommand::Update(args) => run_lock_operation(&manager, &args, true),
+        PluginCommand::Add(args) => run_lock_operation(&manager, &args, false).await,
+        PluginCommand::Update(args) => run_lock_operation(&manager, &args, true).await,
         PluginCommand::List(args) => run_list(&manager, args.json),
         PluginCommand::Remove(args) => run_remove(&manager, &args),
         PluginCommand::Status(args) => run_status(&manager, args.json),
     }
 }
 
-fn run_lock_operation(
+async fn run_lock_operation(
     manager: &PluginManager,
     args: &PluginSelectionArgs,
     update: bool,
 ) -> Result<()> {
     let selection = parse_selection(&args.selection)?;
     let result = if update {
-        manager.update(&selection)?
+        manager.update_async(&selection).await?
     } else {
-        manager.add(&selection)?
+        manager.add_async(&selection).await?
     };
     print_result(
         args.json,

@@ -279,6 +279,40 @@ fn plugin_add_rolls_back_a_new_selection_when_materialization_fails() {
 }
 
 #[test]
+fn plugin_add_does_not_leave_earlier_skills_after_a_later_failure() {
+    let (project, _) = setup_project();
+    let config_path = project.path().join(".agents/agentsync.toml");
+    let source_skill = project
+        .path()
+        .join("marketplace/plugins/engineering/skills/later");
+    fs::create_dir_all(&source_skill).unwrap();
+    fs::write(
+        source_skill.join("SKILL.md"),
+        "---\nname: later\nversion: 1.0.0\n---\nlater\n",
+    )
+    .unwrap();
+    let unmanaged = project.path().join(".agents/skills/later");
+    fs::create_dir_all(&unmanaged).unwrap();
+    fs::write(unmanaged.join("SKILL.md"), "unmanaged").unwrap();
+    let config = Config::load(&config_path).unwrap();
+    let manager = PluginManager::new(project.path().to_path_buf(), config_path, config.plugins);
+
+    let error = manager
+        .add(&PluginSelection {
+            marketplace: "internal".to_string(),
+            plugin: "engineering".to_string(),
+        })
+        .expect_err("later unmanaged collision must fail");
+    assert!(error.to_string().contains("collision"));
+    assert!(!project.path().join(".agents/skills/review").exists());
+    assert_eq!(
+        fs::read_to_string(unmanaged.join("SKILL.md")).unwrap(),
+        "unmanaged"
+    );
+    assert!(!project.path().join(".agents/plugins.lock.toml").exists());
+}
+
+#[test]
 fn plugin_add_rolls_back_when_project_config_becomes_invalid() {
     let (project, mut config) = setup_project();
     let config_path = project.path().join(".agents/agentsync.toml");
