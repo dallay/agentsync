@@ -1768,6 +1768,731 @@ mod tests {
         assert!(normalize_relative_path("./skills/demo").is_ok());
     }
 
+    #[test]
+    fn plugin_lock_validation_rejects_inconsistent_entries() {
+        let invalid = |lock: PluginLock| assert!(lock.validate().is_err());
+
+        let lock = PluginLock {
+            schema_version: "v2".to_string(),
+            ..PluginLock::default()
+        };
+        invalid(lock);
+
+        let mut lock = PluginLock::default();
+        lock.plugins.insert(
+            "wrong/key".to_string(),
+            sample_locked_plugin("internal", "engineering"),
+        );
+        invalid(lock);
+
+        let mut plugin = sample_locked_plugin("internal", "engineering");
+        plugin.marketplace = "../internal".to_string();
+        let mut lock = PluginLock::default();
+        lock.plugins.insert(plugin.key(), plugin);
+        invalid(lock);
+
+        let mut plugin = sample_locked_plugin("internal", "engineering");
+        plugin.source.location = "https://example.com/plugin".to_string();
+        let mut lock = PluginLock::default();
+        lock.plugins.insert(plugin.key(), plugin);
+        invalid(lock);
+
+        let mut plugin = sample_locked_plugin("internal", "engineering");
+        plugin.provenance.content_sha256 = "f".repeat(64);
+        let mut lock = PluginLock::default();
+        lock.plugins.insert(plugin.key(), plugin);
+        invalid(lock);
+
+        let mut plugin = sample_locked_plugin("internal", "engineering");
+        plugin.skills.push(plugin.skills[0].clone());
+        let mut lock = PluginLock::default();
+        lock.plugins.insert(plugin.key(), plugin);
+        invalid(lock);
+
+        let mut plugin = sample_locked_plugin("internal", "engineering");
+        plugin.mcp_servers.push(String::new());
+        let mut lock = PluginLock::default();
+        lock.plugins.insert(plugin.key(), plugin);
+        invalid(lock);
+
+        let mut plugin = sample_locked_plugin("internal", "engineering");
+        plugin.unsupported_components.push("hooks".to_string());
+        let mut lock = PluginLock::default();
+        lock.plugins.insert(plugin.key(), plugin);
+        invalid(lock);
+    }
+
+    #[test]
+    fn plugin_source_and_url_helpers_cover_supported_and_rejected_shapes() {
+        assert_eq!(
+            parse_plugin_source(&serde_json::json!("./plugin")).unwrap(),
+            Some("./plugin".to_string())
+        );
+        assert_eq!(
+            parse_plugin_source(&serde_json::json!({"path": "./plugin"})).unwrap(),
+            Some("./plugin".to_string())
+        );
+        assert_eq!(
+            parse_plugin_source(&serde_json::json!({"source": "./plugin"})).unwrap(),
+            Some("./plugin".to_string())
+        );
+        assert_eq!(parse_plugin_source(&serde_json::json!(true)).unwrap(), None);
+
+        assert!(is_local_source("../marketplace"));
+        assert!(is_local_source("C:\\marketplace"));
+        assert!(!is_local_source("https://github.com/example/repo"));
+        assert_eq!(
+            github_repo_parts("https://github.com/example/repo.git").unwrap(),
+            ("example".to_string(), "repo".to_string())
+        );
+        assert_eq!(
+            github_archive_url(
+                "https://github.com/example/repo",
+                "0123456789abcdef0123456789abcdef01234567"
+            )
+            .unwrap(),
+            "https://github.com/example/repo/archive/0123456789abcdef0123456789abcdef01234567.zip"
+        );
+        assert!(github_repo_parts("https://gitlab.com/example/repo").is_err());
+        assert!(github_repo_parts("http://github.com/example/repo").is_err());
+        assert!(github_repo_parts("https://github.com/example/repo/extra").is_err());
+        assert!(github_archive_url("https://github.com/example/repo", "short").is_err());
+
+        let temp = TempDir::new().unwrap();
+        let config_path = temp.path().join(".agents/agentsync.toml");
+        fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+        let local = MarketplaceConfig {
+            source: "../marketplace".to_string(),
+            reference: None,
+        };
+        assert!(resolve_marketplace_source(&config_path, &local, false).is_err());
+        let marketplace_file = temp.path().join("marketplace-file");
+        fs::write(&marketplace_file, "not a directory").unwrap();
+        let local_file = MarketplaceConfig {
+            source: "../marketplace-file".to_string(),
+            reference: None,
+        };
+        assert!(resolve_marketplace_source(&config_path, &local_file, true).is_err());
+        let missing_reference = MarketplaceConfig {
+            source: "https://github.com/example/repo".to_string(),
+            reference: None,
+        };
+        assert!(resolve_marketplace_source(&config_path, &missing_reference, true).is_err());
+        let blocked_network = MarketplaceConfig {
+            source: "https://gitlab.com/example/repo".to_string(),
+            reference: Some("main".to_string()),
+        };
+        assert!(resolve_marketplace_source(&config_path, &blocked_network, false).is_err());
+        let file_url = MarketplaceConfig {
+            source: "file://../marketplace".to_string(),
+            reference: None,
+        };
+        assert!(resolve_marketplace_source(&config_path, &file_url, true).is_err());
+
+        assert!(
+            validate_source(&LockedSource {
+                kind: LockedSourceKind::Local,
+                location: "/absolute".to_string(),
+                revision: "local:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                    .to_string(),
+            })
+            .is_err()
+        );
+        assert!(
+            validate_source(&LockedSource {
+                kind: LockedSourceKind::Local,
+                location: "../marketplace".to_string(),
+                revision: "local:short".to_string(),
+            })
+            .is_err()
+        );
+        assert!(
+            validate_source(&LockedSource {
+                kind: LockedSourceKind::Git,
+                location: "http://github.com/example/repo".to_string(),
+                revision: "short".to_string(),
+            })
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn discovery_supports_claude_manifest_path_entries_and_empty_plugins() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        let plugin_root = root.join("plugins/empty");
+        fs::create_dir_all(plugin_root.join(".claude-plugin")).unwrap();
+        fs::create_dir_all(root.join(".claude-plugin")).unwrap();
+        fs::write(
+            root.join(".claude-plugin/marketplace.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "plugins": [{"name": "empty", "path": "./plugins/empty", "version": "2.0.0"}]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let discovered = discover_plugin(root, "internal", "empty").unwrap();
+        assert_eq!(discovered.version.as_deref(), Some("2.0.0"));
+        assert_eq!(
+            discovered.marketplace_manifest,
+            ".claude-plugin/marketplace.json"
+        );
+        assert!(discovered.skills.is_empty());
+        assert!(discovered.mcp_servers.is_empty());
+
+        let plugin_manifest = serde_json::json!({"version": "3.0.0"});
+        fs::write(
+            plugin_root.join(".claude-plugin/plugin.json"),
+            serde_json::to_vec(&plugin_manifest).unwrap(),
+        )
+        .unwrap();
+        let discovered = discover_plugin(root, "internal", "empty").unwrap();
+        assert_eq!(discovered.version.as_deref(), Some("3.0.0"));
+    }
+
+    #[test]
+    fn discovery_rejects_invalid_skill_and_mcp_declarations() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        let plugin_root = root.join("plugin");
+        fs::create_dir_all(plugin_root.join("skills/missing")).unwrap();
+        assert!(discover_skills(&plugin_root).is_err());
+        let bad_root = root.join("bad-plugin");
+        fs::create_dir_all(&bad_root).unwrap();
+        fs::write(bad_root.join("skills"), "not a directory").unwrap();
+        assert!(discover_skills(&bad_root).is_err());
+        let mixed_root = root.join("mixed-plugin/skills");
+        fs::create_dir_all(mixed_root.join("valid")).unwrap();
+        fs::write(mixed_root.join("file.txt"), "ignored").unwrap();
+        fs::write(
+            mixed_root.join("valid/SKILL.md"),
+            "---\nname: Valid\n---\nbody\n",
+        )
+        .unwrap();
+        assert_eq!(
+            discover_skills(mixed_root.parent().unwrap()).unwrap().len(),
+            1
+        );
+
+        fs::write(plugin_root.join(".mcp.json"), "{}").unwrap();
+        assert!(read_plugin_mcp(&plugin_root).is_err());
+        fs::write(
+            plugin_root.join(".mcp.json"),
+            serde_json::to_vec(&serde_json::json!({"mcpServers": {"bad/name": {}}})).unwrap(),
+        )
+        .unwrap();
+        assert!(read_plugin_mcp(&plugin_root).is_err());
+    }
+
+    #[test]
+    fn plugin_manager_covers_offline_and_source_cache_paths() {
+        let temp = TempDir::new().unwrap();
+        let agents = temp.path().join(".agents");
+        let marketplace = temp.path().join("marketplace");
+        fs::create_dir_all(&agents).unwrap();
+        fs::create_dir_all(&marketplace).unwrap();
+        fs::write(marketplace.join("README.md"), "snapshot").unwrap();
+        let config_path = agents.join("agentsync.toml");
+
+        let disabled = PluginManager::new(
+            temp.path().to_path_buf(),
+            config_path.clone(),
+            PluginsConfig::default(),
+        );
+        assert_eq!(disabled.apply(false).unwrap().skipped, 0);
+
+        let selection = PluginSelection {
+            marketplace: "internal".to_string(),
+            plugin: "engineering".to_string(),
+        };
+        let config = PluginsConfig {
+            enabled: true,
+            lockfile: "plugins.lock.toml".to_string(),
+            marketplaces: BTreeMap::new(),
+            selections: vec![selection.clone()],
+        };
+        let manager = PluginManager::new(temp.path().to_path_buf(), config_path, config);
+        assert!(manager.apply(false).is_err());
+        PluginLock::default()
+            .save_atomic(&manager.lock_path().unwrap())
+            .unwrap();
+        assert!(manager.apply(false).is_err());
+
+        let revision = format!("local:{}", hash_tree(&marketplace).unwrap());
+        let local = LockedSource {
+            kind: LockedSourceKind::Local,
+            location: "../marketplace".to_string(),
+            revision,
+        };
+        let resolved = manager.materialize_source(&local).unwrap();
+        assert_eq!(resolved.root(), marketplace.canonicalize().unwrap());
+        assert!(
+            manager
+                .cache_marketplace_source(&ResolvedMarketplaceSource {
+                    root: marketplace.clone(),
+                    locked_source: local.clone(),
+                    temp: None,
+                })
+                .is_ok()
+        );
+        assert!(manager.git_source_cache_path(&local).is_err());
+
+        let git = LockedSource {
+            kind: LockedSourceKind::Git,
+            location: "https://github.com/example/repo".to_string(),
+            revision: "0123456789abcdef0123456789abcdef01234567".to_string(),
+        };
+        let source = ResolvedMarketplaceSource {
+            root: marketplace.clone(),
+            locked_source: git.clone(),
+            temp: None,
+        };
+        manager.cache_marketplace_source(&source).unwrap();
+        let cache = manager.git_source_cache_path(&git).unwrap();
+        assert!(cache.join("README.md").is_file());
+        manager.cache_marketplace_source(&source).unwrap();
+        assert!(manager.materialize_source(&git).unwrap().root().is_dir());
+
+        let missing = LockedSource {
+            kind: LockedSourceKind::Local,
+            location: "../missing".to_string(),
+            revision: "local:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                .to_string(),
+        };
+        assert!(manager.materialize_source(&missing).is_err());
+        let file_source = temp.path().join("file-source");
+        fs::write(&file_source, "file").unwrap();
+        let file_source = LockedSource {
+            kind: LockedSourceKind::Local,
+            location: "../file-source".to_string(),
+            revision: "local:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                .to_string(),
+        };
+        assert!(manager.materialize_source(&file_source).is_err());
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::symlink;
+            let symlinked_git = LockedSource {
+                kind: LockedSourceKind::Git,
+                location: "https://github.com/example/other-repo".to_string(),
+                revision: "0123456789abcdef0123456789abcdef01234568".to_string(),
+            };
+            let destination = manager.git_source_cache_path(&symlinked_git).unwrap();
+            fs::create_dir_all(destination.parent().unwrap()).unwrap();
+            symlink(&marketplace, &destination).unwrap();
+            assert!(
+                manager
+                    .cache_marketplace_source(&ResolvedMarketplaceSource {
+                        root: marketplace.clone(),
+                        locked_source: symlinked_git,
+                        temp: None,
+                    })
+                    .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn discovery_rejects_missing_and_unsafe_marketplace_shapes() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        assert!(discover_plugin(root, "internal", "missing").is_err());
+
+        fs::create_dir_all(root.join(".agents/plugins")).unwrap();
+        fs::write(root.join(".agents/plugins/marketplace.json"), "{}").unwrap();
+        assert!(discover_plugin(root, "internal", "missing").is_err());
+
+        fs::write(
+            root.join(".agents/plugins/marketplace.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "plugins": [
+                    {"name": "missing-source"},
+                    {"name": "traversal", "source": "../outside"},
+                    {"name": "file", "source": "./file"},
+                    {"name": "bad-manifest", "source": "./bad-manifest"}
+                ]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        fs::write(root.join("file"), "not a directory").unwrap();
+        fs::create_dir_all(root.join("bad-manifest/.claude-plugin")).unwrap();
+        fs::write(
+            root.join("bad-manifest/.claude-plugin/plugin.json"),
+            "invalid json",
+        )
+        .unwrap();
+        assert!(discover_plugin(root, "internal", "missing-source").is_err());
+        assert!(discover_plugin(root, "internal", "traversal").is_err());
+        assert!(discover_plugin(root, "internal", "file").is_err());
+        assert!(discover_plugin(root, "internal", "bad-manifest").is_err());
+    }
+
+    #[test]
+    fn discovery_records_unsupported_plugin_components_without_executing_them() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        let plugin = root.join("plugin");
+        fs::create_dir_all(plugin.join(".claude-plugin")).unwrap();
+        fs::create_dir_all(plugin.join("hooks")).unwrap();
+        fs::write(
+            root.join("marketplace.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "plugins": [{"name": "unsafe", "source": "./plugin"}]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        fs::write(
+            plugin.join(".claude-plugin/plugin.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "agents": [],
+                "mcpServers": {}
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let discovered = discover_plugin(root, "internal", "unsafe");
+        assert!(discovered.is_err(), "the preferred manifest is absent");
+
+        fs::create_dir_all(root.join(".agents/plugins")).unwrap();
+        fs::copy(
+            root.join("marketplace.json"),
+            root.join(".agents/plugins/marketplace.json"),
+        )
+        .unwrap();
+        let discovered = discover_plugin(root, "internal", "unsafe").unwrap();
+        assert!(
+            discovered
+                .unsupported_components
+                .iter()
+                .any(|component| component == "hooks")
+        );
+        assert!(
+            discovered
+                .unsupported_components
+                .iter()
+                .any(|component| component == "plugin.json:agents")
+        );
+        assert!(
+            discovered
+                .unsupported_components
+                .iter()
+                .any(|component| component == "plugin.json:mcpServers")
+        );
+    }
+
+    #[test]
+    fn helper_transactions_cover_owner_and_config_edge_cases() {
+        let temp = TempDir::new().unwrap();
+        let registry_path = temp.path().join("registry.json");
+        let owner = crate::skills::registry::PluginOwner {
+            marketplace: "internal".to_string(),
+            plugin: "engineering".to_string(),
+            revision: "revision".to_string(),
+        };
+        let other_owner = crate::skills::registry::PluginOwner {
+            marketplace: "other".to_string(),
+            plugin: "plugin".to_string(),
+            revision: "other-revision".to_string(),
+        };
+        assert!(remove_plugin_owner_entries_atomic(&registry_path, &[], &owner).is_ok());
+        assert!(remove_plugin_owner_entries_atomic(&registry_path, &["demo"], &owner).is_ok());
+
+        fs::write(
+            &registry_path,
+            serde_json::to_vec(&serde_json::json!({
+                "schemaVersion": 1,
+                "last_updated": null,
+                "skills": null
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(remove_plugin_owner_entries_atomic(&registry_path, &["demo"], &owner).is_ok());
+        let locked = sample_locked_plugin("internal", "engineering");
+        assert!(
+            register_deduplicated_plugin_owner(
+                &registry_path,
+                "demo",
+                &locked,
+                "f".repeat(64).as_str()
+            )
+            .is_ok()
+        );
+
+        let entry = crate::skills::registry::SkillEntry {
+            name: None,
+            version: None,
+            description: None,
+            provider: None,
+            source: None,
+            installed_at: None,
+            files: None,
+            manifest_hash: None,
+            marketplace: Some(owner.marketplace.clone()),
+            plugin: Some(owner.plugin.clone()),
+            plugin_revision: Some(owner.revision.clone()),
+            content_sha256: None,
+            plugin_owners: Some(vec![owner.clone(), other_owner.clone()]),
+        };
+        crate::skills::registry::update_registry_entry(&registry_path, "demo", entry).unwrap();
+        assert!(remove_plugin_owner_entries_atomic(&registry_path, &["missing"], &owner).is_ok());
+        assert!(remove_plugin_owner_entries_atomic(&registry_path, &["demo"], &owner).is_ok());
+        let registry = crate::skills::registry::read_registry(&registry_path).unwrap();
+        let remaining = registry.skills.unwrap().remove("demo").unwrap();
+        assert_eq!(remaining.plugin_owners.unwrap(), vec![other_owner.clone()]);
+        assert_eq!(remaining.marketplace.as_deref(), Some("other"));
+
+        let empty_entry = crate::skills::registry::SkillEntry {
+            name: None,
+            version: None,
+            description: None,
+            provider: None,
+            source: None,
+            installed_at: None,
+            files: None,
+            manifest_hash: None,
+            marketplace: None,
+            plugin: None,
+            plugin_revision: None,
+            content_sha256: None,
+            plugin_owners: Some(Vec::new()),
+        };
+        assert!(entry_plugin_owners(&empty_entry).is_empty());
+
+        let config_path = temp.path().join("agentsync.toml");
+        fs::write(
+            &config_path,
+            "[plugins]\nenabled = true\n\n[[plugins.selections]]\nmarketplace = \"other\"\nplugin = \"plugin\"\n",
+        )
+        .unwrap();
+        let selection = PluginSelection {
+            marketplace: "internal".to_string(),
+            plugin: "engineering".to_string(),
+        };
+        add_selection_to_config(&config_path, &selection).unwrap();
+        add_selection_to_config(&config_path, &selection).unwrap();
+        let nonmatching = PluginSelection {
+            marketplace: "missing".to_string(),
+            plugin: "plugin".to_string(),
+        };
+        remove_selection_from_config(&config_path, &nonmatching).unwrap();
+        remove_selection_from_config(&config_path, &selection).unwrap();
+        assert!(
+            !fs::read_to_string(&config_path)
+                .unwrap()
+                .contains("marketplace = \"internal\"")
+        );
+        let missing_config = temp.path().join("missing-config.toml");
+        assert!(add_selection_to_config(&missing_config, &selection).is_err());
+        assert!(remove_selection_from_config(&missing_config, &selection).is_err());
+        fs::write(&missing_config, "[[plugins.selections]]\nmarketplace = [").unwrap();
+        assert!(remove_selection_from_config(&missing_config, &selection).is_err());
+        let no_newline_config = temp.path().join("no-newline.toml");
+        fs::write(&no_newline_config, "[plugins]\nenabled = true").unwrap();
+        add_selection_to_config(&no_newline_config, &selection).unwrap();
+
+        let rollback_path = temp.path().join("rollback.lock");
+        rollback_plugin_lock(&rollback_path, None).unwrap();
+        fs::write(&rollback_path, "stale").unwrap();
+        rollback_plugin_lock(&rollback_path, None).unwrap();
+        PluginLock::default().save_atomic(&rollback_path).unwrap();
+        rollback_plugin_lock(&rollback_path, Some(&PluginLock::default())).unwrap();
+
+        let removable_file = temp.path().join("removable-file");
+        fs::write(&removable_file, "file").unwrap();
+        remove_path_safely(&removable_file).unwrap();
+        let removable_dir = temp.path().join("removable-dir");
+        fs::create_dir_all(&removable_dir).unwrap();
+        remove_path_safely(&removable_dir).unwrap();
+        let copy_source = temp.path().join("copy-source");
+        let copy_target = temp.path().join("copy-target");
+        fs::create_dir_all(copy_source.join("nested")).unwrap();
+        fs::write(copy_source.join("nested/file"), "content").unwrap();
+        copy_directory_without_symlinks(&copy_source, &copy_target).unwrap();
+        assert!(copy_target.join("nested/file").is_file());
+        let missing_registry = temp.path().join("missing-registry.json");
+        assert!(
+            register_deduplicated_plugin_owner(
+                &missing_registry,
+                "demo",
+                &sample_locked_plugin("internal", "engineering"),
+                "f".repeat(64).as_str()
+            )
+            .is_ok()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn materialization_rejects_symlinked_and_non_directory_destinations() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let source = temp.path().join("source/demo");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(
+            source.join("SKILL.md"),
+            "---\nname: Demo\ndescription: Demo\n---\nbody\n",
+        )
+        .unwrap();
+        let hash = hash_tree(&source).unwrap();
+        let skill = DiscoveredSkill {
+            id: "demo".to_string(),
+            path: source,
+            relative_path: "skills/demo".to_string(),
+            content_sha256: hash,
+        };
+        let locked = sample_locked_plugin("internal", "engineering");
+
+        let project_root = temp.path().join("symlink-root");
+        fs::create_dir_all(project_root.join(".agents")).unwrap();
+        fs::create_dir_all(project_root.join("real-skills")).unwrap();
+        symlink(
+            project_root.join("real-skills"),
+            project_root.join(".agents/skills"),
+        )
+        .unwrap();
+        assert!(
+            materialize_skill(
+                &project_root,
+                &locked,
+                &skill,
+                &mut PluginApplyResult::default()
+            )
+            .is_err()
+        );
+
+        let project_root = temp.path().join("symlink-target");
+        fs::create_dir_all(project_root.join(".agents/skills")).unwrap();
+        fs::create_dir_all(project_root.join("real-demo")).unwrap();
+        symlink(
+            project_root.join("real-demo"),
+            project_root.join(".agents/skills/demo"),
+        )
+        .unwrap();
+        assert!(
+            materialize_skill(
+                &project_root,
+                &locked,
+                &skill,
+                &mut PluginApplyResult::default()
+            )
+            .is_err()
+        );
+
+        let skill_symlink_root = temp.path().join("skill-symlink");
+        fs::create_dir_all(skill_symlink_root.join("skills")).unwrap();
+        fs::create_dir_all(skill_symlink_root.join("real-skill")).unwrap();
+        symlink(
+            skill_symlink_root.join("real-skill"),
+            skill_symlink_root.join("skills/link"),
+        )
+        .unwrap();
+        assert!(discover_skills(&skill_symlink_root).is_err());
+
+        let project_root = temp.path().join("file-target");
+        fs::create_dir_all(project_root.join(".agents/skills")).unwrap();
+        fs::write(project_root.join(".agents/skills/demo"), "file").unwrap();
+        assert!(
+            materialize_skill(
+                &project_root,
+                &locked,
+                &skill,
+                &mut PluginApplyResult::default()
+            )
+            .is_err()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn filesystem_helpers_reject_symlinks_and_register_plugin_owners() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let source = temp.path().join("source");
+        let target = temp.path().join("target");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(source.join("file.txt"), "content").unwrap();
+        symlink(source.join("file.txt"), source.join("link.txt")).unwrap();
+        assert!(copy_directory_without_symlinks(&source, &target).is_err());
+        assert!(hash_tree(&source).is_err());
+
+        let registry_path = temp.path().join("registry.json");
+        crate::skills::registry::write_registry(&registry_path).unwrap();
+        let hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        let entry = crate::skills::registry::SkillEntry {
+            name: None,
+            version: None,
+            description: None,
+            provider: None,
+            source: None,
+            installed_at: None,
+            files: None,
+            manifest_hash: Some(hash.to_string()),
+            marketplace: Some("legacy".to_string()),
+            plugin: Some("old".to_string()),
+            plugin_revision: Some("old-revision".to_string()),
+            content_sha256: Some(hash.to_string()),
+            plugin_owners: None,
+        };
+        crate::skills::registry::update_registry_entry(&registry_path, "demo", entry).unwrap();
+        let locked = sample_locked_plugin("internal", "engineering");
+        assert_eq!(
+            entry_plugin_owners(
+                &crate::skills::registry::read_registry(&registry_path)
+                    .unwrap()
+                    .skills
+                    .unwrap()
+                    .get("demo")
+                    .unwrap()
+                    .clone()
+            )
+            .len(),
+            1
+        );
+        assert!(!entry_is_owned_by(
+            &crate::skills::registry::read_registry(&registry_path)
+                .unwrap()
+                .skills
+                .unwrap()
+                .get("demo")
+                .unwrap()
+                .clone(),
+            &locked
+        ));
+        assert!(
+            register_deduplicated_plugin_owner(&registry_path, "missing", &locked, hash).is_ok()
+        );
+        assert!(
+            register_deduplicated_plugin_owner(
+                &registry_path,
+                "demo",
+                &locked,
+                "f".repeat(64).as_str()
+            )
+            .is_ok()
+        );
+        assert!(register_deduplicated_plugin_owner(&registry_path, "demo", &locked, hash).is_ok());
+        let registry = crate::skills::registry::read_registry(&registry_path).unwrap();
+        assert_eq!(
+            registry
+                .skills
+                .unwrap()
+                .get("demo")
+                .unwrap()
+                .plugin_owners
+                .as_ref()
+                .unwrap()
+                .len(),
+            2
+        );
+    }
+
     fn sample_locked_plugin(marketplace: &str, plugin: &str) -> LockedPlugin {
         let revision = "local:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
         let hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";

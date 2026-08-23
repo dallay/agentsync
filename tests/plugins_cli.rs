@@ -84,3 +84,39 @@ fn plugin_cli_add_status_list_and_remove_are_deterministic() {
     let lock = fs::read_to_string(project.path().join(".agents/plugins.lock.toml")).unwrap();
     assert!(!lock.contains("engineering"));
 }
+
+#[test]
+fn plugin_cli_covers_human_json_update_and_invalid_selection_paths() {
+    let project = setup_project();
+
+    let empty_list = run_plugin(&project, &["list"]);
+    assert!(empty_list.status.success());
+    assert!(String::from_utf8_lossy(&empty_list.stdout).contains("No repository-owned plugins"));
+
+    let invalid = run_plugin(&project, &["add", "invalid"]);
+    assert!(!invalid.status.success());
+    assert!(String::from_utf8_lossy(&invalid.stderr).contains("marketplace/plugin"));
+
+    let add = run_plugin(&project, &["add", "internal/engineering", "--json"]);
+    assert!(add.status.success(), "add failed: {:?}", add);
+    let add_json: serde_json::Value = serde_json::from_slice(&add.stdout).unwrap();
+    assert_eq!(add_json["status"], "added");
+
+    let list = run_plugin(&project, &["list"]);
+    assert!(list.status.success());
+    assert!(String::from_utf8_lossy(&list.stdout).contains("internal/engineering"));
+
+    let update = run_plugin(&project, &["update", "internal/engineering", "--json"]);
+    assert!(update.status.success(), "update failed: {:?}", update);
+    let update_json: serde_json::Value = serde_json::from_slice(&update.stdout).unwrap();
+    assert_eq!(update_json["status"], "updated");
+
+    let status = run_plugin(&project, &["status"]);
+    assert!(status.status.success(), "status failed: {:?}", status);
+    assert!(String::from_utf8_lossy(&status.stdout).contains("Plugin sources are locked"));
+
+    let remove = run_plugin(&project, &["remove", "internal/engineering", "--json"]);
+    assert!(remove.status.success(), "remove failed: {:?}", remove);
+    let remove_json: serde_json::Value = serde_json::from_slice(&remove.stdout).unwrap();
+    assert_eq!(remove_json["status"], "removed");
+}
