@@ -1,0 +1,13 @@
+change: migrate-catalog-skills-phase1
+current_phase: archived
+completed:
+  - explore
+  - propose
+  - spec
+  - design
+  - tasks
+  - apply
+  - verify
+  - qa
+next: 
+updated: 2026-08-23
