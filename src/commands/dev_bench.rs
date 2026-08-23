@@ -191,6 +191,7 @@ pub(crate) mod fixtures {
             gitignore: Default::default(),
             mcp: Default::default(),
             mcp_servers: Default::default(),
+            plugins: Default::default(),
         }
     }
 }

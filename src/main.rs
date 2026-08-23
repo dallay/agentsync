@@ -9,12 +9,13 @@ use std::env;
 use std::path::PathBuf;
 
 use agentsync::logging::LogFormat;
-use agentsync::{Linker, SyncOptions, SyncResult, config::Config, gitignore, init};
+use agentsync::{Linker, PluginManager, SyncOptions, SyncResult, config::Config, gitignore, init};
 use tracing_subscriber::filter::LevelFilter;
 mod commands;
 mod output;
 use commands::dev_bench::{DevBenchArgs, run_dev_bench};
 use commands::doctor::run_doctor;
+use commands::plugin::{PluginCommand, run_plugin};
 use commands::skill::{SkillCommand, run_skill};
 use commands::status::{StatusArgs, run_status};
 use output::{
@@ -82,6 +83,14 @@ enum Commands {
     Skill {
         #[command(subcommand)]
         cmd: SkillCommand,
+        /// Root of the project (defaults to CWD)
+        #[arg(short, long)]
+        project_root: Option<PathBuf>,
+    },
+    /// Manage repository-owned, vendor-neutral plugins.
+    Plugin {
+        #[command(subcommand)]
+        cmd: PluginCommand,
         /// Root of the project (defaults to CWD)
         #[arg(short, long)]
         project_root: Option<PathBuf>,
@@ -192,6 +201,12 @@ fn run() -> Result<()> {
             let root =
                 current_project_root(project_root, || env::current_dir().map_err(Into::into))?;
             run_skill(cmd, root)?;
+            Ok(())
+        }),
+        Commands::Plugin { cmd, project_root } => run_in_root_span("plugin", || {
+            let root =
+                current_project_root(project_root, || env::current_dir().map_err(Into::into))?;
+            run_plugin(cmd, root)?;
             Ok(())
         }),
         Commands::Status { args, project_root } => run_in_root_span("status", || {
@@ -339,6 +354,12 @@ fn handle_apply(args: ApplyArgs) -> Result<()> {
         tracing::debug!(config_path = %config_path.display(), "Using config");
     }
     let config = Config::load(&config_path)?;
+    let plugin_manager = PluginManager::new(
+        Config::project_root(&config_path),
+        config_path.clone(),
+        config.plugins.clone(),
+    );
+    let plugin_result = plugin_manager.apply(args.dry_run)?;
     let linker = Linker::new(config, config_path);
     let use_color = human_use_color();
     if args.dry_run {
@@ -376,12 +397,15 @@ fn handle_apply(args: ApplyArgs) -> Result<()> {
     if !args.no_gitignore {
         handle_apply_gitignore(&linker, args.dry_run, use_color)?;
     }
-    if linker.config().mcp.enabled && !linker.config().mcp_servers.is_empty() {
+    if linker.config().mcp.enabled
+        && (!linker.config().mcp_servers.is_empty() || !plugin_result.mcp_servers.is_empty())
+    {
         handle_apply_mcp(
             &linker,
             options.dry_run,
             use_color,
             options.agents.as_ref(),
+            &plugin_result.mcp_servers,
             &mut result,
         )?;
     }
@@ -430,11 +454,12 @@ fn handle_apply_mcp(
     dry_run: bool,
     use_color: bool,
     agents: Option<&Vec<String>>,
+    plugin_servers: &std::collections::BTreeMap<String, agentsync::config::McpServerConfig>,
     result: &mut SyncResult,
 ) -> Result<()> {
     println!();
     print_lines(&render_mcp_phase(dry_run, use_color));
-    match linker.sync_mcp(dry_run, agents) {
+    match linker.sync_mcp_with_servers(dry_run, agents, plugin_servers) {
         Ok(mcp_result) => {
             if mcp_result.created > 0
                 || mcp_result.updated > 0

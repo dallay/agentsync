@@ -213,6 +213,7 @@ mod tests {
             gitignore: Default::default(),
             mcp: Default::default(),
             mcp_servers: Default::default(),
+            plugins: Default::default(),
         }
     }
 
@@ -320,6 +321,7 @@ mod tests {
             gitignore: Default::default(),
             mcp: Default::default(),
             mcp_servers: Default::default(),
+            plugins: Default::default(),
         }
     }
 

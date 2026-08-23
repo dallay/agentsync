@@ -189,6 +189,11 @@ fn install_updated_skill(
         installed_at: Some(chrono::Utc::now().to_rfc3339()),
         files: None,
         manifest_hash: None,
+        marketplace: None,
+        plugin: None,
+        plugin_revision: None,
+        content_sha256: None,
+        plugin_owners: None,
     };
 
     if let Err(e) =

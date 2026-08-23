@@ -282,6 +282,24 @@ pub struct SkillEntry {
     pub files: Option<Vec<String>>,
     #[serde(rename = "manifestHash")]
     pub manifest_hash: Option<String>,
+    #[serde(default)]
+    pub marketplace: Option<String>,
+    #[serde(default)]
+    pub plugin: Option<String>,
+    #[serde(rename = "pluginRevision", default)]
+    pub plugin_revision: Option<String>,
+    #[serde(rename = "contentSha256", default)]
+    pub content_sha256: Option<String>,
+    /// All repository-owned plugin selections that currently deduplicate this skill.
+    #[serde(rename = "pluginOwners", default)]
+    pub plugin_owners: Option<Vec<PluginOwner>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct PluginOwner {
+    pub marketplace: String,
+    pub plugin: String,
+    pub revision: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
