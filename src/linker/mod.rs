@@ -255,13 +255,26 @@ impl Linker {
         dry_run: bool,
         agents_filter: Option<&Vec<String>>,
     ) -> Result<crate::mcp::McpSyncResult> {
+        self.sync_mcp_with_servers(dry_run, agents_filter, &BTreeMap::new())
+    }
+
+    /// Sync MCP configurations while adding repository-owned plugin servers.
+    ///
+    /// Plugin servers are kept separate from the parsed project config until this point so the
+    /// existing user-owned `[mcp_servers.*]` contract remains unchanged.
+    pub fn sync_mcp_with_servers(
+        &self,
+        dry_run: bool,
+        agents_filter: Option<&Vec<String>>,
+        plugin_servers: &BTreeMap<String, crate::config::McpServerConfig>,
+    ) -> Result<crate::mcp::McpSyncResult> {
         use crate::mcp::McpGenerator;
 
         if !self.config.mcp.enabled {
             return Ok(crate::mcp::McpSyncResult::default());
         }
 
-        if self.config.mcp_servers.is_empty() {
+        if self.config.mcp_servers.is_empty() && plugin_servers.is_empty() {
             return Ok(crate::mcp::McpSyncResult::default());
         }
 
@@ -299,10 +312,19 @@ impl Linker {
             return Ok(crate::mcp::McpSyncResult::default());
         }
 
-        let generator = McpGenerator::new(
-            self.config.mcp_servers.clone(),
-            self.config.mcp.merge_strategy,
-        );
+        let mut servers = self.config.mcp_servers.clone();
+        for (name, server) in plugin_servers {
+            if let Some(existing) = servers.get(name) {
+                anyhow::ensure!(
+                    existing == server,
+                    "MCP server collision between project configuration and plugin: {name}"
+                );
+            } else {
+                servers.insert(name.clone(), server.clone());
+            }
+        }
+
+        let generator = McpGenerator::new(servers, self.config.mcp.merge_strategy);
         generator.generate_all(&self.project_root, &filtered_agents, dry_run)
     }
 }

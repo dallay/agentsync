@@ -24,6 +24,11 @@ fn write_and_read_registry() {
         installed_at: None,
         files: Some(vec!["SKILL.md".to_string()]),
         manifest_hash: None,
+        marketplace: None,
+        plugin: None,
+        plugin_revision: None,
+        content_sha256: None,
+        plugin_owners: None,
     };
 
     agentsync::skills::registry::update_registry_entry(&path, "sample", entry).unwrap();
@@ -100,6 +105,11 @@ fn installed_registry_rejects_tainted_skill_id() {
         installed_at: None,
         files: None,
         manifest_hash: None,
+        marketplace: None,
+        plugin: None,
+        plugin_revision: None,
+        content_sha256: None,
+        plugin_owners: None,
     };
     let error = agentsync::skills::registry::update_registry_entry(&path, "../escape", entry)
         .expect_err("path traversal skill id must be rejected");

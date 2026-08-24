@@ -52,6 +52,10 @@ pub struct Config {
     /// Uses BTreeMap to maintain deterministic order without manual sorting.
     #[serde(default)]
     pub mcp_servers: BTreeMap<String, McpServerConfig>,
+
+    /// Repository-owned plugin materialization settings.
+    #[serde(default)]
+    pub plugins: crate::plugins::PluginsConfig,
 }
 
 fn default_source_dir() -> String {
@@ -250,7 +254,7 @@ pub enum McpMergeStrategy {
 }
 
 /// Configuration for a single MCP server
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct McpServerConfig {
     /// Command to execute (for stdio transport)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -493,6 +497,38 @@ mod tests {
         assert_eq!(config.source_dir, ".");
         assert!(!config.compress_agents_md);
         assert!(config.gitignore.enabled);
+        assert!(!config.plugins.enabled);
+        assert_eq!(config.plugins.lockfile, "plugins.lock.toml");
+    }
+
+    #[test]
+    fn test_parse_plugin_config() {
+        let toml = r#"
+            [plugins]
+            enabled = true
+            lockfile = "plugins.lock.toml"
+
+            [plugins.marketplaces.internal]
+            source = "../engineering-marketplace"
+            reference = "main"
+
+            [[plugins.selections]]
+            marketplace = "internal"
+            plugin = "engineering"
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+        assert!(config.plugins.enabled);
+        assert_eq!(config.plugins.lockfile, "plugins.lock.toml");
+        assert_eq!(
+            config.plugins.marketplaces["internal"].source,
+            "../engineering-marketplace"
+        );
+        assert_eq!(
+            config.plugins.marketplaces["internal"].reference.as_deref(),
+            Some("main")
+        );
+        assert_eq!(config.plugins.selections[0].plugin, "engineering");
     }
 
     #[test]

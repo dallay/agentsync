@@ -9,12 +9,16 @@ use std::env;
 use std::path::PathBuf;
 
 use agentsync::logging::LogFormat;
-use agentsync::{Linker, SyncOptions, SyncResult, config::Config, gitignore, init};
+use agentsync::{
+    Linker, PluginManager, SyncOptions, SyncResult, config::Config, gitignore, init,
+    plugins::PluginApplyResult,
+};
 use tracing_subscriber::filter::LevelFilter;
 mod commands;
 mod output;
 use commands::dev_bench::{DevBenchArgs, run_dev_bench};
 use commands::doctor::run_doctor;
+use commands::plugin::{PluginCommand, run_plugin};
 use commands::skill::{SkillCommand, run_skill};
 use commands::status::{StatusArgs, run_status};
 use output::{
@@ -39,6 +43,17 @@ fn merge_clean_result_into_apply_result(result: &mut SyncResult, clean_result: &
     result.skipped += clean_result.skipped;
     result.removed += clean_result.removed;
     result.errors += clean_result.errors;
+}
+
+fn merge_plugin_result_into_apply_result(
+    result: &mut SyncResult,
+    plugin_result: &PluginApplyResult,
+) {
+    result.created += plugin_result.created;
+    result.updated += plugin_result.updated;
+    result.skipped += plugin_result.skipped;
+    result.removed += plugin_result.removed;
+    result.errors += plugin_result.errors;
 }
 
 // Logging is initialized in main via agentsync::logging::init_logging (stderr, human/json).
@@ -82,6 +97,14 @@ enum Commands {
     Skill {
         #[command(subcommand)]
         cmd: SkillCommand,
+        /// Root of the project (defaults to CWD)
+        #[arg(short, long)]
+        project_root: Option<PathBuf>,
+    },
+    /// Manage repository-owned, vendor-neutral plugins.
+    Plugin {
+        #[command(subcommand)]
+        cmd: PluginCommand,
         /// Root of the project (defaults to CWD)
         #[arg(short, long)]
         project_root: Option<PathBuf>,
@@ -193,6 +216,13 @@ fn run() -> Result<()> {
                 current_project_root(project_root, || env::current_dir().map_err(Into::into))?;
             run_skill(cmd, root)?;
             Ok(())
+        }),
+        Commands::Plugin { cmd, project_root } => run_in_root_span("plugin", || {
+            let root =
+                current_project_root(project_root, || env::current_dir().map_err(Into::into))?;
+            let runtime = tokio::runtime::Runtime::new()
+                .context("failed to create runtime for plugin command")?;
+            runtime.block_on(run_plugin(cmd, root))
         }),
         Commands::Status { args, project_root } => run_in_root_span("status", || {
             let project_root =
@@ -339,6 +369,12 @@ fn handle_apply(args: ApplyArgs) -> Result<()> {
         tracing::debug!(config_path = %config_path.display(), "Using config");
     }
     let config = Config::load(&config_path)?;
+    let plugin_manager = PluginManager::new(
+        Config::project_root(&config_path),
+        config_path.clone(),
+        config.plugins.clone(),
+    );
+    let plugin_result = plugin_manager.apply(args.dry_run)?;
     let linker = Linker::new(config, config_path);
     let use_color = human_use_color();
     if args.dry_run {
@@ -370,18 +406,22 @@ fn handle_apply(args: ApplyArgs) -> Result<()> {
         agents: args.agents,
     };
     let mut result = linker.sync(&options)?;
+    merge_plugin_result_into_apply_result(&mut result, &plugin_result);
     if let Some(clean_result) = &clean_result {
         merge_clean_result_into_apply_result(&mut result, clean_result);
     }
     if !args.no_gitignore {
         handle_apply_gitignore(&linker, args.dry_run, use_color)?;
     }
-    if linker.config().mcp.enabled && !linker.config().mcp_servers.is_empty() {
+    if linker.config().mcp.enabled
+        && (!linker.config().mcp_servers.is_empty() || !plugin_result.mcp_servers.is_empty())
+    {
         handle_apply_mcp(
             &linker,
             options.dry_run,
             use_color,
             options.agents.as_ref(),
+            &plugin_result.mcp_servers,
             &mut result,
         )?;
     }
@@ -430,11 +470,12 @@ fn handle_apply_mcp(
     dry_run: bool,
     use_color: bool,
     agents: Option<&Vec<String>>,
+    plugin_servers: &std::collections::BTreeMap<String, agentsync::config::McpServerConfig>,
     result: &mut SyncResult,
 ) -> Result<()> {
     println!();
     print_lines(&render_mcp_phase(dry_run, use_color));
-    match linker.sync_mcp(dry_run, agents) {
+    match linker.sync_mcp_with_servers(dry_run, agents, plugin_servers) {
         Ok(mcp_result) => {
             if mcp_result.created > 0
                 || mcp_result.updated > 0
@@ -700,6 +741,33 @@ mod tests {
         super::merge_clean_result_into_apply_result(&mut result, &clean_result);
 
         assert_eq!(result.created, 3);
+        assert_eq!(result.updated, 24);
+        assert_eq!(result.skipped, 30);
+        assert_eq!(result.removed, 40);
+        assert_eq!(result.errors, 44);
+    }
+
+    #[test]
+    fn test_merge_plugin_result_into_apply_result_preserves_all_counts() {
+        let mut result = SyncResult {
+            created: 3,
+            updated: 5,
+            skipped: 7,
+            removed: 11,
+            errors: 13,
+        };
+        let plugin_result = agentsync::plugins::PluginApplyResult {
+            created: 17,
+            updated: 19,
+            skipped: 23,
+            removed: 29,
+            errors: 31,
+            mcp_servers: Default::default(),
+        };
+
+        super::merge_plugin_result_into_apply_result(&mut result, &plugin_result);
+
+        assert_eq!(result.created, 20);
         assert_eq!(result.updated, 24);
         assert_eq!(result.skipped, 30);
         assert_eq!(result.removed, 40);

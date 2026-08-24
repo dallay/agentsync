@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "safe-fixture": {
+      "command": "/bin/false",
+      "args": ["--fixture"],
+      "env": {
+        "FIXTURE": "true"
+      }
+    }
+  }
+}

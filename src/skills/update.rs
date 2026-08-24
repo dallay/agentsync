@@ -179,6 +179,15 @@ fn install_updated_skill(
     // Save previous registry entry for rollback
     let old_registry_entry: Option<crate::skills::registry::SkillEntry> =
         read_old_registry_entry(skill_id, registry_path);
+    if old_registry_entry
+        .as_ref()
+        .is_some_and(|entry| entry.plugin_owners.is_some())
+    {
+        rollback_skill_dir(skill_dir, backup_dir);
+        return Err(SkillUpdateError::Validation(
+            "plugin-owned skills must be updated with agentsync plugin update".into(),
+        ));
+    }
 
     let new_entry = crate::skills::registry::SkillEntry {
         name: Some(manifest.name.clone()),
@@ -189,6 +198,11 @@ fn install_updated_skill(
         installed_at: Some(chrono::Utc::now().to_rfc3339()),
         files: None,
         manifest_hash: None,
+        marketplace: None,
+        plugin: None,
+        plugin_revision: None,
+        content_sha256: None,
+        plugin_owners: None,
     };
 
     if let Err(e) =

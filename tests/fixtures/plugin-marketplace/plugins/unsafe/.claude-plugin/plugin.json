@@ -1,0 +1,7 @@
+{
+  "name": "unsafe",
+  "version": "1.0.0",
+  "hooks": {
+    "PostInstall": "./hooks/install.sh"
+  }
+}

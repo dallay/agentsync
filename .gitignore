@@ -71,6 +71,7 @@ tmp
 .github/copilot-instructions.md
 .github/copilot-instructions.md.bak.*
 .mcp.json
+!tests/fixtures/plugin-marketplace/plugins/engineering/.mcp.json
 .opencode/command
 .opencode/command.bak.*
 .opencode/command/

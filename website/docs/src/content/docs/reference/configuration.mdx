@@ -52,6 +52,40 @@ enabled = true  # Enabled, but won't run unless explicitly specified with --agen
 - If `--agents` flag is provided → uses CLI filter (overrides `default_agents`)
 - If `default_agents` is empty → runs all enabled agents (backward compatible)
 
+## Repository-owned Plugins
+
+AgentSync can materialize the supported, vendor-neutral parts of a plugin into the canonical
+`.agents/skills/` directory and merge standard `.mcp.json` declarations into the existing MCP
+pipeline. It does not install vendor caches, enable plugins in user configuration, or execute
+hooks, scripts, binaries, LSPs, or MCP servers.
+
+```toml
+[plugins]
+enabled = true
+lockfile = "plugins.lock.toml"
+
+[plugins.marketplaces.internal]
+source = "../engineering-marketplace"
+reference = "main"
+
+[[plugins.selections]]
+marketplace = "internal"
+plugin = "engineering"
+```
+
+- `source` accepts a relative local checkout or an HTTPS GitHub repository.
+- `reference` is used only by explicit `agentsync plugin add` and `agentsync plugin update`.
+- `plugins.lock.toml` records the immutable revision, content hash, selected skills, MCP servers,
+  and provenance. `agentsync apply` requires the lockfile and never resolves a new revision.
+- Git add/update operations also keep an AgentSync-owned source snapshot under
+  `.agents/.agentsync-plugin-sources`; apply, status, and dry-run read that snapshot only and fail
+  closed if it is unavailable.
+- Vendor marketplace files are declaration/discovery inputs; they do not silently activate Claude or
+  Codex plugins.
+- The first supported plugin layout is `skills/<skill-id>/SKILL.md` plus a root `.mcp.json`.
+
+Use `agentsync plugin status` to validate the lock and source without changing files.
+
 ### User-level Config Template
 
 You can define a personal configuration template that `agentsync init` uses instead of the built-in default. This avoids editing the generated config every time you start a new project.

@@ -251,6 +251,7 @@ mod tests {
             gitignore: Default::default(),
             mcp: Default::default(),
             mcp_servers: Default::default(),
+            plugins: Default::default(),
         };
 
         let config_path = project_root.join("agentsync.toml");

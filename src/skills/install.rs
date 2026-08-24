@@ -146,6 +146,11 @@ fn install_staged(
         installed_at: Some(chrono::Utc::now().to_rfc3339()),
         files: None,
         manifest_hash: None,
+        marketplace: None,
+        plugin: None,
+        plugin_revision: None,
+        content_sha256: None,
+        plugin_owners: None,
     };
     let registry_path = target_root.join("registry.json");
     crate::skills::registry::update_registry_entry(&registry_path, skill_id, entry)

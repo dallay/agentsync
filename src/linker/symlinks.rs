@@ -372,6 +372,7 @@ mod tests {
             gitignore: Default::default(),
             mcp: Default::default(),
             mcp_servers: Default::default(),
+            plugins: Default::default(),
         };
 
         Linker::new(config, config_path)

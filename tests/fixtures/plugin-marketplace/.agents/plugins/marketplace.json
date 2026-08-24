@@ -1,0 +1,15 @@
+{
+  "name": "internal",
+  "plugins": [
+    {
+      "name": "engineering",
+      "source": "./plugins/engineering",
+      "version": "1.2.3"
+    },
+    {
+      "name": "unsafe",
+      "source": "./plugins/unsafe",
+      "version": "1.0.0"
+    }
+  ]
+}

@@ -56,3 +56,69 @@ async fn test_update_skill_skips_symlinks() {
         );
     }
 }
+
+#[tokio::test]
+async fn test_update_skill_rejects_plugin_owned_skills() {
+    let temp_dir = TempDir::new().unwrap();
+    let target_root = temp_dir.path().join(".agents/skills");
+    fs::create_dir_all(&target_root).unwrap();
+    let skill_id = "plugin-skill";
+    let skill_dir = target_root.join(skill_id);
+    fs::create_dir_all(&skill_dir).unwrap();
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: plugin-skill\nversion: 1.0.0\n---\noriginal\n",
+    )
+    .unwrap();
+    fs::write(
+        target_root.join("registry.json"),
+        r#"{
+  "schemaVersion": 1,
+  "last_updated": null,
+  "skills": {
+    "plugin-skill": {
+      "name": "plugin-skill",
+      "version": "1.0.0",
+      "description": null,
+      "provider": "plugin/internal/example",
+      "source": "../marketplace",
+      "installedAt": null,
+      "files": null,
+      "manifestHash": null,
+      "marketplace": "internal",
+      "plugin": "example",
+      "pluginRevision": "local:revision",
+      "contentSha256": null,
+      "pluginOwners": [{
+        "marketplace": "internal",
+        "plugin": "example",
+        "revision": "local:revision"
+      }]
+    }
+  }
+}"#,
+    )
+    .unwrap();
+    let update_source = temp_dir.path().join("update");
+    fs::create_dir_all(&update_source).unwrap();
+    fs::write(
+        update_source.join("SKILL.md"),
+        "---\nname: plugin-skill\nversion: 2.0.0\n---\nreplacement\n",
+    )
+    .unwrap();
+
+    let error = update_skill_async(skill_id, &target_root, &update_source)
+        .await
+        .expect_err("plugin-owned skill updates must use the plugin command");
+    assert!(error.to_string().contains("agentsync plugin update"));
+    assert!(
+        fs::read_to_string(skill_dir.join("SKILL.md"))
+            .unwrap()
+            .contains("original")
+    );
+    assert!(
+        fs::read_to_string(target_root.join("registry.json"))
+            .unwrap()
+            .contains("pluginOwners")
+    );
+}

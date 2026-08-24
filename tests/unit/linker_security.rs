@@ -38,6 +38,7 @@ fn make_config_with_target(target: TargetConfig) -> Config {
         gitignore: Default::default(),
         mcp: Default::default(),
         mcp_servers: Default::default(),
+        plugins: Default::default(),
     }
 }
 
