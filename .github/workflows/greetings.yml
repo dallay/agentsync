@@ -14,5 +14,5 @@ jobs:
       github.actor != 'dallay-bot' &&
       !contains(github.actor, '[bot]') &&
       github.event.pull_request.user.type != 'Bot'
-    uses: dallay/common-actions/.github/workflows/greetings.yml@v2.2.2
+    uses: dallay/common-actions/.github/workflows/greetings.yml@v2.2.3
     secrets: inherit

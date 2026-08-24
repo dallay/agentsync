@@ -243,7 +243,7 @@ jobs:
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
         with:
-          toolchain: 1.97.1
+          toolchain: 1.98.0
 
       - name: Install system packages required to build cargo-audit
         run: |
@@ -288,7 +288,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       - name: Prepare E2E fixtures
         run: |
