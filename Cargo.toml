@@ -28,7 +28,7 @@ clap = { version = "4.5", features = ["derive", "env"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 toml = "1.0"
-toml_edit = "0.22.27"
+toml_edit = "0.25.0"
 serde_yaml = "0.9"
 regex = "1"
 chrono = { version = "0.4", features = ["serde"] }
