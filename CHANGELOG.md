@@ -21,6 +21,55 @@
 * **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
 * **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
 
+## [1.50.0](https://github.com/dallay/agentsync/compare/v1.49.1...v1.50.0) (2026-08-26)
+
+
+### Features
+
+* add deterministic plugin materialization ([#578](https://github.com/dallay/agentsync/issues/578)) ([182103f](https://github.com/dallay/agentsync/commit/182103fca811a25c57748b6d2a6b2ae346a0546c))
+* **skills:** use curated database skill sources ([#557](https://github.com/dallay/agentsync/issues/557)) ([7465d92](https://github.com/dallay/agentsync/commit/7465d920b6c801b17c232e551a954041890c60f9))
+
+
+### Bug Fixes
+
+* **ci:** restore deterministic catalog E2E source checkout ([#572](https://github.com/dallay/agentsync/issues/572)) ([2cad534](https://github.com/dallay/agentsync/commit/2cad5345959f9bc299bde34d176c90e4eb82a55f))
+* **ci:** stabilize npm release and catalog e2e workflows ([#550](https://github.com/dallay/agentsync/issues/550)) ([c9a047f](https://github.com/dallay/agentsync/commit/c9a047f8f4e8537cd28a5e016521b5d7fe23bba0))
+* update h2 security patch ([b626f20](https://github.com/dallay/agentsync/commit/b626f20811ad97c537db3276dbc5f03ff07eaaeb))
+
+
+### Documentation
+
+* **sdd:** archive migrate-catalog-skills-phase1 change artifacts ([a790f58](https://github.com/dallay/agentsync/commit/a790f5897b6e4265f03c307c77df9c0515a6d1f4))
+* **sdd:** record Phase 1 acceptance QA ([#560](https://github.com/dallay/agentsync/issues/560)) ([a77d9fe](https://github.com/dallay/agentsync/commit/a77d9fecadd8d58c06136c55c4e80f0ca3a75203))
+* **sdd:** record Phase 1 verification evidence ([#559](https://github.com/dallay/agentsync/issues/559)) ([c7a2c22](https://github.com/dallay/agentsync/commit/c7a2c2254548c9b1dabdeea2030daabec24d4449))
+
+
+### Continuous Integration
+
+* fix Renovate dependency lookup failure in stale.yml ([#581](https://github.com/dallay/agentsync/issues/581)) ([7102a4d](https://github.com/dallay/agentsync/commit/7102a4d56da001b173bea6644179e31132242de9))
+* **workflows:** trigger CI on stacked-PR branches ([#562](https://github.com/dallay/agentsync/issues/562)) ([97df9d2](https://github.com/dallay/agentsync/commit/97df9d27960fc5f9f8e98033f8d9c5ea67fca8b5))
+
+
+### Tests
+
+* **skills:** add Phase 1 CLI acceptance harness ([#558](https://github.com/dallay/agentsync/issues/558)) ([22e9122](https://github.com/dallay/agentsync/commit/22e91224d9972b84bde7fd1ec1c8ee4c33ac1044))
+
+
+### Chores
+
+* **deps:** group @dallay/agentsync updates in Renovate ([#554](https://github.com/dallay/agentsync/issues/554)) ([564c8f0](https://github.com/dallay/agentsync/commit/564c8f06798c746b36c1cea7d7b0dcc557d1a8c6))
+* **deps:** lock file maintenance ([#553](https://github.com/dallay/agentsync/issues/553)) ([93f45d7](https://github.com/dallay/agentsync/commit/93f45d7e91f7215bafc5576791ea69ca38283ade))
+* **deps:** lock file maintenance ([#565](https://github.com/dallay/agentsync/issues/565)) ([b4783aa](https://github.com/dallay/agentsync/commit/b4783aa93d1788aaae35f34837c652f19a9207ae))
+* **deps:** update dependency @biomejs/biome to v2.5.10 ([#579](https://github.com/dallay/agentsync/issues/579)) ([d71ba7a](https://github.com/dallay/agentsync/commit/d71ba7a8bf388bc5b7dab0f197a171de26ca15ea))
+* **deps:** update dependency @biomejs/biome to v2.5.7 ([#551](https://github.com/dallay/agentsync/issues/551)) ([c5235a4](https://github.com/dallay/agentsync/commit/c5235a4528b34b332b0ea21a79b2a77fd3957f84))
+* **deps:** update dependency @biomejs/biome to v2.5.8 ([#563](https://github.com/dallay/agentsync/issues/563)) ([67d0dbf](https://github.com/dallay/agentsync/commit/67d0dbf936ce1364c8996bfe7beda68b16510f10))
+* **deps:** update dependency @iconify/json to v2.2.518 ([#570](https://github.com/dallay/agentsync/issues/570)) ([fdc6375](https://github.com/dallay/agentsync/commit/fdc6375ed7bf05947297e5742157d7f7e08c0467))
+* **deps:** update dependency astro to v7.2.4 ([#564](https://github.com/dallay/agentsync/issues/564)) ([8edd7a5](https://github.com/dallay/agentsync/commit/8edd7a57f5f92db493dcceed1ae6cd3b7adb2101))
+* **deps:** update dtolnay/rust-toolchain digest to 6c977a6 ([#568](https://github.com/dallay/agentsync/issues/568)) ([1200ec4](https://github.com/dallay/agentsync/commit/1200ec428be0a88d4ac5d601d8e145799846aeb8))
+* **deps:** update github actions ([#566](https://github.com/dallay/agentsync/issues/566)) ([ea72eb5](https://github.com/dallay/agentsync/commit/ea72eb5135d68c8e30b16fd32a5f229dcea74738))
+* **deps:** update rust crate toml_edit to 0.25.0 ([#580](https://github.com/dallay/agentsync/issues/580)) ([d7a6518](https://github.com/dallay/agentsync/commit/d7a6518a28acf409d5a7dd80c54b565aa3bd90ec))
+* **deps:** update rust docker tag to v1.98 ([#571](https://github.com/dallay/agentsync/issues/571)) ([939af05](https://github.com/dallay/agentsync/commit/939af05f4ab919ec1ee3234190fbfa99e810248b))
+
 ## [1.49.1](https://github.com/dallay/agentsync/compare/v1.49.0...v1.49.1) (2026-08-11)
 
 
