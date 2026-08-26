@@ -10,5 +10,5 @@ permissions:
 
 jobs:
   stale:
-    uses: dallay/common-actions/.github/workflows/stale.yml@v2.2.3
+    uses: dallay/common-actions/.github/workflows/stale.yml@87129475c06d9f3354d398426926ba4345a4644d # v2.2.3
     secrets: inherit
