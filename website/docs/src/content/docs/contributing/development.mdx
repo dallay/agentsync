@@ -79,3 +79,22 @@ The `agentsync.toml` file is the shared configuration format. The Rust core pars
 
 - **Config Schema**: Defined in `src/config.rs`.
 - **MCP Formats**: Handled in `src/mcp.rs`, supporting JSON (Claude, Cursor, VS Code) and TOML (Codex).
+
+---
+
+## Catalog Maintenance & Upstream Auditing
+
+AgentSync maintains an embedded skill catalog in `src/skills/catalog.v1.toml`. Because external skill repositories evolve, periodic maintenance is required to prevent catalog drift.
+
+### Auditing Catalog Entries
+
+To audit the catalog entries against current upstream GitHub repositories:
+
+1. **Local Test Verification**: Run `cargo test` to execute offline catalog integrity and recommendation tests.
+2. **E2E Installation Verification**: Run the E2E catalog installation test:
+   ```bash
+   RUN_E2E=1 cargo test --test test_catalog_integration every_catalog_skill_installs_successfully -- --ignored
+   ```
+3. **Upstream Classification**:
+   - **Remap**: If a skill repository was restructured or paths moved, update `install_source` or `archive_subpath` in `src/skills/catalog.v1.toml`.
+   - **Remove**: If a skill no longer exists upstream or its manifest is missing, remove the skill table from `src/skills/catalog.v1.toml` and clean up any references in `[[technologies]]` and `[[combos]]`.

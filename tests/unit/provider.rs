@@ -120,7 +120,7 @@ fn resolve_deterministic_embedded_catalog_can_omit_fragment_for_repo_root_skill(
 
     assert_eq!(
         info.download_url,
-        "https://github.com/currents-dev/playwright-best-practices-skill/archive/HEAD.zip"
+        "https://github.com/currents-dev/playwright-best-practices-skill/archive/HEAD.zip#playwright-best-practices"
     );
     assert_eq!(info.format, "zip");
 }
