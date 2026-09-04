@@ -47,7 +47,7 @@ importers:
     dependencies:
       '@astrojs/starlight':
         specifier: ^0.41.0
-        version: 0.41.7(astro@7.2.4(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@25.9.5))(supports-color@7.2.0)(typescript@7.0.2)
+        version: 0.41.11(astro@7.2.4(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@25.9.5))(supports-color@7.2.0)(typescript@7.0.2)
       '@fontsource/geist-mono':
         specifier: ^5.2.7
         version: 5.3.0
@@ -65,7 +65,7 @@ importers:
         version: 0.35.3(@types/node@25.9.5)
       starlight-theme-black:
         specifier: ^0.7.0
-        version: 0.7.1(@astrojs/starlight@0.41.7(astro@7.2.4(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@25.9.5))(supports-color@7.2.0)(typescript@7.0.2))
+        version: 0.7.1(@astrojs/starlight@0.41.11(astro@7.2.4(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@25.9.5))(supports-color@7.2.0)(typescript@7.0.2))
       unplugin-icons:
         specifier: ^23.0.1
         version: 23.0.1
@@ -149,9 +149,6 @@ packages:
   '@astrojs/markdown-remark@7.2.2':
     resolution: {integrity: sha512-FGfmK84zSNcrsBd0dl1gXE9JvZYElp8EXQa2jpHVAxG4deGKAp43wspxFupjADJX7MSsMRHwYCnfT6EyVmgeFQ==}
 
-  '@astrojs/markdown-satteri@0.3.5':
-    resolution: {integrity: sha512-CvWVEFAbay7YO+i9SaqDJubipA5ckiVB89QWoMJ5XC0m5CtFg8JwZ7Kau6X9sYY7FZURH0w2l03ISH2jOS/RDQ==}
-
   '@astrojs/markdown-satteri@0.3.7':
     resolution: {integrity: sha512-NHcHbrKW/opbZnTZQ5nH293BdcK2VV0tjuzI88CLnvy2njiEJVwUQ5KFnYd4NoWgHJCY/I1CyjGWCR4Vv3khXQ==}
 
@@ -172,8 +169,8 @@ packages:
   '@astrojs/sitemap@3.7.3':
     resolution: {integrity: sha512-f8euLVsyeAmAkSm/1M2Kb8sL8byQmfgbvBNaHFItCheTj/IpiJYSEWVcqDHZ/yEHxiS7+w87mQkzwZaPHmk5GA==}
 
-  '@astrojs/starlight@0.41.7':
-    resolution: {integrity: sha512-579VJuZgo20UpNQPm9EIez5W3DFSrD16uiV2YX6rUlpLtjgKSdnc69TxVTZXn4AtI2B731TI2qhW1O3K+vwtrQ==}
+  '@astrojs/starlight@0.41.11':
+    resolution: {integrity: sha512-hM95Mbsl4l60SBwaNQA/HTxpOLGfeB5EfR9qY3kr0SsAVKUspCssjO0RVBsLiPAE6EA5xuORcCoz/Q6DTX+MuQ==}
     peerDependencies:
       '@astrojs/markdown-remark': ^7.2.0
       astro: ^7.0.2
@@ -2582,14 +2579,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@astrojs/markdown-satteri@0.3.5':
-    dependencies:
-      '@astrojs/internal-helpers': 0.10.2
-      '@astrojs/prism': 4.0.2
-      github-slugger: 2.0.0
-      hast-util-from-html: 2.0.3
-      satteri: 0.9.5
-
   '@astrojs/markdown-satteri@0.3.7':
     dependencies:
       '@astrojs/internal-helpers': 0.10.4
@@ -2597,7 +2586,7 @@ snapshots:
       github-slugger: 2.0.0
       satteri: 0.10.5
 
-  '@astrojs/mdx@7.0.5(@astrojs/markdown-satteri@0.3.5)(astro@7.2.4(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@25.9.5))(supports-color@7.2.0)':
+  '@astrojs/mdx@7.0.5(@astrojs/markdown-satteri@0.3.7)(astro@7.2.4(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@25.9.5))(supports-color@7.2.0)':
     dependencies:
       '@astrojs/internal-helpers': 0.10.2
       '@astrojs/markdown-remark': 7.2.2(supports-color@7.2.0)
@@ -2615,7 +2604,7 @@ snapshots:
       unist-util-visit: 5.1.0
       vfile: 6.0.3
     optionalDependencies:
-      '@astrojs/markdown-satteri': 0.3.5
+      '@astrojs/markdown-satteri': 0.3.7
     transitivePeerDependencies:
       - supports-color
 
@@ -2629,10 +2618,10 @@ snapshots:
       stream-replace-string: 2.0.0
       zod: 4.4.3
 
-  '@astrojs/starlight@0.41.7(astro@7.2.4(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@25.9.5))(supports-color@7.2.0)(typescript@7.0.2)':
+  '@astrojs/starlight@0.41.11(astro@7.2.4(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@25.9.5))(supports-color@7.2.0)(typescript@7.0.2)':
     dependencies:
-      '@astrojs/markdown-satteri': 0.3.5
-      '@astrojs/mdx': 7.0.5(@astrojs/markdown-satteri@0.3.5)(astro@7.2.4(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@25.9.5))(supports-color@7.2.0)
+      '@astrojs/markdown-satteri': 0.3.7
+      '@astrojs/mdx': 7.0.5(@astrojs/markdown-satteri@0.3.7)(astro@7.2.4(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@25.9.5))(supports-color@7.2.0)
       '@astrojs/sitemap': 3.7.3
       '@pagefind/default-ui': 1.5.2
       '@types/hast': 3.0.5
@@ -5007,9 +4996,9 @@ snapshots:
 
   space-separated-tokens@2.0.2: {}
 
-  starlight-theme-black@0.7.1(@astrojs/starlight@0.41.7(astro@7.2.4(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@25.9.5))(supports-color@7.2.0)(typescript@7.0.2)):
+  starlight-theme-black@0.7.1(@astrojs/starlight@0.41.11(astro@7.2.4(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@25.9.5))(supports-color@7.2.0)(typescript@7.0.2)):
     dependencies:
-      '@astrojs/starlight': 0.41.7(astro@7.2.4(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@25.9.5))(supports-color@7.2.0)(typescript@7.0.2)
+      '@astrojs/starlight': 0.41.11(astro@7.2.4(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@25.9.5))(supports-color@7.2.0)(typescript@7.0.2)
 
   stream-replace-string@2.0.0: {}
 
