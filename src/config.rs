@@ -292,6 +292,19 @@ fn is_false(v: &bool) -> bool {
 impl Config {
     /// Load configuration from a file
     pub fn load(path: &Path) -> Result<Self> {
+        // SECURITY: Limit config file size to prevent DoS via memory exhaustion when parsing untrusted TOML
+        const MAX_CONFIG_FILE_SIZE: u64 = 10 * 1024 * 1024; // 10 MB
+        let metadata = fs::metadata(path)
+            .with_context(|| format!("Failed to stat config file: {}", path.display()))?;
+        if metadata.len() > MAX_CONFIG_FILE_SIZE {
+            anyhow::bail!(
+                "Config file size ({} bytes) exceeds maximum limit of {} bytes: {}",
+                metadata.len(),
+                MAX_CONFIG_FILE_SIZE,
+                path.display()
+            );
+        }
+
         let content = fs::read_to_string(path)
             .with_context(|| format!("Failed to read config file: {}", path.display()))?;
 
@@ -682,6 +695,20 @@ mod tests {
 
         let result = Config::load(&config_path);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_config_exceeds_max_size() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("agentsync.toml");
+
+        let file = fs::File::create(&config_path).unwrap();
+        file.set_len(10 * 1024 * 1024 + 1).unwrap();
+
+        let result = Config::load(&config_path);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("exceeds maximum limit"));
     }
 
     // ==========================================================================
