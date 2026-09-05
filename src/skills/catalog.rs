@@ -51,20 +51,30 @@ const APPROVED_EMBEDDED_EXTERNAL_SKILL_IDS: &[&str] = &[
     "bobmatnyc/claude-mpm-skills/pydantic",
     "bobmatnyc/claude-mpm-skills/sqlalchemy",
     "clerk/skills/clerk",
-    "clerk/skills/clerk-custom-ui",
-    "clerk/skills/clerk-nextjs-patterns",
-    "clerk/skills/clerk-orgs",
-    "clerk/skills/clerk-setup",
-    "clerk/skills/clerk-testing",
-    "clerk/skills/clerk-webhooks",
     "clerk/skills/clerk-astro-patterns",
     "clerk/skills/clerk-chrome-extension-patterns",
+    "clerk/skills/clerk-custom-ui",
     "clerk/skills/clerk-expo-patterns",
+    "clerk/skills/clerk-nextjs-patterns",
     "clerk/skills/clerk-nuxt-patterns",
+    "clerk/skills/clerk-orgs",
     "clerk/skills/clerk-react-patterns",
     "clerk/skills/clerk-react-router-patterns",
+    "clerk/skills/clerk-setup",
     "clerk/skills/clerk-tanstack-patterns",
+    "clerk/skills/clerk-testing",
     "clerk/skills/clerk-vue-patterns",
+    "clerk/skills/clerk-webhooks",
+    "cloudai-x/threejs-skills/threejs-animation",
+    "cloudai-x/threejs-skills/threejs-fundamentals",
+    "cloudai-x/threejs-skills/threejs-geometry",
+    "cloudai-x/threejs-skills/threejs-interaction",
+    "cloudai-x/threejs-skills/threejs-lighting",
+    "cloudai-x/threejs-skills/threejs-loaders",
+    "cloudai-x/threejs-skills/threejs-materials",
+    "cloudai-x/threejs-skills/threejs-postprocessing",
+    "cloudai-x/threejs-skills/threejs-shaders",
+    "cloudai-x/threejs-skills/threejs-textures",
     "cloudflare/skills/agents-sdk",
     "cloudflare/skills/building-ai-agent-on-cloudflare",
     "cloudflare/skills/building-mcp-server-on-cloudflare",
@@ -73,32 +83,13 @@ const APPROVED_EMBEDDED_EXTERNAL_SKILL_IDS: &[&str] = &[
     "cloudflare/skills/sandbox-sdk",
     "cloudflare/skills/web-perf",
     "cloudflare/skills/workers-best-practices",
-    "cloudai-x/threejs-skills/threejs-animation",
-    "cloudai-x/threejs-skills/threejs-fundamentals",
-    "cloudai-x/threejs-skills/threejs-geometry",
-    "cloudai-x/threejs-skills/threejs-interaction",
-    "cloudai-x/threejs-skills/threejs-lighting",
-    "cloudai-x/threejs-skills/threejs-loaders",
-    "cloudai-x/threejs-skills/threejs-materials",
-    "cloudai-x/threejs-skills/threejs-postprocessing",
-    "cloudai-x/threejs-skills/threejs-shaders",
-    "cloudai-x/threejs-skills/threejs-textures",
     "cloudflare/skills/wrangler",
     "cloudflare/vinext/migrate-to-vinext",
-    "cloudai-x/threejs-skills/threejs-animation",
-    "cloudai-x/threejs-skills/threejs-fundamentals",
-    "cloudai-x/threejs-skills/threejs-geometry",
-    "cloudai-x/threejs-skills/threejs-interaction",
-    "cloudai-x/threejs-skills/threejs-lighting",
-    "cloudai-x/threejs-skills/threejs-loaders",
-    "cloudai-x/threejs-skills/threejs-materials",
-    "cloudai-x/threejs-skills/threejs-postprocessing",
-    "cloudai-x/threejs-skills/threejs-shaders",
-    "cloudai-x/threejs-skills/threejs-textures",
     "currents-dev/playwright-best-practices-skill/playwright-best-practices",
     "davila7/claude-code-templates/scikit-learn",
     "davila7/claude-code-templates/senior-data-scientist",
     "delexw/claude-code-misc/oxlint",
+    "delexw/claude-code-misc/tauri-v2",
     "denoland/skills/deno-deploy",
     "denoland/skills/deno-expert",
     "denoland/skills/deno-frontend",
@@ -121,7 +112,6 @@ const APPROVED_EMBEDDED_EXTERNAL_SKILL_IDS: &[&str] = &[
     "github/awesome-copilot/java-docs",
     "github/awesome-copilot/java-springboot",
     "github/awesome-copilot/openapi-to-application-code",
-    "jeffallan/claude-skills/pandas-pro",
     "giuseppe-trisciuoglio/developer-kit/tailwind-css-patterns",
     "googlecloudplatform/devrel-demos",
     "greensock/gsap-skills/gsap-core",
@@ -135,11 +125,12 @@ const APPROVED_EMBEDDED_EXTERNAL_SKILL_IDS: &[&str] = &[
     "hashicorp/agent-skills",
     "hashicorp/agent-skills/terraform",
     "huggingface/skills",
-    "inferen-sh/skills/python-executor",
     "hyf0/vue-skills/vue-best-practices",
     "hyf0/vue-skills/vue-debug-guides",
     "inferen-sh/skills/elevenlabs-music",
     "inferen-sh/skills/elevenlabs-tts",
+    "inferen-sh/skills/python-executor",
+    "jeffallan/claude-skills/pandas-pro",
     "kadajett/agent-nestjs-skills/nestjs-best-practices",
     "krutikJain/android-agent-skills/android-architecture-clean",
     "krutikJain/android-agent-skills/android-compose-foundations",
@@ -154,28 +145,25 @@ const APPROVED_EMBEDDED_EXTERNAL_SKILL_IDS: &[&str] = &[
     "laravel/boost/laravel-boost",
     "microsoft/github-copilot-for-azure/azure-ai",
     "microsoft/github-copilot-for-azure/azure-cost-optimization",
-    "midudev/autoskills/bun",
     "microsoft/github-copilot-for-azure/azure-deploy",
     "microsoft/github-copilot-for-azure/azure-diagnostics",
-    "mindrally/skills/deno-typescript",
-    "mindrally/skills/fastapi-python",
     "midudev/autoskills/bun",
     "midudev/autoskills/react-three-fiber",
     "mindrally/skills/chrome-extension-development",
+    "mindrally/skills/deno-typescript",
+    "mindrally/skills/fastapi-python",
     "mongodb/agent-skills",
-    "mindrally/skills/chrome-extension-development",
     "neondatabase/agent-skills/neon-postgres",
-    "delexw/claude-code-misc/tauri-v2",
     "nrwl/nx-ai-agents-config",
     "openai/skills",
     "openai/skills/cloudflare-deploy",
-    "prisma/skills/prisma-cli",
     "pluginagentmarketplace/custom-plugin-python/machine-learning",
     "pluginagentmarketplace/custom-plugin-python/pandas-data-analysis",
-    "prisma/skills/prisma-client-api",
-    "prisma/skills/prisma-database-setup",
     "pproenca/dot-skills/react-hook-form",
     "pproenca/dot-skills/zod",
+    "prisma/skills/prisma-cli",
+    "prisma/skills/prisma-client-api",
+    "prisma/skills/prisma-database-setup",
     "prisma/skills/prisma-postgres",
     "pulumi/agent-skills",
     "pytorch/pytorch",
@@ -189,19 +177,21 @@ const APPROVED_EMBEDDED_EXTERNAL_SKILL_IDS: &[&str] = &[
     "stripe/ai/stripe-best-practices",
     "stripe/ai/upgrade-stripe",
     "supabase/agent-skills/supabase-postgres-best-practices",
-    "tanstack-skills/tanstack-skills/tanstack-start",
     "sveltejs/ai-tools/svelte-code-writer",
+    "tanstack-skills/tanstack-skills/tanstack-start",
     "vercel-labs/agent-skills/deploy-to-vercel",
     "vercel-labs/agent-skills/vercel-composition-patterns",
     "vercel-labs/agent-skills/vercel-react-best-practices",
+    "vercel-labs/json-render/react-three-fiber",
     "vercel-labs/next-skills/next-best-practices",
     "vercel-labs/next-skills/next-cache-components",
     "vercel-labs/next-skills/next-upgrade",
-    "vercel-labs/json-render/react-three-fiber",
     "vercel/ai/ai-sdk",
     "vercel/ai/use-ai-sdk",
     "vercel/turborepo/turborepo",
+    "vintasoftware/django-ai-plugins/django-expert",
     "vuejs-ai/skills/vue-pinia-best-practices",
+    "wispbit-ai/skills/sqlalchemy-alembic-expert-best-practices-code-review",
     "wordpress/agent-skills/wordpress-router",
     "wordpress/agent-skills/wp-block-development",
     "wordpress/agent-skills/wp-block-themes",
@@ -209,8 +199,6 @@ const APPROVED_EMBEDDED_EXTERNAL_SKILL_IDS: &[&str] = &[
     "wordpress/agent-skills/wp-plugin-development",
     "wordpress/agent-skills/wp-project-triage",
     "wordpress/agent-skills/wp-rest-api",
-    "vintasoftware/django-ai-plugins/django-expert",
-    "wispbit-ai/skills/sqlalchemy-alembic-expert-best-practices-code-review",
     "wordpress/agent-skills/wp-wpcli-and-ops",
     "wshobson/agents/fastapi-templates",
     "wshobson/agents/python-background-jobs",
@@ -340,10 +328,7 @@ pub struct EmbeddedSkillCatalog(ResolvedSkillCatalog);
 
 impl Default for EmbeddedSkillCatalog {
     fn default() -> Self {
-        Self(
-            parse_embedded_catalog(EMBEDDED_CATALOG_METADATA)
-                .expect("embedded recommendation catalog must remain valid"),
-        )
+        Self(load_catalog(None).expect("embedded recommendation catalog must remain valid"))
     }
 }
 
@@ -498,8 +483,13 @@ pub fn parse_catalog(
 }
 
 pub fn load_catalog(provider: Option<&dyn Provider>) -> Result<ResolvedSkillCatalog> {
-    let baseline = parse_embedded_catalog(EMBEDDED_CATALOG_METADATA)
-        .context("failed to initialize embedded recommendation catalog")?;
+    static BASELINE: std::sync::OnceLock<ResolvedSkillCatalog> = std::sync::OnceLock::new();
+    let baseline = BASELINE
+        .get_or_init(|| {
+            parse_embedded_catalog(EMBEDDED_CATALOG_METADATA)
+                .expect("failed to initialize embedded recommendation catalog")
+        })
+        .clone();
 
     let Some(provider) = provider else {
         return Ok(baseline);
@@ -738,7 +728,10 @@ fn classify_embedded_recommendation_source(
         return EmbeddedRecommendationSource::LocalCurated;
     }
 
-    if APPROVED_EMBEDDED_EXTERNAL_SKILL_IDS.contains(&provider_skill_id) {
+    if APPROVED_EMBEDDED_EXTERNAL_SKILL_IDS
+        .binary_search(&provider_skill_id)
+        .is_ok()
+    {
         return EmbeddedRecommendationSource::ApprovedExternal;
     }
 
@@ -1141,4 +1134,21 @@ fn validate_provider_skill_id(provider_skill_id: &str) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_approved_external_skill_ids_is_strictly_sorted_and_unique() {
+        for window in APPROVED_EMBEDDED_EXTERNAL_SKILL_IDS.windows(2) {
+            assert!(
+                window[0] < window[1],
+                "APPROVED_EMBEDDED_EXTERNAL_SKILL_IDS must be strictly sorted and unique, but '{}' >= '{}'",
+                window[0],
+                window[1]
+            );
+        }
+    }
 }

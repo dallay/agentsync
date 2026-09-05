@@ -174,3 +174,9 @@ of items in a loop. Use `Clone` bounds on iterators to support backtracking with
 **Learning:** Evaluating technology detection rules on many nested projects (workspaces) was performing redundant directory walking (`RepoMetadata::collect`) and parsing of files even when all candidate technologies had already been identified in previous discovery phases. By filtering rules to only undetected technologies upfront and checking if any remain undetected before proceeding, we can completely bypass expensive nested walks and terminate the scan early.
 
 **Action:** In discovery systems processing multiple hierarchical targets, always filter candidates to the undetected subset at each level, and break early when no targets remain to avoid redundant CPU and filesystem I/O.
+
+## 2026-05-26 - Memoized Embedded Skill Catalog and Binary Search Policy Lookups
+
+**Learning:** `EmbeddedSkillCatalog::default()` and `load_catalog(None)` were re-parsing `catalog.v1.toml` and validating policy rules against 199+ skill IDs on every invocation. Additionally, policy validation was performing an $O(N)$ linear scan over `APPROVED_EMBEDDED_EXTERNAL_SKILL_IDS`. Sorting and deduplicating `APPROVED_EMBEDDED_EXTERNAL_SKILL_IDS` allowed using $O(\log N)$ `binary_search`, while memoizing the parsed baseline using `std::sync::OnceLock` completely eliminated redundant TOML parsing and policy validation across CLI commands.
+
+**Action:** Use `std::sync::OnceLock` to cache embedded static metadata structures parsed from compile-time assets (`include_str!`). Ensure static slice lookup tables are sorted alphabetically to leverage zero-allocation `binary_search`.
