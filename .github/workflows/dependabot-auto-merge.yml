@@ -11,7 +11,7 @@ jobs:
       github.actor == 'renovate[bot]' ||
       github.actor == 'dependabot[bot]' ||
       github.actor == 'dependabot-preview[bot]'
-    uses: dallay/common-actions/.github/workflows/dependabot-auto-merge.yml@v2.2.3
+    uses: dallay/common-actions/.github/workflows/dependabot-auto-merge.yml@v2.2.4
     with:
       target: squash
       approve: true
