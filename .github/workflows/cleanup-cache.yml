@@ -10,5 +10,5 @@ permissions:
 
 jobs:
   cleanup:
-    uses: dallay/common-actions/.github/workflows/cleanup-cache.yml@v2.2.3
+    uses: dallay/common-actions/.github/workflows/cleanup-cache.yml@v2.2.4
     secrets: inherit
