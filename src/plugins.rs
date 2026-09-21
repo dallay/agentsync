@@ -256,6 +256,12 @@ pub struct PluginApplyMode {
 
 type GitSnapshotFetcher = Arc<dyn Fn(&LockedSource) -> Result<TempDir> + Send + Sync>;
 
+enum GitRestoreAction {
+    Created,
+    Updated,
+    Skipped,
+}
+
 /// Repository-owned plugin operations.
 #[derive(Clone)]
 pub struct PluginManager {
@@ -494,27 +500,33 @@ impl PluginManager {
                 LockedSourceKind::Local => {
                     result.skipped += 1;
                 }
-                LockedSourceKind::Git => {
-                    self.restore_git_plugin(locked).await?;
-                    result.updated += 1;
-                }
+                LockedSourceKind::Git => match self.restore_git_plugin(locked).await? {
+                    GitRestoreAction::Created => result.created += 1,
+                    GitRestoreAction::Updated => result.updated += 1,
+                    GitRestoreAction::Skipped => result.skipped += 1,
+                },
             }
         }
         Ok(result)
     }
 
-    async fn restore_git_plugin(&self, locked: &LockedPlugin) -> Result<()> {
+    async fn restore_git_plugin(&self, locked: &LockedPlugin) -> Result<GitRestoreAction> {
         let destination = self.git_source_cache_path(&locked.source)?;
-        if fs::symlink_metadata(&destination).is_ok() {
+        let existed = fs::symlink_metadata(&destination).is_ok();
+        if existed {
             ensure_git_snapshot_dir(&destination)?;
             if snapshot_matches_lock(&destination, locked)? {
-                return Ok(());
+                return Ok(GitRestoreAction::Skipped);
             }
         }
         let fetched = self.fetch_locked_git_snapshot(&locked.source).await?;
         verify_snapshot_against_lock(fetched.root(), locked)?;
         replace_git_snapshot(&destination, fetched.root())?;
-        Ok(())
+        if existed {
+            Ok(GitRestoreAction::Updated)
+        } else {
+            Ok(GitRestoreAction::Created)
+        }
     }
 
     async fn fetch_locked_git_snapshot(
@@ -787,12 +799,14 @@ impl PluginManager {
         let parent = destination
             .parent()
             .ok_or_else(|| anyhow::anyhow!("Git plugin source cache has no parent"))?;
+        ensure_git_cache_ancestors_not_symlinked(&destination)?;
         fs::create_dir_all(parent).with_context(|| {
             format!(
                 "failed to create Git plugin source cache directory: {}",
                 parent.display()
             )
         })?;
+        revalidate_git_cache_parent(parent)?;
         let staging = TempDir::new_in(parent).with_context(|| {
             format!(
                 "failed to create temporary Git plugin source cache in {}",
@@ -801,6 +815,7 @@ impl PluginManager {
         })?;
         let staged = staging.path().join("source");
         copy_directory_without_symlinks(source.root(), &staged)?;
+        revalidate_git_cache_parent(parent)?;
         fs::rename(&staged, &destination).with_context(|| {
             format!(
                 "failed to materialize Git plugin source snapshot: {}",
@@ -867,6 +882,62 @@ fn ensure_git_snapshot_dir(root: &Path) -> Result<()> {
         metadata.is_dir(),
         "offline Git plugin source snapshot is unavailable: {} (run `agentsync plugin restore` first)",
         root.display()
+    );
+    ensure_git_cache_ancestors_not_symlinked(root)?;
+    Ok(())
+}
+
+fn git_cache_boundary(destination: &Path) -> Result<PathBuf> {
+    destination
+        .parent()
+        .and_then(Path::parent)
+        .map(Path::to_path_buf)
+        .ok_or_else(|| anyhow::anyhow!("Git plugin source cache is missing a config boundary"))
+}
+
+/// Rejects symlinks on the snapshot, `.agentsync-plugin-sources`, and the config
+/// directory that owns the cache. Does not walk to `/` because macOS `/var` is a symlink.
+fn ensure_git_cache_ancestors_not_symlinked(destination: &Path) -> Result<()> {
+    let boundary = git_cache_boundary(destination)?;
+    let mut current = destination.to_path_buf();
+    loop {
+        if let Ok(metadata) = fs::symlink_metadata(&current) {
+            ensure!(
+                !metadata.file_type().is_symlink(),
+                "refusing to use symlinked Git plugin source path: {}",
+                current.display()
+            );
+        }
+        if current == boundary {
+            break;
+        }
+        let Some(parent) = current.parent() else {
+            bail!("Git plugin source cache escaped its config boundary");
+        };
+        if parent == current.as_path() {
+            break;
+        }
+        current = parent.to_path_buf();
+    }
+    Ok(())
+}
+
+fn revalidate_git_cache_parent(parent: &Path) -> Result<()> {
+    let metadata = fs::symlink_metadata(parent).with_context(|| {
+        format!(
+            "Git plugin source cache parent is unavailable: {}",
+            parent.display()
+        )
+    })?;
+    ensure!(
+        !metadata.file_type().is_symlink(),
+        "refusing to use symlinked Git plugin source path: {}",
+        parent.display()
+    );
+    ensure!(
+        metadata.is_dir(),
+        "Git plugin source cache parent is not a directory: {}",
+        parent.display()
     );
     Ok(())
 }
@@ -940,12 +1011,14 @@ fn replace_git_snapshot(destination: &Path, verified_root: &Path) -> Result<()> 
     let parent = destination
         .parent()
         .ok_or_else(|| anyhow::anyhow!("Git plugin source cache has no parent"))?;
+    ensure_git_cache_ancestors_not_symlinked(destination)?;
     fs::create_dir_all(parent).with_context(|| {
         format!(
             "failed to create Git plugin source cache directory: {}",
             parent.display()
         )
     })?;
+    revalidate_git_cache_parent(parent)?;
     let staging = TempDir::new_in(parent).with_context(|| {
         format!(
             "failed to create temporary Git plugin source cache in {}",
@@ -955,6 +1028,7 @@ fn replace_git_snapshot(destination: &Path, verified_root: &Path) -> Result<()> 
     let staged = staging.path().join("source");
     copy_directory_without_symlinks(verified_root, &staged)?;
     if fs::symlink_metadata(destination).is_ok() {
+        revalidate_git_cache_parent(parent)?;
         ensure_git_snapshot_dir(destination)?;
         fs::remove_dir_all(destination).with_context(|| {
             format!(
@@ -963,6 +1037,7 @@ fn replace_git_snapshot(destination: &Path, verified_root: &Path) -> Result<()> 
             )
         })?;
     }
+    revalidate_git_cache_parent(parent)?;
     fs::rename(&staged, destination).with_context(|| {
         format!(
             "failed to materialize Git plugin source snapshot: {}",
@@ -2406,7 +2481,15 @@ plugin = "engineering"
         let config_before = fs::read(&config_path).unwrap();
         let lock_before = fs::read(&lock_path).unwrap();
 
-        manager.restore(Some(&selection)).unwrap();
+        let first = manager.restore(Some(&selection)).unwrap();
+        assert_eq!(first.created, 1);
+        assert_eq!(first.updated, 0);
+        assert_eq!(first.skipped, 0);
+
+        let second = manager.restore(Some(&selection)).unwrap();
+        assert_eq!(second.created, 0);
+        assert_eq!(second.updated, 0);
+        assert_eq!(second.skipped, 1);
 
         assert_eq!(fs::read(&config_path).unwrap(), config_before);
         assert_eq!(fs::read(&lock_path).unwrap(), lock_before);
@@ -2507,12 +2590,35 @@ plugin = "engineering"
             .apply(false)
             .expect_err("apply must not repair invalid snapshots");
 
-        manager.restore(Some(&selection)).unwrap();
+        let repaired = manager.restore(Some(&selection)).unwrap();
+        assert_eq!(repaired.updated, 1);
+        assert_eq!(repaired.created, 0);
+        assert_eq!(repaired.skipped, 0);
         assert!(
             destination
                 .join(".agents/plugins/marketplace.json")
                 .is_file()
         );
+    }
+
+    #[test]
+    fn git_snapshot_write_rejects_symlinked_cache_parent() {
+        let fixture = marketplace_fixture();
+        let (_project, manager, selection, _, _) = git_locked_manager(fixture);
+        let lock = manager.load_lock().unwrap();
+        let locked = lock.plugins["internal/engineering"].clone();
+        let destination = manager.git_source_cache_path(&locked.source).unwrap();
+        let parent = destination.parent().unwrap();
+        let outside = manager.project_root.join("outside-cache");
+        fs::create_dir_all(&outside).unwrap();
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&outside, parent).unwrap();
+            let error = manager
+                .restore(Some(&selection))
+                .expect_err("symlinked cache parent must be rejected");
+            assert!(error.to_string().contains("symlink"), "got: {error}");
+        }
     }
 
     #[test]
