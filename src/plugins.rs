@@ -41,6 +41,9 @@ pub struct PluginsConfig {
     /// Named marketplace sources.
     #[serde(default)]
     pub marketplaces: BTreeMap<String, MarketplaceConfig>,
+    /// Explicit approvals for namespaced plugin MCP servers.
+    #[serde(default)]
+    pub allowed_mcp: Vec<String>,
     /// Explicitly selected plugins.
     #[serde(default)]
     pub selections: Vec<PluginSelection>,
@@ -52,8 +55,23 @@ impl Default for PluginsConfig {
             enabled: false,
             lockfile: default_plugin_lockfile(),
             marketplaces: BTreeMap::new(),
+            allowed_mcp: Vec::new(),
             selections: Vec::new(),
         }
+    }
+}
+
+impl PluginsConfig {
+    pub fn validate(&self) -> Result<()> {
+        let mut approvals = BTreeSet::new();
+        for approval in &self.allowed_mcp {
+            validate_allowed_mcp_name(approval)?;
+            ensure!(
+                approvals.insert(approval),
+                "duplicate plugin MCP approval: {approval}"
+            );
+        }
+        Ok(())
     }
 }
 
@@ -247,6 +265,28 @@ pub struct PluginApplyResult {
     pub mcp_servers: BTreeMap<String, McpServerConfig>,
 }
 
+#[derive(Debug, Default, Clone, Serialize)]
+pub struct PluginStatusReport {
+    pub status: String,
+    pub skills: usize,
+    pub servers: Vec<PluginMcpStatus>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PluginMcpStatus {
+    pub name: String,
+    pub approval: PluginMcpApproval,
+    #[serde(flatten)]
+    pub server: McpServerConfig,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PluginMcpApproval {
+    Allowed,
+    Pending,
+}
+
 /// Options for plugin apply/status materialization.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct PluginApplyMode {
@@ -306,8 +346,64 @@ impl PluginManager {
         })
     }
 
-    pub fn apply_with(&self, mode: PluginApplyMode) -> Result<PluginApplyResult> {
+    pub fn status_report(&self) -> Result<PluginStatusReport> {
+        self.config.validate()?;
+        let mut report = PluginStatusReport {
+            status: "ok".to_string(),
+            ..PluginStatusReport::default()
+        };
         if !self.config.enabled || self.config.selections.is_empty() {
+            ensure!(
+                self.config.allowed_mcp.is_empty(),
+                "plugin MCP approvals are stale: no selected plugin can provide {}",
+                self.config.allowed_mcp.join(", ")
+            );
+            return Ok(report);
+        }
+        let lock = PluginLock::load(&self.lock_path()?)?;
+        let selections = selected_lock_entries(&self.config, &lock)?;
+        validate_allowed_mcp_against_lock(&self.config.allowed_mcp, &selections)?;
+        let allowed = self.config.allowed_mcp.iter().collect::<BTreeSet<_>>();
+        for locked in selections.values() {
+            let root = match locked.source.kind {
+                LockedSourceKind::Local => self.materialize_source(&locked.source)?.root,
+                LockedSourceKind::Git => {
+                    let root = self.git_source_cache_path(&locked.source)?;
+                    ensure_git_snapshot_dir(&root)?;
+                    root
+                }
+            };
+            let discovered = discover_plugin(&root, &locked.marketplace, &locked.plugin)?;
+            ensure_snapshot_discovery_matches_lock(&discovered, locked)?;
+            report.skills += discovered.skills.len();
+            for (name, server) in
+                discovered.namespaced_mcp_servers(&locked.marketplace, &locked.plugin)?
+            {
+                report.servers.push(PluginMcpStatus {
+                    approval: if allowed.contains(&name) {
+                        PluginMcpApproval::Allowed
+                    } else {
+                        PluginMcpApproval::Pending
+                    },
+                    name,
+                    server,
+                });
+            }
+        }
+        Ok(report)
+    }
+
+    pub fn apply_with(&self, mode: PluginApplyMode) -> Result<PluginApplyResult> {
+        self.config.validate()?;
+        if !self.config.enabled {
+            return Ok(PluginApplyResult::default());
+        }
+        if self.config.selections.is_empty() {
+            ensure!(
+                self.config.allowed_mcp.is_empty(),
+                "plugin MCP approvals are stale: no selected plugin can provide {}",
+                self.config.allowed_mcp.join(", ")
+            );
             return Ok(PluginApplyResult::default());
         }
 
@@ -318,20 +414,13 @@ impl PluginManager {
                 lock_path.display()
             )
         })?;
-        let selections: BTreeSet<_> = self
-            .config
-            .selections
-            .iter()
-            .map(PluginSelection::key)
-            .collect();
+        let selected = selected_lock_entries(&self.config, &lock)?;
+        validate_allowed_mcp_against_lock(&self.config.allowed_mcp, &selected)?;
+        let allowed_mcp = self.config.allowed_mcp.iter().collect::<BTreeSet<_>>();
         let mut result = PluginApplyResult::default();
         let mut pending_skills = Vec::new();
 
-        for key in selections {
-            let locked = lock
-                .plugins
-                .get(&key)
-                .with_context(|| format!("plugin selection is missing from lockfile: {key}"))?;
+        for (key, locked) in selected {
             ensure!(
                 locked.unsupported_components.is_empty(),
                 "plugin {key} contains unsupported components: {}",
@@ -373,7 +462,9 @@ impl PluginManager {
                 "plugin MCP declaration drift detected for {key}"
             );
             for (name, server) in plugin_mcp {
-                if result.mcp_servers.insert(name.clone(), server).is_some() {
+                if allowed_mcp.contains(&name)
+                    && result.mcp_servers.insert(name.clone(), server).is_some()
+                {
                     bail!("duplicate plugin MCP server: {name}");
                 }
             }
@@ -708,6 +799,7 @@ impl PluginManager {
     }
 
     async fn lock_selection(&self, selection: &PluginSelection) -> Result<PluginApplyResult> {
+        self.config.validate()?;
         validate_selection(selection)?;
         ensure!(
             self.config.enabled,
@@ -948,6 +1040,65 @@ fn revalidate_git_cache_parent(parent: &Path) -> Result<()> {
         "Git plugin source cache parent is not a directory: {}",
         parent.display()
     );
+    Ok(())
+}
+
+fn ensure_snapshot_discovery_matches_lock(
+    discovered: &DiscoveredPlugin,
+    locked: &LockedPlugin,
+) -> Result<()> {
+    ensure!(
+        discovered.content_sha256 == locked.content_sha256,
+        "plugin content drift detected for {}: expected {}, got {}",
+        locked.key(),
+        locked.content_sha256,
+        discovered.content_sha256
+    );
+    ensure!(
+        discovered.unsupported_components.is_empty(),
+        "plugin {} contains unsupported components: {}",
+        locked.key(),
+        discovered.unsupported_components.join(", ")
+    );
+    ensure!(
+        discovered.mcp_servers.keys().cloned().collect::<Vec<_>>() == locked.mcp_servers,
+        "plugin MCP declaration drift detected for {}",
+        locked.key()
+    );
+    let discovered_skill_ids = discovered
+        .skills
+        .iter()
+        .map(|skill| skill.id.as_str())
+        .collect::<BTreeSet<_>>();
+    let locked_skill_ids = locked
+        .skills
+        .iter()
+        .map(|skill| skill.id.as_str())
+        .collect::<BTreeSet<_>>();
+    ensure!(
+        discovered_skill_ids == locked_skill_ids,
+        "plugin skill set drift detected for {}",
+        locked.key()
+    );
+    for skill in &discovered.skills {
+        let locked_skill = locked
+            .skills
+            .iter()
+            .find(|candidate| candidate.id == skill.id)
+            .with_context(|| {
+                format!(
+                    "skill missing from plugin lock: {}/{}",
+                    locked.key(),
+                    skill.id
+                )
+            })?;
+        ensure!(
+            locked_skill.content_sha256 == skill.content_sha256,
+            "skill content drift detected for {}/{}",
+            locked.key(),
+            skill.id
+        );
+    }
     Ok(())
 }
 
@@ -2013,6 +2164,33 @@ fn remove_selection_from_config(config_path: &Path, selection: &PluginSelection)
         bail!("plugin selection not found: {}", selection.key());
     };
     selections.remove(index);
+
+    if let Some(allowed_mcp) = document
+        .get_mut("plugins")
+        .and_then(Item::as_table_mut)
+        .and_then(|plugins| plugins.get_mut("allowed_mcp"))
+        .and_then(Item::as_array_mut)
+    {
+        let prefix = format!("plugin/{}/{}/", selection.marketplace, selection.plugin);
+        let indices = allowed_mcp
+            .iter()
+            .enumerate()
+            .filter_map(|(index, item)| {
+                item.as_str()
+                    .filter(|value| value.starts_with(&prefix))
+                    .map(|_| index)
+            })
+            .collect::<Vec<_>>();
+        for index in indices.into_iter().rev() {
+            allowed_mcp.remove(index);
+        }
+        if allowed_mcp.is_empty()
+            && let Some(plugins) = document.get_mut("plugins").and_then(Item::as_table_mut)
+        {
+            plugins.remove("allowed_mcp");
+        }
+    }
+
     write_atomic_file(config_path, document.to_string().as_bytes())
 }
 
@@ -2042,6 +2220,62 @@ fn write_atomic_file(path: &Path, body: &[u8]) -> Result<()> {
 fn validate_selection(selection: &PluginSelection) -> Result<()> {
     validate_identifier("marketplace", &selection.marketplace)?;
     validate_identifier("plugin", &selection.plugin)
+}
+
+fn selected_lock_entries<'a>(
+    config: &PluginsConfig,
+    lock: &'a PluginLock,
+) -> Result<BTreeMap<String, &'a LockedPlugin>> {
+    config
+        .selections
+        .iter()
+        .map(|selection| {
+            let key = selection.key();
+            let locked = lock
+                .plugins
+                .get(&key)
+                .with_context(|| format!("plugin selection is missing from lockfile: {key}"))?;
+            Ok((key, locked))
+        })
+        .collect()
+}
+
+fn validate_allowed_mcp_against_lock(
+    allowed_mcp: &[String],
+    selected: &BTreeMap<String, &LockedPlugin>,
+) -> Result<()> {
+    let expected = selected
+        .values()
+        .flat_map(|locked| {
+            locked
+                .mcp_servers
+                .iter()
+                .map(|name| format!("plugin/{}/{}/{}", locked.marketplace, locked.plugin, name))
+        })
+        .collect::<BTreeSet<_>>();
+    for approval in allowed_mcp {
+        ensure!(
+            expected.contains(approval),
+            "plugin MCP approval is stale or unknown: {approval}"
+        );
+    }
+    Ok(())
+}
+
+fn validate_allowed_mcp_name(value: &str) -> Result<()> {
+    let mut segments = value.split('/');
+    ensure!(
+        segments.next() == Some("plugin")
+            && segments.next().is_some()
+            && segments.next().is_some()
+            && segments.next().is_some()
+            && segments.next().is_none(),
+        "invalid plugin MCP approval: {value}; expected plugin/<marketplace>/<plugin>/<server>"
+    );
+    let parts = value.split('/').collect::<Vec<_>>();
+    validate_identifier("MCP marketplace", parts[1])?;
+    validate_identifier("MCP plugin", parts[2])?;
+    validate_identifier("MCP server", parts[3])
 }
 
 fn validate_source(source: &LockedSource) -> Result<()> {
@@ -2321,6 +2555,7 @@ mod tests {
             enabled: true,
             lockfile: "plugins.lock.toml".to_string(),
             marketplaces: BTreeMap::new(),
+            allowed_mcp: Vec::new(),
             selections: vec![selection.clone()],
         };
         let manager = PluginManager::new(temp.path().to_path_buf(), config_path, config);
@@ -2365,6 +2600,7 @@ mod tests {
             enabled: true,
             lockfile: "plugins.lock.toml".to_string(),
             marketplaces: BTreeMap::new(),
+            allowed_mcp: Vec::new(),
             selections: vec![selection.clone()],
         };
         let manager = PluginManager::new(temp.path().to_path_buf(), config_path, config);
@@ -2462,6 +2698,7 @@ plugin = "engineering"
                     reference: Some("main".to_string()),
                 },
             )]),
+            allowed_mcp: Vec::new(),
             selections: vec![selection.clone()],
         };
         let fixture = fetcher_root.clone();
@@ -2586,6 +2823,32 @@ plugin = "engineering"
     }
 
     #[test]
+    fn stale_plugin_mcp_approval_fails_before_snapshot_restore() {
+        let fixture = marketplace_fixture();
+        let (_project, manager, _, _, _) = git_locked_manager(fixture);
+        let mut config = manager.config.clone();
+        config.allowed_mcp = vec!["plugin/internal/engineering/missing".to_string()];
+        let fetched = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let observed = fetched.clone();
+        let manager = PluginManager::new(
+            manager.project_root.clone(),
+            manager.config_path.clone(),
+            config,
+        )
+        .with_git_snapshot_fetcher(move |_source| {
+            observed.store(true, std::sync::atomic::Ordering::SeqCst);
+            bail!("fetch must not run for stale approval")
+        });
+        let apply_error = manager.apply(false).expect_err("stale approval must fail");
+        assert!(apply_error.to_string().contains("stale or unknown"));
+        let status_error = manager
+            .status_report()
+            .expect_err("stale approval must fail in status");
+        assert!(status_error.to_string().contains("stale"));
+        assert!(!fetched.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[test]
     fn apply_does_not_repair_invalid_snapshot_but_restore_does() {
         let fixture = marketplace_fixture();
         let (_project, manager, selection, _, lock_path) = git_locked_manager(fixture.clone());
@@ -2628,6 +2891,160 @@ plugin = "engineering"
                 .expect_err("symlinked cache parent must be rejected");
             assert!(error.to_string().contains("symlink"), "got: {error}");
         }
+    }
+
+    #[test]
+    fn allowed_mcp_validation_rejects_malformed_duplicate_and_wildcard_entries() {
+        let config = PluginsConfig {
+            allowed_mcp: vec!["plugin/internal/engineering/safe-fixture".to_string()],
+            ..PluginsConfig::default()
+        };
+        assert!(config.validate().is_ok());
+
+        let duplicate = PluginsConfig {
+            allowed_mcp: vec![
+                "plugin/internal/engineering/safe-fixture".to_string(),
+                "plugin/internal/engineering/safe-fixture".to_string(),
+            ],
+            ..PluginsConfig::default()
+        };
+        assert!(duplicate.validate().is_err());
+
+        for invalid in [
+            "plugin/internal/engineering",
+            "plugin/internal/engineering/*",
+            "plugin/internal/engineering/safe-fixture/extra",
+            "plugins/internal/engineering/safe-fixture",
+            "plugin/internal/engineering/safe_fixture?",
+        ] {
+            let invalid_config = PluginsConfig {
+                allowed_mcp: vec![invalid.to_string()],
+                ..PluginsConfig::default()
+            };
+            assert!(
+                invalid_config.validate().is_err(),
+                "accepted invalid approval: {invalid}"
+            );
+        }
+    }
+
+    #[test]
+    fn status_report_returns_empty_when_plugins_are_disabled_or_unselected() {
+        let temp = TempDir::new().unwrap();
+        let config_path = temp.path().join(".agents/agentsync.toml");
+        let disabled = PluginManager::new(
+            temp.path().to_path_buf(),
+            config_path.clone(),
+            PluginsConfig::default(),
+        );
+        assert_eq!(disabled.status_report().unwrap().status, "ok");
+
+        let config = PluginsConfig {
+            enabled: true,
+            ..PluginsConfig::default()
+        };
+        let unselected = PluginManager::new(temp.path().to_path_buf(), config_path, config);
+        assert!(unselected.status_report().unwrap().servers.is_empty());
+    }
+
+    #[test]
+    fn status_report_covers_git_pending_and_raw_server_declaration() {
+        let fixture = marketplace_fixture();
+        let (_project, manager, selection, _, _) = git_locked_manager(fixture);
+        manager.restore(Some(&selection)).unwrap();
+
+        let report = manager.status_report().unwrap();
+        assert_eq!(report.status, "ok");
+        assert_eq!(report.skills, 1);
+        assert_eq!(report.servers.len(), 1);
+        assert!(matches!(
+            report.servers[0].approval,
+            PluginMcpApproval::Pending
+        ));
+        assert_eq!(
+            report.servers[0].server.command.as_deref(),
+            Some("/bin/false")
+        );
+        assert_eq!(report.servers[0].server.env["FIXTURE"], "true");
+    }
+
+    #[test]
+    fn stale_approvals_fail_before_lock_or_snapshot_access() {
+        let temp = TempDir::new().unwrap();
+        let config_path = temp.path().join(".agents/agentsync.toml");
+        let config = PluginsConfig {
+            enabled: true,
+            allowed_mcp: vec!["plugin/internal/engineering/safe-fixture".to_string()],
+            ..PluginsConfig::default()
+        };
+        let manager = PluginManager::new(temp.path().to_path_buf(), config_path, config);
+
+        assert!(
+            manager
+                .status_report()
+                .unwrap_err()
+                .to_string()
+                .contains("stale")
+        );
+        assert!(
+            manager
+                .apply(false)
+                .unwrap_err()
+                .to_string()
+                .contains("stale")
+        );
+    }
+
+    #[test]
+    fn status_report_covers_allowed_server_declaration() {
+        let fixture = marketplace_fixture();
+        let (_project, mut manager, selection, _, _) = git_locked_manager(fixture);
+        manager.config.allowed_mcp = vec!["plugin/internal/engineering/safe-fixture".to_string()];
+        manager.restore(Some(&selection)).unwrap();
+        let report = manager.status_report().unwrap();
+        assert!(matches!(
+            report.servers[0].approval,
+            PluginMcpApproval::Allowed
+        ));
+    }
+
+    #[test]
+    fn snapshot_status_validation_rejects_each_locked_drift_kind() {
+        let root = marketplace_fixture();
+        let source = ResolvedMarketplaceSource {
+            root: root.clone(),
+            locked_source: LockedSource {
+                kind: LockedSourceKind::Local,
+                location: "../marketplace".to_string(),
+                revision: "local:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                    .to_string(),
+            },
+            temp: None,
+        };
+        let discovered = discover_plugin(&root, "internal", "engineering").unwrap();
+        let locked = discovered
+            .to_locked_plugin("internal", "engineering", &source)
+            .unwrap();
+
+        let mut content_drift = locked.clone();
+        content_drift.content_sha256 = "f".repeat(64);
+        assert!(ensure_snapshot_discovery_matches_lock(&discovered, &content_drift).is_err());
+
+        let mut unsupported = discover_plugin(&root, "internal", "engineering").unwrap();
+        unsupported.unsupported_components.push("hooks".to_string());
+        assert!(ensure_snapshot_discovery_matches_lock(&unsupported, &locked).is_err());
+
+        let mut mcp_drift = locked.clone();
+        mcp_drift.mcp_servers.push("different".to_string());
+        assert!(ensure_snapshot_discovery_matches_lock(&discovered, &mcp_drift).is_err());
+
+        let mut skill_set_drift = locked.clone();
+        skill_set_drift.skills.clear();
+        assert!(ensure_snapshot_discovery_matches_lock(&discovered, &skill_set_drift).is_err());
+
+        let mut skill_content_drift = locked;
+        skill_content_drift.skills[0].content_sha256 = "f".repeat(64);
+        assert!(ensure_snapshot_discovery_matches_lock(&discovered, &skill_content_drift).is_err());
     }
 
     #[test]
@@ -2968,6 +3385,7 @@ plugin = "engineering"
             enabled: true,
             lockfile: "plugins.lock.toml".to_string(),
             marketplaces: BTreeMap::new(),
+            allowed_mcp: Vec::new(),
             selections: vec![selection.clone()],
         };
         let manager = PluginManager::new(temp.path().to_path_buf(), config_path, config);

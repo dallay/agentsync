@@ -63,6 +63,8 @@ hooks, scripts, binaries, LSPs, or MCP servers.
 [plugins]
 enabled = true
 lockfile = "plugins.lock.toml"
+# Default-deny: only explicitly approved plugin MCP servers are exported.
+allowed_mcp = ["plugin/internal/engineering/safe-fixture"]
 
 [plugins.marketplaces.internal]
 source = "../engineering-marketplace"
@@ -77,6 +79,10 @@ plugin = "engineering"
 - `reference` is used only by explicit `agentsync plugin add` and `agentsync plugin update`.
 - `plugins.lock.toml` records the immutable revision, content hash, selected skills, MCP servers,
   and provenance. `agentsync apply` and `agentsync plugin restore` never resolve a new revision.
+- `allowed_mcp` is a default-deny approval list using names such as
+  `plugin/internal/engineering/safe-fixture`. It approves a logical server identity, not a
+  revision; an explicit plugin update can therefore change the approved definition and must be
+  reviewed. Entries must be unique and use exactly four identifier segments.
 - Git snapshots live under `.agents/.agentsync-plugin-sources`. Online `apply` restores a missing
   snapshot from the locked SHA. `apply --offline`, `apply --dry-run`, and `plugin status` never
   download; recover with `agentsync plugin restore`.

@@ -1,5 +1,7 @@
 use agentsync::config::Config;
-use agentsync::plugins::{PluginApplyResult, PluginLock, PluginManager, PluginSelection};
+use agentsync::plugins::{
+    PluginApplyResult, PluginLock, PluginManager, PluginMcpApproval, PluginSelection,
+};
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
 use std::path::PathBuf;
@@ -140,22 +142,31 @@ async fn run_restore(manager: &PluginManager, args: &PluginRestoreArgs) -> Resul
 }
 
 fn run_status(manager: &PluginManager, json: bool) -> Result<()> {
-    let result = manager.apply(true)?;
+    let report = manager.status_report()?;
     if json {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&serde_json::json!({
-                "status": "ok",
-                "skills": result.updated,
-                "mcp_servers": result.mcp_servers.keys().collect::<Vec<_>>(),
-            }))?
-        );
+        println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
         println!(
             "Plugin sources are locked and available ({} skill(s), {} MCP server(s)).",
-            result.updated,
-            result.mcp_servers.len()
+            report.skills,
+            report.servers.len()
         );
+        for server in report.servers {
+            let approval = match server.approval {
+                PluginMcpApproval::Allowed => "ALLOWED",
+                PluginMcpApproval::Pending => "PENDING",
+            };
+            println!("{approval} {}", server.name);
+            if let Some(command) = server.server.command {
+                println!("  command: {command}");
+            }
+            if !server.server.args.is_empty() {
+                println!("  args: {:?}", server.server.args);
+            }
+            if let Some(url) = server.server.url {
+                println!("  url: {url}");
+            }
+        }
     }
     Ok(())
 }
