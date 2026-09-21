@@ -221,6 +221,20 @@ fn acceptance_status_reports_raw_pending_mcp_and_remove_revokes_plugin() {
         Some("/bin/false")
     );
 
+    manager.restore(Some(&selection)).unwrap();
+    manager
+        .apply_with(PluginApplyMode {
+            dry_run: false,
+            offline: true,
+        })
+        .unwrap();
+    assert!(
+        project
+            .path()
+            .join(".agents/skills/review/SKILL.md")
+            .is_file()
+    );
+
     manager.remove(&selection, false).unwrap();
     assert!(
         !project

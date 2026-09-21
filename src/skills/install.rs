@@ -1512,12 +1512,12 @@ mod tests {
     #[tokio::test]
     async fn fetch_remote_response_rejects_too_many_redirects() {
         let address = spawn_http_server(vec![
-            b"HTTP/1.1 302 Found\r\nLocation: /r1\r\nContent-Length: 0\r\n\r\n",
-            b"HTTP/1.1 302 Found\r\nLocation: /r2\r\nContent-Length: 0\r\n\r\n",
-            b"HTTP/1.1 302 Found\r\nLocation: /r3\r\nContent-Length: 0\r\n\r\n",
-            b"HTTP/1.1 302 Found\r\nLocation: /r4\r\nContent-Length: 0\r\n\r\n",
-            b"HTTP/1.1 302 Found\r\nLocation: /r5\r\nContent-Length: 0\r\n\r\n",
-            b"HTTP/1.1 302 Found\r\nLocation: /r6\r\nContent-Length: 0\r\n\r\n",
+            b"HTTP/1.1 302 Found\r\nLocation: /r1\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
+            b"HTTP/1.1 302 Found\r\nLocation: /r2\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
+            b"HTTP/1.1 302 Found\r\nLocation: /r3\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
+            b"HTTP/1.1 302 Found\r\nLocation: /r4\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
+            b"HTTP/1.1 302 Found\r\nLocation: /r5\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
+            b"HTTP/1.1 302 Found\r\nLocation: /r6\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
         ])
         .await;
         let result = fetch_remote_response(
