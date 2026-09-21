@@ -2314,6 +2314,16 @@ mod tests {
     }
 
     #[test]
+    fn plugin_source_hash_rejects_excessive_content_size() {
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("large-file");
+        let file = fs::File::create(path).unwrap();
+        file.set_len(MAX_PLUGIN_CONTENT_SIZE + 1).unwrap();
+        let error = hash_tree(temp.path()).unwrap_err();
+        assert!(error.to_string().contains("content is too large"));
+    }
+
+    #[test]
     fn plugin_manager_covers_offline_and_source_cache_paths() {
         let temp = TempDir::new().unwrap();
         let agents = temp.path().join(".agents");

@@ -256,13 +256,7 @@ pub fn install_from_zip(
             }
             let mut out = std::fs::File::create(&outpath).map_err(SkillInstallError::Io)?;
             let remaining = MAX_ZIP_DECOMPRESSED_SIZE.saturating_sub(extracted_bytes);
-            let mut limited = (&mut file).take(remaining.saturating_add(1));
-            let written = std::io::copy(&mut limited, &mut out).map_err(SkillInstallError::Io)?;
-            if written > remaining {
-                return Err(SkillInstallError::Other(format!(
-                    "decompressed archive too large: exceeds {MAX_ZIP_DECOMPRESSED_SIZE} byte limit"
-                )));
-            }
+            let written = copy_archive_entry(&mut file, &mut out, remaining)?;
             extracted_bytes = extracted_bytes.saturating_add(written);
         }
     }
@@ -578,6 +572,21 @@ fn is_trusted_github_archive_url(url: &url::Url) -> bool {
     url.scheme() == "https" && matches!(url.host_str(), Some("github.com" | "codeload.github.com"))
 }
 
+fn copy_archive_entry(
+    reader: &mut impl std::io::Read,
+    writer: &mut impl std::io::Write,
+    limit: u64,
+) -> Result<u64, SkillInstallError> {
+    let mut limited = reader.take(limit.saturating_add(1));
+    let written = std::io::copy(&mut limited, writer).map_err(SkillInstallError::Io)?;
+    if written > limit {
+        return Err(SkillInstallError::Other(format!(
+            "decompressed archive too large: exceeds {limit} byte limit"
+        )));
+    }
+    Ok(written)
+}
+
 fn unpack_zip(
     reader: impl std::io::Read + std::io::Seek,
     dest: &std::path::Path,
@@ -621,13 +630,7 @@ fn unpack_zip(
             }
             let mut out = std::fs::File::create(&outpath).map_err(SkillInstallError::Io)?;
             let remaining = MAX_ZIP_DECOMPRESSED_SIZE.saturating_sub(extracted_bytes);
-            let mut limited = (&mut file).take(remaining.saturating_add(1));
-            let written = std::io::copy(&mut limited, &mut out).map_err(SkillInstallError::Io)?;
-            if written > remaining {
-                return Err(SkillInstallError::Other(format!(
-                    "decompressed archive too large: exceeds {MAX_ZIP_DECOMPRESSED_SIZE} byte limit"
-                )));
-            }
+            let written = copy_archive_entry(&mut file, &mut out, remaining)?;
             extracted_bytes = extracted_bytes.saturating_add(written);
         }
     }
@@ -866,6 +869,13 @@ mod tests {
                 &url::Url::parse(value).unwrap()
             ));
         }
+    }
+
+    #[test]
+    fn archive_entry_copy_enforces_decompressed_limit() {
+        let mut output = Vec::new();
+        let error = copy_archive_entry(&mut Cursor::new(b"1234"), &mut output, 3).unwrap_err();
+        assert!(error.to_string().contains("decompressed archive too large"));
     }
 
     #[test]
@@ -1436,6 +1446,22 @@ mod tests {
         assert!(matches!(
             result,
             Err(SkillInstallError::Other(message)) if message.starts_with("invalid archive URL:")
+        ));
+    }
+
+    #[tokio::test]
+    async fn fetch_remote_data_rejects_untrusted_authenticated_url() {
+        let temp = tempfile::tempdir().unwrap();
+        let result = fetch_remote_data(
+            "http://github.com/org/repo/archive.zip",
+            temp.path(),
+            Some("token"),
+        )
+        .await;
+        assert!(matches!(
+            result,
+            Err(SkillInstallError::Validation(message))
+                if message == "authenticated GitHub archive URL is untrusted"
         ));
     }
 
