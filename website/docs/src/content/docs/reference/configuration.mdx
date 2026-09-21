@@ -76,10 +76,10 @@ plugin = "engineering"
 - `source` accepts a relative local checkout or an HTTPS GitHub repository.
 - `reference` is used only by explicit `agentsync plugin add` and `agentsync plugin update`.
 - `plugins.lock.toml` records the immutable revision, content hash, selected skills, MCP servers,
-  and provenance. `agentsync apply` requires the lockfile and never resolves a new revision.
-- Git add/update operations also keep an AgentSync-owned source snapshot under
-  `.agents/.agentsync-plugin-sources`; apply, status, and dry-run read that snapshot only and fail
-  closed if it is unavailable.
+  and provenance. `agentsync apply` and `agentsync plugin restore` never resolve a new revision.
+- Git snapshots live under `.agents/.agentsync-plugin-sources`. Online `apply` restores a missing
+  snapshot from the locked SHA. `apply --offline`, `apply --dry-run`, and `plugin status` never
+  download; recover with `agentsync plugin restore`.
 - Vendor marketplace files are declaration/discovery inputs; they do not silently activate Claude or
   Codex plugins.
 - The first supported plugin layout is `skills/<skill-id>/SKILL.md` plus a root `.mcp.json`.
@@ -94,7 +94,8 @@ plugin = "engineering"
 - Private GitHub resolution may use `GITHUB_TOKEN` from the process environment. The token is sent
   only to GitHub requests and is never written to the lockfile, source snapshot, or generated config.
 
-Use `agentsync plugin status` to validate the lock and source without changing files.
+Use `agentsync plugin status` to validate the lock and source without changing files. Use
+`agentsync plugin restore` to recover or repair Git snapshots from the lockfile.
 
 ### User-level Config Template
 

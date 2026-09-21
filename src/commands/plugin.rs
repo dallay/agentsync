@@ -16,6 +16,8 @@ pub enum PluginCommand {
     Remove(PluginSelectionArgs),
     /// Validate locked sources and report materialization drift without changing files.
     Status(PluginOutputArgs),
+    /// Fetch the exact locked Git snapshot without resolving marketplace.reference.
+    Restore(PluginRestoreArgs),
 }
 
 #[derive(Args, Debug)]
@@ -29,6 +31,16 @@ pub struct PluginSelectionArgs {
 
 #[derive(Args, Debug)]
 pub struct PluginOutputArgs {
+    /// Output machine-readable JSON.
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Args, Debug)]
+pub struct PluginRestoreArgs {
+    /// Optional selection in the form marketplace/plugin or plugin@marketplace.
+    /// When omitted, restore every plugin in [plugins.selections].
+    pub selection: Option<String>,
     /// Output machine-readable JSON.
     #[arg(long)]
     pub json: bool,
@@ -49,6 +61,7 @@ pub async fn run_plugin(command: PluginCommand, project_root: PathBuf) -> Result
         PluginCommand::List(args) => run_list(&manager, args.json),
         PluginCommand::Remove(args) => run_remove(&manager, &args),
         PluginCommand::Status(args) => run_status(&manager, args.json),
+        PluginCommand::Restore(args) => run_restore(&manager, &args).await,
     }
 }
 
@@ -99,6 +112,29 @@ fn run_list(manager: &PluginManager, json: bool) -> Result<()> {
                 plugin.source.revision
             );
         }
+    }
+    Ok(())
+}
+
+async fn run_restore(manager: &PluginManager, args: &PluginRestoreArgs) -> Result<()> {
+    let selection = args.selection.as_deref().map(parse_selection).transpose()?;
+    let result = manager.restore_async(selection.as_ref()).await?;
+    if args.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "status": "restored",
+                "created": result.created,
+                "updated": result.updated,
+                "skipped": result.skipped,
+                "removed": result.removed,
+            }))?
+        );
+    } else {
+        println!(
+            "restored plugins (created {}, updated {}, skipped {}, removed {})",
+            result.created, result.updated, result.skipped, result.removed
+        );
     }
     Ok(())
 }
