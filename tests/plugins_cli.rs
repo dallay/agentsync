@@ -119,4 +119,13 @@ fn plugin_cli_covers_human_json_update_and_invalid_selection_paths() {
     assert!(remove.status.success(), "remove failed: {:?}", remove);
     let remove_json: serde_json::Value = serde_json::from_slice(&remove.stdout).unwrap();
     assert_eq!(remove_json["status"], "removed");
+
+    let vendor_spelling = run_plugin(&project, &["add", "engineering@internal", "--json"]);
+    assert!(
+        vendor_spelling.status.success(),
+        "vendor-style selection failed: {:?}",
+        vendor_spelling
+    );
+    let vendor_json: serde_json::Value = serde_json::from_slice(&vendor_spelling.stdout).unwrap();
+    assert_eq!(vendor_json["plugin"], "internal/engineering");
 }

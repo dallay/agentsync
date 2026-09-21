@@ -21,6 +21,8 @@ use walkdir::WalkDir;
 
 const PLUGIN_LOCK_SCHEMA_VERSION: &str = "v1";
 const DEFAULT_PLUGIN_LOCKFILE: &str = "plugins.lock.toml";
+const MAX_PLUGIN_FILES: usize = 10_000;
+const MAX_PLUGIN_CONTENT_SIZE: u64 = 500 * 1024 * 1024;
 
 fn default_plugin_lockfile() -> String {
     DEFAULT_PLUGIN_LOCKFILE.to_string()
@@ -970,9 +972,13 @@ async fn resolve_marketplace_source_async(
         .ok_or_else(|| anyhow::anyhow!("Git plugin marketplace requires a reference"))?;
     let revision = resolve_git_reference(source, reference).await?;
     let archive = github_archive_url(source, &revision)?;
-    let temp = crate::skills::install::fetch_and_unpack_to_tempdir(&archive)
-        .await
-        .context("failed to fetch plugin marketplace archive")?;
+    let github_token = std::env::var("GITHUB_TOKEN").ok();
+    let temp = crate::skills::install::fetch_and_unpack_to_tempdir_with_bearer(
+        &archive,
+        github_token.as_deref(),
+    )
+    .await
+    .context("failed to fetch plugin marketplace archive")?;
     Ok(ResolvedMarketplaceSource {
         root: temp.path().to_path_buf(),
         locked_source: LockedSource {
@@ -1179,12 +1185,74 @@ fn read_plugin_mcp(plugin_root: &Path) -> Result<BTreeMap<String, McpServerConfi
         validate_identifier("MCP server", name)?;
         let server: McpServerConfig = serde_json::from_value(value.clone())
             .with_context(|| format!("invalid plugin MCP server: {name}"))?;
+        validate_plugin_mcp_server(name, &server)?;
         ensure!(
             result.insert(name.clone(), server).is_none(),
             "duplicate plugin MCP server: {name}"
         );
     }
     Ok(result)
+}
+
+/// Validate the parts of a plugin MCP declaration that are most likely to contain credentials.
+///
+/// Plugin declarations are committed and fanned out to multiple agent configuration files, so
+/// literal tokens/passwords must never be copied into those files. Environment references remain
+/// portable while allowing the consuming agent to resolve the value locally.
+fn validate_plugin_mcp_server(name: &str, server: &McpServerConfig) -> Result<()> {
+    for (key, value) in server.env.iter().chain(server.headers.iter()) {
+        let normalized = key.to_ascii_lowercase().replace(['-', '.'], "_");
+        let sensitive = [
+            "token",
+            "secret",
+            "password",
+            "passwd",
+            "credential",
+            "api_key",
+            "apikey",
+            "authorization",
+            "cookie",
+        ]
+        .iter()
+        .any(|marker| normalized.contains(marker));
+        if sensitive {
+            ensure!(
+                is_environment_reference(value),
+                "plugin MCP server {name} contains a literal secret in {key}; use an environment reference such as ${{TOKEN}}"
+            );
+        }
+    }
+    Ok(())
+}
+
+fn is_environment_reference(value: &str) -> bool {
+    let value = value.trim();
+    let valid_name = |name: &str| {
+        !name.is_empty()
+            && name.chars().enumerate().all(|(index, character)| {
+                (index == 0 && (character.is_ascii_alphabetic() || character == '_'))
+                    || (index > 0 && (character.is_ascii_alphanumeric() || character == '_'))
+            })
+    };
+
+    let mut remainder = value;
+    let mut found_reference = false;
+    while let Some(start) = remainder.find("${") {
+        let after_prefix = &remainder[start + 2..];
+        let Some(end) = after_prefix.find('}') else {
+            return false;
+        };
+        if !valid_name(&after_prefix[..end]) {
+            return false;
+        }
+        found_reference = true;
+        remainder = &after_prefix[end + 1..];
+    }
+    if found_reference {
+        return true;
+    }
+
+    value.strip_prefix('$').is_some_and(valid_name)
 }
 
 fn parse_plugin_source(value: &Value) -> Result<Option<String>> {
@@ -1734,6 +1802,7 @@ fn is_absolute_path(path: &str) -> bool {
 fn hash_tree(root: &Path) -> Result<String> {
     ensure!(root.is_dir(), "expected directory: {}", root.display());
     let mut entries = Vec::new();
+    let mut total_bytes = 0_u64;
     for entry in WalkDir::new(root).follow_links(false) {
         let entry = entry?;
         if entry.path() == root {
@@ -1746,6 +1815,17 @@ fn hash_tree(root: &Path) -> Result<String> {
             entry.path().display()
         );
         if metadata.is_file() {
+            ensure!(
+                entries.len() < MAX_PLUGIN_FILES,
+                "plugin source contains too many files: exceeds {MAX_PLUGIN_FILES}"
+            );
+            total_bytes = total_bytes
+                .checked_add(metadata.len())
+                .ok_or_else(|| anyhow::anyhow!("plugin source size overflow"))?;
+            ensure!(
+                total_bytes <= MAX_PLUGIN_CONTENT_SIZE,
+                "plugin source content is too large: exceeds {MAX_PLUGIN_CONTENT_SIZE} bytes"
+            );
             let relative = entry
                 .path()
                 .strip_prefix(root)?
@@ -2146,6 +2226,52 @@ mod tests {
         )
         .unwrap();
         assert!(read_plugin_mcp(&plugin_root).is_err());
+    }
+
+    #[test]
+    fn plugin_mcp_rejects_literal_credentials_but_accepts_environment_references() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        fs::write(
+            root.join(".mcp.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "mcpServers": {
+                    "unsafe": {
+                        "command": "tool",
+                        "env": {"API_TOKEN": "literal-token"}
+                    }
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(read_plugin_mcp(root).is_err());
+
+        fs::write(
+            root.join(".mcp.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "mcpServers": {
+                    "safe": {
+                        "command": "tool",
+                        "env": {"API_TOKEN": "${API_TOKEN}"},
+                        "headers": {"Authorization": "Bearer ${API_TOKEN}"}
+                    }
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(read_plugin_mcp(root).is_ok());
+    }
+
+    #[test]
+    fn plugin_source_hash_rejects_excessive_file_count() {
+        let temp = TempDir::new().unwrap();
+        for index in 0..=MAX_PLUGIN_FILES {
+            fs::write(temp.path().join(format!("file-{index}")), []).unwrap();
+        }
+        let error = hash_tree(temp.path()).unwrap_err();
+        assert!(error.to_string().contains("too many files"));
     }
 
     #[test]
