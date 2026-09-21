@@ -14,6 +14,7 @@ use std::fs;
 use std::future::Future;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 use tempfile::{NamedTempFile, TempDir};
 use toml_edit::{DocumentMut, Item, Table, value};
@@ -246,12 +247,22 @@ pub struct PluginApplyResult {
     pub mcp_servers: BTreeMap<String, McpServerConfig>,
 }
 
+/// Options for plugin apply/status materialization.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PluginApplyMode {
+    pub dry_run: bool,
+    pub offline: bool,
+}
+
+type GitSnapshotFetcher = Arc<dyn Fn(&LockedSource) -> Result<TempDir> + Send + Sync>;
+
 /// Repository-owned plugin operations.
 #[derive(Clone)]
 pub struct PluginManager {
     project_root: PathBuf,
     config_path: PathBuf,
     config: PluginsConfig,
+    git_snapshot_fetcher: Option<GitSnapshotFetcher>,
 }
 
 impl PluginManager {
@@ -260,7 +271,17 @@ impl PluginManager {
             project_root,
             config_path,
             config,
+            git_snapshot_fetcher: None,
         }
+    }
+
+    /// Inject a Git snapshot fetcher. Used by tests to avoid live GitHub.
+    pub fn with_git_snapshot_fetcher<F>(mut self, fetcher: F) -> Self
+    where
+        F: Fn(&LockedSource) -> Result<TempDir> + Send + Sync + 'static,
+    {
+        self.git_snapshot_fetcher = Some(Arc::new(fetcher));
+        self
     }
 
     pub fn lock_path(&self) -> Result<PathBuf> {
@@ -273,6 +294,13 @@ impl PluginManager {
     }
 
     pub fn apply(&self, dry_run: bool) -> Result<PluginApplyResult> {
+        self.apply_with(PluginApplyMode {
+            dry_run,
+            offline: false,
+        })
+    }
+
+    pub fn apply_with(&self, mode: PluginApplyMode) -> Result<PluginApplyResult> {
         if !self.config.enabled || self.config.selections.is_empty() {
             return Ok(PluginApplyResult::default());
         }
@@ -303,6 +331,20 @@ impl PluginManager {
                 "plugin {key} contains unsupported components: {}",
                 locked.unsupported_components.join(", ")
             );
+            if locked.source.kind == LockedSourceKind::Git {
+                let snapshot = self.git_source_cache_path(&locked.source)?;
+                if fs::symlink_metadata(&snapshot).is_err() {
+                    if mode.dry_run || mode.offline {
+                        ensure_git_snapshot_dir(&snapshot)?;
+                    } else {
+                        let manager = self.clone();
+                        let locked = locked.clone();
+                        run_async(
+                            move || async move { manager.restore_git_plugin(&locked).await },
+                        )?;
+                    }
+                }
+            }
             let source = self.materialize_source(&locked.source)?;
             let discovered = discover_plugin(source.root(), &locked.marketplace, &locked.plugin)?;
             ensure!(
@@ -357,18 +399,18 @@ impl PluginManager {
                     skill.id
                 );
                 validate_skill_for_materialization(&self.project_root, locked, skill)?;
-                if dry_run {
+                if mode.dry_run {
                     result.updated += 1;
                 } else {
                     pending_skills.push((locked.clone(), skill.clone()));
                 }
             }
-            if dry_run && discovered.skills.is_empty() {
+            if mode.dry_run && discovered.skills.is_empty() {
                 result.skipped += 1;
             }
         }
 
-        if dry_run {
+        if mode.dry_run {
             return Ok(result);
         }
 
@@ -412,6 +454,100 @@ impl PluginManager {
 
     pub async fn update_async(&self, selection: &PluginSelection) -> Result<PluginApplyResult> {
         self.lock_selection(selection).await
+    }
+
+    pub fn restore(&self, selection: Option<&PluginSelection>) -> Result<PluginApplyResult> {
+        let manager = self.clone();
+        let selection = selection.cloned();
+        run_async(move || async move { manager.restore_async(selection.as_ref()).await })
+    }
+
+    pub async fn restore_async(
+        &self,
+        selection: Option<&PluginSelection>,
+    ) -> Result<PluginApplyResult> {
+        ensure!(
+            self.config.enabled,
+            "plugin materialization is disabled; set [plugins].enabled = true first"
+        );
+        let selections = match selection {
+            Some(selection) => {
+                ensure!(
+                    self.config.selections.contains(selection),
+                    "plugin is not selected: {}",
+                    selection.key()
+                );
+                vec![selection.clone()]
+            }
+            None => self.config.selections.clone(),
+        };
+        let lock = PluginLock::load(&self.lock_path()?)?;
+        let mut result = PluginApplyResult::default();
+        for selection in selections {
+            let locked = lock.plugins.get(&selection.key()).with_context(|| {
+                format!(
+                    "plugin selection is missing from lockfile: {}",
+                    selection.key()
+                )
+            })?;
+            match locked.source.kind {
+                LockedSourceKind::Local => {
+                    result.skipped += 1;
+                }
+                LockedSourceKind::Git => {
+                    self.restore_git_plugin(locked).await?;
+                    result.updated += 1;
+                }
+            }
+        }
+        Ok(result)
+    }
+
+    async fn restore_git_plugin(&self, locked: &LockedPlugin) -> Result<()> {
+        let destination = self.git_source_cache_path(&locked.source)?;
+        if fs::symlink_metadata(&destination).is_ok() {
+            ensure_git_snapshot_dir(&destination)?;
+            if snapshot_matches_lock(&destination, locked)? {
+                return Ok(());
+            }
+        }
+        let fetched = self.fetch_locked_git_snapshot(&locked.source).await?;
+        verify_snapshot_against_lock(fetched.root(), locked)?;
+        replace_git_snapshot(&destination, fetched.root())?;
+        Ok(())
+    }
+
+    async fn fetch_locked_git_snapshot(
+        &self,
+        source: &LockedSource,
+    ) -> Result<ResolvedMarketplaceSource> {
+        if let Some(fetcher) = &self.git_snapshot_fetcher {
+            let temp = fetcher(source)?;
+            return Ok(ResolvedMarketplaceSource {
+                root: temp.path().to_path_buf(),
+                locked_source: source.clone(),
+                temp: Some(temp),
+            });
+        }
+        ensure!(
+            source.revision.len() == 40
+                && source.revision.bytes().all(|byte| byte.is_ascii_hexdigit()),
+            "locked Git revision must be a full commit SHA: {}",
+            source.revision
+        );
+        let archive = github_archive_url(&source.location, &source.revision)?;
+        let github_token = std::env::var("GITHUB_TOKEN").ok();
+        let temp = crate::skills::install::fetch_and_unpack_to_tempdir_with_bearer(
+            &archive,
+            github_token.as_deref(),
+        )
+        .await
+        .context("failed to fetch locked plugin marketplace archive")?;
+        Ok(ResolvedMarketplaceSource {
+            root: temp.path().to_path_buf(),
+            locked_source: source.clone(),
+            temp: Some(temp),
+        })
     }
 
     pub fn load_lock(&self) -> Result<PluginLock> {
@@ -644,12 +780,8 @@ impl PluginManager {
             return Ok(());
         }
         let destination = self.git_source_cache_path(&source.locked_source)?;
-        if let Ok(metadata) = fs::symlink_metadata(&destination) {
-            ensure!(
-                metadata.is_dir() && !metadata.file_type().is_symlink(),
-                "refusing to use symlinked Git plugin source snapshot: {}",
-                destination.display()
-            );
+        if fs::symlink_metadata(&destination).is_ok() {
+            ensure_git_snapshot_dir(&destination)?;
             return Ok(());
         }
         let parent = destination
@@ -712,15 +844,132 @@ impl PluginManager {
             }
             LockedSourceKind::Git => {
                 let root = self.git_source_cache_path(source)?;
-                ensure!(
-                    root.is_dir(),
-                    "offline Git plugin source snapshot is unavailable: {} (run `agentsync plugin update` first)",
-                    root.display()
-                );
+                ensure_git_snapshot_dir(&root)?;
                 Ok(ResolvedSource { root })
             }
         }
     }
+}
+
+fn ensure_git_snapshot_dir(root: &Path) -> Result<()> {
+    let metadata = fs::symlink_metadata(root).with_context(|| {
+        format!(
+            "offline Git plugin source snapshot is unavailable: {} (run `agentsync plugin restore` first)",
+            root.display()
+        )
+    })?;
+    ensure!(
+        !metadata.file_type().is_symlink(),
+        "refusing to use symlinked Git plugin source snapshot: {}",
+        root.display()
+    );
+    ensure!(
+        metadata.is_dir(),
+        "offline Git plugin source snapshot is unavailable: {} (run `agentsync plugin restore` first)",
+        root.display()
+    );
+    Ok(())
+}
+
+fn snapshot_matches_lock(root: &Path, locked: &LockedPlugin) -> Result<bool> {
+    match verify_snapshot_against_lock(root, locked) {
+        Ok(()) => Ok(true),
+        Err(_) => Ok(false),
+    }
+}
+
+fn verify_snapshot_against_lock(root: &Path, locked: &LockedPlugin) -> Result<()> {
+    let discovered = discover_plugin(root, &locked.marketplace, &locked.plugin)?;
+    ensure!(
+        discovered.unsupported_components.is_empty(),
+        "plugin {} contains unsupported components: {}",
+        locked.key(),
+        discovered.unsupported_components.join(", ")
+    );
+    ensure!(
+        discovered.content_sha256 == locked.content_sha256,
+        "plugin content drift detected for {}: expected {}, got {}",
+        locked.key(),
+        locked.content_sha256,
+        discovered.content_sha256
+    );
+    let discovered_skill_ids: BTreeSet<_> = discovered
+        .skills
+        .iter()
+        .map(|skill| skill.id.as_str())
+        .collect();
+    let locked_skill_ids: BTreeSet<_> = locked
+        .skills
+        .iter()
+        .map(|skill| skill.id.as_str())
+        .collect();
+    ensure!(
+        discovered_skill_ids == locked_skill_ids,
+        "plugin skill set drift detected for {}",
+        locked.key()
+    );
+    for skill in &discovered.skills {
+        let locked_skill = locked
+            .skills
+            .iter()
+            .find(|candidate| candidate.id == skill.id)
+            .with_context(|| {
+                format!(
+                    "skill missing from plugin lock: {}/{}",
+                    locked.key(),
+                    skill.id
+                )
+            })?;
+        ensure!(
+            locked_skill.content_sha256 == skill.content_sha256,
+            "skill content drift detected for {}/{}",
+            locked.key(),
+            skill.id
+        );
+    }
+    let discovered_mcp_names: Vec<_> = discovered.mcp_servers.keys().cloned().collect();
+    ensure!(
+        discovered_mcp_names == locked.mcp_servers,
+        "plugin MCP declaration drift detected for {}",
+        locked.key()
+    );
+    Ok(())
+}
+
+fn replace_git_snapshot(destination: &Path, verified_root: &Path) -> Result<()> {
+    let parent = destination
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("Git plugin source cache has no parent"))?;
+    fs::create_dir_all(parent).with_context(|| {
+        format!(
+            "failed to create Git plugin source cache directory: {}",
+            parent.display()
+        )
+    })?;
+    let staging = TempDir::new_in(parent).with_context(|| {
+        format!(
+            "failed to create temporary Git plugin source cache in {}",
+            parent.display()
+        )
+    })?;
+    let staged = staging.path().join("source");
+    copy_directory_without_symlinks(verified_root, &staged)?;
+    if fs::symlink_metadata(destination).is_ok() {
+        ensure_git_snapshot_dir(destination)?;
+        fs::remove_dir_all(destination).with_context(|| {
+            format!(
+                "failed to replace Git plugin source snapshot: {}",
+                destination.display()
+            )
+        })?;
+    }
+    fs::rename(&staged, destination).with_context(|| {
+        format!(
+            "failed to materialize Git plugin source snapshot: {}",
+            destination.display()
+        )
+    })?;
+    Ok(())
 }
 
 struct ResolvedSource {
@@ -2003,10 +2252,266 @@ mod tests {
         let error = manager
             .apply(true)
             .expect_err("apply must not fetch a Git source");
+        let message = error.to_string();
         assert!(
-            error
-                .to_string()
-                .contains("offline Git plugin source snapshot")
+            message.contains("offline Git plugin source snapshot"),
+            "{message}"
+        );
+        assert!(
+            message.contains("plugin restore"),
+            "missing-cache errors must name restore, got: {message}"
+        );
+        assert!(
+            !message.contains("plugin update"),
+            "missing-cache errors must not recommend update, got: {message}"
+        );
+    }
+
+    #[test]
+    fn git_snapshot_read_rejects_symlink_root() {
+        let temp = TempDir::new().unwrap();
+        let agents = temp.path().join(".agents");
+        fs::create_dir_all(&agents).unwrap();
+        let config_path = agents.join("agentsync.toml");
+        let selection = PluginSelection {
+            marketplace: "internal".to_string(),
+            plugin: "engineering".to_string(),
+        };
+        let config = PluginsConfig {
+            enabled: true,
+            lockfile: "plugins.lock.toml".to_string(),
+            marketplaces: BTreeMap::new(),
+            selections: vec![selection.clone()],
+        };
+        let manager = PluginManager::new(temp.path().to_path_buf(), config_path, config);
+        let mut plugin = sample_locked_plugin(&selection.marketplace, &selection.plugin);
+        plugin.source.kind = LockedSourceKind::Git;
+        plugin.source.location = "https://github.com/example/repo".to_string();
+        plugin.source.revision = "0123456789abcdef0123456789abcdef01234567".to_string();
+        plugin.provenance.resolved_revision = plugin.source.revision.clone();
+        let mut lock = PluginLock::default();
+        lock.plugins.insert(plugin.key(), plugin.clone());
+        lock.save_atomic(&manager.lock_path().unwrap()).unwrap();
+
+        let destination = manager.git_source_cache_path(&plugin.source).unwrap();
+        fs::create_dir_all(destination.parent().unwrap()).unwrap();
+        let target = temp.path().join("outside-snapshot");
+        fs::create_dir_all(&target).unwrap();
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&target, &destination).unwrap();
+            let error = manager
+                .apply(true)
+                .expect_err("symlinked Git snapshot must be rejected");
+            assert!(error.to_string().contains("symlink"), "got: {}", error);
+        }
+    }
+
+    fn marketplace_fixture() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/plugin-marketplace")
+    }
+
+    fn copy_tree(source: &Path, target: &Path) {
+        fs::create_dir_all(target).unwrap();
+        for entry in fs::read_dir(source).unwrap() {
+            let entry = entry.unwrap();
+            let source_path = entry.path();
+            let target_path = target.join(entry.file_name());
+            if source_path.is_dir() {
+                copy_tree(&source_path, &target_path);
+            } else {
+                fs::create_dir_all(target_path.parent().unwrap()).unwrap();
+                fs::copy(source_path, target_path).unwrap();
+            }
+        }
+    }
+
+    fn git_locked_manager(
+        fetcher_root: PathBuf,
+    ) -> (TempDir, PluginManager, PluginSelection, PathBuf, PathBuf) {
+        let project = TempDir::new().unwrap();
+        let agents = project.path().join(".agents");
+        fs::create_dir_all(&agents).unwrap();
+        let config_path = agents.join("agentsync.toml");
+        let config_body = r#"
+[plugins]
+enabled = true
+lockfile = "plugins.lock.toml"
+
+[plugins.marketplaces.internal]
+source = "https://github.com/other/repo"
+reference = "main"
+
+[[plugins.selections]]
+marketplace = "internal"
+plugin = "engineering"
+"#;
+        fs::write(&config_path, config_body).unwrap();
+        let selection = PluginSelection {
+            marketplace: "internal".to_string(),
+            plugin: "engineering".to_string(),
+        };
+        let discovered = discover_plugin(&fetcher_root, "internal", "engineering").unwrap();
+        let sha = "0123456789abcdef0123456789abcdef01234567";
+        let locked = discovered
+            .to_locked_plugin(
+                "internal",
+                "engineering",
+                &ResolvedMarketplaceSource {
+                    root: fetcher_root.clone(),
+                    locked_source: LockedSource {
+                        kind: LockedSourceKind::Git,
+                        location: "https://github.com/example/repo".to_string(),
+                        revision: sha.to_string(),
+                    },
+                    temp: None,
+                },
+            )
+            .unwrap();
+        let config = PluginsConfig {
+            enabled: true,
+            lockfile: "plugins.lock.toml".to_string(),
+            marketplaces: BTreeMap::from([(
+                "internal".to_string(),
+                MarketplaceConfig {
+                    source: "https://github.com/other/repo".to_string(),
+                    reference: Some("main".to_string()),
+                },
+            )]),
+            selections: vec![selection.clone()],
+        };
+        let fixture = fetcher_root.clone();
+        let manager = PluginManager::new(project.path().to_path_buf(), config_path.clone(), config)
+            .with_git_snapshot_fetcher(move |_source| {
+                let temp = TempDir::new()?;
+                copy_tree(&fixture, temp.path());
+                Ok(temp)
+            });
+        let mut lock = PluginLock::default();
+        lock.plugins.insert(locked.key(), locked);
+        lock.save_atomic(&manager.lock_path().unwrap()).unwrap();
+        (
+            project,
+            manager,
+            selection,
+            config_path,
+            agents.join("plugins.lock.toml"),
+        )
+    }
+
+    #[test]
+    fn restore_fetches_locked_sha_without_writing_lock_or_config() {
+        let fixture = marketplace_fixture();
+        let (project, manager, selection, config_path, lock_path) = git_locked_manager(fixture);
+        let config_before = fs::read(&config_path).unwrap();
+        let lock_before = fs::read(&lock_path).unwrap();
+
+        manager.restore(Some(&selection)).unwrap();
+
+        assert_eq!(fs::read(&config_path).unwrap(), config_before);
+        assert_eq!(fs::read(&lock_path).unwrap(), lock_before);
+        let lock = PluginLock::load(&lock_path).unwrap();
+        let locked = lock.plugins.get("internal/engineering").unwrap();
+        assert!(
+            manager
+                .git_source_cache_path(&locked.source)
+                .unwrap()
+                .join(".agents/plugins/marketplace.json")
+                .is_file()
+        );
+        let _ = project;
+    }
+
+    #[test]
+    fn restore_uses_lock_location_not_config_marketplace_source() {
+        let fixture = marketplace_fixture();
+        let (_project, manager, selection, _, lock_path) = git_locked_manager(fixture);
+        let fetched = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let fixture = marketplace_fixture();
+        let config = manager.config.clone();
+        let manager = PluginManager::new(
+            manager.project_root.clone(),
+            manager.config_path.clone(),
+            config,
+        )
+        .with_git_snapshot_fetcher({
+            let captured = fetched.clone();
+            move |source| {
+                *captured.lock().unwrap() = Some(source.location.clone());
+                let temp = TempDir::new()?;
+                copy_tree(&fixture, temp.path());
+                Ok(temp)
+            }
+        });
+        manager.restore(Some(&selection)).unwrap();
+        let lock = PluginLock::load(&lock_path).unwrap();
+        assert_eq!(
+            lock.plugins["internal/engineering"].source.location,
+            "https://github.com/example/repo"
+        );
+        assert_eq!(
+            fetched.lock().unwrap().as_deref(),
+            Some("https://github.com/example/repo")
+        );
+    }
+
+    #[test]
+    fn apply_restores_missing_git_snapshot_without_changing_lock() {
+        let fixture = marketplace_fixture();
+        let (_project, manager, _, config_path, lock_path) = git_locked_manager(fixture);
+        let config_before = fs::read(&config_path).unwrap();
+        let lock_before = fs::read(&lock_path).unwrap();
+
+        let result = manager.apply(false).unwrap();
+        assert!(result.created > 0 || result.updated > 0);
+        assert_eq!(fs::read(&config_path).unwrap(), config_before);
+        assert_eq!(fs::read(&lock_path).unwrap(), lock_before);
+        assert!(
+            manager
+                .project_root
+                .join(".agents/skills/review/SKILL.md")
+                .is_file()
+        );
+    }
+
+    #[test]
+    fn apply_offline_does_not_restore_missing_snapshot() {
+        let fixture = marketplace_fixture();
+        let (_project, manager, _, config_path, lock_path) = git_locked_manager(fixture);
+        let lock_before = fs::read(&lock_path).unwrap();
+        let config_before = fs::read(&config_path).unwrap();
+        let error = manager
+            .apply_with(PluginApplyMode {
+                dry_run: false,
+                offline: true,
+            })
+            .expect_err("offline apply must not restore");
+        let message = error.to_string();
+        assert!(message.contains("plugin restore"), "{message}");
+        assert!(!message.contains("plugin update"), "{message}");
+        assert_eq!(fs::read(&lock_path).unwrap(), lock_before);
+        assert_eq!(fs::read(&config_path).unwrap(), config_before);
+    }
+
+    #[test]
+    fn apply_does_not_repair_invalid_snapshot_but_restore_does() {
+        let fixture = marketplace_fixture();
+        let (_project, manager, selection, _, lock_path) = git_locked_manager(fixture.clone());
+        let lock = PluginLock::load(&lock_path).unwrap();
+        let locked = lock.plugins["internal/engineering"].clone();
+        let destination = manager.git_source_cache_path(&locked.source).unwrap();
+        fs::create_dir_all(&destination).unwrap();
+        fs::write(destination.join("junk"), "corrupt").unwrap();
+
+        manager
+            .apply(false)
+            .expect_err("apply must not repair invalid snapshots");
+
+        manager.restore(Some(&selection)).unwrap();
+        assert!(
+            destination
+                .join(".agents/plugins/marketplace.json")
+                .is_file()
         );
     }
 

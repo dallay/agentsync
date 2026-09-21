@@ -19,4 +19,4 @@ pub mod update_check;
 pub use config::Config;
 pub use linker::{Linker, SyncOptions, SyncResult};
 pub use mcp::{McpAgent, McpAgentDocumentation, McpGenerator, McpSyncResult};
-pub use plugins::{PluginApplyResult, PluginManager, PluginSource, PluginsConfig};
+pub use plugins::{PluginApplyMode, PluginApplyResult, PluginManager, PluginSource, PluginsConfig};
