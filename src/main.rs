@@ -10,8 +10,8 @@ use std::path::PathBuf;
 
 use agentsync::logging::LogFormat;
 use agentsync::{
-    Linker, PluginManager, SyncOptions, SyncResult, config::Config, gitignore, init,
-    plugins::PluginApplyResult,
+    Linker, PluginApplyMode, PluginManager, SyncOptions, SyncResult, config::Config, gitignore,
+    init, plugins::PluginApplyResult,
 };
 use tracing_subscriber::filter::LevelFilter;
 mod commands;
@@ -27,6 +27,10 @@ use output::{
     render_clean_summary_with_color, render_dry_run_notice, render_gitignore_phase_with_color,
     render_mcp_phase, render_mcp_summary_with_color, render_sync_phase_with_color,
 };
+
+fn should_spawn_update_check(command: &Commands) -> bool {
+    !matches!(command, Commands::Apply { offline: true, .. })
+}
 
 fn current_project_root<F>(path: Option<PathBuf>, current_dir: F) -> Result<PathBuf>
 where
@@ -173,6 +177,9 @@ enum Commands {
         agents: Option<Vec<String>>,
         #[arg(long)]
         no_gitignore: bool,
+        /// Do not use the network. Missing Git plugin snapshots fail instead of restoring.
+        #[arg(long)]
+        offline: bool,
     },
     /// Remove all symlinks created by agentsync
     Clean {
@@ -208,7 +215,9 @@ fn run() -> Result<()> {
     // Initialize tracing subscriber for structured logging. Respects RUST_LOG env var.
     let cli = Cli::parse();
     agentsync::logging::init_logging(cli.log_format, cli.log_level);
-    agentsync::update_check::spawn();
+    if should_spawn_update_check(&cli.command) {
+        agentsync::update_check::spawn();
+    }
 
     let result = match cli.command {
         Commands::Skill { cmd, project_root } => run_in_root_span("skill", || {
@@ -254,6 +263,7 @@ fn run() -> Result<()> {
             verbose,
             agents,
             no_gitignore,
+            offline,
         } => run_in_root_span("apply", || {
             handle_apply(ApplyArgs {
                 path,
@@ -263,6 +273,7 @@ fn run() -> Result<()> {
                 verbose,
                 agents,
                 no_gitignore,
+                offline,
             })?;
             Ok(())
         }),
@@ -356,6 +367,7 @@ struct ApplyArgs {
     verbose: bool,
     agents: Option<Vec<String>>,
     no_gitignore: bool,
+    offline: bool,
 }
 
 fn handle_apply(args: ApplyArgs) -> Result<()> {
@@ -374,7 +386,10 @@ fn handle_apply(args: ApplyArgs) -> Result<()> {
         config_path.clone(),
         config.plugins.clone(),
     );
-    let plugin_result = plugin_manager.apply(args.dry_run)?;
+    let plugin_result = plugin_manager.apply_with(PluginApplyMode {
+        dry_run: args.dry_run,
+        offline: args.offline,
+    })?;
     let linker = Linker::new(config, config_path);
     let use_color = human_use_color();
     if args.dry_run {
@@ -532,7 +547,7 @@ fn handle_clean(
 
 #[cfg(test)]
 mod tests {
-    use super::{Cli, Commands, LogFormat, current_project_root};
+    use super::{Cli, Commands, LogFormat, current_project_root, should_spawn_update_check};
     use crate::output::{
         init_next_steps_lines, render_apply_summary_with_color, render_clean_phase_with_color,
         render_clean_summary_with_color, render_gitignore_phase_with_color,
@@ -845,5 +860,17 @@ mod tests {
     #[test]
     fn cli_rejects_invalid_log_format() {
         assert!(Cli::try_parse_from(["agentsync", "status", "--log-format", "xml"]).is_err());
+    }
+
+    #[test]
+    fn apply_offline_skips_update_checker() {
+        let cli = Cli::try_parse_from(["agentsync", "apply", "--offline"])
+            .expect("apply --offline should parse");
+        assert!(!should_spawn_update_check(&cli.command));
+        let online = Cli::try_parse_from(["agentsync", "apply"]).expect("apply should parse");
+        assert!(should_spawn_update_check(&online.command));
+        let dry_run = Cli::try_parse_from(["agentsync", "apply", "--dry-run"])
+            .expect("apply --dry-run should parse");
+        assert!(should_spawn_update_check(&dry_run.command));
     }
 }

@@ -129,3 +129,24 @@ fn plugin_cli_covers_human_json_update_and_invalid_selection_paths() {
     let vendor_json: serde_json::Value = serde_json::from_slice(&vendor_spelling.stdout).unwrap();
     assert_eq!(vendor_json["plugin"], "internal/engineering");
 }
+
+#[test]
+fn plugin_cli_restore_local_source_is_noop() {
+    let project = setup_project();
+    let add = run_plugin(&project, &["add", "internal/engineering"]);
+    assert!(add.status.success(), "add failed: {:?}", add);
+
+    let restore = run_plugin(&project, &["restore"]);
+    assert!(restore.status.success(), "restore failed: {:?}", restore);
+    assert!(String::from_utf8_lossy(&restore.stdout).contains("restored"));
+
+    let restore_one = run_plugin(&project, &["restore", "engineering@internal", "--json"]);
+    assert!(
+        restore_one.status.success(),
+        "restore selection failed: {:?}",
+        restore_one
+    );
+    let json: serde_json::Value = serde_json::from_slice(&restore_one.stdout).unwrap();
+    assert_eq!(json["status"], "restored");
+    assert_eq!(json["skipped"], 1);
+}
