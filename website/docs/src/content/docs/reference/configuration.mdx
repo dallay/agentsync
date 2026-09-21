@@ -83,6 +83,15 @@ plugin = "engineering"
 - Vendor marketplace files are declaration/discovery inputs; they do not silently activate Claude or
   Codex plugins.
 - The first supported plugin layout is `skills/<skill-id>/SKILL.md` plus a root `.mcp.json`.
+- Plugin MCP declarations are treated as executable configuration. Values for credential-like
+  environment variables and headers (`TOKEN`, `SECRET`, `PASSWORD`, `API_KEY`, `Authorization`,
+  and similar names) must use local environment references such as `${TOKEN}` rather than literal
+  credentials; AgentSync rejects literal values before fan-out.
+- ZIP downloads are bounded both by compressed download size and by extracted entry count/size.
+  These limits protect a clone or `plugin add` from archive bombs, but do not replace source review
+  or vendor trust.
+- Private GitHub resolution may use `GITHUB_TOKEN` from the process environment. The token is sent
+  only to GitHub requests and is never written to the lockfile, source snapshot, or generated config.
 
 Use `agentsync plugin status` to validate the lock and source without changing files.
 

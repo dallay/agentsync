@@ -2,8 +2,10 @@ use flate2::read::GzDecoder;
 // futures_util::StreamExt is used locally where needed
 use crate::skills::registry::RegistryEntry;
 use anyhow::Error as AnyhowError;
+use reqwest::header::LOCATION;
 use reqwest::{Client, Error as ReqwestError};
 use sha2::{Digest, Sha256};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use tar::Archive;
 use tempfile::TempDir;
@@ -12,6 +14,14 @@ use tracing::debug;
 use walkdir::WalkDir;
 use zip::read::ZipArchive;
 use zip::result::ZipError;
+
+/// Maximum number of archive entries we will inspect or materialize.
+///
+/// This is deliberately independent from the compressed download limit: a tiny archive can
+/// still contain millions of empty files and exhaust filesystem metadata/inodes.
+const MAX_ARCHIVE_ENTRIES: usize = 10_000;
+/// Maximum number of bytes materialized from a ZIP archive.
+const MAX_ZIP_DECOMPRESSED_SIZE: u64 = 500 * 1024 * 1024;
 
 #[derive(Debug, Error)]
 pub enum SkillInstallError {
@@ -223,6 +233,13 @@ pub fn install_from_zip(
     let tmp = tempfile::TempDir::new().map_err(SkillInstallError::Io)?;
     let mut zip = ZipArchive::new(reader).map_err(SkillInstallError::ZipArchive)?;
 
+    if zip.len() > MAX_ARCHIVE_ENTRIES {
+        return Err(SkillInstallError::Other(format!(
+            "archive contains too many entries: {} exceeds {MAX_ARCHIVE_ENTRIES}",
+            zip.len()
+        )));
+    }
+    let mut extracted_bytes = 0_u64;
     for i in 0..zip.len() {
         let mut file = zip.by_index(i).map_err(SkillInstallError::ZipArchive)?;
         let filename = file.name();
@@ -238,7 +255,15 @@ pub fn install_from_zip(
                 std::fs::create_dir_all(parent).map_err(SkillInstallError::Io)?;
             }
             let mut out = std::fs::File::create(&outpath).map_err(SkillInstallError::Io)?;
-            std::io::copy(&mut file, &mut out).map_err(SkillInstallError::Io)?;
+            let remaining = MAX_ZIP_DECOMPRESSED_SIZE.saturating_sub(extracted_bytes);
+            let mut limited = (&mut file).take(remaining.saturating_add(1));
+            let written = std::io::copy(&mut limited, &mut out).map_err(SkillInstallError::Io)?;
+            if written > remaining {
+                return Err(SkillInstallError::Other(format!(
+                    "decompressed archive too large: exceeds {MAX_ZIP_DECOMPRESSED_SIZE} byte limit"
+                )));
+            }
+            extracted_bytes = extracted_bytes.saturating_add(written);
         }
     }
 
@@ -314,6 +339,17 @@ enum FetchedSource {
 }
 
 pub async fn fetch_and_unpack_to_tempdir(url: &str) -> Result<TempDir, SkillInstallError> {
+    fetch_and_unpack_to_tempdir_with_bearer(url, None).await
+}
+
+/// Fetch and unpack an archive while optionally authenticating the request with a bearer token.
+///
+/// The token is supplied by the caller and is never written to the temporary directory or
+/// returned in an error message. This is used for private GitHub plugin sources.
+pub async fn fetch_and_unpack_to_tempdir_with_bearer(
+    url: &str,
+    bearer_token: Option<&str>,
+) -> Result<TempDir, SkillInstallError> {
     use std::io::Cursor;
 
     // Support subpaths via fragments, e.g. https://example.com/archive.zip#subpath
@@ -324,7 +360,7 @@ pub async fn fetch_and_unpack_to_tempdir(url: &str) -> Result<TempDir, SkillInst
 
     let tmp = tempfile::TempDir::new().map_err(SkillInstallError::Io)?;
 
-    let (source, ext) = fetch_archive_data(url_base, tmp.path()).await?;
+    let (source, ext) = fetch_archive_data(url_base, tmp.path(), bearer_token).await?;
 
     let data = match source {
         FetchedSource::DirectoryCopied => return Ok(tmp),
@@ -349,6 +385,7 @@ pub async fn fetch_and_unpack_to_tempdir(url: &str) -> Result<TempDir, SkillInst
 async fn fetch_archive_data(
     url_base: &str,
     tmp_path: &std::path::Path,
+    bearer_token: Option<&str>,
 ) -> Result<(FetchedSource, String), SkillInstallError> {
     let is_file = url_base.starts_with("file://");
     let is_local = url_base.starts_with('/') || url_base.chars().nth(1) == Some(':');
@@ -356,7 +393,7 @@ async fn fetch_archive_data(
     if is_file || is_local {
         fetch_local_data(url_base, is_file, tmp_path)
     } else {
-        fetch_remote_data(url_base, tmp_path).await
+        fetch_remote_data(url_base, tmp_path, bearer_token).await
     }
 }
 
@@ -424,6 +461,7 @@ fn fetch_local_data(
 async fn fetch_remote_data(
     url_base: &str,
     tmp_path: &std::path::Path,
+    bearer_token: Option<&str>,
 ) -> Result<(FetchedSource, String), SkillInstallError> {
     const MAX_DOWNLOAD_SIZE: u64 = 100 * 1024 * 1024; // 100 MB
 
@@ -433,12 +471,16 @@ async fn fetch_remote_data(
         .unwrap_or("")
         .to_ascii_lowercase();
 
-    let client = Client::new();
-    let resp = client
-        .get(url_base)
-        .send()
-        .await
-        .map_err(SkillInstallError::Network)?
+    let client = if bearer_token.filter(|token| !token.is_empty()).is_some() {
+        Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(SkillInstallError::Network)?
+    } else {
+        Client::new()
+    };
+    let resp = fetch_remote_response(&client, url_base, bearer_token)
+        .await?
         .error_for_status()
         .map_err(SkillInstallError::Network)?;
 
@@ -479,6 +521,48 @@ async fn fetch_remote_data(
     Ok((FetchedSource::Archive(data), ext))
 }
 
+async fn fetch_remote_response(
+    client: &Client,
+    url: &str,
+    bearer_token: Option<&str>,
+) -> Result<reqwest::Response, SkillInstallError> {
+    let authenticated = bearer_token.filter(|token| !token.is_empty());
+    let mut current = url.to_string();
+    for _ in 0..=5 {
+        let mut request = client.get(&current);
+        if let Some(token) = authenticated {
+            request = request.bearer_auth(token);
+        }
+        let response = request.send().await.map_err(SkillInstallError::Network)?;
+        if !response.status().is_redirection() {
+            return Ok(response);
+        }
+        let location = response
+            .headers()
+            .get(LOCATION)
+            .and_then(|value| value.to_str().ok())
+            .ok_or_else(|| {
+                SkillInstallError::Other("redirect response had no valid location".into())
+            })?;
+        let next = url::Url::parse(&current)
+            .and_then(|base| base.join(location))
+            .map_err(|error| {
+                SkillInstallError::Other(format!("invalid archive redirect: {error}"))
+            })?;
+        if authenticated.is_some()
+            && !matches!(next.host_str(), Some("github.com" | "codeload.github.com"))
+        {
+            return Err(SkillInstallError::Validation(
+                "authenticated GitHub archive redirected to an untrusted host".into(),
+            ));
+        }
+        current = next.to_string();
+    }
+    Err(SkillInstallError::Other(
+        "too many redirects while fetching archive".into(),
+    ))
+}
+
 fn unpack_zip(
     reader: impl std::io::Read + std::io::Seek,
     dest: &std::path::Path,
@@ -486,7 +570,15 @@ fn unpack_zip(
 ) -> Result<(), SkillInstallError> {
     let mut zip = ZipArchive::new(reader).map_err(SkillInstallError::ZipArchive)?;
 
+    if zip.len() > MAX_ARCHIVE_ENTRIES {
+        return Err(SkillInstallError::Other(format!(
+            "archive contains too many entries: {} exceeds {MAX_ARCHIVE_ENTRIES}",
+            zip.len()
+        )));
+    }
+
     let common_root = zip_common_root(&mut zip)?;
+    let mut extracted_bytes = 0_u64;
 
     for i in 0..zip.len() {
         let mut file = zip.by_index(i).map_err(SkillInstallError::ZipArchive)?;
@@ -513,7 +605,15 @@ fn unpack_zip(
                 std::fs::create_dir_all(parent).map_err(SkillInstallError::Io)?;
             }
             let mut out = std::fs::File::create(&outpath).map_err(SkillInstallError::Io)?;
-            std::io::copy(&mut file, &mut out).map_err(SkillInstallError::Io)?;
+            let remaining = MAX_ZIP_DECOMPRESSED_SIZE.saturating_sub(extracted_bytes);
+            let mut limited = (&mut file).take(remaining.saturating_add(1));
+            let written = std::io::copy(&mut limited, &mut out).map_err(SkillInstallError::Io)?;
+            if written > remaining {
+                return Err(SkillInstallError::Other(format!(
+                    "decompressed archive too large: exceeds {MAX_ZIP_DECOMPRESSED_SIZE} byte limit"
+                )));
+            }
+            extracted_bytes = extracted_bytes.saturating_add(written);
         }
     }
     Ok(())
@@ -783,6 +883,23 @@ mod tests {
             }
             other => panic!("Expected PathTraversal error, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_zip_entry_count_limit_rejection() {
+        let mut buf = Vec::new();
+        {
+            let mut zip = ZipWriter::new(Cursor::new(&mut buf));
+            for index in 0..=MAX_ARCHIVE_ENTRIES {
+                zip.start_file(format!("file-{index}"), FileOptions::<()>::default())
+                    .unwrap();
+            }
+            zip.finish().unwrap();
+        }
+
+        let destination = tempfile::tempdir().unwrap();
+        let error = unpack_zip(Cursor::new(buf), destination.path(), None).unwrap_err();
+        assert!(error.to_string().contains("too many entries"));
     }
 
     // --- zip_common_root tests ---
