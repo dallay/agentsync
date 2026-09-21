@@ -158,9 +158,16 @@ fn print_result(
 }
 
 fn parse_selection(value: &str) -> Result<PluginSelection> {
-    let (marketplace, plugin) = value
-        .split_once('/')
-        .ok_or_else(|| anyhow::anyhow!("plugin selection must use marketplace/plugin"))?;
+    let (marketplace, plugin) = if let Some((marketplace, plugin)) = value.split_once('/') {
+        (marketplace, plugin)
+    } else if let Some((plugin, marketplace)) = value.split_once('@') {
+        // Accept the notation used by vendor CLIs as well as AgentSync's canonical form.
+        (marketplace, plugin)
+    } else {
+        return Err(anyhow::anyhow!(
+            "plugin selection must use marketplace/plugin or plugin@marketplace"
+        ));
+    };
     ensure_no_slash(marketplace, "marketplace")?;
     ensure_no_slash(plugin, "plugin")?;
     Ok(PluginSelection {
@@ -170,7 +177,7 @@ fn parse_selection(value: &str) -> Result<PluginSelection> {
 }
 
 fn ensure_no_slash(value: &str, kind: &str) -> Result<()> {
-    if value.is_empty() || value.contains('/') || value.contains('\\') {
+    if value.is_empty() || value.contains(['/', '\\', '@']) {
         bail!("invalid {kind} in plugin selection");
     }
     Ok(())

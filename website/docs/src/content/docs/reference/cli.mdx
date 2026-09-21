@@ -332,6 +332,9 @@ agentsync plugin [OPTIONS] <COMMAND>
 The project must declare the marketplace in `.agents/agentsync.toml`; `add` and `update` persist
 the selected plugin in that file if it is not already present.
 
+Plugin selections accept either `<MARKETPLACE/PLUGIN>` or the vendor-style
+`<PLUGIN@MARKETPLACE>` spelling for `add`, `update`, and `remove`.
+
 #### `add`
 
 Resolve the configured marketplace reference, validate the selected plugin, write
