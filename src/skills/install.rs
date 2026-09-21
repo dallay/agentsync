@@ -831,6 +831,22 @@ mod tests {
     use zip::ZipWriter;
     use zip::write::FileOptions;
 
+    async fn spawn_http_server(responses: Vec<&'static [u8]>) -> std::net::SocketAddr {
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+        std::thread::spawn(move || {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            ready_tx.send(listener.local_addr().unwrap()).unwrap();
+            for response in responses {
+                let (mut connection, _) = listener.accept().unwrap();
+                use std::io::{Read, Write};
+                let mut request = [0_u8; 512];
+                let _ = connection.read(&mut request);
+                connection.write_all(response).unwrap();
+            }
+        });
+        ready_rx.await.unwrap()
+    }
+
     #[test]
     fn authenticated_archive_urls_require_https_and_github_hosts() {
         for value in [
@@ -1425,19 +1441,8 @@ mod tests {
 
     #[tokio::test]
     async fn fetch_remote_data_uses_async_temporary_file_operations() {
-        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
-        std::thread::spawn(move || {
-            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-            ready_tx.send(listener.local_addr().unwrap()).unwrap();
-            let (mut connection, _) = listener.accept().unwrap();
-            use std::io::{Read, Write};
-            let mut request = [0_u8; 512];
-            let _ = connection.read(&mut request);
-            connection
-                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 7\r\n\r\narchive")
-                .unwrap();
-        });
-        let address = ready_rx.await.unwrap();
+        let address =
+            spawn_http_server(vec![b"HTTP/1.1 200 OK\r\nContent-Length: 7\r\n\r\narchive"]).await;
         let temp = tempfile::tempdir().unwrap();
         let (source, extension) =
             fetch_remote_data(&format!("http://{address}/archive.zip"), temp.path(), None)
@@ -1446,5 +1451,23 @@ mod tests {
         assert_eq!(extension, "zip");
         assert!(matches!(source, FetchedSource::Archive(data) if data == b"archive"));
         assert!(!temp.path().join("download.tmp").exists());
+    }
+
+    #[tokio::test]
+    async fn fetch_remote_data_follows_redirects_without_authentication() {
+        let address = spawn_http_server(vec![
+            b"HTTP/1.1 302 Found\r\nLocation: /archive.zip\r\nContent-Length: 0\r\n\r\n",
+            b"HTTP/1.1 200 OK\r\nContent-Length: 7\r\n\r\narchive",
+        ])
+        .await;
+        let temp = tempfile::tempdir().unwrap();
+        let (source, _) = fetch_remote_data(
+            &format!("http://{address}/redirect-start.zip"),
+            temp.path(),
+            None,
+        )
+        .await
+        .unwrap();
+        assert!(matches!(source, FetchedSource::Archive(data) if data == b"archive"));
     }
 }
