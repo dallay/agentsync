@@ -528,7 +528,7 @@ async fn fetch_remote_response(
     for _ in 0..=5 {
         let current_url = url::Url::parse(&current)
             .map_err(|error| SkillInstallError::Other(format!("invalid archive URL: {error}")))?;
-        if current_url.scheme() != "https" {
+        if authenticated.is_some() && current_url.scheme() != "https" {
             return Err(SkillInstallError::Validation(
                 "archive URL must use HTTPS".into(),
             ));
@@ -558,7 +558,7 @@ async fn fetch_remote_response(
             .map_err(|error| {
                 SkillInstallError::Other(format!("invalid archive redirect: {error}"))
             })?;
-        if next.scheme() != "https" {
+        if authenticated.is_some() && next.scheme() != "https" {
             return Err(SkillInstallError::Validation(
                 "archive redirect URL must use HTTPS".into(),
             ));
@@ -1446,7 +1446,7 @@ mod tests {
         assert!(matches!(
             result,
             Err(SkillInstallError::Validation(message))
-                if message == "authenticated GitHub archive URL is untrusted"
+                if message == "archive URL must use HTTPS"
         ));
 
         let result = fetch_remote_response(&client, "not a URL", Some("token")).await;
@@ -1468,7 +1468,7 @@ mod tests {
         assert!(matches!(
             result,
             Err(SkillInstallError::Validation(message))
-                if message == "authenticated GitHub archive URL is untrusted"
+                if message == "archive URL must use HTTPS"
         ));
     }
 
