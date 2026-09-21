@@ -368,7 +368,10 @@ agentsync plugin list [--json]
 #### `status`
 
 Validate locked source content and report drift without materializing, downloading, or executing
-anything. Missing Git snapshots fail; status never restores them.
+anything. Missing Git snapshots fail; status never restores them. Plugin MCP declarations are
+reported as `ALLOWED` or `PENDING`; `ALLOWED` means approved by `plugins.allowed_mcp`, not that
+MCP will necessarily be written when global MCP or agent filters disable it. Raw `${ENV}`
+references are reported literally and never expanded.
 
 ```bash
 agentsync plugin status [--json]
@@ -390,7 +393,9 @@ invalid existing snapshot; use `plugin restore` for that.
 #### `remove`
 
 Remove only skills recorded as owned by the selected plugin, remove its lock entry, and remove the
-matching selection from `agentsync.toml`.
+matching selection from `agentsync.toml`. It also revokes all `allowed_mcp` approvals under
+`plugin/<marketplace>/<plugin>/` atomically. Re-adding the plugin starts its MCP servers as
+`PENDING`.
 
 ```bash
 agentsync plugin remove <MARKETPLACE/PLUGIN> [--json]

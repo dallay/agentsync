@@ -33,6 +33,7 @@ fn setup_project() -> TempDir {
 [plugins]
 enabled = true
 lockfile = "plugins.lock.toml"
+allowed_mcp = ["plugin/internal/engineering/safe-fixture"]
 
 [plugins.marketplaces.internal]
 source = "../marketplace"
@@ -72,6 +73,11 @@ fn plugin_cli_add_status_list_and_remove_are_deterministic() {
     assert!(status.status.success(), "status failed: {:?}", status);
     let status_json: serde_json::Value = serde_json::from_slice(&status.stdout).unwrap();
     assert_eq!(status_json["status"], "ok");
+    assert_eq!(status_json["servers"][0]["approval"], "allowed");
+    assert_eq!(
+        status_json["servers"][0]["name"],
+        "plugin/internal/engineering/safe-fixture"
+    );
 
     let remove = run_plugin(&project, &["remove", "internal/engineering"]);
     assert!(remove.status.success(), "remove failed: {:?}", remove);
@@ -81,6 +87,7 @@ fn plugin_cli_add_status_list_and_remove_are_deterministic() {
     let config = fs::read_to_string(project.path().join(".agents/agentsync.toml")).unwrap();
     assert!(!config.contains("marketplace = \"internal\""));
     assert!(!config.contains("plugin = \"engineering\""));
+    assert!(!config.contains("allowed_mcp"));
     let lock = fs::read_to_string(project.path().join(".agents/plugins.lock.toml")).unwrap();
     assert!(!lock.contains("engineering"));
 }

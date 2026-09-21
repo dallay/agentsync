@@ -45,6 +45,7 @@ enabled = true
 [plugins]
 enabled = true
 lockfile = "plugins.lock.toml"
+allowed_mcp = ["plugin/internal/engineering/safe-fixture"]
 
 [plugins.marketplaces.internal]
 source = "../marketplace"
