@@ -581,7 +581,7 @@ impl PluginManager {
         let original_config = if self.config.selections.contains(selection) {
             None
         } else {
-            Some(fs::read(&self.config_path).with_context(|| {
+            Some(tokio::fs::read(&self.config_path).await.with_context(|| {
                 format!(
                     "failed to read config before adding plugin selection: {}",
                     self.config_path.display()
@@ -1200,29 +1200,40 @@ fn read_plugin_mcp(plugin_root: &Path) -> Result<BTreeMap<String, McpServerConfi
 /// literal tokens/passwords must never be copied into those files. Environment references remain
 /// portable while allowing the consuming agent to resolve the value locally.
 fn validate_plugin_mcp_server(name: &str, server: &McpServerConfig) -> Result<()> {
-    for (key, value) in server.env.iter().chain(server.headers.iter()) {
-        let normalized = key.to_ascii_lowercase().replace(['-', '.'], "_");
-        let sensitive = [
-            "token",
-            "secret",
-            "password",
-            "passwd",
-            "credential",
-            "api_key",
-            "apikey",
-            "authorization",
-            "cookie",
-        ]
-        .iter()
-        .any(|marker| normalized.contains(marker));
-        if sensitive {
+    for (key, value) in &server.env {
+        if is_sensitive_mcp_key(key) {
             ensure!(
                 is_environment_reference(value),
                 "plugin MCP server {name} contains a literal secret in {key}; use an environment reference such as ${{TOKEN}}"
             );
         }
     }
+    for (key, value) in &server.headers {
+        if is_sensitive_mcp_key(key) {
+            ensure!(
+                is_header_environment_reference(value),
+                "plugin MCP server {name} contains a literal secret in {key}; use an environment reference such as ${{TOKEN}}"
+            );
+        }
+    }
     Ok(())
+}
+
+fn is_sensitive_mcp_key(key: &str) -> bool {
+    let normalized = key.to_ascii_lowercase().replace(['-', '.'], "_");
+    [
+        "token",
+        "secret",
+        "password",
+        "passwd",
+        "credential",
+        "api_key",
+        "apikey",
+        "authorization",
+        "cookie",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker))
 }
 
 fn is_environment_reference(value: &str) -> bool {
@@ -1235,24 +1246,21 @@ fn is_environment_reference(value: &str) -> bool {
             })
     };
 
-    let mut remainder = value;
-    let mut found_reference = false;
-    while let Some(start) = remainder.find("${") {
-        let after_prefix = &remainder[start + 2..];
-        let Some(end) = after_prefix.find('}') else {
-            return false;
-        };
-        if !valid_name(&after_prefix[..end]) {
-            return false;
-        }
-        found_reference = true;
-        remainder = &after_prefix[end + 1..];
+    if let Some(name) = value
+        .strip_prefix("${")
+        .and_then(|value| value.strip_suffix('}'))
+    {
+        return valid_name(name);
     }
-    if found_reference {
-        return true;
-    }
-
     value.strip_prefix('$').is_some_and(valid_name)
+}
+
+fn is_header_environment_reference(value: &str) -> bool {
+    let value = value.trim();
+    is_environment_reference(value)
+        || value
+            .strip_prefix("Bearer ")
+            .is_some_and(is_environment_reference)
 }
 
 fn parse_plugin_source(value: &Value) -> Result<Option<String>> {
@@ -2251,6 +2259,21 @@ mod tests {
             root.join(".mcp.json"),
             serde_json::to_vec(&serde_json::json!({
                 "mcpServers": {
+                    "unsafe-header": {
+                        "command": "tool",
+                        "headers": {"Authorization": "literal-${API_TOKEN}"}
+                    }
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(read_plugin_mcp(root).is_err());
+
+        fs::write(
+            root.join(".mcp.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "mcpServers": {
                     "safe": {
                         "command": "tool",
                         "env": {"API_TOKEN": "${API_TOKEN}"},
@@ -2262,6 +2285,22 @@ mod tests {
         )
         .unwrap();
         assert!(read_plugin_mcp(root).is_ok());
+    }
+
+    #[test]
+    fn plugin_mcp_rejects_partial_environment_references() {
+        assert!(is_environment_reference("$API_TOKEN"));
+        assert!(is_environment_reference("${API_TOKEN}"));
+        assert!(!is_environment_reference("literal-${API_TOKEN}"));
+        assert!(!is_environment_reference("${API_TOKEN}-suffix"));
+
+        assert!(is_header_environment_reference("Bearer ${API_TOKEN}"));
+        assert!(!is_header_environment_reference(
+            "literal Bearer ${API_TOKEN}"
+        ));
+        assert!(!is_header_environment_reference(
+            "Bearer ${API_TOKEN}-suffix"
+        ));
     }
 
     #[test]

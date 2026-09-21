@@ -85,8 +85,9 @@ plugin = "engineering"
 - The first supported plugin layout is `skills/<skill-id>/SKILL.md` plus a root `.mcp.json`.
 - Plugin MCP declarations are treated as executable configuration. Values for credential-like
   environment variables and headers (`TOKEN`, `SECRET`, `PASSWORD`, `API_KEY`, `Authorization`,
-  and similar names) must use local environment references such as `${TOKEN}` rather than literal
-  credentials; AgentSync rejects literal values before fan-out.
+  and similar names) must use an exact local environment reference such as `${TOKEN}` rather than
+  literal credentials. Authorization headers may use the complete `Bearer ${TOKEN}` template;
+  AgentSync rejects literal prefixes and suffixes before fan-out.
 - ZIP downloads are bounded both by compressed download size and by extracted entry count/size.
   These limits protect a clone or `plugin add` from archive bombs, but do not replace source review
   or vendor trust.

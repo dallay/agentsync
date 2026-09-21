@@ -493,9 +493,10 @@ async fn fetch_remote_data(
         )));
     }
 
-    let stdfile =
-        std::fs::File::create(tmp_path.join("download.tmp")).map_err(SkillInstallError::Io)?;
-    let mut tmpfile = tokio::fs::File::from_std(stdfile);
+    let download_path = tmp_path.join("download.tmp");
+    let mut tmpfile = tokio::fs::File::create(&download_path)
+        .await
+        .map_err(SkillInstallError::Io)?;
     let mut stream = resp.bytes_stream();
     let mut total_bytes: u64 = 0;
     use futures_util::StreamExt as _;
@@ -504,7 +505,7 @@ async fn fetch_remote_data(
         let chunk = chunk.map_err(SkillInstallError::Network)?;
         total_bytes += chunk.len() as u64;
         if total_bytes > MAX_DOWNLOAD_SIZE {
-            let _ = std::fs::remove_file(tmp_path.join("download.tmp"));
+            let _ = tokio::fs::remove_file(&download_path).await;
             return Err(SkillInstallError::Other(format!(
                 "download too large: exceeded {MAX_DOWNLOAD_SIZE} byte limit while streaming"
             )));
@@ -516,8 +517,10 @@ async fn fetch_remote_data(
     }
     tmpfile.flush().await.map_err(SkillInstallError::Io)?;
 
-    let data = std::fs::read(tmp_path.join("download.tmp")).map_err(SkillInstallError::Io)?;
-    let _ = std::fs::remove_file(tmp_path.join("download.tmp"));
+    let data = tokio::fs::read(&download_path)
+        .await
+        .map_err(SkillInstallError::Io)?;
+    let _ = tokio::fs::remove_file(&download_path).await;
     Ok((FetchedSource::Archive(data), ext))
 }
 
@@ -529,6 +532,16 @@ async fn fetch_remote_response(
     let authenticated = bearer_token.filter(|token| !token.is_empty());
     let mut current = url.to_string();
     for _ in 0..=5 {
+        if authenticated.is_some() {
+            let current_url = url::Url::parse(&current).map_err(|error| {
+                SkillInstallError::Other(format!("invalid archive URL: {error}"))
+            })?;
+            if !is_trusted_github_archive_url(&current_url) {
+                return Err(SkillInstallError::Validation(
+                    "authenticated GitHub archive URL is untrusted".into(),
+                ));
+            }
+        }
         let mut request = client.get(&current);
         if let Some(token) = authenticated {
             request = request.bearer_auth(token);
@@ -549,9 +562,7 @@ async fn fetch_remote_response(
             .map_err(|error| {
                 SkillInstallError::Other(format!("invalid archive redirect: {error}"))
             })?;
-        if authenticated.is_some()
-            && !matches!(next.host_str(), Some("github.com" | "codeload.github.com"))
-        {
+        if authenticated.is_some() && !is_trusted_github_archive_url(&next) {
             return Err(SkillInstallError::Validation(
                 "authenticated GitHub archive redirected to an untrusted host".into(),
             ));
@@ -561,6 +572,10 @@ async fn fetch_remote_response(
     Err(SkillInstallError::Other(
         "too many redirects while fetching archive".into(),
     ))
+}
+
+fn is_trusted_github_archive_url(url: &url::Url) -> bool {
+    url.scheme() == "https" && matches!(url.host_str(), Some("github.com" | "codeload.github.com"))
 }
 
 fn unpack_zip(
@@ -815,6 +830,27 @@ mod tests {
     use std::io::Write;
     use zip::ZipWriter;
     use zip::write::FileOptions;
+
+    #[test]
+    fn authenticated_archive_urls_require_https_and_github_hosts() {
+        for value in [
+            "https://github.com/org/repo/archive/refs/heads/main.zip",
+            "https://codeload.github.com/org/repo/zip/refs/heads/main",
+        ] {
+            assert!(is_trusted_github_archive_url(
+                &url::Url::parse(value).unwrap()
+            ));
+        }
+        for value in [
+            "http://github.com/org/repo/archive.zip",
+            "https://github.example.com/org/repo/archive.zip",
+            "https://example.com/archive.zip",
+        ] {
+            assert!(!is_trusted_github_archive_url(
+                &url::Url::parse(value).unwrap()
+            ));
+        }
+    }
 
     #[test]
     fn test_zip_absolute_path_rejection() {
@@ -1360,5 +1396,55 @@ mod tests {
             }
             other => panic!("Expected PathTraversal error, got {:?}", other),
         }
+    }
+
+    #[tokio::test]
+    async fn authenticated_archive_rejects_untrusted_initial_url() {
+        let client = Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .unwrap();
+        let result = fetch_remote_response(
+            &client,
+            "http://github.com/org/repo/archive.zip",
+            Some("token"),
+        )
+        .await;
+        assert!(matches!(
+            result,
+            Err(SkillInstallError::Validation(message))
+                if message == "authenticated GitHub archive URL is untrusted"
+        ));
+
+        let result = fetch_remote_response(&client, "not a URL", Some("token")).await;
+        assert!(matches!(
+            result,
+            Err(SkillInstallError::Other(message)) if message.starts_with("invalid archive URL:")
+        ));
+    }
+
+    #[tokio::test]
+    async fn fetch_remote_data_uses_async_temporary_file_operations() {
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+        std::thread::spawn(move || {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            ready_tx.send(listener.local_addr().unwrap()).unwrap();
+            let (mut connection, _) = listener.accept().unwrap();
+            use std::io::{Read, Write};
+            let mut request = [0_u8; 512];
+            let _ = connection.read(&mut request);
+            connection
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 7\r\n\r\narchive")
+                .unwrap();
+        });
+        let address = ready_rx.await.unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let (source, extension) =
+            fetch_remote_data(&format!("http://{address}/archive.zip"), temp.path(), None)
+                .await
+                .unwrap();
+        assert_eq!(extension, "zip");
+        assert!(matches!(source, FetchedSource::Archive(data) if data == b"archive"));
+        assert!(!temp.path().join("download.tmp").exists());
     }
 }
