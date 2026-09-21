@@ -337,20 +337,7 @@ impl PluginManager {
                 "plugin {key} contains unsupported components: {}",
                 locked.unsupported_components.join(", ")
             );
-            if locked.source.kind == LockedSourceKind::Git {
-                let snapshot = self.git_source_cache_path(&locked.source)?;
-                if fs::symlink_metadata(&snapshot).is_err() {
-                    if mode.dry_run || mode.offline {
-                        ensure_git_snapshot_dir(&snapshot)?;
-                    } else {
-                        let manager = self.clone();
-                        let locked = locked.clone();
-                        run_async(
-                            move || async move { manager.restore_git_plugin(&locked).await },
-                        )?;
-                    }
-                }
-            }
+            self.restore_missing_git_snapshot(locked, mode)?;
             let source = self.materialize_source(&locked.source)?;
             let discovered = discover_plugin(source.root(), &locked.marketplace, &locked.plugin)?;
             ensure!(
@@ -441,6 +428,28 @@ impl PluginManager {
         Ok(result)
     }
 
+    fn restore_missing_git_snapshot(
+        &self,
+        locked: &LockedPlugin,
+        mode: PluginApplyMode,
+    ) -> Result<()> {
+        if locked.source.kind != LockedSourceKind::Git {
+            return Ok(());
+        }
+        let snapshot = self.git_source_cache_path(&locked.source)?;
+        if fs::symlink_metadata(&snapshot).is_ok() {
+            return Ok(());
+        }
+        if mode.dry_run || mode.offline {
+            ensure_git_snapshot_dir(&snapshot)?;
+            return Ok(());
+        }
+        let manager = self.clone();
+        let locked = locked.clone();
+        run_async(move || async move { manager.restore_git_plugin(&locked).await })?;
+        Ok(())
+    }
+
     /// Resolve and lock a selected plugin from the configured marketplace.
     pub fn add(&self, selection: &PluginSelection) -> Result<PluginApplyResult> {
         let manager = self.clone();
@@ -512,7 +521,7 @@ impl PluginManager {
 
     async fn restore_git_plugin(&self, locked: &LockedPlugin) -> Result<GitRestoreAction> {
         let destination = self.git_source_cache_path(&locked.source)?;
-        let existed = fs::symlink_metadata(&destination).is_ok();
+        let existed = tokio::fs::symlink_metadata(&destination).await.is_ok();
         if existed {
             ensure_git_snapshot_dir(&destination)?;
             if snapshot_matches_lock(&destination, locked)? {
