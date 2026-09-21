@@ -524,21 +524,20 @@ async fn fetch_remote_response(
     bearer_token: Option<&str>,
 ) -> Result<reqwest::Response, SkillInstallError> {
     let authenticated = bearer_token.filter(|token| !token.is_empty());
-    let mut current = url.to_string();
+    let mut current = url::Url::parse(url)
+        .map_err(|error| SkillInstallError::Other(format!("invalid archive URL: {error}")))?;
     for _ in 0..=5 {
-        let current_url = url::Url::parse(&current)
-            .map_err(|error| SkillInstallError::Other(format!("invalid archive URL: {error}")))?;
-        if authenticated.is_some() && current_url.scheme() != "https" {
+        if authenticated.is_some() && current.scheme() != "https" {
             return Err(SkillInstallError::Validation(
                 "archive URL must use HTTPS".into(),
             ));
         }
-        if authenticated.is_some() && !is_trusted_github_archive_url(&current_url) {
+        if authenticated.is_some() && !is_trusted_github_archive_url(&current) {
             return Err(SkillInstallError::Validation(
                 "authenticated GitHub archive URL is untrusted".into(),
             ));
         }
-        let mut request = client.get(&current);
+        let mut request = client.get(current.clone());
         if let Some(token) = authenticated {
             request = request.bearer_auth(token);
         }
@@ -553,11 +552,9 @@ async fn fetch_remote_response(
             .ok_or_else(|| {
                 SkillInstallError::Other("redirect response had no valid location".into())
             })?;
-        let next = url::Url::parse(&current)
-            .and_then(|base| base.join(location))
-            .map_err(|error| {
-                SkillInstallError::Other(format!("invalid archive redirect: {error}"))
-            })?;
+        let next = current.join(location).map_err(|error| {
+            SkillInstallError::Other(format!("invalid archive redirect: {error}"))
+        })?;
         if authenticated.is_some() && next.scheme() != "https" {
             return Err(SkillInstallError::Validation(
                 "archive redirect URL must use HTTPS".into(),
@@ -568,7 +565,7 @@ async fn fetch_remote_response(
                 "authenticated GitHub archive redirected to an untrusted host".into(),
             ));
         }
-        current = next.to_string();
+        current = next;
     }
     Err(SkillInstallError::Other(
         "too many redirects while fetching archive".into(),
@@ -1431,22 +1428,26 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn authenticated_archive_rejects_untrusted_initial_url() {
-        let client = Client::builder()
+    fn redirect_client() -> Client {
+        Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .build()
-            .unwrap();
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn authenticated_archive_rejects_untrusted_initial_url() {
+        let client = redirect_client();
         let result = fetch_remote_response(
             &client,
-            "http://github.com/org/repo/archive.zip",
+            "https://evil.example/org/repo/archive.zip",
             Some("token"),
         )
         .await;
         assert!(matches!(
             result,
             Err(SkillInstallError::Validation(message))
-                if message == "archive URL must use HTTPS"
+                if message == "authenticated GitHub archive URL is untrusted"
         ));
 
         let result = fetch_remote_response(&client, "not a URL", Some("token")).await;
@@ -1460,7 +1461,7 @@ mod tests {
     async fn fetch_remote_data_rejects_untrusted_authenticated_url() {
         let temp = tempfile::tempdir().unwrap();
         let result = fetch_remote_data(
-            "http://github.com/org/repo/archive.zip",
+            "https://evil.example/org/repo/archive.zip",
             temp.path(),
             Some("token"),
         )
@@ -1468,7 +1469,67 @@ mod tests {
         assert!(matches!(
             result,
             Err(SkillInstallError::Validation(message))
-                if message == "archive URL must use HTTPS"
+                if message == "authenticated GitHub archive URL is untrusted"
+        ));
+    }
+
+    #[tokio::test]
+    async fn fetch_remote_response_rejects_redirect_without_location() {
+        let address =
+            spawn_http_server(vec![b"HTTP/1.1 302 Found\r\nContent-Length: 0\r\n\r\n"]).await;
+        let result = fetch_remote_response(
+            &redirect_client(),
+            &format!("http://{address}/archive.zip"),
+            None,
+        )
+        .await;
+        assert!(matches!(
+            result,
+            Err(SkillInstallError::Other(message))
+                if message == "redirect response had no valid location"
+        ));
+    }
+
+    #[tokio::test]
+    async fn fetch_remote_response_rejects_invalid_redirect_location() {
+        let address = spawn_http_server(vec![
+            b"HTTP/1.1 302 Found\r\nLocation: http://[\r\nContent-Length: 0\r\n\r\n",
+        ])
+        .await;
+        let result = fetch_remote_response(
+            &redirect_client(),
+            &format!("http://{address}/archive.zip"),
+            None,
+        )
+        .await;
+        assert!(matches!(
+            result,
+            Err(SkillInstallError::Other(message))
+                if message.starts_with("invalid archive redirect:")
+        ));
+    }
+
+    #[tokio::test]
+    async fn fetch_remote_response_rejects_too_many_redirects() {
+        let address = spawn_http_server(vec![
+            b"HTTP/1.1 302 Found\r\nLocation: /r1\r\nContent-Length: 0\r\n\r\n",
+            b"HTTP/1.1 302 Found\r\nLocation: /r2\r\nContent-Length: 0\r\n\r\n",
+            b"HTTP/1.1 302 Found\r\nLocation: /r3\r\nContent-Length: 0\r\n\r\n",
+            b"HTTP/1.1 302 Found\r\nLocation: /r4\r\nContent-Length: 0\r\n\r\n",
+            b"HTTP/1.1 302 Found\r\nLocation: /r5\r\nContent-Length: 0\r\n\r\n",
+            b"HTTP/1.1 302 Found\r\nLocation: /r6\r\nContent-Length: 0\r\n\r\n",
+        ])
+        .await;
+        let result = fetch_remote_response(
+            &redirect_client(),
+            &format!("http://{address}/archive.zip"),
+            None,
+        )
+        .await;
+        assert!(matches!(
+            result,
+            Err(SkillInstallError::Other(message))
+                if message == "too many redirects while fetching archive"
         ));
     }
 
