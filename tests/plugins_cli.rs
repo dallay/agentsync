@@ -120,7 +120,10 @@ fn plugin_cli_covers_human_json_update_and_invalid_selection_paths() {
 
     let status = run_plugin(&project, &["status"]);
     assert!(status.status.success(), "status failed: {:?}", status);
-    assert!(String::from_utf8_lossy(&status.stdout).contains("Plugin sources are locked"));
+    let status_text = String::from_utf8_lossy(&status.stdout);
+    assert!(status_text.contains("Plugin sources are locked"));
+    assert!(status_text.contains("ALLOWED"));
+    assert!(status_text.contains("command: /bin/false"));
 
     let remove = run_plugin(&project, &["remove", "internal/engineering", "--json"]);
     assert!(remove.status.success(), "remove failed: {:?}", remove);
@@ -135,6 +138,30 @@ fn plugin_cli_covers_human_json_update_and_invalid_selection_paths() {
     );
     let vendor_json: serde_json::Value = serde_json::from_slice(&vendor_spelling.stdout).unwrap();
     assert_eq!(vendor_json["plugin"], "internal/engineering");
+}
+
+#[test]
+fn plugin_cli_status_prints_pending_remote_url_without_expansion() {
+    let project = setup_project();
+    let path = project
+        .path()
+        .join("marketplace/plugins/engineering/.mcp.json");
+    let mut declaration: serde_json::Value =
+        serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    declaration["mcpServers"]["remote"] = serde_json::json!({
+        "url": "https://example.com/mcp",
+        "headers": {"Authorization": "Bearer ${TOKEN}"}
+    });
+    fs::write(&path, serde_json::to_vec_pretty(&declaration).unwrap()).unwrap();
+
+    let add = run_plugin(&project, &["add", "internal/engineering"]);
+    assert!(add.status.success(), "add failed: {:?}", add);
+    let status = run_plugin(&project, &["status"]);
+    assert!(status.status.success(), "status failed: {:?}", status);
+    let output = String::from_utf8_lossy(&status.stdout);
+    assert!(output.contains("PENDING plugin/internal/engineering/remote"));
+    assert!(output.contains("url: https://example.com/mcp"));
+    assert!(output.contains("plugin/internal/engineering/remote"));
 }
 
 #[test]

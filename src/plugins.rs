@@ -2839,8 +2839,12 @@ plugin = "engineering"
             observed.store(true, std::sync::atomic::Ordering::SeqCst);
             bail!("fetch must not run for stale approval")
         });
-        let error = manager.apply(false).expect_err("stale approval must fail");
-        assert!(error.to_string().contains("stale or unknown"));
+        let apply_error = manager.apply(false).expect_err("stale approval must fail");
+        assert!(apply_error.to_string().contains("stale or unknown"));
+        let status_error = manager
+            .status_report()
+            .expect_err("stale approval must fail in status");
+        assert!(status_error.to_string().contains("stale"));
         assert!(!fetched.load(std::sync::atomic::Ordering::SeqCst));
     }
 
@@ -2922,6 +2926,125 @@ plugin = "engineering"
                 "accepted invalid approval: {invalid}"
             );
         }
+    }
+
+    #[test]
+    fn status_report_returns_empty_when_plugins_are_disabled_or_unselected() {
+        let temp = TempDir::new().unwrap();
+        let config_path = temp.path().join(".agents/agentsync.toml");
+        let disabled = PluginManager::new(
+            temp.path().to_path_buf(),
+            config_path.clone(),
+            PluginsConfig::default(),
+        );
+        assert_eq!(disabled.status_report().unwrap().status, "ok");
+
+        let config = PluginsConfig {
+            enabled: true,
+            ..PluginsConfig::default()
+        };
+        let unselected = PluginManager::new(temp.path().to_path_buf(), config_path, config);
+        assert!(unselected.status_report().unwrap().servers.is_empty());
+    }
+
+    #[test]
+    fn status_report_covers_git_pending_and_raw_server_declaration() {
+        let fixture = marketplace_fixture();
+        let (_project, manager, selection, _, _) = git_locked_manager(fixture);
+        manager.restore(Some(&selection)).unwrap();
+
+        let report = manager.status_report().unwrap();
+        assert_eq!(report.status, "ok");
+        assert_eq!(report.skills, 1);
+        assert_eq!(report.servers.len(), 1);
+        assert!(matches!(
+            report.servers[0].approval,
+            PluginMcpApproval::Pending
+        ));
+        assert_eq!(
+            report.servers[0].server.command.as_deref(),
+            Some("/bin/false")
+        );
+        assert_eq!(report.servers[0].server.env["FIXTURE"], "true");
+    }
+
+    #[test]
+    fn stale_approvals_fail_before_lock_or_snapshot_access() {
+        let temp = TempDir::new().unwrap();
+        let config_path = temp.path().join(".agents/agentsync.toml");
+        let config = PluginsConfig {
+            enabled: true,
+            allowed_mcp: vec!["plugin/internal/engineering/safe-fixture".to_string()],
+            ..PluginsConfig::default()
+        };
+        let manager = PluginManager::new(temp.path().to_path_buf(), config_path, config);
+
+        assert!(
+            manager
+                .status_report()
+                .unwrap_err()
+                .to_string()
+                .contains("stale")
+        );
+        assert!(
+            manager
+                .apply(false)
+                .unwrap_err()
+                .to_string()
+                .contains("stale")
+        );
+    }
+
+    #[test]
+    fn status_report_covers_allowed_server_declaration() {
+        let fixture = marketplace_fixture();
+        let (_project, mut manager, selection, _, _) = git_locked_manager(fixture);
+        manager.config.allowed_mcp = vec!["plugin/internal/engineering/safe-fixture".to_string()];
+        manager.restore(Some(&selection)).unwrap();
+        let report = manager.status_report().unwrap();
+        assert!(matches!(
+            report.servers[0].approval,
+            PluginMcpApproval::Allowed
+        ));
+    }
+
+    #[test]
+    fn snapshot_status_validation_rejects_each_locked_drift_kind() {
+        let root = marketplace_fixture();
+        let source = ResolvedMarketplaceSource {
+            root: root.clone(),
+            locked_source: LockedSource {
+                kind: LockedSourceKind::Local,
+                location: "../marketplace".to_string(),
+                revision: "local:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                    .to_string(),
+            },
+            temp: None,
+        };
+        let discovered = discover_plugin(&root, "internal", "engineering").unwrap();
+        let locked = discovered
+            .to_locked_plugin("internal", "engineering", &source)
+            .unwrap();
+
+        let mut content_drift = locked.clone();
+        content_drift.content_sha256 = "f".repeat(64);
+        assert!(ensure_snapshot_discovery_matches_lock(&discovered, &content_drift).is_err());
+
+        let mut unsupported = discover_plugin(&root, "internal", "engineering").unwrap();
+        unsupported.unsupported_components.push("hooks".to_string());
+        assert!(ensure_snapshot_discovery_matches_lock(&unsupported, &locked).is_err());
+
+        let mut mcp_drift = locked.clone();
+        mcp_drift.mcp_servers.push("different".to_string());
+        assert!(ensure_snapshot_discovery_matches_lock(&discovered, &mcp_drift).is_err());
+
+        let mut skill_set_drift = locked.clone();
+        skill_set_drift.skills.clear();
+        assert!(ensure_snapshot_discovery_matches_lock(&discovered, &skill_set_drift).is_err());
+
+        let mut skill_content_drift = locked;
+        skill_content_drift.skills[0].content_sha256 = "f".repeat(64);
+        assert!(ensure_snapshot_discovery_matches_lock(&discovered, &skill_content_drift).is_err());
     }
 
     #[test]
