@@ -8,6 +8,62 @@ a parallel install or registry system.
 
 ## Requirements
 
+### Requirement: Approved Local Curated Source Resolution
+
+Each Phase 1 entry MUST have a committed validated source in `agents-skills`. Resolution MAY use a sibling checkout or `AGENTSYNC_LOCAL_SKILLS_REPO`, but MUST NOT use network or mutable archives. Missing sources MUST block or leave entries unmigrated; none may be invented.
+
+The Phase 1 local skill ID families include the three Bobmatnyc database skills (`drizzle-orm`, `pydantic`, `sqlalchemy`) and the eight Clerk skills declared in issue #556 (`clerk-setup`, `clerk-nextjs-patterns`, `clerk-react-patterns`, `clerk-vue-patterns`, `clerk-astro-patterns`, `clerk-webhooks`, `clerk-testing`, `clerk-custom-ui`). `local_catalog_skill_source_dir()` MUST resolve these IDs from `AGENTSYNC_LOCAL_SKILLS_REPO` when set or from a sibling checkout at `<project_root_parent>/agents-skills`. `clerk-orgs` remains out of scope for this change.
+
+#### Scenario: Approved source resolves offline
+
+- GIVEN an approved entry with a committed curated source
+- WHEN installation runs without network access
+- THEN it MUST resolve locally and not contact an external provider
+
+#### Scenario: Missing source blocks
+
+- GIVEN a candidate has no committed validated local source
+- WHEN migration or focused validation runs
+- THEN it MUST be reported blocked or unmigrated
+
+#### Scenario: Missing source fails closed for every Phase 1 ID
+
+- WHEN `AGENTSYNC_LOCAL_SKILLS_REPO` is unset and no sibling checkout exists
+- THEN `resolve_catalog_install_source()` MUST return an explicit error naming the missing ID
+- AND it MUST NOT silently fall back to network resolution
+
+---
+
+### Requirement: Catalog Source Updates Preserve Local IDs
+
+Approved definitions MUST set `provider_skill_id` to `dallay/agents-skills/{local_skill_id}`, remove stale `install_source`, and preserve local ID, title, and summary. The base `clerk` router and Wispbit SQLAlchemy entry MUST remain external and outside Phase 1.
+
+#### Scenario: Remap preserves metadata
+
+- GIVEN an approved definition with local ID, title, and summary
+- WHEN its source is migrated
+- THEN provider identity MAY change while local metadata and state semantics MUST remain unchanged
+
+---
+
+### Requirement: Companion and Provenance Gates
+
+Migrated skills MUST include `SKILL.md` and all required or referenced companions at expected paths. Approval metadata MUST record source path, immutable commit/file identity, attribution, license evidence or permission, and companion status. Missing companions or authoritative evidence MUST block materialization.
+
+---
+
+### Requirement: Focused Phase 1 Installation Validation
+
+The focused Phase 1 integration test MUST install every approved local entry offline and verify that the installed skill directory and registry use the canonical local ID.
+
+---
+
+### Requirement: Full-Catalog E2E Early Return Is Preserved
+
+The full-catalog E2E suite MUST retain its existing early return when the catalog has no entries requiring external resolution; the Phase 1 offline validation MUST remain a separate deterministic gate.
+
+---
+
 ### Requirement: Local Repository Technology Detection
 
 The system MUST detect supported repository technologies from local repository contents only.
@@ -899,6 +955,79 @@ rather than `local_skill_id` values, reflecting the changed calling convention i
 - WHEN `provider.resolve()` receives a bare `local_skill_id` (e.g., `"rust-async-patterns"`)
 - THEN the mock MUST return an error
 - AND this validates that the calling code is correctly passing `provider_skill_id`
+
+---
+
+### Requirement: CI Workflow Sibling Skills Checkout
+
+`.github/workflows/catalog-e2e.yml` MUST check out `dallay/agents-skills` and export `AGENTSYNC_LOCAL_SKILLS_REPO` on every CI job that exercises Phase 1 catalog resolution. The `offline` and `catalog-installation` jobs MUST pin the sibling checkout to the immutable validated commit `c2e79fbb72d146305f82a8e979270795557d24fd` at `${{ github.workspace }}/agents-skills`. Branch names MUST NOT be used as the pin source; `remote-refresh` remains governed by its existing pinned-commit contract.
+
+#### Scenario: Offline job succeeds on a clean runner with sibling checkout
+
+- WHEN the `offline` job runs on `ubuntu-latest` with the sibling checkout and environment variable present
+- THEN the offline catalog integration test MUST pass without relying on a pre-existing local fixture or network access
+
+#### Scenario: Missing local repository configuration fails loudly
+
+- WHEN the sibling checkout is omitted or `AGENTSYNC_LOCAL_SKILLS_REPO` is unset
+- THEN the Phase 1 jobs MUST fail visibly with an error naming `AGENTSYNC_LOCAL_SKILLS_REPO`
+
+---
+
+### Requirement: Provenance Frontmatter Gate
+
+`scripts/validate_provenance.py` MUST reject every `skills/<id>/SKILL.md` whose frontmatter omits `metadata.source`. When `metadata.source` is present and is not `dallay-original`, the validator MUST also require `metadata.source_commit` to be a 40-character hexadecimal SHA. The check MUST fail before SHA-256 recomputation and MUST remain the single gate invoked by `scripts/validate-skills.sh`.
+
+#### Scenario: Missing metadata.source fails validation
+
+- WHEN a skill frontmatter omits `metadata.source`
+- THEN the validator MUST exit non-zero and name the skill and missing field
+
+#### Scenario: Missing source_commit fails validation
+
+- WHEN a skill sets a non-original source but omits `metadata.source_commit`
+- THEN the validator MUST exit non-zero and name the skill and missing field
+
+#### Scenario: dallay-original is exempt from source_commit
+
+- WHEN a skill sets `metadata.source = "dallay-original"` and omits `metadata.source_commit`
+- THEN the validator MUST accept the metadata and still validate the file hash
+
+---
+
+### Requirement: PROVENANCE.md Completeness on Materialization
+
+`PROVENANCE.md` MUST contain one materialized-entry row and one SHA-256 line per newly committed skill. Companion files referenced by a committed skill MUST each have a SHA-256 line. License evidence for upstream skills MUST name the immutable commit, SPDX identifier, and license-file URL. Blocked skills MUST NOT be recorded as materialized entries.
+
+---
+
+### Requirement: Chained PR Delivery Strategy
+
+Changes that combine workflow, provenance, catalog, and skill content MUST be delivered as chained PRs when they exceed the 400-line review budget. The workflow PR MUST remain separate from content PRs; each PR MUST have a clear verification and rollback unit.
+
+---
+
+### Requirement: Issue Hygiene
+
+After the workflow PR merges, the orchestrator MUST post `Duplicate of #556 — closing.` on `dallay/agentsync#555`, close it, and post a Phase 1 progress comment on `dallay/agentsync#556` linking to the verification artifact. Issue #556 MUST remain open until its success criteria are met.
+
+---
+
+### Requirement: Scope Isolation from PR #569
+
+This change MUST NOT edit `src/skills/catalog.v1.toml` or change the fail-closed `PHASE1_MIGRATED_LOCAL_SKILL_IDS` guard in `src/skills/provider.rs`. Catalog additions and external Clerk mappings remain in PR #569's scope.
+
+---
+
+### Open Requirements
+
+#### REQ-SKILLREC-008 — Disposition of `angular-architecture` and `typescript-strict-patterns`
+
+**Status: Awaiting design confirmation.** These skills MUST remain unmaterialized until authoritative upstream attribution and immutable source evidence are confirmed, or a documented `dallay-original` decision is approved. The eventual decision MUST record the corresponding frontmatter, provenance, hash, and focused-test requirements.
+
+#### REQ-SKILLREC-009 — Clerk Upstream License Evidence Resolution
+
+**Status: Awaiting design confirmation.** The eight Clerk skills MUST remain unmaterialized until authoritative MIT license and maintainer-permission evidence exists at an immutable `clerk/skills` commit, or a documented decision keeps them external. The eventual decision MUST record the corresponding frontmatter, companion, provenance, hash, and focused-test requirements.
 
 ---
 
