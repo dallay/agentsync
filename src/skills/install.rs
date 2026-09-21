@@ -526,15 +526,17 @@ async fn fetch_remote_response(
     let authenticated = bearer_token.filter(|token| !token.is_empty());
     let mut current = url.to_string();
     for _ in 0..=5 {
-        if authenticated.is_some() {
-            let current_url = url::Url::parse(&current).map_err(|error| {
-                SkillInstallError::Other(format!("invalid archive URL: {error}"))
-            })?;
-            if !is_trusted_github_archive_url(&current_url) {
-                return Err(SkillInstallError::Validation(
-                    "authenticated GitHub archive URL is untrusted".into(),
-                ));
-            }
+        let current_url = url::Url::parse(&current)
+            .map_err(|error| SkillInstallError::Other(format!("invalid archive URL: {error}")))?;
+        if current_url.scheme() != "https" {
+            return Err(SkillInstallError::Validation(
+                "archive URL must use HTTPS".into(),
+            ));
+        }
+        if authenticated.is_some() && !is_trusted_github_archive_url(&current_url) {
+            return Err(SkillInstallError::Validation(
+                "authenticated GitHub archive URL is untrusted".into(),
+            ));
         }
         let mut request = client.get(&current);
         if let Some(token) = authenticated {
@@ -556,6 +558,11 @@ async fn fetch_remote_response(
             .map_err(|error| {
                 SkillInstallError::Other(format!("invalid archive redirect: {error}"))
             })?;
+        if next.scheme() != "https" {
+            return Err(SkillInstallError::Validation(
+                "archive redirect URL must use HTTPS".into(),
+            ));
+        }
         if authenticated.is_some() && !is_trusted_github_archive_url(&next) {
             return Err(SkillInstallError::Validation(
                 "authenticated GitHub archive redirected to an untrusted host".into(),
