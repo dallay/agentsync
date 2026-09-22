@@ -25,7 +25,12 @@ impl Linker {
                         self.clean_nested_glob_target(target_config, options, &mut result)?;
                     }
                     SyncType::SymlinkContents => {
-                        self.clean_symlink_contents_target(target_config, options, &mut result)?;
+                        self.clean_symlink_contents_target(
+                            agent_name,
+                            target_config,
+                            options,
+                            &mut result,
+                        )?;
                     }
                     SyncType::Symlink => {
                         self.clean_symlink_target(target_config, options, &mut result)?;
@@ -104,6 +109,7 @@ impl Linker {
     /// Clean symlink-contents: remove symlinks inside the destination directory.
     fn clean_symlink_contents_target(
         &self,
+        agent_name: &str,
         target_config: &crate::config::TargetConfig,
         options: &SyncOptions,
         result: &mut SyncResult,
@@ -121,7 +127,14 @@ impl Linker {
             let entry =
                 entry.with_context(|| format!("Failed to read entry in: {}", dest.display()))?;
             let entry_path = entry.path();
-            if entry_path.is_symlink() {
+            if entry_path.is_symlink()
+                && (crate::agent_ids::canonical_any_agent_id(agent_name) != Some("zcode")
+                    || !target_config.destination.ends_with(".zcode/commands")
+                    || entry_path
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .is_some_and(|name| name.ends_with(".md")))
+            {
                 self.remove_managed_symlink(&entry_path, options.dry_run, result)?;
             }
         }

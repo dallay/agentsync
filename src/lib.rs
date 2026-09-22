@@ -19,4 +19,17 @@ pub mod update_check;
 pub use config::Config;
 pub use linker::{Linker, SyncOptions, SyncResult};
 pub use mcp::{McpAgent, McpAgentDocumentation, McpGenerator, McpSyncResult};
-pub use plugins::{PluginApplyResult, PluginManager, PluginSource, PluginsConfig};
+
+/// Convert an AgentSync command filename to the Z-Code command filename.
+/// Z-Code strips only `.md`, while AgentSync's canonical command convention is
+/// `<name>.agent.md`; remove the compatibility suffix so the slash command is
+/// exposed as `/name`.
+pub fn zcode_command_destination(file_name: &str) -> String {
+    file_name
+        .strip_suffix(".agent.md")
+        .map_or_else(|| file_name.to_string(), |name| format!("{name}.md"))
+}
+pub use plugins::{
+    PluginApplyMode, PluginApplyResult, PluginManager, PluginMcpApproval, PluginMcpStatus,
+    PluginSource, PluginStatusReport, PluginsConfig,
+};
