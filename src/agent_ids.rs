@@ -17,6 +17,8 @@ pub fn canonical_mcp_agent_id(id: &str) -> Option<&'static str> {
         "vscode" | "vs-code" | "vs_code" => Some("vscode"),
         "cursor" => Some("cursor"),
         "opencode" | "open-code" | "open_code" => Some("opencode"),
+        "zcode" | "z-code" | "z_code" => Some("zcode"),
+        "minimax" | "minimax-code" | "minimax_code" | "minimaxcode" => Some("minimax"),
         _ => None,
     }
 }
@@ -79,7 +81,7 @@ pub fn agent_convention_filename(agent_name: &str) -> Option<&'static str> {
         "gemini" => Some("GEMINI.md"),
         "cursor" => Some(".cursor/rules/agentsync.mdc"),
         "windsurf" => Some(".windsurfrules"),
-        "opencode" => Some("AGENTS.md"),
+        "opencode" | "zcode" | "minimax" => Some("AGENTS.md"),
         "crush" => Some("CRUSH.md"),
         "warp" => Some("WARP.md"),
         "amp" => Some("AMPCODE.md"),
@@ -106,6 +108,8 @@ pub fn known_ignore_patterns(agent_name: &str) -> &'static [&'static str] {
                 ".gemini/skills/",
             ],
             "opencode" => &["opencode.json", ".opencode/command/", ".opencode/skills/"],
+            "zcode" => &[".zcode/config.json", ".zcode/commands/"],
+            "minimax" => &[".mcp.json"],
             "cursor" => &[".cursor/mcp.json", ".cursor/skills/"],
             "vscode" => &[".vscode/mcp.json"],
             _ => &[],
@@ -160,7 +164,7 @@ pub fn mcp_filter_matches(agent_id: &str, filter: &str) -> bool {
 ///
 /// Returns `Some(canonical)` if the ID is recognized by either registry,
 /// `None` otherwise.
-fn canonical_any_agent_id(id: &str) -> Option<&'static str> {
+pub fn canonical_any_agent_id(id: &str) -> Option<&'static str> {
     canonical_mcp_agent_id(id).or_else(|| canonical_configurable_agent_id(id))
 }
 
@@ -502,6 +506,8 @@ mod tests {
             Some(".windsurfrules")
         );
         assert_eq!(agent_convention_filename("opencode"), Some("AGENTS.md"));
+        assert_eq!(agent_convention_filename("zcode"), Some("AGENTS.md"));
+        assert_eq!(agent_convention_filename("minimax"), Some("AGENTS.md"));
         assert_eq!(agent_convention_filename("crush"), Some("CRUSH.md"));
         assert_eq!(agent_convention_filename("warp"), Some("WARP.md"));
         assert_eq!(agent_convention_filename("amp"), Some("AMPCODE.md"));

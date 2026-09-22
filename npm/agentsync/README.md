@@ -121,6 +121,8 @@ agentsync clean
 - **VS Code** — `.vscode/mcp.json` (agent id: `vscode`) — JSON; Shared with GitHub Copilot
 - **Cursor** — `.cursor/mcp.json` (agent id: `cursor`) — JSON; Standard format
 - **OpenCode** — `opencode.json` (agent id: `opencode`) — JSON; Standard format
+- **Z-Code** — `.zcode/config.json` (agent id: `zcode`) — JSON; Uses the mcp.servers object and preserves other Z-Code settings
+- **MiniMax Code** — `.mcp.json` (agent id: `minimax`) — JSON; Project-level standard format
 <!-- agentsync:mcp:end -->
 - The typed registry and focused CI validator govern this list.
 - Skills live under `.agents/skills/` in the project.

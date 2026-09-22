@@ -118,6 +118,7 @@ pub fn collect_status_entries(linker: &Linker, config_path: &Path) -> Result<Vec
                     destination,
                     &source_path,
                     target,
+                    agent_name,
                     detect_skills_mode_mismatch(
                         linker.project_root(),
                         &source_path,
@@ -541,6 +542,7 @@ fn validate_symlink_contents_entry(
     destination: PathBuf,
     source_path: &Path,
     target: &TargetConfig,
+    agent_name: &str,
     allow_skills_symlink_hint: bool,
 ) -> Result<StatusEntry> {
     let metadata = std::fs::symlink_metadata(&destination).ok();
@@ -548,7 +550,8 @@ fn validate_symlink_contents_entry(
     let exists = metadata.is_some();
     let is_symlink = destination_kind == DestinationKind::Symlink;
     let points_to = read_link_target(&destination, is_symlink);
-    let child_expectations = linker.symlink_contents_expected_children(source_path, target)?;
+    let child_expectations =
+        linker.symlink_contents_expected_children(source_path, target, agent_name)?;
     let mut issues = Vec::new();
     let mut managed_children = Vec::new();
 
