@@ -1024,6 +1024,22 @@ pub struct OpenCodeFormatter;
 #[derive(Debug)]
 pub struct ZCodeFormatter;
 
+fn zcode_servers_mut(document: &mut Value) -> Result<&mut Map<String, Value>> {
+    let doc = document
+        .as_object_mut()
+        .context("Z-Code MCP config must contain a JSON object")?;
+    let mcp = doc.entry("mcp".to_string()).or_insert_with(|| json!({}));
+    let mcp_object = mcp
+        .as_object_mut()
+        .context("Z-Code mcp setting must be a JSON object")?;
+    let servers = mcp_object
+        .entry("servers".to_string())
+        .or_insert_with(|| json!({}));
+    servers
+        .as_object_mut()
+        .context("Z-Code mcp.servers setting must be a JSON object")
+}
+
 impl McpFormatter for ZCodeFormatter {
     fn format(&self, servers: &BTreeMap<&str, &McpServerConfig>) -> Value {
         json!({
@@ -1055,19 +1071,7 @@ impl McpFormatter for ZCodeFormatter {
     ) -> Result<String> {
         let mut existing_doc: Value = serde_json::from_str(existing_content)
             .context("Failed to parse existing Z-Code MCP config as JSON")?;
-        let doc = existing_doc
-            .as_object_mut()
-            .context("Z-Code MCP config must contain a JSON object")?;
-        let mcp = doc.entry("mcp".to_string()).or_insert_with(|| json!({}));
-        let mcp_object = mcp
-            .as_object_mut()
-            .context("Z-Code mcp setting must be a JSON object")?;
-        let servers = mcp_object
-            .entry("servers".to_string())
-            .or_insert_with(|| json!({}));
-        let servers_object = servers
-            .as_object_mut()
-            .context("Z-Code mcp.servers setting must be a JSON object")?;
+        let servers_object = zcode_servers_mut(&mut existing_doc)?;
 
         for (name, config) in new_servers {
             servers_object.insert((*name).to_string(), server_to_json(config));
@@ -1084,10 +1088,7 @@ impl McpFormatter for ZCodeFormatter {
     ) -> Result<String> {
         let mut existing_doc: Value = serde_json::from_str(existing_content)
             .context("Failed to parse existing Z-Code MCP config as JSON")?;
-        let servers = existing_doc
-            .pointer_mut("/mcp/servers")
-            .and_then(Value::as_object_mut)
-            .context("Z-Code MCP config must contain mcp.servers")?;
+        let servers = zcode_servers_mut(&mut existing_doc)?;
         servers.retain(|name, _| new_servers.contains_key(name.as_str()));
         for (name, config) in new_servers {
             servers.insert((*name).to_string(), server_to_json(config));
