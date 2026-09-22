@@ -1,5 +1,7 @@
 use agentsync::config::Config;
-use agentsync::plugins::{PluginApplyResult, PluginLock, PluginManager, PluginSelection};
+use agentsync::plugins::{
+    PluginApplyResult, PluginLock, PluginManager, PluginMcpApproval, PluginSelection,
+};
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
 use std::path::PathBuf;
@@ -16,6 +18,8 @@ pub enum PluginCommand {
     Remove(PluginSelectionArgs),
     /// Validate locked sources and report materialization drift without changing files.
     Status(PluginOutputArgs),
+    /// Fetch the exact locked Git snapshot without resolving marketplace.reference.
+    Restore(PluginRestoreArgs),
 }
 
 #[derive(Args, Debug)]
@@ -29,6 +33,16 @@ pub struct PluginSelectionArgs {
 
 #[derive(Args, Debug)]
 pub struct PluginOutputArgs {
+    /// Output machine-readable JSON.
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Args, Debug)]
+pub struct PluginRestoreArgs {
+    /// Optional selection in the form marketplace/plugin or plugin@marketplace.
+    /// When omitted, restore every plugin in [plugins.selections].
+    pub selection: Option<String>,
     /// Output machine-readable JSON.
     #[arg(long)]
     pub json: bool,
@@ -49,6 +63,7 @@ pub async fn run_plugin(command: PluginCommand, project_root: PathBuf) -> Result
         PluginCommand::List(args) => run_list(&manager, args.json),
         PluginCommand::Remove(args) => run_remove(&manager, &args),
         PluginCommand::Status(args) => run_status(&manager, args.json),
+        PluginCommand::Restore(args) => run_restore(&manager, &args).await,
     }
 }
 
@@ -103,23 +118,55 @@ fn run_list(manager: &PluginManager, json: bool) -> Result<()> {
     Ok(())
 }
 
-fn run_status(manager: &PluginManager, json: bool) -> Result<()> {
-    let result = manager.apply(true)?;
-    if json {
+async fn run_restore(manager: &PluginManager, args: &PluginRestoreArgs) -> Result<()> {
+    let selection = args.selection.as_deref().map(parse_selection).transpose()?;
+    let result = manager.restore_async(selection.as_ref()).await?;
+    if args.json {
         println!(
             "{}",
             serde_json::to_string_pretty(&serde_json::json!({
-                "status": "ok",
-                "skills": result.updated,
-                "mcp_servers": result.mcp_servers.keys().collect::<Vec<_>>(),
+                "status": "restored",
+                "created": result.created,
+                "updated": result.updated,
+                "skipped": result.skipped,
+                "removed": result.removed,
             }))?
         );
     } else {
         println!(
-            "Plugin sources are locked and available ({} skill(s), {} MCP server(s)).",
-            result.updated,
-            result.mcp_servers.len()
+            "restored plugins (created {}, updated {}, skipped {}, removed {})",
+            result.created, result.updated, result.skipped, result.removed
         );
+    }
+    Ok(())
+}
+
+fn run_status(manager: &PluginManager, json: bool) -> Result<()> {
+    let report = manager.status_report()?;
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        println!(
+            "Plugin sources are locked and available ({} skill(s), {} MCP server(s)).",
+            report.skills,
+            report.servers.len()
+        );
+        for server in report.servers {
+            let approval = match server.approval {
+                PluginMcpApproval::Allowed => "ALLOWED",
+                PluginMcpApproval::Pending => "PENDING",
+            };
+            println!("{approval} {}", server.name);
+            if let Some(command) = server.server.command {
+                println!("  command: {command}");
+            }
+            if !server.server.args.is_empty() {
+                println!("  args: {:?}", server.server.args);
+            }
+            if let Some(url) = server.server.url {
+                println!("  url: {url}");
+            }
+        }
     }
     Ok(())
 }
@@ -158,9 +205,16 @@ fn print_result(
 }
 
 fn parse_selection(value: &str) -> Result<PluginSelection> {
-    let (marketplace, plugin) = value
-        .split_once('/')
-        .ok_or_else(|| anyhow::anyhow!("plugin selection must use marketplace/plugin"))?;
+    let (marketplace, plugin) = if let Some((marketplace, plugin)) = value.split_once('/') {
+        (marketplace, plugin)
+    } else if let Some((plugin, marketplace)) = value.split_once('@') {
+        // Accept the notation used by vendor CLIs as well as AgentSync's canonical form.
+        (marketplace, plugin)
+    } else {
+        return Err(anyhow::anyhow!(
+            "plugin selection must use marketplace/plugin or plugin@marketplace"
+        ));
+    };
     ensure_no_slash(marketplace, "marketplace")?;
     ensure_no_slash(plugin, "plugin")?;
     Ok(PluginSelection {
@@ -170,7 +224,7 @@ fn parse_selection(value: &str) -> Result<PluginSelection> {
 }
 
 fn ensure_no_slash(value: &str, kind: &str) -> Result<()> {
-    if value.is_empty() || value.contains('/') || value.contains('\\') {
+    if value.is_empty() || value.contains(['/', '\\', '@']) {
         bail!("invalid {kind} in plugin selection");
     }
     Ok(())

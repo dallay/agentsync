@@ -62,7 +62,7 @@ fn native_mcp_registry_has_complete_unique_metadata() {
         .iter()
         .map(McpAgent::documentation)
         .collect();
-    assert_eq!(docs.len(), 8);
+    assert_eq!(docs.len(), 10);
     let mut ids: Vec<_> = docs.iter().map(|doc| doc.id).collect();
     ids.sort_unstable();
     ids.dedup();

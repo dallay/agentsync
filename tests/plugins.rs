@@ -62,12 +62,7 @@ fn plugin_add_writes_lock_materializes_skill_and_returns_mcp_without_execution()
 
     let result = manager.add(&selection).unwrap();
 
-    assert_eq!(result.mcp_servers.len(), 1);
-    assert!(
-        result
-            .mcp_servers
-            .contains_key("plugin/internal/engineering/safe-fixture")
-    );
+    assert!(result.mcp_servers.is_empty());
     assert!(
         project
             .path()

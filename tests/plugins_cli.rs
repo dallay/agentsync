@@ -33,6 +33,7 @@ fn setup_project() -> TempDir {
 [plugins]
 enabled = true
 lockfile = "plugins.lock.toml"
+allowed_mcp = ["plugin/internal/engineering/safe-fixture"]
 
 [plugins.marketplaces.internal]
 source = "../marketplace"
@@ -72,6 +73,11 @@ fn plugin_cli_add_status_list_and_remove_are_deterministic() {
     assert!(status.status.success(), "status failed: {:?}", status);
     let status_json: serde_json::Value = serde_json::from_slice(&status.stdout).unwrap();
     assert_eq!(status_json["status"], "ok");
+    assert_eq!(status_json["servers"][0]["approval"], "allowed");
+    assert_eq!(
+        status_json["servers"][0]["name"],
+        "plugin/internal/engineering/safe-fixture"
+    );
 
     let remove = run_plugin(&project, &["remove", "internal/engineering"]);
     assert!(remove.status.success(), "remove failed: {:?}", remove);
@@ -81,6 +87,7 @@ fn plugin_cli_add_status_list_and_remove_are_deterministic() {
     let config = fs::read_to_string(project.path().join(".agents/agentsync.toml")).unwrap();
     assert!(!config.contains("marketplace = \"internal\""));
     assert!(!config.contains("plugin = \"engineering\""));
+    assert!(!config.contains("allowed_mcp"));
     let lock = fs::read_to_string(project.path().join(".agents/plugins.lock.toml")).unwrap();
     assert!(!lock.contains("engineering"));
 }
@@ -113,10 +120,67 @@ fn plugin_cli_covers_human_json_update_and_invalid_selection_paths() {
 
     let status = run_plugin(&project, &["status"]);
     assert!(status.status.success(), "status failed: {:?}", status);
-    assert!(String::from_utf8_lossy(&status.stdout).contains("Plugin sources are locked"));
+    let status_text = String::from_utf8_lossy(&status.stdout);
+    assert!(status_text.contains("Plugin sources are locked"));
+    assert!(status_text.contains("ALLOWED"));
+    assert!(status_text.contains("command: /bin/false"));
 
     let remove = run_plugin(&project, &["remove", "internal/engineering", "--json"]);
     assert!(remove.status.success(), "remove failed: {:?}", remove);
     let remove_json: serde_json::Value = serde_json::from_slice(&remove.stdout).unwrap();
     assert_eq!(remove_json["status"], "removed");
+
+    let vendor_spelling = run_plugin(&project, &["add", "engineering@internal", "--json"]);
+    assert!(
+        vendor_spelling.status.success(),
+        "vendor-style selection failed: {:?}",
+        vendor_spelling
+    );
+    let vendor_json: serde_json::Value = serde_json::from_slice(&vendor_spelling.stdout).unwrap();
+    assert_eq!(vendor_json["plugin"], "internal/engineering");
+}
+
+#[test]
+fn plugin_cli_status_prints_pending_remote_url_without_expansion() {
+    let project = setup_project();
+    let path = project
+        .path()
+        .join("marketplace/plugins/engineering/.mcp.json");
+    let mut declaration: serde_json::Value =
+        serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    declaration["mcpServers"]["remote"] = serde_json::json!({
+        "url": "https://example.com/mcp",
+        "headers": {"Authorization": "Bearer ${TOKEN}"}
+    });
+    fs::write(&path, serde_json::to_vec_pretty(&declaration).unwrap()).unwrap();
+
+    let add = run_plugin(&project, &["add", "internal/engineering"]);
+    assert!(add.status.success(), "add failed: {:?}", add);
+    let status = run_plugin(&project, &["status"]);
+    assert!(status.status.success(), "status failed: {:?}", status);
+    let output = String::from_utf8_lossy(&status.stdout);
+    assert!(output.contains("PENDING plugin/internal/engineering/remote"));
+    assert!(output.contains("url: https://example.com/mcp"));
+    assert!(output.contains("plugin/internal/engineering/remote"));
+}
+
+#[test]
+fn plugin_cli_restore_local_source_is_noop() {
+    let project = setup_project();
+    let add = run_plugin(&project, &["add", "internal/engineering"]);
+    assert!(add.status.success(), "add failed: {:?}", add);
+
+    let restore = run_plugin(&project, &["restore"]);
+    assert!(restore.status.success(), "restore failed: {:?}", restore);
+    assert!(String::from_utf8_lossy(&restore.stdout).contains("restored"));
+
+    let restore_one = run_plugin(&project, &["restore", "engineering@internal", "--json"]);
+    assert!(
+        restore_one.status.success(),
+        "restore selection failed: {:?}",
+        restore_one
+    );
+    let json: serde_json::Value = serde_json::from_slice(&restore_one.stdout).unwrap();
+    assert_eq!(json["status"], "restored");
+    assert_eq!(json["skipped"], 1);
 }

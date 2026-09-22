@@ -1,0 +1,14 @@
+change: phase1-e2e-mirror-catalog
+current_phase: archived
+completed:
+  - explore
+  - propose
+  - spec
+  - design
+  - tasks
+  - apply
+  - verify
+  - qa
+  - archive
+next: null
+updated: 2026-08-23

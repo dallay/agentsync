@@ -63,6 +63,8 @@ hooks, scripts, binaries, LSPs, or MCP servers.
 [plugins]
 enabled = true
 lockfile = "plugins.lock.toml"
+# Default-deny: only explicitly approved plugin MCP servers are exported.
+allowed_mcp = ["plugin/internal/engineering/safe-fixture"]
 
 [plugins.marketplaces.internal]
 source = "../engineering-marketplace"
@@ -76,15 +78,30 @@ plugin = "engineering"
 - `source` accepts a relative local checkout or an HTTPS GitHub repository.
 - `reference` is used only by explicit `agentsync plugin add` and `agentsync plugin update`.
 - `plugins.lock.toml` records the immutable revision, content hash, selected skills, MCP servers,
-  and provenance. `agentsync apply` requires the lockfile and never resolves a new revision.
-- Git add/update operations also keep an AgentSync-owned source snapshot under
-  `.agents/.agentsync-plugin-sources`; apply, status, and dry-run read that snapshot only and fail
-  closed if it is unavailable.
+  and provenance. `agentsync apply` and `agentsync plugin restore` never resolve a new revision.
+- `allowed_mcp` is a default-deny approval list using names such as
+  `plugin/internal/engineering/safe-fixture`. It approves a logical server identity, not a
+  revision; an explicit plugin update can therefore change the approved definition and must be
+  reviewed. Entries must be unique and use exactly four identifier segments.
+- Git snapshots live under `.agents/.agentsync-plugin-sources`. Online `apply` restores a missing
+  snapshot from the locked SHA. `apply --offline`, `apply --dry-run`, and `plugin status` never
+  download; recover with `agentsync plugin restore`.
 - Vendor marketplace files are declaration/discovery inputs; they do not silently activate Claude or
   Codex plugins.
 - The first supported plugin layout is `skills/<skill-id>/SKILL.md` plus a root `.mcp.json`.
+- Plugin MCP declarations are treated as executable configuration. Values for credential-like
+  environment variables and headers (`TOKEN`, `SECRET`, `PASSWORD`, `API_KEY`, `Authorization`,
+  and similar names) must use an exact local environment reference such as `${TOKEN}` rather than
+  literal credentials. Authorization headers may use the complete `Bearer ${TOKEN}` template;
+  AgentSync rejects literal prefixes and suffixes before fan-out.
+- ZIP downloads are bounded both by compressed download size and by extracted entry count/size.
+  These limits protect a clone or `plugin add` from archive bombs, but do not replace source review
+  or vendor trust.
+- Private GitHub resolution may use `GITHUB_TOKEN` from the process environment. The token is sent
+  only to GitHub requests and is never written to the lockfile, source snapshot, or generated config.
 
-Use `agentsync plugin status` to validate the lock and source without changing files.
+Use `agentsync plugin status` to validate the lock and source without changing files. Use
+`agentsync plugin restore` to recover or repair Git snapshots from the lockfile.
 
 ### User-level Config Template
 
@@ -246,41 +263,41 @@ The matrix below documents common agent locations and whether AgentSync can hand
 | Agent | Rules File(s) | MCP Configuration / Notes | Skills Support / Location |
 | :--- | :--- | :--- | :--- |
 | AGENTS.md | `AGENTS.md` | Pseudo-agent pattern via `[agents.root]` target | - |
-| GitHub Copilot | `.github/copilot-instructions.md` | `.vscode/mcp.json` (native MCP) | Configurable |
-| Claude Code | `CLAUDE.md` | `.mcp.json` (native MCP) | Configurable; `.claude/skills/` |
-| Claude Desktop | - | Global config (native MCP); disabled by default | - |
-| OpenAI Codex CLI | `AGENTS.md` | `.codex/config.toml` (native MCP) | Configurable; `.codex/skills/` |
-| VS Code | - | `.vscode/mcp.json` (native MCP) | Configurable |
-| Pi Coding Agent | - | No native MCP formatter | Configurable |
-| Jules | - | No native MCP formatter | Configurable |
-| Cursor | `.cursor/rules/agentsync.mdc` | `.cursor/mcp.json` (native MCP) | Configurable; `.cursor/skills/` |
-| Windsurf | `.windsurfrules` | No native MCP formatter; `.windsurf/mcp_config.json` ignore | Configurable |
-| Cline | `.clinerules` | No native MCP formatter | Configurable |
-| Crush | `CRUSH.md` | No native MCP formatter; `.crush.json` ignore | Configurable |
+| Aider | - | No native MCP formatter; `.aider.conf.yml`, `.aiderignore` ignores | Configurable |
+| Amazon Q CLI | - | No native MCP formatter; `.amazonq/rules/`, `.amazonq/mcp.json` ignores | Configurable |
 | Amp | `AMPCODE.md` | No native MCP formatter | Configurable |
 | Antigravity | - | No native MCP formatter; `.agent/rules/`, `.agent/skills/` ignores | Configurable |
-| Amazon Q CLI | - | No native MCP formatter; `.amazonq/rules/`, `.amazonq/mcp.json` ignores | Configurable |
-| Aider | - | No native MCP formatter; `.aider.conf.yml`, `.aiderignore` ignores | Configurable |
-| Firebase Studio | - | No native MCP formatter; `.idx/airules.md`, `.idx/mcp.json` ignores | Configurable |
-| Open Hands | - | No native MCP formatter; `.openhands/microagents/` ignore | Configurable |
-
-**Note (Cursor rules filename):** `.cursor/rules/agentsync.mdc` is the documented example path used by AgentSync for Cursor rules. You may use a different `.mdc` filename/path if you configure it explicitly under your `[agents.<name>.targets.*]` entries.
-| Gemini CLI | `GEMINI.md` | `.gemini/settings.json` (native MCP, adds `"trust": true`) | Configurable; `.gemini/skills/` |
-| Junie | - | No native MCP formatter; `.junie/` ignore | Configurable |
 | AugmentCode | - | No native MCP formatter; `.augment/rules/` ignore | Configurable |
-| Kilo Code | - | No native MCP formatter; `.kilocode/mcp.json` ignore | Configurable |
-| OpenCode | `AGENTS.md` | `opencode.json` (native MCP) | Configurable; `.opencode/skills/` |
+| Claude Code | `CLAUDE.md` | `.mcp.json` (native MCP) | Configurable; `.claude/skills/` |
+| Claude Desktop | - | Global config (native MCP); disabled by default | - |
+| Cline | `.clinerules` | No native MCP formatter | Configurable |
+| Crush | `CRUSH.md` | No native MCP formatter; `.crush.json` ignore | Configurable |
+| Cursor | `.cursor/rules/agentsync.mdc` | `.cursor/mcp.json` (native MCP) | Configurable; `.cursor/skills/` |
+| Factory Droid | - | No native MCP formatter; `.factory/mcp.json`, `.factory/skills/` ignores | Configurable |
+| Firebase Studio | - | No native MCP formatter; `.idx/airules.md`, `.idx/mcp.json` ignores | Configurable |
+| Firebender | - | No native MCP formatter; `firebender.json` ignore | Configurable |
+| Gemini CLI | `GEMINI.md` | `.gemini/settings.json` (native MCP, adds `"trust": true`) | Configurable; `.gemini/skills/` |
+| GitHub Copilot | `.github/copilot-instructions.md` | `.vscode/mcp.json` (native MCP) | Configurable |
 | Goose | - | No native MCP formatter; `.goosehints` ignore | Configurable |
+| JetBrains AI Assistant | - | No native MCP formatter; `.aiassistant/rules/` ignore | Configurable |
+| Jules | - | No native MCP formatter | Configurable |
+| Junie | - | No native MCP formatter; `.junie/` ignore | Configurable |
+| Kilo Code | - | No native MCP formatter; `.kilocode/mcp.json` ignore | Configurable |
+| Kiro | - | No native MCP formatter; `.kiro/steering/`, `.kiro/settings/mcp.json` ignores | Configurable |
+| Mistral Vibe | - | No native MCP formatter; `.vibe/config.toml`, `.vibe/skills/` ignores | Configurable |
+| Open Hands | - | No native MCP formatter; `.openhands/microagents/` ignore | Configurable |
+| OpenAI Codex CLI | `AGENTS.md` | `.codex/config.toml` (native MCP) | Configurable; `.codex/skills/` |
+| OpenCode | `AGENTS.md` | `opencode.json` (native MCP) | Configurable; `.opencode/skills/` |
+| Pi Coding Agent | - | No native MCP formatter | Configurable |
 | Qwen Code | - | No native MCP formatter; `.qwen/settings.json` ignore | Configurable |
 | RooCode | - | No native MCP formatter; `.roo/mcp.json`, `.roo/rules/`, `.roo/skills/` ignores | Configurable |
-| Zed | - | No native MCP formatter; `.zed/settings.json` ignore | Configurable |
 | Trae AI | - | No native MCP formatter; `.trae/rules/` ignore | Configurable |
+| VS Code | - | `.vscode/mcp.json` (native MCP) | Configurable |
 | Warp | `WARP.md` | No native MCP formatter | Configurable |
-| Kiro | - | No native MCP formatter; `.kiro/steering/`, `.kiro/settings/mcp.json` ignores | Configurable |
-| Firebender | - | No native MCP formatter; `firebender.json` ignore | Configurable |
-| Factory Droid | - | No native MCP formatter; `.factory/mcp.json`, `.factory/skills/` ignores | Configurable |
-| Mistral Vibe | - | No native MCP formatter; `.vibe/config.toml`, `.vibe/skills/` ignores | Configurable |
-| JetBrains AI Assistant | - | No native MCP formatter; `.aiassistant/rules/` ignore | Configurable |
+| Windsurf | `.windsurfrules` | No native MCP formatter; `.windsurf/mcp_config.json` ignore | Configurable |
+| Zed | - | No native MCP formatter; `.zed/settings.json` ignore | Configurable |
+
+**Note (Cursor rules filename):** `.cursor/rules/agentsync.mdc` is the documented example path used by AgentSync for Cursor rules. You may use a different `.mdc` filename/path if you configure it explicitly under your `[agents.<name>.targets.*]` entries.
 
 ### What "configurable" means in practice
 

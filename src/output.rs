@@ -154,14 +154,26 @@ pub(crate) fn print_lines(lines: &[String]) {
     }
 }
 
-pub(crate) fn print_header() {
+pub(crate) fn render_banner(version: &str) -> String {
     let banner = include_str!("banner.txt");
+    let version_line = format!("║{:^91}║", format!("Version {version}"));
+    let mut lines: Vec<&str> = banner.trim_end_matches('\n').lines().collect();
+    let closing_line = lines
+        .pop()
+        .expect("the embedded banner has a closing border");
+    lines.push(&version_line);
+    lines.push(closing_line);
+    lines.join("\n")
+}
+
+pub(crate) fn print_header() {
+    let banner = render_banner(env!("CARGO_PKG_VERSION"));
     println!(
         "{}",
         if human_use_color() {
             banner.cyan().bold().to_string()
         } else {
-            banner.to_string()
+            banner
         }
     );
 }
@@ -445,6 +457,19 @@ mod tests {
     /// parallel tests toggling the global flag.
     fn force_color() {
         colored::control::set_override(true);
+    }
+
+    #[test]
+    fn render_banner_includes_current_version_inside_border() {
+        let banner = render_banner("9.9.9");
+        let version_line = banner
+            .lines()
+            .find(|line| line.contains("Version 9.9.9"))
+            .expect("banner should include a version line");
+
+        assert_eq!(version_line.chars().count(), 93);
+        assert!(version_line.starts_with('║'));
+        assert!(version_line.ends_with('║'));
     }
 
     #[test]

@@ -203,6 +203,7 @@ impl Linker {
         pattern: Option<&str>,
         target: &TargetConfig,
         options: &SyncOptions,
+        agent_name: &str,
     ) -> Result<SyncResult> {
         let mut result = SyncResult::default();
 
@@ -267,7 +268,15 @@ impl Linker {
             }
 
             let source_path = entry.path();
-            let dest_path = dest_dir.join(entry.file_name());
+            let destination_name = if crate::agent_ids::canonical_any_agent_id(agent_name)
+                == Some("zcode")
+                && target.destination.ends_with(".zcode/commands")
+            {
+                crate::zcode_command_destination(&item_name)
+            } else {
+                item_name.to_string()
+            };
+            let dest_path = dest_dir.join(destination_name);
 
             // B3 (REQ: Reuse DirEntry Existence): `read_dir` already proved
             // the child dirent exists. For non-symlink children (the common
@@ -641,6 +650,7 @@ mod tests {
                 None,
                 &make_contents_target(),
                 &SyncOptions::default(),
+                "test",
             )
             .unwrap();
 
@@ -679,6 +689,7 @@ mod tests {
                 None,
                 &make_contents_target(),
                 &SyncOptions::default(),
+                "test",
             )
             .unwrap();
 
@@ -712,6 +723,7 @@ mod tests {
                 None,
                 &make_contents_target(),
                 &SyncOptions::default(),
+                "test",
             )
             .unwrap();
 

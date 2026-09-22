@@ -18,7 +18,8 @@ marker = "AI Agent Symlinks"
 # MCP (Model Context Protocol) Configuration
 # =============================================================================
 # Define MCP servers once here, and AgentSync will generate the appropriate
-# config files for each AI agent (Claude, Copilot, Codex, Cursor, Gemini, VS Code, OpenCode).
+# config files for each AI agent (Claude, Copilot, Codex, Cursor, Gemini, MiniMax Code, VS Code,
+# OpenCode, and Z-Code).
 #
 # [mcp]
 # enabled = true
@@ -43,7 +44,7 @@ marker = "AI Agent Symlinks"
 # Each target has:
 #   - source: Path relative to source_dir
 #   - destination: Path relative to project root
-#   - type: "symlink" or "symlink-contents"
+#   - type: "symlink", "symlink-contents", or "module-map"
 #   - pattern: (optional) Glob pattern for symlink-contents
 
 # -----------------------------------------------------------------------------
@@ -137,9 +138,34 @@ type = "symlink-contents"
 pattern = "*"
 
 # -----------------------------------------------------------------------------
-# OpenCode AI - Terminal-based AI coding assistant
+# MiniMax Code
+# -----------------------------------------------------------------------------
+# MiniMax Code natively consumes the canonical .agents/skills and root AGENTS.md
+# locations, so no redundant skill or instruction targets are needed here.
+[agents.minimax]
+enabled = true
+description = "MiniMax Code - MiniMax's AI coding assistant"
+
+# -----------------------------------------------------------------------------
+# Z-Code
+# -----------------------------------------------------------------------------
+# Z-Code natively consumes the canonical .agents/skills and root AGENTS.md
+# locations. MCP servers are generated into .zcode/config.json when enabled.
+[agents.zcode]
+enabled = true
+description = "Z-Code - Z.ai's AI coding assistant"
+
+[agents.zcode.targets.commands]
+source = "command"
+destination = ".zcode/commands"
+type = "symlink-contents"
+pattern = "*.agent.md"
+
+# -----------------------------------------------------------------------------
+# OpenCode
 # -----------------------------------------------------------------------------
 [agents.opencode]
+
 enabled = true
 description = "OpenCode - Open source AI coding agent"
 

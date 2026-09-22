@@ -164,6 +164,8 @@ impl Linker {
     ) -> Result<SyncResult> {
         let _span = self.timing_span(SpanKind::Target(sync_type_name(target.sync_type)));
         let source = self.source_dir.join(&target.source);
+        let canonical_agent_id =
+            crate::agent_ids::canonical_any_agent_id(agent_name).unwrap_or(agent_name);
 
         match target.sync_type {
             SyncType::Symlink => {
@@ -181,6 +183,7 @@ impl Linker {
                     target.pattern.as_deref(),
                     target,
                     options,
+                    canonical_agent_id,
                 )
             }
             SyncType::NestedGlob => {
