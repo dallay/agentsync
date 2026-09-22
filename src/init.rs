@@ -4134,7 +4134,7 @@ mod tests {
             target.destination == ".claude/skills" && target.sync_type == SyncType::Symlink
         }));
 
-        assert_eq!(facts.commands.len(), 3);
+        assert_eq!(facts.commands.len(), 4);
         assert!(
             facts
                 .commands
