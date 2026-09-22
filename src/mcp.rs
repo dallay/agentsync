@@ -70,6 +70,10 @@ pub enum McpAgent {
     Cursor,
     /// OpenCode (opencode.json)
     OpenCode,
+    /// Z-Code (.zcode/config.json)
+    ZCode,
+    /// MiniMax Code (.mcp.json)
+    MiniMax,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -149,6 +153,22 @@ impl McpAgent {
                 global: false,
                 notes: "Standard format",
             },
+            Self::ZCode => McpAgentDocumentation {
+                id: "zcode",
+                name: "Z-Code",
+                destination: ".zcode/config.json",
+                format: "JSON",
+                global: false,
+                notes: "Uses the mcp.servers object and preserves other Z-Code settings",
+            },
+            Self::MiniMax => McpAgentDocumentation {
+                id: "minimax",
+                name: "MiniMax Code",
+                destination: ".mcp.json",
+                format: "JSON",
+                global: false,
+                notes: "Project-level standard format",
+            },
         }
     }
     /// Get all supported agents
@@ -162,6 +182,8 @@ impl McpAgent {
             McpAgent::VsCode,
             McpAgent::Cursor,
             McpAgent::OpenCode,
+            McpAgent::ZCode,
+            McpAgent::MiniMax,
         ]
     }
 
@@ -176,6 +198,8 @@ impl McpAgent {
             McpAgent::VsCode => "vscode",
             McpAgent::Cursor => "cursor",
             McpAgent::OpenCode => "opencode",
+            McpAgent::ZCode => "zcode",
+            McpAgent::MiniMax => "minimax",
         }
     }
 
@@ -190,6 +214,8 @@ impl McpAgent {
             McpAgent::VsCode => "VS Code",
             McpAgent::Cursor => "Cursor",
             McpAgent::OpenCode => "OpenCode",
+            McpAgent::ZCode => "Z-Code",
+            McpAgent::MiniMax => "MiniMax Code",
         }
     }
 
@@ -215,6 +241,8 @@ impl McpAgent {
             McpAgent::VsCode => ".vscode/mcp.json",
             McpAgent::Cursor => ".cursor/mcp.json",
             McpAgent::OpenCode => "opencode.json",
+            McpAgent::ZCode => ".zcode/config.json",
+            McpAgent::MiniMax => ".mcp.json",
         }
     }
 
@@ -248,6 +276,8 @@ impl McpAgent {
             McpAgent::VsCode => Box::new(VsCodeFormatter),
             McpAgent::Cursor => Box::new(CursorFormatter),
             McpAgent::OpenCode => Box::new(OpenCodeFormatter),
+            McpAgent::ZCode => Box::new(ZCodeFormatter),
+            McpAgent::MiniMax => Box::new(MiniMaxFormatter),
         }
     }
 
@@ -262,6 +292,8 @@ impl McpAgent {
             "vscode" => Some(McpAgent::VsCode),
             "cursor" => Some(McpAgent::Cursor),
             "opencode" => Some(McpAgent::OpenCode),
+            "zcode" => Some(McpAgent::ZCode),
+            "minimax" => Some(McpAgent::MiniMax),
             _ => None,
         }
     }
@@ -312,7 +344,7 @@ pub trait McpFormatter: Send + Sync {
     }
 
     /// Whether the formatter should preserve unrelated top-level settings when
-    /// running in Overwrite mode. Some agents (Gemini, OpenCode) keep other
+    /// running in Overwrite mode. Some agents (Gemini, OpenCode, Z-Code) keep other
     /// settings in their config files and we shouldn't clobber them.
     fn preserve_on_overwrite(&self) -> bool {
         false
@@ -987,6 +1019,117 @@ impl McpFormatter for CursorFormatter {
 #[derive(Debug)]
 pub struct OpenCodeFormatter;
 
+/// Formatter for Z-Code (.zcode/config.json).
+/// Format: { "mcp": { "servers": { ... } } }
+#[derive(Debug)]
+pub struct ZCodeFormatter;
+
+impl McpFormatter for ZCodeFormatter {
+    fn format(&self, servers: &BTreeMap<&str, &McpServerConfig>) -> Value {
+        json!({
+            "mcp": {
+                "servers": json_map_from_server_refs(servers, server_to_json)
+            }
+        })
+    }
+
+    fn parse_existing(&self, content: &str) -> Result<BTreeMap<String, Value>> {
+        let parsed: Value = serde_json::from_str(content)
+            .context("Failed to parse existing Z-Code MCP config as JSON")?;
+        Ok(parsed
+            .pointer("/mcp/servers")
+            .and_then(Value::as_object)
+            .map(|servers| {
+                servers
+                    .iter()
+                    .map(|(name, config)| (name.clone(), config.clone()))
+                    .collect()
+            })
+            .unwrap_or_default())
+    }
+
+    fn merge(
+        &self,
+        existing_content: &str,
+        new_servers: &BTreeMap<&str, &McpServerConfig>,
+    ) -> Result<String> {
+        let mut existing_doc: Value = serde_json::from_str(existing_content)
+            .context("Failed to parse existing Z-Code MCP config as JSON")?;
+        let doc = existing_doc
+            .as_object_mut()
+            .context("Z-Code MCP config must contain a JSON object")?;
+        let mcp = doc.entry("mcp".to_string()).or_insert_with(|| json!({}));
+        let mcp_object = mcp
+            .as_object_mut()
+            .context("Z-Code mcp setting must be a JSON object")?;
+        let servers = mcp_object
+            .entry("servers".to_string())
+            .or_insert_with(|| json!({}));
+        let servers_object = servers
+            .as_object_mut()
+            .context("Z-Code mcp.servers setting must be a JSON object")?;
+
+        for (name, config) in new_servers {
+            servers_object.insert((*name).to_string(), server_to_json(config));
+        }
+
+        serde_json::to_string_pretty(&existing_doc)
+            .context("Failed to serialize merged Z-Code config")
+    }
+
+    fn cleanup_removed_servers(
+        &self,
+        existing_content: &str,
+        new_servers: &BTreeMap<&str, &McpServerConfig>,
+    ) -> Result<String> {
+        let mut existing_doc: Value = serde_json::from_str(existing_content)
+            .context("Failed to parse existing Z-Code MCP config as JSON")?;
+        let servers = existing_doc
+            .pointer_mut("/mcp/servers")
+            .and_then(Value::as_object_mut)
+            .context("Z-Code MCP config must contain mcp.servers")?;
+        servers.retain(|name, _| new_servers.contains_key(name.as_str()));
+        for (name, config) in new_servers {
+            servers.insert((*name).to_string(), server_to_json(config));
+        }
+        serde_json::to_string_pretty(&existing_doc)
+            .context("Failed to serialize cleaned Z-Code config")
+    }
+
+    fn preserve_on_overwrite(&self) -> bool {
+        true
+    }
+}
+
+/// Formatter for MiniMax Code (.mcp.json).
+#[derive(Debug)]
+pub struct MiniMaxFormatter;
+
+impl McpFormatter for MiniMaxFormatter {
+    fn format(&self, servers: &BTreeMap<&str, &McpServerConfig>) -> Value {
+        format_standard_mcp(servers)
+    }
+
+    fn parse_existing(&self, content: &str) -> Result<BTreeMap<String, Value>> {
+        parse_standard_mcp(
+            content,
+            "Failed to parse existing MiniMax MCP config as JSON",
+        )
+    }
+
+    fn merge(
+        &self,
+        existing_content: &str,
+        new_servers: &BTreeMap<&str, &McpServerConfig>,
+    ) -> Result<String> {
+        merge_standard_mcp(
+            existing_content,
+            new_servers,
+            "Failed to parse existing MiniMax MCP config as JSON",
+        )
+    }
+}
+
 impl McpFormatter for OpenCodeFormatter {
     fn format(&self, servers: &BTreeMap<&str, &McpServerConfig>) -> Value {
         let mcp_servers = json_map_from_server_refs(servers, server_to_opencode_json);
@@ -1625,7 +1768,7 @@ mod tests {
     #[test]
     fn test_agent_all_returns_all_agents() {
         let agents = McpAgent::all();
-        assert_eq!(agents.len(), 8);
+        assert_eq!(agents.len(), 10);
         assert!(agents.contains(&McpAgent::ClaudeCode));
         assert!(agents.contains(&McpAgent::ClaudeDesktop));
         assert!(agents.contains(&McpAgent::GithubCopilot));
@@ -1634,6 +1777,8 @@ mod tests {
         assert!(agents.contains(&McpAgent::VsCode));
         assert!(agents.contains(&McpAgent::Cursor));
         assert!(agents.contains(&McpAgent::OpenCode));
+        assert!(agents.contains(&McpAgent::ZCode));
+        assert!(agents.contains(&McpAgent::MiniMax));
     }
 
     #[test]
@@ -1662,6 +1807,8 @@ mod tests {
         assert_eq!(McpAgent::from_id("cursor"), Some(McpAgent::Cursor));
         assert_eq!(McpAgent::from_id("opencode"), Some(McpAgent::OpenCode));
         assert_eq!(McpAgent::from_id("open-code"), Some(McpAgent::OpenCode));
+        assert_eq!(McpAgent::from_id("z-code"), Some(McpAgent::ZCode));
+        assert_eq!(McpAgent::from_id("minimax-code"), Some(McpAgent::MiniMax));
         assert_eq!(McpAgent::from_id("unknown"), None);
     }
 
@@ -1674,6 +1821,8 @@ mod tests {
         assert_eq!(McpAgent::VsCode.config_path(), ".vscode/mcp.json");
         assert_eq!(McpAgent::Cursor.config_path(), ".cursor/mcp.json");
         assert_eq!(McpAgent::OpenCode.config_path(), "opencode.json");
+        assert_eq!(McpAgent::ZCode.config_path(), ".zcode/config.json");
+        assert_eq!(McpAgent::MiniMax.config_path(), ".mcp.json");
     }
 
     #[test]

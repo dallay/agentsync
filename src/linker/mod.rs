@@ -179,6 +179,7 @@ impl Linker {
         &self,
         source_dir: &Path,
         target: &TargetConfig,
+        agent_name: &str,
     ) -> Result<Option<Vec<SymlinkContentsChildExpectation>>> {
         if !source_dir.exists() || !source_dir.is_dir() {
             return Ok(None);
@@ -208,7 +209,13 @@ impl Linker {
             let source_path = entry.path();
             if let Some(expected_source_path) = self.expected_source_path(&source_path, target) {
                 children.push(SymlinkContentsChildExpectation {
-                    name: item_name.into_owned(),
+                    name: if crate::agent_ids::canonical_any_agent_id(agent_name) == Some("zcode")
+                        && target.destination.ends_with(".zcode/commands")
+                    {
+                        crate::zcode_command_destination(&item_name)
+                    } else {
+                        item_name.into_owned()
+                    },
                     source_path,
                     expected_source_path,
                 });

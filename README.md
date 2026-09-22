@@ -88,6 +88,8 @@ Different AI coding tools expect configuration files in various locations:
 | **Cursor**         | `.cursor/rules/agentsync.mdc`     | -                    | `.cursor/skills/`  |
 | **VS Code**        | -                                 | -                    | -                  |
 | **OpenCode**       | `AGENTS.md`                       | `.opencode/command/` | `.opencode/skills/` |
+| **Z-Code**         | `AGENTS.md`                       | `.zcode/commands/`   | `.agents/skills/`  |
+| **MiniMax Code**   | `AGENTS.md`                       | skills as `/commands` | `.agents/skills/` |
 | **OpenAI Codex**   | `AGENTS.md`                       | -                    | `.codex/skills/`   |
 
 AgentSync maintains a **single source of truth** in `.agents/` and creates symlinks to all required
@@ -403,7 +405,7 @@ pattern = "*.agent.md"
 ### MCP Support (Model Context Protocol)
 
 AgentSync can automatically generate MCP configuration files for supported agents (Claude Code,
-GitHub Copilot, OpenAI Codex CLI, Gemini CLI, Cursor, VS Code, OpenCode).
+GitHub Copilot, OpenAI Codex CLI, Gemini CLI, Cursor, VS Code, OpenCode, Z-Code, and MiniMax Code).
 
 This allows you to define MCP servers once in `agentsync.toml` and have them synchronized to all
 agent-specific config files.
@@ -441,6 +443,8 @@ args = ["-y", "@modelcontextprotocol/server-git", "--repository", "."]
 - **VS Code** — `.vscode/mcp.json` (agent id: `vscode`) — JSON; Shared with GitHub Copilot
 - **Cursor** — `.cursor/mcp.json` (agent id: `cursor`) — JSON; Standard format
 - **OpenCode** — `opencode.json` (agent id: `opencode`) — JSON; Standard format
+- **Z-Code** — `.zcode/config.json` (agent id: `zcode`) — JSON; Uses the mcp.servers object and preserves other Z-Code settings
+- **MiniMax Code** — `.mcp.json` (agent id: `minimax`) — JSON; Project-level standard format
 <!-- agentsync:mcp:end -->
 
 AgentSync supports the native MCP agents above. The typed registry and focused CI validator are authoritative.
