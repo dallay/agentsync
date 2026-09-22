@@ -1084,10 +1084,19 @@ impl McpFormatter for ZCodeFormatter {
     ) -> Result<String> {
         let mut existing_doc: Value = serde_json::from_str(existing_content)
             .context("Failed to parse existing Z-Code MCP config as JSON")?;
-        let servers = existing_doc
-            .pointer_mut("/mcp/servers")
-            .and_then(Value::as_object_mut)
-            .context("Z-Code MCP config must contain mcp.servers")?;
+        let doc = existing_doc
+            .as_object_mut()
+            .context("Z-Code MCP config must contain a JSON object")?;
+        let mcp = doc.entry("mcp".to_string()).or_insert_with(|| json!({}));
+        let mcp_object = mcp
+            .as_object_mut()
+            .context("Z-Code mcp setting must be a JSON object")?;
+        let servers = mcp_object
+            .entry("servers".to_string())
+            .or_insert_with(|| json!({}));
+        let servers = servers
+            .as_object_mut()
+            .context("Z-Code mcp.servers setting must be a JSON object")?;
         servers.retain(|name, _| new_servers.contains_key(name.as_str()));
         for (name, config) in new_servers {
             servers.insert((*name).to_string(), server_to_json(config));
