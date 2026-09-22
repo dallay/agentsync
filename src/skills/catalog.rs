@@ -1159,4 +1159,40 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_approved_external_skill_id_lookup_finds_binary_search_boundaries() {
+        let first = APPROVED_EMBEDDED_EXTERNAL_SKILL_IDS
+            .first()
+            .expect("approved external skill list must not be empty");
+        let last = APPROVED_EMBEDDED_EXTERNAL_SKILL_IDS
+            .last()
+            .expect("approved external skill list must not be empty");
+
+        for provider_skill_id in [*first, *last] {
+            assert_eq!(
+                classify_embedded_recommendation_source(provider_skill_id),
+                EmbeddedRecommendationSource::ApprovedExternal,
+                "binary search must find boundary entry {provider_skill_id}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_approved_external_skill_id_lookup_rejects_near_boundary_values() {
+        let first = APPROVED_EMBEDDED_EXTERNAL_SKILL_IDS
+            .first()
+            .expect("approved external skill list must not be empty");
+        let last = APPROVED_EMBEDDED_EXTERNAL_SKILL_IDS
+            .last()
+            .expect("approved external skill list must not be empty");
+
+        for provider_skill_id in [format!("{first}-unapproved"), format!("{last}-unapproved")] {
+            assert_eq!(
+                classify_embedded_recommendation_source(&provider_skill_id),
+                EmbeddedRecommendationSource::DisallowedExternal,
+                "binary search must require an exact approved skill id"
+            );
+        }
+    }
 }
