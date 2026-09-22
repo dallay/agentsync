@@ -165,7 +165,6 @@ pattern = "*.agent.md"
 # OpenCode
 # -----------------------------------------------------------------------------
 [agents.opencode]
-
 enabled = true
 description = "OpenCode - Open source AI coding agent"
 
