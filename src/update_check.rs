@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::thread;
 
 use anyhow::Context;
@@ -7,7 +7,6 @@ use is_terminal::IsTerminal;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tracing::info;
 
 #[derive(Debug, Error)]
 pub enum UpdateCheckError {
@@ -23,6 +22,8 @@ pub enum UpdateCheckError {
 
 const CACHE_TTL_SECS: i64 = 24 * 60 * 60;
 const CRATES_IO_URL: &str = "https://crates.io/api/v1/crates/agentsync";
+const NPM_UPDATE_COMMAND: &str = "npm install -g @dallay/agentsync@latest";
+const CARGO_UPDATE_COMMAND: &str = "cargo install agentsync";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CheckedVersion {
@@ -87,6 +88,35 @@ fn should_skip(no_update_check: Option<&str>, ci: Option<&str>, is_terminal: boo
         return true;
     }
     !is_terminal
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct UpdateNotice {
+    current_version: String,
+    latest_version: String,
+    update_command: &'static str,
+}
+
+impl UpdateNotice {
+    fn render(&self) -> String {
+        format!(
+            "⚠ A new AgentSync version is available: {} → {}\n  Update with: {}",
+            self.current_version, self.latest_version, self.update_command
+        )
+    }
+}
+
+fn update_command_for_executable(executable: Option<&Path>) -> &'static str {
+    executable
+        .filter(|path| {
+            path.components().any(|component| {
+                component
+                    .as_os_str()
+                    .to_string_lossy()
+                    .eq_ignore_ascii_case("node_modules")
+            })
+        })
+        .map_or(CARGO_UPDATE_COMMAND, |_| NPM_UPDATE_COMMAND)
 }
 
 fn should_skip_update_check() -> bool {
@@ -192,11 +222,12 @@ async fn check_and_notify_async() {
         notified_for_version: Some(newest_version.clone()),
     };
 
-    info!(
-        latest_version = %newest_version,
-        current_version = env!("CARGO_PKG_VERSION"),
-        "A new version of agentsync is available; run cargo install agentsync to update"
-    );
+    let notice = UpdateNotice {
+        current_version: current.to_string(),
+        latest_version: newest_version.clone(),
+        update_command: update_command_for_executable(std::env::current_exe().ok().as_deref()),
+    };
+    eprintln!("{}", notice.render());
 
     // Note: sync path — file I/O on small JSON cache; blocking is fast and appropriate.
     let _ = cache.save(&new_cache);
@@ -449,6 +480,39 @@ mod tests {
         assert_eq!(loaded.last_checked, 999);
         assert_eq!(loaded.latest_version, "2.0.0");
         assert_eq!(loaded.notified_for_version, Some("2.0.0".to_string()));
+    }
+
+    #[test]
+    fn test_update_notice_renders_versions_and_command() {
+        let notice = UpdateNotice {
+            current_version: "1.49.1".to_string(),
+            latest_version: "1.50.0".to_string(),
+            update_command: CARGO_UPDATE_COMMAND,
+        };
+
+        assert_eq!(
+            notice.render(),
+            "⚠ A new AgentSync version is available: 1.49.1 → 1.50.0\n  Update with: cargo install agentsync"
+        );
+    }
+
+    #[test]
+    fn test_update_notice_uses_npm_for_node_modules_executable() {
+        let executable = Path::new("/workspace/node_modules/@dallay/agentsync/bin/agentsync");
+        assert_eq!(
+            update_command_for_executable(Some(executable)),
+            NPM_UPDATE_COMMAND
+        );
+    }
+
+    #[test]
+    fn test_update_notice_defaults_to_cargo_for_other_executables() {
+        let executable = Path::new("/usr/local/bin/agentsync");
+        assert_eq!(
+            update_command_for_executable(Some(executable)),
+            CARGO_UPDATE_COMMAND
+        );
+        assert_eq!(update_command_for_executable(None), CARGO_UPDATE_COMMAND);
     }
 
     #[test]
