@@ -482,6 +482,14 @@ pub fn parse_catalog(
     )
 }
 
+/// Loads the embedded catalog and applies provider metadata when it is available and valid.
+///
+/// If the provider supplies no metadata, cannot be queried, or returns an invalid overlay, this
+/// returns the embedded catalog instead.
+///
+/// # Panics
+///
+/// Panics if the embedded catalog is invalid.
 pub fn load_catalog(provider: Option<&dyn Provider>) -> Result<ResolvedSkillCatalog> {
     static BASELINE: std::sync::OnceLock<ResolvedSkillCatalog> = std::sync::OnceLock::new();
     let baseline = BASELINE
