@@ -410,6 +410,39 @@ fn canonical_provider_skill_ids_use_local_aliases_in_recommendations() {
 }
 
 #[test]
+fn provider_overlay_does_not_leak_into_memoized_embedded_baseline() {
+    let provider = CanonicalCatalogProvider;
+    let overlay = load_catalog(Some(&provider)).unwrap();
+
+    assert_eq!(overlay.source_name(), "canonical-provider");
+    assert!(overlay.get_skill("custom-rust").is_some());
+    assert!(
+        overlay
+            .get_technology(&TechnologyId::new(TechnologyId::RUST))
+            .unwrap()
+            .skills
+            .contains(&"acme/skills/rust-custom".to_string())
+    );
+
+    let baseline = load_catalog(None).unwrap();
+
+    assert_eq!(baseline.source_name(), "embedded");
+    assert_eq!(baseline.metadata_version(), "v1");
+    assert!(baseline.get_skill("custom-rust").is_none());
+    let rust = baseline
+        .get_technology(&TechnologyId::new(TechnologyId::RUST))
+        .unwrap();
+    assert!(
+        rust.skills
+            .contains(&"dallay/agents-skills/rust-async-patterns".to_string())
+    );
+    assert!(!rust.skills.contains(&"acme/skills/rust-custom".to_string()));
+
+    assert_eq!(overlay.source_name(), "canonical-provider");
+    assert!(overlay.get_skill("custom-rust").is_some());
+}
+
+#[test]
 fn annotates_installed_state_without_hiding_recommendations() {
     let catalog = EmbeddedSkillCatalog::default();
     let detections = vec![detection(
