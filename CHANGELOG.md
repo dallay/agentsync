@@ -21,6 +21,18 @@
 * **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
 * **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
 
+## [1.50.1](https://github.com/dallay/agentsync/compare/v1.50.0...v1.50.1) (2026-09-23)
+
+
+### Performance
+
+* memoize skill catalog baseline and use binary search for approved skill ids ([#589](https://github.com/dallay/agentsync/issues/589)) ([ab0f3b5](https://github.com/dallay/agentsync/commit/ab0f3b5ab0d689daf05b3421e20b0c465e6be400))
+
+
+### Chores
+
+* **deps:** bump svgo in the npm_and_yarn group across 1 directory ([#603](https://github.com/dallay/agentsync/issues/603)) ([e3c407e](https://github.com/dallay/agentsync/commit/e3c407e94051cd0cd877ba3ad72fc8298f4e8712))
+
 ## [1.50.0](https://github.com/dallay/agentsync/compare/v1.49.1...v1.50.0) (2026-09-22)
 
 
