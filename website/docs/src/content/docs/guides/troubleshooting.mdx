@@ -1,0 +1,211 @@
+---
+title: Troubleshooting
+description: Diagnose and fix common AgentSync installation, version, symlink, and configuration problems.
+---
+
+import BaseLink from "../../../components/BaseLink.astro";
+import CommandTabs from "../../../components/CommandTabs.astro";
+
+Use this guide when something feels off and you are not sure if it is AgentSync, your environment, or your configuration.
+
+Healthy baseline first. In your project root, these three should all pass:
+
+```bash
+agentsync --version
+agentsync doctor
+agentsync status
+```
+
+If all three pass and the behavior still looks wrong, work through the sections below in order. Most reports turn out to be one of these: a shadowed binary, a missing PATH entry, expected `status` drift, or a `doctor` warning that already names the fix.
+
+## Installed a new version but `--version` shows an old one
+
+This is the most confusing one because the installer says success and the CLI disagrees.
+
+**Typical symptoms**
+
+```bash
+pnpm add -g @dallay/agentsync
+# global:
+# + @dallay/agentsync 1.50.0
+
+agentsync --version
+# agentsync 1.32.0
+```
+
+The new package installed correctly. A different, older binary is winning in your `PATH`.
+
+**Why it happens**
+
+AgentSync can be installed two independent ways:
+
+1. **npm wrapper** (`npm / pnpm / yarn / bun -g`) — downloads a platform binary and exposes it from the package-manager global `bin` directory, for example `~/Library/pnpm/bin/agentsync`.
+2. **Rust binary** (`cargo install agentsync`) — compiles and drops a standalone binary into `~/.cargo/bin/agentsync`.
+
+Those two binaries do not update each other. If `~/.cargo/bin` appears earlier in `PATH` than the pnpm/npm global `bin`, the shell keeps running the old Rust binary even after a successful `pnpm add -g`.
+
+**Diagnose it**
+
+```bash
+# 1. Which binary is actually running?
+which agentsync
+ls -la "$(which agentsync)"
+
+# 2. What does the package-manager binary report directly?
+# Adjust the path to your setup if needed.
+~/Library/pnpm/bin/agentsync --version
+
+# 3. Confirm the shadowed copy
+ls -la ~/.cargo/bin/agentsync
+echo "$PATH" | tr ':' '\n' | nl
+```
+
+What you want to see:
+
+- `which agentsync` points to the binary you intend to use.
+- The direct-path `--version` prints the new version (for example `1.50.0`).
+- An old dated binary exists in the earlier `PATH` entry (for example a 7 MB file from months ago in `~/.cargo/bin`).
+
+**Fix it: keep the npm wrapper, remove the old cargo binary**
+
+If you already manage AgentSync through pnpm/npm, the cleanest fix is to remove the stale standalone binary:
+
+```bash
+rm ~/.cargo/bin/agentsync
+hash -r # clear the shell's cached command locations
+which agentsync
+agentsync --version # should now print the new version
+```
+
+If you intentionally want to keep both:
+
+```bash
+alias agentsync='~/Library/pnpm/bin/agentsync'
+agentsync --version
+```
+
+Add the alias to your shell profile (for example `~/.zshrc`) so it survives restarts.
+
+**Prevent it**
+
+- Pick one install method per machine: either the npm wrapper **or** `cargo install`, not both.
+- After switching methods, verify with `which agentsync` and `agentsync --version` before reporting a version bug.
+- In CI, prefer a one-off runner (`npx`, `pnpm dlx`, `bunx`) so no global binary can shadow the pinned version:
+
+<CommandTabs command="--version" />
+
+## `agentsync: command not found` after a global install
+
+The package installed, but its `bin` directory is not on `PATH`.
+
+```bash
+# Where did pnpm put the binary?
+pnpm root -g
+ls -la ~/Library/pnpm/bin/agentsync
+
+# Is that directory on PATH?
+echo "$PATH" | tr ':' '\n' | grep -i pnpm
+```
+
+Fixes:
+
+- Add the global bin directory to your shell profile (`export PATH="$HOME/Library/pnpm/bin:$PATH"` for pnpm, or the equivalent for npm/yarn/bun), reload the shell, and retry.
+- Or skip global installs entirely and use a one-off runner in each project:
+
+<CommandTabs command="status" />
+
+## `agentsync status` reports drift
+
+`status` is supposed to complain when the filesystem drifted from `agentsync.toml`. Read its verdict literally:
+
+| Status | Meaning | Typical fix |
+| :--- | :--- | :--- |
+| `✔ OK` | Symlink exists and points to the expected source | Nothing to do |
+| `✗ Incorrect link` | Symlink points somewhere else | Run `agentsync apply`, or `apply --clean` if you want a full recreate |
+| `! Missing` | Destination does not exist | Run `agentsync apply` |
+| `· Exists but not a symlink` | A regular file or directory blocks the destination | Back up or remove the blocker, then `agentsync apply` |
+
+Useful pattern before writing anything:
+
+```bash
+agentsync status
+agentsync apply --dry-run
+agentsync apply
+agentsync status
+```
+
+Scope the repair when you only care about one agent:
+
+```bash
+agentsync apply --agents claude --dry-run
+agentsync apply --agents claude
+```
+
+For the full schema, exit codes, and CI usage (`status --json`), see the <BaseLink href="/reference/status-output/">Status Output reference</BaseLink>.
+
+## `agentsync doctor` warns about config or environment
+
+`doctor` names the problem class for you. Common hits:
+
+- **Missing `agentsync.toml` or TOML syntax error** — run from the project root, or pass `--project-root`, and validate the TOML.
+- **Target source does not exist** — the `source` path in your config has a typo or the file was never created under `.agents/`.
+- **`module-map` target with no mappings** — the target is misconfigured; add mappings or disable it.
+- **Destination conflicts** — same destination claimed twice; narrow it to one owner.
+- **`.gitignore` audit findings** — marker-aware parsing found a stale or unexpected managed block. Decide your team policy first in the <BaseLink href="/guides/gitignore-team-workflows/">Gitignore Team Workflows guide</BaseLink>.
+- **MCP server not executable** — the configured MCP command is missing or not on `PATH`.
+- **Unmanaged Claude skills** — content exists in `.claude/skills/` that no target manages. Either adopt it into `agentsync.toml` or leave it unmanaged on purpose.
+- **Skills mode mismatch** — a skills target is configured as `symlink-contents` while the destination is already the expected directory symlink. `status` stays `OK` and prints a hint; switch that target to `symlink` to avoid churn.
+
+Run order that separates config problems from environment problems:
+
+```bash
+agentsync doctor
+agentsync status
+agentsync apply --dry-run
+```
+
+## `agentsync apply` fails to create symlinks
+
+If `apply` fails with a symlink-permission error on Windows, fix the shell setup before treating it as an AgentSync bug: Developer Mode or Administrator shell, correct native-versus-WSL context, then `apply` again. Full steps live in the <BaseLink href="/guides/windows-symlink-setup/">Windows Symlink Setup guide</BaseLink>.
+
+On macOS or Linux, the usual causes are:
+
+1. A regular file or directory already occupies the destination (`status` shows `Exists but not a symlink`). Back it up, remove it, and re-run `apply`.
+2. The configured `source` does not exist. `doctor` tells you which one.
+3. You are running from the wrong directory. Pass `-p /path/to/repo` or `cd` into the project root.
+
+Clean retry when you changed approach and want a fresh reconcile:
+
+```bash
+agentsync clean
+agentsync apply
+agentsync status
+```
+
+Use `clean` only when you intend to remove managed links before recreating them.
+
+## Quick checklist before opening an issue
+
+Collect this output and paste it into the report:
+
+```bash
+which agentsync
+agentsync --version
+agentsync doctor
+agentsync status
+agentsync apply --dry-run
+```
+
+Also note:
+
+- Install method (npm/pnpm/yarn/bun global, one-off runner, GitHub release tarball, or `cargo install`).
+- OS and shell.
+- Whether `~/.cargo/bin` or another global `bin` shadows the expected binary.
+
+Related docs:
+
+- <BaseLink href="/guides/getting-started/">Getting Started</BaseLink> for install methods
+- <BaseLink href="/reference/cli/">CLI Reference</BaseLink> for flags such as `--project-root`, `--agents`, `--dry-run`, and `--no-gitignore`
+- <BaseLink href="/guides/gitignore-team-workflows/">Gitignore Team Workflows</BaseLink> for managed-destination policy
+- <BaseLink href="/guides/git-hook-automation/">Git Hook Automation</BaseLink> for keeping links fresh after branch switches
+- <BaseLink href="/guides/windows-symlink-setup/">Windows Symlink Setup</BaseLink> for native and WSL prerequisites

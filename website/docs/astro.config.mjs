@@ -52,6 +52,7 @@ export default defineConfig({
 						},
 						{ label: "MCP Integration", slug: "guides/mcp" },
 						{ label: "Skills", slug: "guides/skills" },
+						{ label: "Troubleshooting", slug: "guides/troubleshooting" },
 					],
 				},
 				{
