@@ -20,9 +20,10 @@ hero:
 import Features from '../../components/Features.astro';
 import FeatureItem from '../../components/FeatureItem.astro';
 import CommandTabs from '../../components/CommandTabs.astro';
+import BaseLink from '../../components/BaseLink.astro';
 import { Tabs, TabItem, Code } from '@astrojs/starlight/components';
 
-<Features title="Why agentsync?">
+<Features title="Why AgentSync?">
   <FeatureItem
     title="Single Source of Truth"
     description="Maintain one AGENTS.md and sync it to Claude, Copilot, Gemini, and more via symlinks."
@@ -88,7 +89,7 @@ import { Tabs, TabItem, Code } from '@astrojs/starlight/components';
   </TabItem>
 </Tabs>
 
-> See the <a href="/guides/getting-started/#installation">Getting Started guide</a> for one-off execution (`npx`, `pnpm dlx`), binary downloads, and building from source.
+> See the <BaseLink href="/guides/getting-started/#installation">Getting Started guide</BaseLink> for one-off execution (`npx`, `pnpm dlx`), binary downloads, and building from source.
 
 ### 2. Initialize and apply
 
@@ -99,6 +100,6 @@ This documentation is the authoritative project reference.
 
 > **Canonical Source**: All agent instructions and skills are maintained in `.agents/AGENTS.md`. This is the single source of truth—they get synced everywhere!
 
-If you are deciding how your team should handle `.gitignore`, start with the <a href="/guides/gitignore-team-workflows/">Gitignore Team Workflows guide</a>. It explains the default managed mode, the committed-destination opt-out mode, and when `--no-gitignore` is appropriate.
+If you are deciding how your team should handle `.gitignore`, start with the <BaseLink href="/guides/gitignore-team-workflows/">Gitignore Team Workflows guide</BaseLink>. It explains the default managed mode, the committed-destination opt-out mode, and when `--no-gitignore` is appropriate.
 
-If you use AgentSync from Windows, the <a href="/guides/windows-symlink-setup/">Windows Symlink Setup guide</a> covers native prerequisites, when WSL is the lower-friction option, and how to verify symlink health after `apply`.
+If you use AgentSync from Windows, the <BaseLink href="/guides/windows-symlink-setup/">Windows Symlink Setup guide</BaseLink> covers native prerequisites, when WSL is the lower-friction option, and how to verify symlink health after `apply`.

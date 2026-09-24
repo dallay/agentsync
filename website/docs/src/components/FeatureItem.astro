@@ -15,7 +15,7 @@ const Tag = resolvedHref ? "a" : "div";
 ---
 
 <Tag class="feature-item" href={resolvedHref || undefined}>
-    <span class="feature-icon">{icon}</span>
+    <span class="feature-icon" aria-hidden="true">{icon}</span>
     <h3 class="feature-title">{title}</h3>
     <p class="feature-desc">{description}</p>
 </Tag>
