@@ -1,0 +1,149 @@
+---
+// HeroDiagram — geometric product diagram: canonical source → AgentSync
+// → native symlinks. Crisp SVG geometry only (no sketch illustration).
+// Colors come from --as-* tokens; text uses the mono stack.
+---
+
+<figure class="hero-diagram" role="img" aria-label="Diagram: the canonical .agents directory flows through AgentSync apply into native symlinks for each AI coding assistant">
+	<svg viewBox="0 0 400 360" fill="none" role="presentation" aria-hidden="true">
+		<defs>
+			<marker id="as-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+				<path d="M0 0L8 4L0 8z" class="diagram-arrowhead" />
+			</marker>
+		</defs>
+
+		<!-- Canonical source -->
+		<g>
+			<rect x="8" y="104" width="104" height="152" rx="10" class="diagram-card" />
+			<text x="20" y="130" class="diagram-title">.agents/</text>
+			<text x="20" y="154" class="diagram-row">AGENTS.md</text>
+			<text x="20" y="176" class="diagram-row">skills/</text>
+			<text x="20" y="198" class="diagram-row">commands/</text>
+			<text x="20" y="220" class="diagram-row">mcp_servers</text>
+		</g>
+
+		<!-- Engine -->
+		<line x1="112" y1="180" x2="128" y2="180" class="diagram-edge" marker-end="url(#as-arrow)" />
+		<g>
+			<rect x="130" y="140" width="76" height="80" rx="12" class="diagram-engine" />
+			<text x="168" y="172" text-anchor="middle" class="diagram-engine-name">agentsync</text>
+			<text x="168" y="194" text-anchor="middle" class="diagram-engine-cmd">apply</text>
+		</g>
+
+		<!-- Materialized symlinks (dashed = link, not copy) -->
+		<g class="diagram-links">
+			<line x1="206" y1="180" x2="238" y2="84" marker-end="url(#as-arrow)" />
+			<line x1="206" y1="180" x2="238" y2="132" marker-end="url(#as-arrow)" />
+			<line x1="206" y1="180" x2="238" y2="180" marker-end="url(#as-arrow)" />
+			<line x1="206" y1="180" x2="238" y2="228" marker-end="url(#as-arrow)" />
+			<line x1="206" y1="180" x2="238" y2="276" marker-end="url(#as-arrow)" />
+		</g>
+
+		<!-- Destinations -->
+		<g class="diagram-dests">
+			<text x="244" y="88">CLAUDE.md</text>
+			<text x="244" y="136">copilot-instructions.md</text>
+			<text x="244" y="184">agentsync.mdc</text>
+			<text x="244" y="232">AGENTS.md</text>
+			<text x="244" y="280">GEMINI.md</text>
+		</g>
+
+		<text x="244" y="312" class="diagram-more">+30 more</text>
+	</svg>
+	<figcaption class="diagram-caption">One source of truth, materialized as native symlinks.</figcaption>
+</figure>
+
+<style>
+	.hero-diagram {
+		margin: 0;
+		width: 100%;
+		max-width: 400px;
+		padding: var(--as-space-lg, 24px);
+		background: var(--as-bg-card, rgba(18, 18, 24, 0.6));
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+		border: 1px solid var(--as-border, rgba(255, 255, 255, 0.08));
+		border-radius: var(--as-radius-lg, 16px);
+	}
+
+	.hero-diagram svg {
+		display: block;
+		width: 100%;
+		height: auto;
+	}
+
+	.diagram-card {
+		fill: var(--as-bg-surface, #121218);
+		stroke: var(--as-border, rgba(255, 255, 255, 0.08));
+	}
+
+	.diagram-engine {
+		fill: var(--as-bg-surface, #121218);
+		stroke: var(--as-primary, #00e5c4);
+		stroke-width: 1.5;
+	}
+
+	.diagram-edge {
+		stroke: var(--as-text-secondary, #9aa7b3);
+		stroke-width: 1.5;
+	}
+
+	.diagram-links line {
+		stroke: var(--as-primary, #00e5c4);
+		stroke-width: 1.25;
+		stroke-dasharray: 5 4;
+		opacity: 0.8;
+	}
+
+	.diagram-arrowhead {
+		fill: var(--as-text-secondary, #9aa7b3);
+	}
+
+	.hero-diagram text {
+		font-family: var(--as-font-mono, ui-monospace, monospace);
+		fill: var(--as-text-secondary, #9aa7b3);
+		font-size: 10px;
+	}
+
+	.diagram-title {
+		fill: var(--as-text-primary, #fff);
+		font-size: 12px;
+		font-weight: 600;
+	}
+
+	.diagram-engine-name {
+		fill: var(--as-text-primary, #fff);
+		font-size: 12px;
+		font-weight: 700;
+	}
+
+	.diagram-engine-cmd {
+		fill: var(--as-primary, #00e5c4);
+		font-size: 12px;
+	}
+
+	.diagram-more {
+		fill: var(--as-text-muted, #858e9a);
+		font-size: 10px;
+	}
+
+	.diagram-caption {
+		margin-top: var(--as-space-md, 16px);
+		font-size: 0.85rem;
+		color: var(--as-text-muted, #858e9a);
+		text-align: center;
+	}
+
+	/* Light mode: violet is the system accent; cyan strokes on paper fail contrast. */
+	:global([data-theme="light"]) .diagram-engine {
+		stroke: var(--as-secondary, #7c4dff);
+	}
+
+	:global([data-theme="light"]) .diagram-links line {
+		stroke: var(--as-secondary, #7c4dff);
+	}
+
+	:global([data-theme="light"]) .diagram-engine-cmd {
+		fill: var(--as-secondary, #7c4dff);
+	}
+</style>

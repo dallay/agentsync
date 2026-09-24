@@ -1,0 +1,95 @@
+---
+// TerminalDemo — single narrative terminal: init → apply → status.
+// Every marker below is verbatim CLI output (✔ Created, ✔ Linked,
+// ✔ Sync complete, ✔ OK, Status: All good); absolute paths trimmed.
+---
+
+<figure class="terminal-demo" aria-label="Terminal session: initialize, apply, and verify AgentSync">
+	<div class="terminal-bar" aria-hidden="true">
+		<span class="terminal-dot"></span>
+		<span class="terminal-dot"></span>
+		<span class="terminal-dot"></span>
+		<span class="terminal-title">terminal</span>
+	</div>
+<pre class="terminal-body"><code><span class="t-prompt">$</span> npx @dallay/agentsync init
+<span class="t-ok">✔ Created:</span> .agents/agentsync.toml
+<span class="t-ok">✔ Created:</span> .agents/AGENTS.md
+<span class="t-done">✨ Initialization complete!</span>
+
+<span class="t-prompt">$</span> npx @dallay/agentsync apply
+<span class="t-ok">✔ Linked:</span> CLAUDE.md -&gt; .agents/AGENTS.md
+<span class="t-ok">✔ Sync complete</span>
+
+<span class="t-prompt">$</span> agentsync status
+<span class="t-ok">✔ OK:</span> CLAUDE.md -&gt; .agents/AGENTS.md
+Status: All good</code></pre>
+</figure>
+
+<style>
+	.terminal-demo {
+		margin: var(--as-space-lg, 24px) auto;
+		max-width: 720px;
+		border: 1px solid var(--as-border, rgba(255, 255, 255, 0.08));
+		border-radius: var(--as-radius-md, 10px);
+		overflow: hidden;
+		background: var(--as-bg-elevated, #0d0d12);
+	}
+
+	.terminal-bar {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 10px 16px;
+		border-bottom: 1px solid var(--as-border, rgba(255, 255, 255, 0.08));
+	}
+
+	.terminal-dot {
+		width: 10px;
+		height: 10px;
+		border-radius: 50%;
+		background: var(--as-border-hover, rgba(255, 255, 255, 0.15));
+	}
+
+	.terminal-title {
+		margin-left: 8px;
+		font-family: var(--as-font-mono, ui-monospace, monospace);
+		font-size: 0.75rem;
+		color: var(--as-text-muted, #858e9a);
+	}
+
+	.terminal-body {
+		margin: 0;
+		padding: var(--as-space-md, 16px);
+		background: transparent;
+		border: none;
+		box-shadow: none;
+		font-size: 0.85rem;
+		overflow-x: auto;
+	}
+
+	.terminal-body code {
+		background: transparent;
+		border: none;
+		padding: 0;
+	}
+
+	.t-prompt {
+		color: var(--as-primary, #00e5c4);
+		font-weight: 700;
+		user-select: none;
+	}
+
+	.t-ok {
+		color: var(--as-primary, #00e5c4);
+	}
+
+	.t-done {
+		color: var(--as-text-primary, #fff);
+	}
+
+	/* Light mode: violet is the system accent; cyan text on paper fails AA. */
+	:global([data-theme="light"]) .t-prompt,
+	:global([data-theme="light"]) .t-ok {
+		color: var(--as-secondary, #7c4dff);
+	}
+</style>

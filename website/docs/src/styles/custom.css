@@ -369,39 +369,43 @@ pre code {
 }
 
 @supports (animation-timeline: view()) {
-	.features-section .features-heading {
+	.how-section .how-heading,
+	.bento-section .bento-heading {
 		animation: as-reveal 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
 		animation-timeline: view();
 		animation-range: entry 0% cover 20%;
 	}
 
-	.features-section .features-grid > * {
+	.how-section .how-grid > *,
+	.bento-section .bento-grid > * {
 		animation: as-reveal 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
 		animation-timeline: view();
 		animation-range: entry 0% cover 28%;
 	}
 
-	.features-section .features-grid > *:nth-child(2) {
+	.how-section .how-grid > *:nth-child(2),
+	.bento-section .bento-grid > *:nth-child(2) {
 		animation-delay: 0.05s;
 	}
 
-	.features-section .features-grid > *:nth-child(3) {
+	.how-section .how-grid > *:nth-child(3),
+	.bento-section .bento-grid > *:nth-child(3) {
 		animation-delay: 0.1s;
 	}
 
-	.features-section .features-grid > *:nth-child(4) {
+	.bento-section .bento-grid > *:nth-child(4) {
 		animation-delay: 0.15s;
 	}
 
-	.features-section .features-grid > *:nth-child(5) {
+	.bento-section .bento-grid > *:nth-child(5) {
 		animation-delay: 0.2s;
 	}
 
-	.features-section .features-grid > *:nth-child(6) {
+	.bento-section .bento-grid > *:nth-child(6) {
 		animation-delay: 0.25s;
 	}
 
-	.features-section .features-grid > *:nth-child(7) {
+	.bento-section .bento-grid > *:nth-child(7) {
 		animation-delay: 0.3s;
 	}
 
@@ -409,6 +413,12 @@ pre code {
 		animation: as-reveal 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
 		animation-timeline: view();
 		animation-range: entry 0% cover 20%;
+	}
+
+	.terminal-demo {
+		animation: as-reveal 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+		animation-timeline: view();
+		animation-range: entry 0% cover 25%;
 	}
 }
 
@@ -444,8 +454,11 @@ pre code {
 	}
 
 	/* Overdrive scroll reveal: static and visible when reduced motion is preferred. */
-	.features-section .features-heading,
-	.features-section .features-grid > *,
+	.how-section .how-heading,
+	.how-section .how-grid > *,
+	.bento-section .bento-heading,
+	.bento-section .bento-grid > *,
+	.terminal-demo,
 	#quick-start,
 	.hero .hero-bg-glow,
 	.hero .hero-grid-pattern {

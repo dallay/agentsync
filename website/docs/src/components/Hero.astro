@@ -1,5 +1,7 @@
 ---
 import { withBase } from "../utils/links";
+import HeroDiagram from "./HeroDiagram.astro";
+import InstallCommand from "./InstallCommand.astro";
 
 const heroFromProps = Astro.props?.hero;
 const heroFromRoute = Astro.locals?.starlightRoute?.entry?.data?.hero;
@@ -43,6 +45,7 @@ const actions = (
       </div>
       <h1 class="hero-title">{title}</h1>
       <p class="hero-sub">{tagline}</p>
+      <InstallCommand />
       <div class="hero-cta">
         {
           actions.map((a) =>
@@ -73,6 +76,7 @@ const actions = (
           )
         }
       </div>
+      <p class="compat-label">Works with the tools you already use</p>
       <div class="hero-tech-badges">
         <span class="tech-badge">
           <span class="tech-dot" aria-hidden="true"></span>
@@ -101,18 +105,16 @@ const actions = (
       </div>
     </div>
     <div class="hero-visual animate-fade-in-up" style="animation-delay: 0.15s;">
-      <div class="robot-wrap">
-        <div class="robot-glow" aria-hidden="true"></div>
-        <img
-          src={imageFile}
-          alt="AgentSync synchronization illustration"
-          class="robot"
-          width="380"
-          height="380"
-          decoding="async"
-          fetchpriority="high"
-        />
-      </div>
+      <HeroDiagram />
+      <img
+        src={imageFile}
+        alt=""
+        aria-hidden="true"
+        class="brand-bot"
+        width="96"
+        height="96"
+        loading="lazy"
+      />
     </div>
   </div>
 </header>
@@ -184,6 +186,7 @@ const actions = (
     display: flex;
     flex-direction: column;
     gap: var(--as-space-md, 16px);
+    min-width: 0;
   }
 
   .hero-badge {
@@ -292,6 +295,12 @@ const actions = (
   }
 
   /* ===== Tech Badges ===== */
+  .compat-label {
+    font-size: 0.8rem;
+    color: var(--as-text-muted, #858e9a);
+    margin: var(--as-space-md, 16px) 0 0 0;
+  }
+
   .hero-tech-badges {
     display: flex;
     flex-wrap: wrap;
@@ -327,66 +336,22 @@ const actions = (
     flex-shrink: 0;
   }
 
-  /* ===== Hero Visual ===== */
+  /* ===== Hero Visual (diagram + brand companion) ===== */
   .hero-visual {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-  }
-
-  .robot-wrap {
     position: relative;
-    width: 380px;
-    height: 380px;
     display: flex;
-    align-items: center;
     justify-content: center;
+    align-items: center;
   }
 
-  .robot-glow {
+  .brand-bot {
     position: absolute;
-    width: 300px;
-    height: 300px;
-    background: radial-gradient(
-      circle,
-      rgba(0, 229, 196, 0.15),
-      transparent 60%
-    );
-    border-radius: 50%;
-    filter: blur(40px);
-    animation: glow-pulse 4s ease-in-out infinite;
-  }
-
-  @keyframes glow-pulse {
-    0%,
-    100% {
-      transform: scale(0.95);
-      opacity: 0.6;
-    }
-    50% {
-      transform: scale(1.1);
-      opacity: 0.9;
-    }
-  }
-
-  .robot {
-    position: relative;
-    z-index: 1;
-    width: 100%;
-    height: 100%;
+    top: -28px;
+    right: 16px;
+    width: 88px;
+    height: 88px;
     object-fit: contain;
-    filter: drop-shadow(0 16px 40px rgba(0, 0, 0, 0.5));
-    animation: float 6s ease-in-out infinite;
-  }
-
-  @keyframes float {
-    0%,
-    100% {
-      transform: translateY(0);
-    }
-    50% {
-      transform: translateY(-12px);
-    }
+    filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.45));
   }
 
   /* ===== Fade-in Animation ===== */
@@ -435,13 +400,12 @@ const actions = (
     }
 
     .hero-visual {
-      order: -1;
-      margin-bottom: var(--as-space-lg, 24px);
+      margin-top: var(--as-space-lg, 24px);
     }
 
-    .robot-wrap {
-      width: 280px;
-      height: 280px;
+    .brand-bot {
+      width: 72px;
+      height: 72px;
     }
   }
 </style>
