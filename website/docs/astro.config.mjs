@@ -11,6 +11,16 @@ export default defineConfig({
 	integrations: [
 		starlight({
 			title: "AgentSync",
+			head: [
+				{
+					tag: "script",
+					attrs: {
+						src: "https://analytics.ahrefs.com/analytics.js",
+						"data-key": "u+wFBkUteccQg9KB5j71cA",
+						async: true,
+					},
+				},
+			],
 			// Use our local Hero component to override the theme's Hero
 			components: {
 				Hero: "./src/components/Hero.astro",
