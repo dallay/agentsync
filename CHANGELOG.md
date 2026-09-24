@@ -21,6 +21,13 @@
 * **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
 * **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
 
+## [1.51.0](https://github.com/dallay/agentsync/compare/v1.50.2...v1.51.0) (2026-09-24)
+
+
+### Features
+
+* **docs:** V2 landing page — mechanism-first hero and narrative flow ([#607](https://github.com/dallay/agentsync/issues/607)) ([26c0610](https://github.com/dallay/agentsync/commit/26c06107573c401141fcc63e40b18e3d928f4e16))
+
 ## [1.50.2](https://github.com/dallay/agentsync/compare/v1.50.1...v1.50.2) (2026-09-23)
 
 
