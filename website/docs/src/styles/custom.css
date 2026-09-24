@@ -426,7 +426,7 @@ pre code {
 	.hero .hero-bg-glow,
 	.hero .hero-grid-pattern {
 		animation: as-hero-drift linear both;
-		animation-timeline: scroll();
+		animation-timeline: scroll(root);
 		animation-range: 0 80vh;
 	}
 }

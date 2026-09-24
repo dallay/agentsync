@@ -30,20 +30,28 @@ const command = "npx @dallay/agentsync init";
 					el.classList.remove("is-copied");
 				}, 2000);
 			};
+			const fail = function () {
+				const label = el.querySelector(".copy-label");
+				if (label) label.textContent = "Failed";
+				el.classList.add("is-copied");
+				window.setTimeout(function () {
+					if (label) label.textContent = "Copy";
+					el.classList.remove("is-copied");
+				}, 2000);
+			};
 			if (navigator.clipboard && navigator.clipboard.writeText) {
-				navigator.clipboard.writeText(text).then(done, done);
+				navigator.clipboard.writeText(text).then(done, fail);
 			} else {
 				const area = document.createElement("textarea");
 				area.value = text;
 				document.body.appendChild(area);
 				area.select();
+				var succeeded = false;
 				try {
-					document.execCommand("copy");
-				} catch (e) {
-					void e;
-				}
+					succeeded = document.execCommand("copy");
+				} catch (e) { /* fall through */ }
 				area.remove();
-				done();
+				if (succeeded) { done(); } else { fail(); }
 			}
 		});
 	});
@@ -108,6 +116,26 @@ const command = "npx @dallay/agentsync init";
 		border-color: var(--as-primary, #00e5c4);
 	}
 
+	.install-copy.is-failed {
+		color: #ff6b6b;
+		border-color: #ff6b6b;
+	}
+
+	/* Light mode — violet is the system accent; cyan on paper fails AA. */
+	:global([data-theme="light"]) .install-prompt,
+	:global([data-theme="light"]) .install-copy.is-copied {
+		color: var(--as-secondary, #7c4dff);
+	}
+
+	:global([data-theme="light"]) .install-copy.is-copied {
+		border-color: var(--as-secondary, #7c4dff);
+	}
+
+	:global([data-theme="light"]) .install-copy.is-failed {
+		color: #c0392b;
+		border-color: #c0392b;
+	}
+
 	@media (max-width: 480px) {
 		.install-code {
 			font-size: 0.8rem;
@@ -116,15 +144,5 @@ const command = "npx @dallay/agentsync init";
 		.install-copy {
 			padding: 8px 12px;
 		}
-	}
-
-	/* Light mode: violet is the system accent; cyan on paper fails AA. */
-	:global([data-theme="light"]) .install-prompt,
-	:global([data-theme="light"]) .install-copy.is-copied {
-		color: var(--as-secondary, #7c4dff);
-	}
-
-	:global([data-theme="light"]) .install-copy.is-copied {
-		border-color: var(--as-secondary, #7c4dff);
 	}
 </style>
