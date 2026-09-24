@@ -338,6 +338,99 @@ pre code {
 	outline-offset: 2px;
 }
 
+/* --- Scroll-driven reveal (Overdrive A: landing choreography) ---
+   Progressive enhancement: the default state is visible. Motion only exists
+   inside @supports (animation-timeline: ...), so unsupported browsers render
+   static content. One authored moment: features grid + quick-start heading
+   rise with exponential ease-out; hero atmosphere drifts subtly on scroll.
+   Transform + opacity only (compositor-friendly, 60fps). */
+@keyframes as-reveal {
+	from {
+		opacity: 0;
+		transform: translateY(28px);
+	}
+
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes as-hero-drift {
+	from {
+		transform: translateY(0);
+		opacity: 1;
+	}
+
+	to {
+		transform: translateY(90px);
+		opacity: 0.55;
+	}
+}
+
+@supports (animation-timeline: view()) {
+	.how-section .how-heading,
+	.bento-section .bento-heading {
+		animation: as-reveal 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+		animation-timeline: view();
+		animation-range: entry 0% cover 20%;
+	}
+
+	.how-section .how-grid > *,
+	.bento-section .bento-grid > * {
+		animation: as-reveal 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+		animation-timeline: view();
+		animation-range: entry 0% cover 28%;
+	}
+
+	.how-section .how-grid > *:nth-child(2),
+	.bento-section .bento-grid > *:nth-child(2) {
+		animation-delay: 0.05s;
+	}
+
+	.how-section .how-grid > *:nth-child(3),
+	.bento-section .bento-grid > *:nth-child(3) {
+		animation-delay: 0.1s;
+	}
+
+	.bento-section .bento-grid > *:nth-child(4) {
+		animation-delay: 0.15s;
+	}
+
+	.bento-section .bento-grid > *:nth-child(5) {
+		animation-delay: 0.2s;
+	}
+
+	.bento-section .bento-grid > *:nth-child(6) {
+		animation-delay: 0.25s;
+	}
+
+	.bento-section .bento-grid > *:nth-child(7) {
+		animation-delay: 0.3s;
+	}
+
+	#quick-start {
+		animation: as-reveal 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+		animation-timeline: view();
+		animation-range: entry 0% cover 20%;
+	}
+
+	.terminal-demo {
+		animation: as-reveal 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+		animation-timeline: view();
+		animation-range: entry 0% cover 25%;
+	}
+}
+
+@supports (animation-timeline: scroll()) {
+	.hero .hero-bg-glow,
+	.hero .hero-grid-pattern {
+		animation: as-hero-drift linear both;
+		animation-timeline: scroll(root);
+		animation-range: 0 80vh;
+	}
+}
+
 /* --- Reduced Motion (unlayered — must stay out of @layer) --- */
 @media (prefers-reduced-motion: reduce) {
 	html {
@@ -358,5 +451,19 @@ pre code {
 	.hero .hero-visual.animate-fade-in-up {
 		animation: none;
 		opacity: 1;
+	}
+
+	/* Overdrive scroll reveal: static and visible when reduced motion is preferred. */
+	.how-section .how-heading,
+	.how-section .how-grid > *,
+	.bento-section .bento-heading,
+	.bento-section .bento-grid > *,
+	.terminal-demo,
+	#quick-start,
+	.hero .hero-bg-glow,
+	.hero .hero-grid-pattern {
+		animation: none;
+		opacity: 1;
+		transform: none;
 	}
 }

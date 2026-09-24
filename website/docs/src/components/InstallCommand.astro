@@ -1,0 +1,148 @@
+---
+// InstallCommand — hero install command with copy affordance.
+// Real <button>, 44px target, aria-live success state, clipboard fallback.
+const command = "npx @dallay/agentsync init";
+---
+
+<div class="install-command">
+	<span class="install-prompt" aria-hidden="true">$</span>
+	<code class="install-code">{command}</code>
+	<button type="button" class="install-copy" data-command={command} aria-label="Copy install command">
+		<svg class="copy-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+			<rect x="5.5" y="5.5" width="8" height="8" rx="2" stroke="currentColor" stroke-width="1.5" />
+			<path d="M10.5 5.5v-2a2 2 0 0 0-2-2h-5a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h2" stroke="currentColor" stroke-width="1.5" />
+		</svg>
+		<span class="copy-label" aria-live="polite">Copy</span>
+	</button>
+</div>
+
+<script>
+	document.querySelectorAll(".install-copy").forEach(function (btn) {
+		btn.addEventListener("click", function () {
+			const el = btn;
+			const text = el.getAttribute("data-command") || "";
+			const done = function () {
+				const label = el.querySelector(".copy-label");
+				if (label) label.textContent = "Copied";
+				el.classList.add("is-copied");
+				window.setTimeout(function () {
+					if (label) label.textContent = "Copy";
+					el.classList.remove("is-copied");
+				}, 2000);
+			};
+			const fail = function () {
+				const label = el.querySelector(".copy-label");
+				if (label) label.textContent = "Failed";
+				el.classList.add("is-copied");
+				window.setTimeout(function () {
+					if (label) label.textContent = "Copy";
+					el.classList.remove("is-copied");
+				}, 2000);
+			};
+			if (navigator.clipboard && navigator.clipboard.writeText) {
+				navigator.clipboard.writeText(text).then(done, fail);
+			} else {
+				const area = document.createElement("textarea");
+				area.value = text;
+				document.body.appendChild(area);
+				area.select();
+				var succeeded = false;
+				try {
+					succeeded = document.execCommand("copy");
+				} catch (e) { /* fall through */ }
+				area.remove();
+				if (succeeded) { done(); } else { fail(); }
+			}
+		});
+	});
+</script>
+
+<style>
+	.install-command {
+		display: flex;
+		align-items: center;
+		gap: var(--as-space-sm, 8px);
+		min-width: 0;
+		max-width: min(500px, 100%);
+		padding: 12px 12px 12px 16px;
+		background: var(--as-bg-surface, #121218);
+		border: 1px solid var(--as-border, rgba(255, 255, 255, 0.08));
+		border-radius: var(--as-radius-md, 10px);
+		box-shadow: var(--as-shadow-sm, 0 2px 8px rgba(0, 0, 0, 0.3));
+	}
+
+	.install-prompt {
+		color: var(--as-primary, #00e5c4);
+		font-family: var(--as-font-mono, ui-monospace, monospace);
+		font-weight: 700;
+		user-select: none;
+	}
+
+	.install-code {
+		flex: 1;
+		min-width: 0;
+		overflow-x: auto;
+		white-space: nowrap;
+		background: transparent;
+		border: none;
+		padding: 0;
+	}
+
+	.install-copy {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		min-height: 44px;
+		padding: 8px 16px;
+		background: transparent;
+		color: var(--as-text-secondary, #9aa7b3);
+		border: 1px solid var(--as-border, rgba(255, 255, 255, 0.08));
+		border-radius: var(--as-radius-sm, 6px);
+		font-size: 0.85rem;
+		font-weight: 600;
+		cursor: pointer;
+		transition:
+			color var(--as-transition-fast, 150ms ease),
+			border-color var(--as-transition-fast, 150ms ease);
+	}
+
+	.install-copy:hover {
+		color: var(--as-text-primary, #fff);
+		border-color: var(--as-border-hover, rgba(255, 255, 255, 0.15));
+	}
+
+	.install-copy.is-copied {
+		color: var(--as-primary, #00e5c4);
+		border-color: var(--as-primary, #00e5c4);
+	}
+
+	.install-copy.is-failed {
+		color: #ff6b6b;
+		border-color: #ff6b6b;
+	}
+
+	/* Light mode — violet is the system accent; cyan on paper fails AA. */
+	:global([data-theme="light"]) .install-prompt,
+	:global([data-theme="light"]) .install-copy.is-copied {
+		color: var(--as-secondary, #7c4dff);
+	}
+
+	:global([data-theme="light"]) .install-copy.is-copied {
+		border-color: var(--as-secondary, #7c4dff);
+	}
+
+	:global([data-theme="light"]) .install-copy.is-failed {
+		color: #c0392b;
+		border-color: #c0392b;
+	}
+
+	@media (max-width: 480px) {
+		.install-code {
+			font-size: 0.8rem;
+		}
+
+		.install-copy {
+			padding: 8px 12px;
+		}
+	}
+</style>

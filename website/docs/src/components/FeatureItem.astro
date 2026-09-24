@@ -7,15 +7,17 @@ interface Props {
 	description: string;
 	icon?: string;
 	href?: string;
+	variant?: "lead" | "compact";
 }
 
-const { title, description, icon = "✨", href } = Astro.props;
+const { title, description, icon = "✨", href, variant = "lead" } = Astro.props;
 const resolvedHref = typeof href === "string" ? withBase(href) : href;
 const Tag = resolvedHref ? "a" : "div";
+const variantClass = variant === "compact" ? "is-compact" : "is-lead";
 ---
 
-<Tag class="feature-item" href={resolvedHref || undefined}>
-    <span class="feature-icon">{icon}</span>
+<Tag class:list={["feature-item", variantClass]} href={resolvedHref || undefined}>
+    <span class="feature-icon" aria-hidden="true"><slot name="icon">{icon}</slot></span>
     <h3 class="feature-title">{title}</h3>
     <p class="feature-desc">{description}</p>
 </Tag>
@@ -53,6 +55,30 @@ const Tag = resolvedHref ? "a" : "div";
         margin-bottom: var(--as-space-sm, 8px);
         display: block;
         line-height: 1;
+        color: var(--as-text-secondary, #9aa7b3);
+    }
+
+    .feature-icon :global(svg) {
+        width: 2rem;
+        height: 2rem;
+        display: block;
+    }
+
+    .is-compact {
+        padding: var(--as-space-md, 16px);
+    }
+
+    .is-compact .feature-icon {
+        font-size: 1.25rem;
+    }
+
+    .is-compact .feature-icon :global(svg) {
+        width: 1.25rem;
+        height: 1.25rem;
+    }
+
+    .is-compact .feature-title {
+        font-size: 1rem;
     }
 
     .feature-title {

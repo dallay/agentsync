@@ -3,102 +3,91 @@ title: AgentSync Documentation
 description: A fast, portable CLI tool for synchronizing AI agent configurations across multiple AI coding assistants using symbolic links.
 template: splash
 hero:
-  title: "Sync Your AI Agents — Instantly."
-  tagline: "AgentSync keeps your AI assistant configurations synchronized, so you can focus on coding, not copy-pasting."
+  title: "Configure once. Sync every AI coding assistant."
+  tagline: "Keep AGENTS.md, skills, commands and MCP servers synchronized across Claude, Copilot, Cursor, Gemini, Codex, OpenCode, and more."
   image:
     file: ../../assets/synchro.webp
   actions:
-    - text: Get started
+    - text: Read the docs
       link: /guides/getting-started/
-      variant: primary
-    - text: View on GitHub
+      variant: secondary
+    - text: GitHub
       link: https://github.com/dallay/agentsync
       variant: secondary
       icon: external
 ---
 
-import Features from '../../components/Features.astro';
+import Bento from '../../components/Bento.astro';
 import FeatureItem from '../../components/FeatureItem.astro';
-import CommandTabs from '../../components/CommandTabs.astro';
-import { Tabs, TabItem, Code } from '@astrojs/starlight/components';
+import BaseLink from '../../components/BaseLink.astro';
+import HowItWorks from '../../components/HowItWorks.astro';
+import IconLayers from '~icons/lucide/layers';
+import IconFileSymlink from '~icons/lucide/file-symlink';
+import IconLayoutGrid from '~icons/lucide/layout-grid';
+import IconPlugZap from '~icons/lucide/plug-zap';
+import IconPuzzle from '~icons/lucide/puzzle';
+import IconEyeOff from '~icons/lucide/eye-off';
+import IconMonitorSmartphone from '~icons/lucide/monitor-smartphone';
+import TerminalDemo from '../../components/TerminalDemo.astro';
 
-<Features title="Why agentsync?">
+<Bento title="Why AgentSync?">
   <FeatureItem
     title="Single Source of Truth"
     description="Maintain one AGENTS.md and sync it to Claude, Copilot, Gemini, and more via symlinks."
-    icon="🎯"
     href="/guides/getting-started/"
-  />
+  ><IconLayers slot="icon" /></FeatureItem>
   <FeatureItem
-    title="Instant Propagation"
+    title="Native Symlinks"
     description="Uses symbolic links instead of copies. Change a file once, and every assistant sees it immediately."
-    icon="🔗"
     href="/concepts/sync-types/"
-  />
+  ><IconFileSymlink slot="icon" /></FeatureItem>
   <FeatureItem
+    title="Works Across Assistants"
+    description="Claude, Copilot, Cursor, Gemini, Codex, OpenCode, and 25+ more — one config covers your whole toolchain."
+    href="/reference/configuration/"
+  ><IconLayoutGrid slot="icon" /></FeatureItem>
+  <FeatureItem
+    variant="compact"
     title="MCP Integration"
     description="Define MCP servers once in TOML and sync them across all supported agent environments."
-    icon="🤖"
     href="/guides/mcp/"
-  />
+  ><IconPlugZap slot="icon" /></FeatureItem>
   <FeatureItem
+    variant="compact"
     title="Skills"
     description="Install and manage reusable skills (from skills.sh or local archives) under .agents/skills/."
-    icon="🧰"
     href="/guides/skills/"
-  />
+  ><IconPuzzle slot="icon" /></FeatureItem>
   <FeatureItem
+    variant="compact"
     title="Gitignore Management"
     description="Start with the default managed .gitignore workflow, or opt out intentionally when your team commits managed destinations."
-    icon="📁"
     href="/guides/gitignore-team-workflows/"
-  />
+  ><IconEyeOff slot="icon" /></FeatureItem>
   <FeatureItem
+    variant="compact"
     title="Cross-Platform"
     description="Written in Rust for maximum speed and portability. Works on macOS, Linux, and Windows."
-    icon="⚙️"
     href="/guides/getting-started/#installation"
-  />
-  <FeatureItem
-    title="Developer First"
-    description="Clean CLI, human-readable TOML configuration, and CI-friendly execution."
-    icon="💻"
-    href="/reference/cli/"
-  />
-</Features>
+  ><IconMonitorSmartphone slot="icon" /></FeatureItem>
+</Bento>
+
+<HowItWorks />
 
 ---
 
 ## Quick Start
 
-### 1. Install
+Get started in under a minute — no signup, no SaaS, just the CLI:
 
-<Tabs syncKey="pkg">
-  <TabItem label="npm">
-    <Code code="npm install -g @dallay/agentsync" lang="bash" />
-  </TabItem>
-  <TabItem label="pnpm">
-    <Code code="pnpm add -g @dallay/agentsync" lang="bash" />
-  </TabItem>
-  <TabItem label="Yarn">
-    <Code code="yarn global add @dallay/agentsync" lang="bash" />
-  </TabItem>
-  <TabItem label="Bun">
-    <Code code="bun i -g @dallay/agentsync" lang="bash" />
-  </TabItem>
-</Tabs>
+<TerminalDemo />
 
-> See the <a href="/guides/getting-started/#installation">Getting Started guide</a> for one-off execution (`npx`, `pnpm dlx`), binary downloads, and building from source.
-
-### 2. Initialize and apply
-
-<CommandTabs command="init" />
-<CommandTabs command="apply" />
+Full reference lives in the <BaseLink href="/guides/getting-started/">Getting Started guide</BaseLink>, including one-off runs, binaries, and source builds.
 
 This documentation is the authoritative project reference.
 
 > **Canonical Source**: All agent instructions and skills are maintained in `.agents/AGENTS.md`. This is the single source of truth—they get synced everywhere!
 
-If you are deciding how your team should handle `.gitignore`, start with the <a href="/guides/gitignore-team-workflows/">Gitignore Team Workflows guide</a>. It explains the default managed mode, the committed-destination opt-out mode, and when `--no-gitignore` is appropriate.
+If you are deciding how your team should handle `.gitignore`, start with the <BaseLink href="/guides/gitignore-team-workflows/">Gitignore Team Workflows guide</BaseLink>. It explains the default managed mode, the committed-destination opt-out mode, and when `--no-gitignore` is appropriate.
 
-If you use AgentSync from Windows, the <a href="/guides/windows-symlink-setup/">Windows Symlink Setup guide</a> covers native prerequisites, when WSL is the lower-friction option, and how to verify symlink health after `apply`.
+If you use AgentSync from Windows, the <BaseLink href="/guides/windows-symlink-setup/">Windows Symlink Setup guide</BaseLink> covers native prerequisites, when WSL is the lower-friction option, and how to verify symlink health after `apply`.

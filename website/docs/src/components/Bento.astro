@@ -1,0 +1,54 @@
+---
+// Bento - asymmetric hierarchy grid: 3 leads + 4 compacts.
+// One grid, unequal weights: leads span 2 of 6 columns, compacts span 3.
+
+interface Props {
+	title?: string;
+}
+
+const { title } = Astro.props;
+---
+
+<section class="bento-section" aria-label={title}>
+    {title && <h2 class="bento-heading">{title}</h2>}
+    <div class="bento-grid">
+        <slot />
+    </div>
+</section>
+
+<style>
+    .bento-section {
+        max-width: 1100px;
+        margin: var(--as-space-3xl, 64px) auto;
+        padding: 0 var(--as-space-lg, 24px);
+    }
+
+    .bento-heading {
+        font-size: clamp(1.5rem, 3vw, 2rem);
+        font-weight: 700;
+        text-align: center;
+        margin: 0 0 var(--as-space-xl, 32px) 0;
+        color: var(--as-text-primary, #fff);
+    }
+
+    .bento-grid {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: var(--as-space-lg, 24px);
+    }
+
+    .bento-grid > :global(.is-lead) {
+        grid-column: span 2;
+    }
+
+    .bento-grid > :global(.is-compact) {
+        grid-column: span 3;
+    }
+
+    @media (max-width: 900px) {
+        .bento-grid > :global(.is-lead),
+        .bento-grid > :global(.is-compact) {
+            grid-column: span 6;
+        }
+    }
+</style>
