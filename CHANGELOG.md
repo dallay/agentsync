@@ -21,6 +21,18 @@
 * **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
 * **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
 
+## [1.51.1](https://github.com/dallay/agentsync/compare/v1.51.0...v1.51.1) (2026-09-25)
+
+
+### Documentation
+
+* add Ahrefs analytics script to landing/docs site ([#609](https://github.com/dallay/agentsync/issues/609)) ([e0d145e](https://github.com/dallay/agentsync/commit/e0d145ef44784bb222b630bacb4ee045935e01f3))
+
+
+### Chores
+
+* **renovate:** assign PRs created by Renovate to [@yacosta738](https://github.com/yacosta738) ([#611](https://github.com/dallay/agentsync/issues/611)) ([0a4080f](https://github.com/dallay/agentsync/commit/0a4080f4eabd284896e8338bc30a21644b9a4d71))
+
 ## [1.51.0](https://github.com/dallay/agentsync/compare/v1.50.2...v1.51.0) (2026-09-24)
 
 
