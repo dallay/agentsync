@@ -64,6 +64,8 @@
 		"enabled": true,
 		"automerge": true
 	},
+	"assignAutomerge": true,
+	"assignees": ["yacosta738"],
 	"labels": ["dependencies", "renovate"],
 	"dependencyDashboardTitle": "🔗 Dependency Dashboard"
 }
