@@ -20,7 +20,7 @@
 
 A fast, portable CLI tool for synchronizing AI agent configurations and MCP servers across multiple
 AI coding assistants using symbolic links.
-![synchro.webp | 256](website/docs/src/assets/synchro.webp)
+<img src="website/docs/src/assets/synchro.webp" alt="AgentSync mascot" width="200" />
 
 **How AgentSync works at a glance:** many AI tools expect different config locations, so AgentSync turns `.agents/` into one source of truth and syncs it everywhere.
 
