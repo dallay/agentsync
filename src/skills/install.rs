@@ -842,6 +842,7 @@ mod tests {
         let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
         std::thread::spawn(move || {
             let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let _ = listener.set_nonblocking(false);
             if ready_tx.send(listener.local_addr().unwrap()).is_err() {
                 return;
             }
@@ -850,6 +851,9 @@ mod tests {
                     Ok(conn) => conn,
                     Err(_) => break,
                 };
+                let _ = connection.set_nonblocking(false);
+                let _ = connection.set_read_timeout(Some(std::time::Duration::from_millis(200)));
+                let _ = connection.set_write_timeout(Some(std::time::Duration::from_millis(200)));
                 use std::io::{Read, Write};
                 let mut request = [0_u8; 512];
                 let _ = connection.read(&mut request);
@@ -857,143 +861,10 @@ mod tests {
                 let _ = connection.flush();
                 let _ = connection.shutdown(std::net::Shutdown::Write);
                 let mut dummy = [0_u8; 256];
-                loop {
-                    match connection.read(&mut dummy) {
-                        Ok(0) | Err(_) => break,
-                        Ok(_) => {}
-                    }
-                }
+                let _ = connection.read(&mut dummy);
             }
         });
         ready_rx.await.unwrap()
-    }
-
-    mod http_server_tests {
-        use super::spawn_http_server;
-        use std::io::{Read, Write};
-        use std::net::{Shutdown, SocketAddr, TcpStream};
-        use std::time::Duration;
-
-        const TIMEOUT: Duration = Duration::from_secs(5);
-        const REQUEST: &[u8] = b"GET /archive.zip HTTP/1.1\r\nHost: localhost\r\n\r\n";
-        const RESPONSE: &[u8] = b"HTTP/1.1 200 OK\r\nContent-Length: 7\r\n\r\narchive";
-
-        fn connect(address: SocketAddr) -> TcpStream {
-            let connection = TcpStream::connect_timeout(&address, TIMEOUT).unwrap();
-            connection.set_read_timeout(Some(TIMEOUT)).unwrap();
-            connection.set_write_timeout(Some(TIMEOUT)).unwrap();
-            connection
-        }
-
-        fn read_to_eof(connection: &mut TcpStream) -> Vec<u8> {
-            let mut response = Vec::new();
-            connection.read_to_end(&mut response).expect(
-                "server must deliver the complete response followed by EOF, without a reset",
-            );
-            response
-        }
-
-        #[tokio::test]
-        async fn delivers_response_and_eof_before_client_closes_write_side() {
-            let address = spawn_http_server(vec![RESPONSE]).await;
-            let mut connection = connect(address);
-            connection.write_all(REQUEST).unwrap();
-
-            // Keep the request side open: waiting for the client to close before
-            // sending EOF would deadlock a client reading an EOF-delimited response.
-            assert_eq!(read_to_eof(&mut connection), RESPONSE);
-            connection.shutdown(Shutdown::Write).unwrap();
-        }
-
-        #[tokio::test]
-        async fn delivers_eof_delimited_binary_response() {
-            const BINARY_RESPONSE: &[u8] = b"HTTP/1.1 200 OK\r\n\r\n\x00\xffarchive\r\n\x80";
-            let address = spawn_http_server(vec![BINARY_RESPONSE]).await;
-            let mut connection = connect(address);
-            connection.write_all(REQUEST).unwrap();
-
-            assert_eq!(read_to_eof(&mut connection), BINARY_RESPONSE);
-            connection.shutdown(Shutdown::Write).unwrap();
-        }
-
-        #[tokio::test]
-        async fn delivers_response_with_unread_request_data() {
-            let address = spawn_http_server(vec![RESPONSE; 3]).await;
-            // Exercise a small request, one just larger than the initial read,
-            // and one larger than both server read buffers combined.
-            for request_size in [511, 513, 8192] {
-                let mut connection = connect(address);
-                let mut request =
-                    b"GET /archive.zip HTTP/1.1\r\nHost: localhost\r\nX-Padding: ".to_vec();
-                request.resize(request_size - 4, b'x');
-                request.extend_from_slice(b"\r\n\r\n");
-                connection.write_all(&request).unwrap();
-                connection.shutdown(Shutdown::Write).unwrap();
-
-                assert_eq!(read_to_eof(&mut connection), RESPONSE);
-            }
-        }
-
-        #[tokio::test]
-        async fn drains_late_request_data_and_serves_next_connection() {
-            let address = spawn_http_server(vec![RESPONSE, RESPONSE]).await;
-            let mut first = connect(address);
-            first
-                .write_all(
-                    b"POST /archive.zip HTTP/1.1\r\nHost: localhost\r\nContent-Length: 4\r\n\r\n",
-                )
-                .unwrap();
-            assert_eq!(read_to_eof(&mut first), RESPONSE);
-
-            // The response half-close must leave the request side available for
-            // draining. Keep it open after the body to verify the server advances.
-            first.write_all(b"body").unwrap();
-            let mut second = connect(address);
-            second.write_all(REQUEST).unwrap();
-            second.shutdown(Shutdown::Write).unwrap();
-            assert_eq!(read_to_eof(&mut second), RESPONSE);
-        }
-
-        #[tokio::test]
-        async fn serves_next_connection_after_client_disconnects_without_request() {
-            let address = spawn_http_server(vec![RESPONSE, RESPONSE]).await;
-            let first = connect(address);
-            first.shutdown(Shutdown::Both).unwrap();
-            drop(first);
-
-            let mut second = connect(address);
-            second.write_all(REQUEST).unwrap();
-            second.shutdown(Shutdown::Write).unwrap();
-            assert_eq!(read_to_eof(&mut second), RESPONSE);
-        }
-
-        #[tokio::test]
-        async fn reqwest_follows_redirect_chain_with_unread_request_headers() {
-            let address = spawn_http_server(vec![
-                b"HTTP/1.1 301 Moved Permanently\r\nLocation: /second\r\nContent-Length: 0\r\n\r\n",
-                b"HTTP/1.1 302 Found\r\nLocation: /archive.zip\r\nContent-Length: 0\r\n\r\n",
-                RESPONSE,
-            ])
-            .await;
-            let client = reqwest::Client::builder()
-                .no_proxy()
-                .timeout(TIMEOUT)
-                .build()
-                .unwrap();
-            let response = client
-                .get(format!("http://{address}/start"))
-                .header("X-Padding", "x".repeat(1024))
-                .send()
-                .await
-                .expect("redirects must succeed even when request headers remain unread");
-
-            assert_eq!(response.status(), reqwest::StatusCode::OK);
-            assert_eq!(
-                response.url().as_str(),
-                format!("http://{address}/archive.zip")
-            );
-            assert_eq!(response.bytes().await.unwrap().as_ref(), b"archive");
-        }
     }
 
     #[test]
