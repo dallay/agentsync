@@ -842,13 +842,26 @@ mod tests {
         let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
         std::thread::spawn(move || {
             let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-            ready_tx.send(listener.local_addr().unwrap()).unwrap();
+            let _ = listener.set_nonblocking(false);
+            if ready_tx.send(listener.local_addr().unwrap()).is_err() {
+                return;
+            }
             for response in responses {
-                let (mut connection, _) = listener.accept().unwrap();
+                let (mut connection, _) = match listener.accept() {
+                    Ok(conn) => conn,
+                    Err(_) => break,
+                };
+                let _ = connection.set_nonblocking(false);
+                let _ = connection.set_read_timeout(Some(std::time::Duration::from_millis(200)));
+                let _ = connection.set_write_timeout(Some(std::time::Duration::from_millis(200)));
                 use std::io::{Read, Write};
                 let mut request = [0_u8; 512];
                 let _ = connection.read(&mut request);
-                connection.write_all(response).unwrap();
+                let _ = connection.write_all(response);
+                let _ = connection.flush();
+                let _ = connection.shutdown(std::net::Shutdown::Write);
+                let mut dummy = [0_u8; 256];
+                let _ = connection.read(&mut dummy);
             }
         });
         ready_rx.await.unwrap()
