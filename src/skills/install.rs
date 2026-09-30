@@ -857,7 +857,12 @@ mod tests {
                 let _ = connection.flush();
                 let _ = connection.shutdown(std::net::Shutdown::Write);
                 let mut dummy = [0_u8; 256];
-                let _ = connection.read(&mut dummy);
+                loop {
+                    match connection.read(&mut dummy) {
+                        Ok(0) | Err(_) => break,
+                        Ok(_) => {}
+                    }
+                }
             }
         });
         ready_rx.await.unwrap()
