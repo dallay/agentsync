@@ -7,10 +7,8 @@ currently being supported with security updates.
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 5.1.x   | :white_check_mark: |
-| 5.0.x   | :x:                |
-| 4.0.x   | :white_check_mark: |
-| < 4.0   | :x:                |
+| 0.x.x   | :white_check_mark: |
+| < 0.1   | :x:                |
 
 ## Reporting a Vulnerability
 
@@ -65,3 +63,15 @@ ensure timely handling and clear expectations.
 If you need faster handling for an active exploit or very high‑severity
 incident, please mark the report as high severity and include the best way to
 contact you securely in the report.
+
+## Enabled Security Features
+
+This repository has the following security features enabled:
+
+- **Branch Protection** — The `main` branch is protected, requiring pull request reviews before merging
+- **Vulnerability Reporting** — Private security reports can be submitted via GitHub
+- **Secret Scanning** — Push protection prevents secrets from being committed to the repository
+- **Dependabot** — Dependency vulnerability alerts are enabled to keep dependencies up to date
+- **Code Scanning (CodeQL)** — Static analysis runs on pull requests to detect security vulnerabilities
+
+For more details, visit the [Security overview](https://github.com/dallay/agentsync/security).
