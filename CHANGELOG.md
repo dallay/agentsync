@@ -21,6 +21,40 @@
 * **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
 * **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
 
+## [1.51.1](https://github.com/dallay/agentsync/compare/v1.51.0...v1.51.1) (2026-10-03)
+
+
+### Bug Fixes
+
+* **deps:** update dependency @astrojs/starlight to ^0.42.0 ([#616](https://github.com/dallay/agentsync/issues/616)) ([c361c99](https://github.com/dallay/agentsync/commit/c361c997f57f9933769c602561f07c5e284f3ada))
+* **deps:** update rust crate dirs to v7 ([#614](https://github.com/dallay/agentsync/issues/614)) ([9ad51f4](https://github.com/dallay/agentsync/commit/9ad51f44048b8a9f003a4f7848370deb0f4089b8))
+
+
+### Documentation
+
+* add Ahrefs analytics script to landing/docs site ([#609](https://github.com/dallay/agentsync/issues/609)) ([e0d145e](https://github.com/dallay/agentsync/commit/e0d145ef44784bb222b630bacb4ee045935e01f3))
+* resize mascot image in README ([#618](https://github.com/dallay/agentsync/issues/618)) ([a994f98](https://github.com/dallay/agentsync/commit/a994f98b4d7f88735c129e254ccbf698fe983b2d))
+
+
+### Tests
+
+* fix TCP connection reset in test spawn_http_server ([#622](https://github.com/dallay/agentsync/issues/622)) ([cfc8e11](https://github.com/dallay/agentsync/commit/cfc8e11c71f62fd9ae6faecdc309be5c07c93f55))
+
+
+### Chores
+
+* **deps:** bump the npm_and_yarn group across 1 directory with 2 updates ([#619](https://github.com/dallay/agentsync/issues/619)) ([4560d77](https://github.com/dallay/agentsync/commit/4560d77bfa9bfffe83b504880530824be6ffc189))
+* **deps:** update cargo dependencies ([#613](https://github.com/dallay/agentsync/issues/613)) ([6c3de59](https://github.com/dallay/agentsync/commit/6c3de5913798a10db001dac0f6ff65ff4d0edd7d))
+* **deps:** update dependency @dallay/agentsync to v1.51.0 ([#620](https://github.com/dallay/agentsync/issues/620)) ([796bb38](https://github.com/dallay/agentsync/commit/796bb38168631effb1fcebe0040718f499c1bd6b))
+* **deps:** update dependency @iconify/json to v2.2.533 ([#617](https://github.com/dallay/agentsync/issues/617)) ([98cc951](https://github.com/dallay/agentsync/commit/98cc951a7a16fb4e5754feb28f978799a7252af3))
+* **deps:** update dependency @iconify/json to v2.2.535 ([#625](https://github.com/dallay/agentsync/issues/625)) ([1a93bf2](https://github.com/dallay/agentsync/commit/1a93bf2255f135c93d38386fb51d766b4763ab4a))
+* **deps:** update dependency astro to v7.3.5 ([#621](https://github.com/dallay/agentsync/issues/621)) ([cf463c2](https://github.com/dallay/agentsync/commit/cf463c293d1f7a752397a7eee15a5d167b1db906))
+* **deps:** update dependency pnpm to v12 ([#615](https://github.com/dallay/agentsync/issues/615)) ([499ba76](https://github.com/dallay/agentsync/commit/499ba76b3cafa23af69492bd6c86d33e9c6efa6c))
+* **deps:** update dependency sharp to v0.35.5 ([#624](https://github.com/dallay/agentsync/issues/624)) ([1835033](https://github.com/dallay/agentsync/commit/18350338edefd1b5dffe3a6ef47709001c68a3cc))
+* **deps:** update dtolnay/rust-toolchain digest to 02cb101 ([#612](https://github.com/dallay/agentsync/issues/612)) ([dd583fe](https://github.com/dallay/agentsync/commit/dd583fe6ff3f5bc55666b726b213ebd60367ad8e))
+* **deps:** update github actions ([#626](https://github.com/dallay/agentsync/issues/626)) ([9e45c89](https://github.com/dallay/agentsync/commit/9e45c89ccce77ebb468e2ec2f3a7ec00bc7e04f0))
+* **renovate:** assign PRs created by Renovate to [@yacosta738](https://github.com/yacosta738) ([#611](https://github.com/dallay/agentsync/issues/611)) ([0a4080f](https://github.com/dallay/agentsync/commit/0a4080f4eabd284896e8338bc30a21644b9a4d71))
+
 ## [1.51.0](https://github.com/dallay/agentsync/compare/v1.50.2...v1.51.0) (2026-09-24)
 
 
