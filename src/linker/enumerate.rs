@@ -61,6 +61,8 @@ impl Linker {
 
     /// Read the raw entry paths of a `symlink-contents` destination directory.
     pub(super) fn read_contents_entries(&self, dir: &Path) -> Result<Vec<PathBuf>> {
+        self.revalidate_path(dir)
+            .with_context(|| format!("Unsafe destination directory: {}", dir.display()))?;
         let mut entries = Vec::new();
         for entry in fs::read_dir(dir)
             .with_context(|| format!("Failed to read destination directory: {}", dir.display()))?
@@ -183,4 +185,28 @@ pub(super) fn zcode_contents_child_filtered(
             .file_name()
             .and_then(OsStr::to_str)
             .is_some_and(|name| name.ends_with(".md"))
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::config::SyncType;
+    use crate::linker::test_support::{make_linker, make_target};
+    use tempfile::TempDir;
+
+    #[test]
+    fn read_contents_entries_rejects_directory_outside_project_root() {
+        let project = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        let linker = make_linker(
+            project.path(),
+            true,
+            make_target("source", "dest", SyncType::SymlinkContents),
+        );
+
+        let error = linker
+            .read_contents_entries(outside.path())
+            .expect_err("directory outside project root must be rejected");
+
+        assert!(format!("{error:#}").contains("outside project root"));
+    }
 }
