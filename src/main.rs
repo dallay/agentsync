@@ -651,6 +651,10 @@ fn handle_revert(
                     error = %e,
                     "Error reverting MCP configs"
                 );
+                println!(
+                    "  {} Warning: failed to revert MCP configs: {e}",
+                    "!".yellow()
+                );
                 result.errors += 1;
             }
         }

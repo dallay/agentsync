@@ -204,8 +204,18 @@ fn test_revert_removes_managed_mcp_servers_keeps_user_ones() {
         String::from_utf8_lossy(&apply.stderr)
     );
     let after_apply = fs::read_to_string(project_root.join(".mcp.json")).unwrap();
-    assert!(after_apply.contains("\"tool\""), "{after_apply}");
-    assert!(after_apply.contains("mine"), "{after_apply}");
+    let apply_parsed: serde_json::Value = serde_json::from_str(&after_apply).unwrap();
+    let apply_keys: std::collections::BTreeSet<String> = apply_parsed["mcpServers"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect();
+    assert_eq!(
+        apply_keys,
+        std::collections::BTreeSet::from(["mine".to_string(), "tool".to_string()]),
+        "{after_apply}"
+    );
 
     let revert = run_agentsync(project_root, &["revert"]);
     assert!(
@@ -215,8 +225,18 @@ fn test_revert_removes_managed_mcp_servers_keeps_user_ones() {
         String::from_utf8_lossy(&revert.stderr)
     );
     let after_revert = fs::read_to_string(project_root.join(".mcp.json")).unwrap();
-    assert!(!after_revert.contains("\"tool\""), "{after_revert}");
-    assert!(after_revert.contains("mine"), "{after_revert}");
+    let revert_parsed: serde_json::Value = serde_json::from_str(&after_revert).unwrap();
+    let revert_keys: std::collections::BTreeSet<String> = revert_parsed["mcpServers"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect();
+    assert_eq!(
+        revert_keys,
+        std::collections::BTreeSet::from(["mine".to_string()]),
+        "{after_revert}"
+    );
 }
 
 #[cfg(unix)]

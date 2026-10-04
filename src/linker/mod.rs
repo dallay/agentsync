@@ -367,7 +367,7 @@ impl Linker {
         if enabled_agents.is_empty() {
             return Ok(crate::mcp::McpSyncResult::default());
         }
-        let agents = self.filtered_mcp_agents(enabled_agents, agents_filter);
+        let agents = self.filtered_mcp_agents(enabled_agents.clone(), agents_filter);
         if agents.is_empty() {
             return Ok(crate::mcp::McpSyncResult::default());
         }
@@ -375,7 +375,7 @@ impl Linker {
             self.config.mcp_servers.clone(),
             self.config.mcp.merge_strategy,
         );
-        generator.remove_all(&self.project_root, &agents, dry_run)
+        generator.remove_all(&self.project_root, &agents, &enabled_agents, dry_run)
     }
 }
 
