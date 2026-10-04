@@ -20,6 +20,16 @@ pub fn update_gitignore(
     entries: &[String],
     dry_run: bool,
 ) -> Result<()> {
+    // SECURITY: Reject control characters that would break the line-oriented
+    // managed section. A `destination` like "a\nEVIL" comes from operator
+    // config but is written verbatim; without this guard it injects extra
+    // gitignore rules. Enforced here at the last trusted decision point.
+    if marker.contains(['\n', '\r']) {
+        anyhow::bail!("gitignore marker must not contain newline: {:?}", marker);
+    }
+    if let Some(evil) = entries.iter().find(|e| e.contains(['\n', '\r'])) {
+        anyhow::bail!("gitignore entry must not contain newline: {:?}", evil);
+    }
     let gitignore_path = project_root.join(".gitignore");
     let (start_marker, end_marker) = managed_markers(marker);
 
@@ -84,6 +94,11 @@ pub fn update_gitignore(
 
 /// Remove the managed section from .gitignore when management is disabled.
 pub fn cleanup_gitignore(project_root: &Path, marker: &str, dry_run: bool) -> Result<()> {
+    // SECURITY: Same newline guard as update_gitignore so a malicious marker
+    // cannot split the marker line and orphan managed content.
+    if marker.contains(['\n', '\r']) {
+        anyhow::bail!("gitignore marker must not contain newline: {:?}", marker);
+    }
     let gitignore_path = project_root.join(".gitignore");
     if !gitignore_path.exists() {
         return Ok(());
@@ -530,6 +545,28 @@ trailing_content
         assert_eq!(
             mtime1, mtime2,
             "Modification time should not change if content is identical"
+        );
+    }
+
+    #[test]
+    fn test_update_gitignore_rejects_newline_in_entries() {
+        let temp_dir = TempDir::new().unwrap();
+        let entries = vec!["good.md".to_string(), "evil\nINJECTED".to_string()];
+        let result = update_gitignore(temp_dir.path(), "Marker", &entries, false);
+        assert!(
+            result.is_err(),
+            "newline in gitignore entry must be rejected, got Ok"
+        );
+    }
+
+    #[test]
+    fn test_update_gitignore_rejects_newline_in_marker() {
+        let temp_dir = TempDir::new().unwrap();
+        let entries = vec!["good.md".to_string()];
+        let result = update_gitignore(temp_dir.path(), "Bad\nMarker", &entries, false);
+        assert!(
+            result.is_err(),
+            "newline in marker must be rejected, got Ok"
         );
     }
 }
