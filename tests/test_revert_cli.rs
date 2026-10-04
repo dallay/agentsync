@@ -174,6 +174,52 @@ fn test_revert_refuses_to_overwrite_user_file() {
 }
 
 #[cfg(unix)]
+fn write_mcp_fixture(project_root: &Path) {
+    fs::create_dir_all(project_root.join(".agents")).unwrap();
+    fs::write(project_root.join(".agents/AGENTS.md"), "# hello\n").unwrap();
+    fs::write(
+        project_root.join(".agents/agentsync.toml"),
+        "source_dir = \".\"\n\n[mcp]\nenabled = true\n\n[mcp_servers.tool]\ncommand = \"npx\"\nargs = [\"-y\", \"tool\"]\n\n[agents.claude]\nenabled = true\n\n[agents.claude.targets.instructions]\nsource = \"AGENTS.md\"\ndestination = \"CLAUDE.md\"\ntype = \"symlink\"\n",
+    )
+    .unwrap();
+    fs::write(
+        project_root.join(".mcp.json"),
+        r#"{"mcpServers": {"mine": {"command": "my-tool"}}}"#,
+    )
+    .unwrap();
+}
+
+#[test]
+#[cfg(unix)]
+fn test_revert_removes_managed_mcp_servers_keeps_user_ones() {
+    let temp_dir = TempDir::new().unwrap();
+    let project_root = temp_dir.path();
+    write_mcp_fixture(project_root);
+
+    let apply = run_agentsync(project_root, &["apply"]);
+    assert!(
+        apply.status.success(),
+        "apply failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&apply.stdout),
+        String::from_utf8_lossy(&apply.stderr)
+    );
+    let after_apply = fs::read_to_string(project_root.join(".mcp.json")).unwrap();
+    assert!(after_apply.contains("\"tool\""), "{after_apply}");
+    assert!(after_apply.contains("mine"), "{after_apply}");
+
+    let revert = run_agentsync(project_root, &["revert"]);
+    assert!(
+        revert.status.success(),
+        "revert failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&revert.stdout),
+        String::from_utf8_lossy(&revert.stderr)
+    );
+    let after_revert = fs::read_to_string(project_root.join(".mcp.json")).unwrap();
+    assert!(!after_revert.contains("\"tool\""), "{after_revert}");
+    assert!(after_revert.contains("mine"), "{after_revert}");
+}
+
+#[cfg(unix)]
 fn write_two_agent_fixture(project_root: &Path) {
     fs::create_dir_all(project_root.join(".agents")).unwrap();
     fs::write(project_root.join(".agents/AGENTS.md"), "# hello\n").unwrap();

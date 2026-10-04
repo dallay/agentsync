@@ -300,25 +300,7 @@ impl Linker {
         }
 
         // Apply agent filtering (from CLI --agents or default_agents config)
-        let filtered_agents: Vec<_> = if let Some(filter) = agents_filter {
-            enabled_agents
-                .into_iter()
-                .filter(|agent| filter.iter().any(|f| mcp_agent_matches_filter(*agent, f)))
-                .collect()
-        } else if !self.config.default_agents.is_empty() {
-            // Apply default_agents filtering
-            enabled_agents
-                .into_iter()
-                .filter(|agent| {
-                    self.config
-                        .default_agents
-                        .iter()
-                        .any(|f| mcp_agent_matches_filter(*agent, f))
-                })
-                .collect()
-        } else {
-            enabled_agents
-        };
+        let filtered_agents = self.filtered_mcp_agents(enabled_agents, agents_filter);
 
         if filtered_agents.is_empty() {
             return Ok(crate::mcp::McpSyncResult::default());
@@ -338,6 +320,62 @@ impl Linker {
 
         let generator = McpGenerator::new(servers, self.config.mcp.merge_strategy);
         generator.generate_all(&self.project_root, &filtered_agents, dry_run)
+    }
+
+    /// Agents selected for an MCP operation, honoring CLI --agents then
+    /// default_agents. Shared by sync and revert.
+    fn filtered_mcp_agents(
+        &self,
+        enabled_agents: Vec<crate::mcp::McpAgent>,
+        agents_filter: Option<&Vec<String>>,
+    ) -> Vec<crate::mcp::McpAgent> {
+        if let Some(filter) = agents_filter {
+            enabled_agents
+                .into_iter()
+                .filter(|agent| filter.iter().any(|f| mcp_agent_matches_filter(*agent, f)))
+                .collect()
+        } else if !self.config.default_agents.is_empty() {
+            // Apply default_agents filtering
+            enabled_agents
+                .into_iter()
+                .filter(|agent| {
+                    self.config
+                        .default_agents
+                        .iter()
+                        .any(|f| mcp_agent_matches_filter(*agent, f))
+                })
+                .collect()
+        } else {
+            enabled_agents
+        }
+    }
+
+    /// Remove managed MCP servers for enabled agents (revert side of
+    /// [`Linker::sync_mcp_with_servers`]). Only servers named in
+    /// `agentsync.toml [mcp_servers]` are removed; user servers are kept.
+    pub fn remove_managed_mcp(
+        &self,
+        dry_run: bool,
+        agents_filter: Option<&Vec<String>>,
+    ) -> Result<crate::mcp::McpSyncResult> {
+        use crate::mcp::McpGenerator;
+
+        if !self.config.mcp.enabled || self.config.mcp_servers.is_empty() {
+            return Ok(crate::mcp::McpSyncResult::default());
+        }
+        let enabled_agents = McpGenerator::get_enabled_agents_from_config(&self.config.agents);
+        if enabled_agents.is_empty() {
+            return Ok(crate::mcp::McpSyncResult::default());
+        }
+        let agents = self.filtered_mcp_agents(enabled_agents, agents_filter);
+        if agents.is_empty() {
+            return Ok(crate::mcp::McpSyncResult::default());
+        }
+        let generator = McpGenerator::new(
+            self.config.mcp_servers.clone(),
+            self.config.mcp.merge_strategy,
+        );
+        generator.remove_all(&self.project_root, &agents, dry_run)
     }
 }
 

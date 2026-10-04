@@ -215,6 +215,7 @@ Behavior:
 - Regular user files that are not managed symlinks are never touched; a backup is only restored into an absent destination or over a managed symlink — never over a real file that appeared later.
 - On complete, unfiltered runs, the AgentSync-managed `.gitignore` block is removed. With `--agents`, a narrowing `default_agents`, or any revert error/skip, the block is left alone because some managed destinations may remain (re-run `apply` to reconcile it).
 - For `symlink-contents` targets, `revert` removes managed child links but may leave the destination directory empty. It cannot infer whether the container existed before `apply`, so it does not delete it.
+- Managed MCP servers are removed from agent configs while user-defined servers are kept. See the [MCP guide](/guides/mcp/) for the exact revert semantics and limitations.
 
 Examples:
 

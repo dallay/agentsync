@@ -632,7 +632,29 @@ fn handle_revert(
         keep_backups,
         ..Default::default()
     };
-    let result = linker.revert(&options)?;
+    let mut result = linker.revert(&options)?;
+    if linker.config().mcp.enabled && !linker.config().mcp_servers.is_empty() {
+        println!();
+        print_lines(&render_mcp_phase(dry_run, use_color));
+        match linker.remove_managed_mcp(dry_run, options.agents.as_ref()) {
+            Ok(mcp_result) => {
+                if mcp_result.updated > 0 || mcp_result.skipped > 0 || mcp_result.errors > 0 {
+                    print_lines(&render_mcp_summary_with_color(&mcp_result, use_color));
+                }
+                result.updated += mcp_result.updated;
+                result.skipped += mcp_result.skipped;
+                result.errors += mcp_result.errors;
+            }
+            Err(e) => {
+                tracing::error!(
+                    config_path = %linker.config_path().display(),
+                    error = %e,
+                    "Error reverting MCP configs"
+                );
+                result.errors += 1;
+            }
+        }
+    }
     // Clean up only after a complete, unfiltered revert: with --agents (or a
     // narrowing default_agents), other agents may still need their entries.
     if revert_should_cleanup_gitignore(linker.config(), &options.agents, &result) {

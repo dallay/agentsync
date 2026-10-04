@@ -338,6 +338,10 @@ pub trait McpFormatter: Send + Sync {
         self.merge(existing_content, new_servers)
     }
 
+    /// Remove named servers from an existing config, keeping everything else
+    /// (user servers, top-level keys) intact. Used by `revert`.
+    fn remove_servers(&self, existing_content: &str, names: &BTreeSet<String>) -> Result<String>;
+
     /// Whether this formatter wraps mcpServers in another key
     fn wrapper_key(&self) -> Option<&'static str> {
         None
@@ -447,6 +451,22 @@ fn merge_standard_mcp_filtered(
     serde_json::to_string_pretty(&output).context("Failed to serialize merged config")
 }
 
+/// Drop named servers from a standard `{"mcpServers": {...}}` JSON doc,
+/// keeping user servers untouched. Shared by the standard-family formatters
+/// for `revert`.
+fn remove_standard_mcp_servers(
+    existing_content: &str,
+    names: &BTreeSet<String>,
+    err_ctx: &str,
+) -> Result<String> {
+    let existing = parse_standard_mcp(existing_content, err_ctx)?;
+    let kept: BTreeMap<String, Value> = existing
+        .into_iter()
+        .filter(|(name, _)| !names.contains(name))
+        .collect();
+    merge_standard_mcp_filtered(kept, &BTreeMap::new(), err_ctx)
+}
+
 // =============================================================================
 // Claude Code Formatter
 // =============================================================================
@@ -457,6 +477,14 @@ fn merge_standard_mcp_filtered(
 pub struct ClaudeCodeFormatter;
 
 impl McpFormatter for ClaudeCodeFormatter {
+    fn remove_servers(&self, existing_content: &str, names: &BTreeSet<String>) -> Result<String> {
+        remove_standard_mcp_servers(
+            existing_content,
+            names,
+            "Failed to parse existing MCP config as JSON",
+        )
+    }
+
     fn format(&self, servers: &BTreeMap<&str, &McpServerConfig>) -> Value {
         format_standard_mcp(servers)
     }
@@ -514,6 +542,12 @@ impl McpFormatter for ClaudeCodeFormatter {
 pub struct ClaudeDesktopFormatter;
 
 impl McpFormatter for ClaudeDesktopFormatter {
+    fn remove_servers(&self, _existing_content: &str, _names: &BTreeSet<String>) -> Result<String> {
+        // v1: revert skips this format (warns) — global/user settings must not
+        // be touched without an exact round-trip. Follow-up work.
+        anyhow::bail!("MCP revert not supported for this agent format yet")
+    }
+
     fn format(&self, servers: &BTreeMap<&str, &McpServerConfig>) -> Value {
         format_standard_mcp(servers)
     }
@@ -608,6 +642,14 @@ impl McpFormatter for ClaudeDesktopFormatter {
 pub struct GithubCopilotFormatter;
 
 impl McpFormatter for GithubCopilotFormatter {
+    fn remove_servers(&self, existing_content: &str, names: &BTreeSet<String>) -> Result<String> {
+        remove_standard_mcp_servers(
+            existing_content,
+            names,
+            "Failed to parse existing Copilot MCP config as JSON",
+        )
+    }
+
     fn format(&self, servers: &BTreeMap<&str, &McpServerConfig>) -> Value {
         format_standard_mcp(servers)
     }
@@ -665,6 +707,19 @@ impl McpFormatter for GithubCopilotFormatter {
 pub struct CodexCliFormatter;
 
 impl McpFormatter for CodexCliFormatter {
+    fn remove_servers(&self, existing_content: &str, names: &BTreeSet<String>) -> Result<String> {
+        let mut doc = parse_codex_doc(existing_content)?;
+        let mut servers = if let Some(TomlValue::Table(table)) = doc.remove("mcp_servers") {
+            table
+        } else {
+            TomlTable::new()
+        };
+        servers.retain(|name, _| !names.contains(name));
+        doc.insert("mcp_servers".to_string(), TomlValue::Table(servers));
+        toml::to_string_pretty(&TomlValue::Table(doc))
+            .context("Failed to serialize reverted Codex config")
+    }
+
     /// Returns a logical Value representation (`mcp_servers`) for parity with the
     /// formatter trait. Codex file output is TOML and is produced by
     /// `format_to_string()`.
@@ -780,6 +835,11 @@ impl McpFormatter for CodexCliFormatter {
 pub struct GeminiCliFormatter; // keep type name
 
 impl McpFormatter for GeminiCliFormatter {
+    fn remove_servers(&self, _existing_content: &str, _names: &BTreeSet<String>) -> Result<String> {
+        // v1: revert skips this format (warns) — top-level settings must not
+        // be touched without an exact round-trip. Follow-up work.
+        anyhow::bail!("MCP revert not supported for this agent format yet")
+    }
     fn format(&self, servers: &BTreeMap<&str, &McpServerConfig>) -> Value {
         let mcp_servers = json_map_from_server_refs(servers, |config| {
             let mut server_json = server_to_json(config);
@@ -906,6 +966,14 @@ impl McpFormatter for GeminiCliFormatter {
 pub struct VsCodeFormatter;
 
 impl McpFormatter for VsCodeFormatter {
+    fn remove_servers(&self, existing_content: &str, names: &BTreeSet<String>) -> Result<String> {
+        remove_standard_mcp_servers(
+            existing_content,
+            names,
+            "Failed to parse existing VS Code MCP config as JSON",
+        )
+    }
+
     fn format(&self, servers: &BTreeMap<&str, &McpServerConfig>) -> Value {
         format_standard_mcp(servers)
     }
@@ -963,6 +1031,14 @@ impl McpFormatter for VsCodeFormatter {
 pub struct CursorFormatter;
 
 impl McpFormatter for CursorFormatter {
+    fn remove_servers(&self, existing_content: &str, names: &BTreeSet<String>) -> Result<String> {
+        remove_standard_mcp_servers(
+            existing_content,
+            names,
+            "Failed to parse existing Cursor MCP config as JSON",
+        )
+    }
+
     fn format(&self, servers: &BTreeMap<&str, &McpServerConfig>) -> Value {
         format_standard_mcp(servers)
     }
@@ -1041,6 +1117,11 @@ fn zcode_servers_mut(document: &mut Value) -> Result<&mut Map<String, Value>> {
 }
 
 impl McpFormatter for ZCodeFormatter {
+    fn remove_servers(&self, _existing_content: &str, _names: &BTreeSet<String>) -> Result<String> {
+        // v1: revert skips this format (warns) — top-level settings must not
+        // be touched without an exact round-trip. Follow-up work.
+        anyhow::bail!("MCP revert not supported for this agent format yet")
+    }
     fn format(&self, servers: &BTreeMap<&str, &McpServerConfig>) -> Value {
         json!({
             "mcp": {
@@ -1107,6 +1188,14 @@ impl McpFormatter for ZCodeFormatter {
 pub struct MiniMaxFormatter;
 
 impl McpFormatter for MiniMaxFormatter {
+    fn remove_servers(&self, existing_content: &str, names: &BTreeSet<String>) -> Result<String> {
+        remove_standard_mcp_servers(
+            existing_content,
+            names,
+            "Failed to parse existing MiniMax MCP config as JSON",
+        )
+    }
+
     fn format(&self, servers: &BTreeMap<&str, &McpServerConfig>) -> Value {
         format_standard_mcp(servers)
     }
@@ -1132,6 +1221,11 @@ impl McpFormatter for MiniMaxFormatter {
 }
 
 impl McpFormatter for OpenCodeFormatter {
+    fn remove_servers(&self, _existing_content: &str, _names: &BTreeSet<String>) -> Result<String> {
+        // v1: revert skips this format (warns) — top-level settings must not
+        // be touched without an exact round-trip. Follow-up work.
+        anyhow::bail!("MCP revert not supported for this agent format yet")
+    }
     fn format(&self, servers: &BTreeMap<&str, &McpServerConfig>) -> Value {
         let mcp_servers = json_map_from_server_refs(servers, server_to_opencode_json);
 
@@ -1692,6 +1786,104 @@ impl McpGenerator {
         Ok(total_result)
     }
 
+    /// Remove managed servers from every handled agent config, keeping user
+    /// servers. Formatters without revert support are skipped with a warning.
+    pub fn remove_all(
+        &self,
+        project_root: &Path,
+        enabled_agents: &[McpAgent],
+        dry_run: bool,
+    ) -> Result<McpSyncResult> {
+        let mut total_result = McpSyncResult::default();
+        let managed: BTreeSet<String> = self.servers.keys().cloned().collect();
+        if managed.is_empty() {
+            return Ok(total_result);
+        }
+        let mut handled_paths: BTreeSet<PathBuf> = BTreeSet::new();
+
+        for agent in enabled_agents {
+            let span = tracing::info_span!(
+                "agentsync",
+                operation = "mcp-revert",
+                agent_id = %agent.id(),
+                outcome = tracing::field::Empty
+            );
+            let _enter = span.enter();
+
+            let formatter = agent.formatter();
+            let path = match agent.resolved_config_path(project_root) {
+                Some(p) => p,
+                None => continue,
+            };
+            if !handled_paths.insert(path.clone()) {
+                continue;
+            }
+            if !path.exists() {
+                total_result.skipped += 1;
+                continue;
+            }
+            let existing = fs::read_to_string(&path).with_context(|| {
+                format!("Failed to read existing MCP config: {}", path.display())
+            })?;
+            let existing_servers = match formatter.parse_existing(&existing) {
+                Ok(servers) => servers,
+                Err(e) => {
+                    tracing::error!(
+                        agent = %agent.name(),
+                        config_path = %path.display(),
+                        error = %e,
+                        "Error parsing agent config for revert"
+                    );
+                    span.record("outcome", "error");
+                    total_result.errors += 1;
+                    continue;
+                }
+            };
+            if !existing_servers.keys().any(|name| managed.contains(name)) {
+                total_result.skipped += 1;
+                span.record("outcome", "skipped");
+                continue;
+            }
+            let cleaned = match formatter.remove_servers(&existing, &managed) {
+                Ok(c) => c,
+                Err(e) => {
+                    println!(
+                        "  {} MCP revert skipped for {}: {e}",
+                        "!".yellow(),
+                        path.display()
+                    );
+                    total_result.skipped += 1;
+                    span.record("outcome", "skipped");
+                    continue;
+                }
+            };
+            if dry_run {
+                println!(
+                    "  {} Would remove managed MCP servers: {}",
+                    "→".cyan(),
+                    path.display()
+                );
+            } else {
+                self.write_atomic_secure(&path, &cleaned)?;
+                set_restricted_permissions(&path).with_context(|| {
+                    format!(
+                        "Failed to set restricted permissions on MCP config: {}",
+                        path.display()
+                    )
+                })?;
+                println!(
+                    "  {} Removed managed MCP servers: {}",
+                    "✔".green(),
+                    path.display()
+                );
+            }
+            total_result.updated += 1;
+            span.record("outcome", "updated");
+        }
+
+        Ok(total_result)
+    }
+
     /// Helper to get enabled servers as references to avoid clones
     fn get_enabled_servers(&self) -> BTreeMap<&str, &McpServerConfig> {
         self.servers
@@ -1761,6 +1953,52 @@ pub fn get_mcp_config_path(agent: McpAgent, project_root: &Path) -> Option<PathB
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    // ==========================================================================
+    // REVERT TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_remove_standard_mcp_servers_keeps_user_servers() {
+        let existing =
+            r#"{"mcpServers": {"managed": {"command": "npx"}, "mine": {"command": "my-tool"}}}"#;
+        let names: BTreeSet<String> = ["managed".to_string()].into_iter().collect();
+        let out = remove_standard_mcp_servers(existing, &names, "test").unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert!(parsed["mcpServers"].get("managed").is_none());
+        assert!(parsed["mcpServers"].get("mine").is_some());
+    }
+
+    #[test]
+    fn test_formatter_remove_servers_roundtrip() {
+        let json_doc =
+            r#"{"mcpServers": {"managed": {"command": "npx"}, "mine": {"command": "my-tool"}}}"#;
+        let names: BTreeSet<String> = ["managed".to_string()].into_iter().collect();
+        let formatters: Vec<Box<dyn McpFormatter>> = vec![
+            Box::new(ClaudeCodeFormatter),
+            Box::new(GithubCopilotFormatter),
+            Box::new(VsCodeFormatter),
+            Box::new(CursorFormatter),
+            Box::new(MiniMaxFormatter),
+        ];
+        for formatter in &formatters {
+            let out = formatter.remove_servers(json_doc, &names).unwrap();
+            let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
+            assert!(
+                parsed["mcpServers"].get("managed").is_none(),
+                "managed server should be removed"
+            );
+            assert!(
+                parsed["mcpServers"].get("mine").is_some(),
+                "user server should be kept"
+            );
+        }
+
+        let toml_doc = "[mcp_servers.managed]\ncommand = \"npx\"\n\n[mcp_servers.mine]\ncommand = \"my-tool\"\n";
+        let out = CodexCliFormatter.remove_servers(toml_doc, &names).unwrap();
+        assert!(!out.contains("managed"), "managed server should be removed");
+        assert!(out.contains("mine"), "user server should be kept");
+    }
 
     // ==========================================================================
     // AGENT TESTS
@@ -2384,6 +2622,51 @@ command = "remove-cmd"
     // ==========================================================================
     // MCP GENERATOR TESTS
     // ==========================================================================
+
+    #[test]
+    fn test_remove_all_drops_managed_keeps_user() {
+        let temp_dir = TempDir::new().unwrap();
+        let servers = BTreeMap::from([("filesystem".to_string(), create_test_server())]);
+
+        fs::write(
+            temp_dir.path().join(".mcp.json"),
+            r#"{"mcpServers": {"filesystem": {"command": "npx"}, "mine": {"command": "my-tool"}}}"#,
+        )
+        .unwrap();
+
+        let generator = McpGenerator::new(servers, McpMergeStrategy::Merge);
+        let result = generator
+            .remove_all(temp_dir.path(), &[McpAgent::ClaudeCode], false)
+            .unwrap();
+
+        assert_eq!(result.updated, 1);
+        let content = fs::read_to_string(temp_dir.path().join(".mcp.json")).unwrap();
+        let parsed: Value = serde_json::from_str(&content).unwrap();
+        assert!(parsed["mcpServers"].get("filesystem").is_none());
+        assert!(parsed["mcpServers"].get("mine").is_some());
+    }
+
+    #[test]
+    fn test_remove_all_skips_when_nothing_managed_present() {
+        let temp_dir = TempDir::new().unwrap();
+        let servers = BTreeMap::from([("filesystem".to_string(), create_test_server())]);
+
+        fs::write(
+            temp_dir.path().join(".mcp.json"),
+            r#"{"mcpServers": {"mine": {"command": "my-tool"}}}"#,
+        )
+        .unwrap();
+
+        let generator = McpGenerator::new(servers, McpMergeStrategy::Merge);
+        let result = generator
+            .remove_all(temp_dir.path(), &[McpAgent::ClaudeCode], false)
+            .unwrap();
+
+        assert_eq!(result.updated, 0);
+        assert_eq!(result.skipped, 1);
+        let content = fs::read_to_string(temp_dir.path().join(".mcp.json")).unwrap();
+        assert!(content.contains("mine"));
+    }
 
     #[test]
     fn test_generator_creates_config() {
