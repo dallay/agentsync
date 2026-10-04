@@ -328,6 +328,65 @@ pub(crate) fn render_clean_summary_with_color(
     ]
 }
 
+pub(crate) fn render_revert_phase_with_color(dry_run: bool, use_color: bool) -> Vec<String> {
+    render_phase(
+        "Revert",
+        if dry_run {
+            "Previewing managed symlink restores"
+        } else {
+            "Restoring pre-apply state"
+        },
+        use_color,
+    )
+}
+
+pub(crate) fn render_revert_summary_with_color(
+    dry_run: bool,
+    result: &agentsync::SyncResult,
+    use_color: bool,
+) -> Vec<String> {
+    let formatter = HumanFormatter::new(use_color);
+    let has_errors = result.errors > 0;
+    vec![
+        formatter.format_label(
+            if has_errors { "✗" } else { "✔" },
+            match (dry_run, has_errors) {
+                (true, true) => "Revert dry run completed with errors",
+                (true, false) => "Revert dry run complete",
+                (false, true) => "Revert completed with errors",
+                (false, false) => "Revert complete",
+            },
+            if has_errors {
+                LabelKind::Failure
+            } else {
+                LabelKind::Success
+            },
+        ),
+        render_count(
+            if dry_run { "Would remove" } else { "Removed" },
+            result.removed,
+            LabelKind::Success,
+            use_color,
+        ),
+        render_count(
+            if dry_run { "Would restore" } else { "Restored" },
+            result.restored,
+            LabelKind::Success,
+            use_color,
+        ),
+        render_count(
+            "Errors",
+            result.errors,
+            if result.errors > 0 {
+                LabelKind::Failure
+            } else {
+                LabelKind::Muted
+            },
+            use_color,
+        ),
+    ]
+}
+
 pub(crate) fn render_gitignore_phase_with_color(
     enabled: bool,
     dry_run: bool,
@@ -395,6 +454,7 @@ mod tests {
                     updated: 1,
                     skipped: 3,
                     removed: 0,
+                    restored: 0,
                     errors: 1
                 }
             ),

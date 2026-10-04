@@ -193,6 +193,44 @@ agentsync clean [FLAGS]
 
 ---
 
+### `revert`
+
+Restores the pre-apply state: removes managed symbolic links and restores the `.bak` backups of files that existed before `apply` replaced them. Unlike `clean` (which only deletes), `revert` brings your original files back.
+
+```bash
+agentsync revert [FLAGS]
+```
+
+**Flags**:
+- `-p, --path <PATH>`: Path to the project root. Also aliased as `--project-root`.
+- `-c, --config <PATH>`: Path to a custom configuration file.
+- `--dry-run`: Shows what would be removed and restored without changing anything on disk.
+- `-v, --verbose`: Enable verbose logging.
+- `-a, --agents <AGENTS>`: Revert only the listed agents (comma-separated, e.g., `claude,copilot`). Same selection priority as `apply`: `--agents` flag, then `default_agents` in config, then all enabled agents.
+- `--keep-backups`: Copy backups back instead of moving them, so `.bak` files remain afterwards for inspection.
+
+Behavior:
+
+- Files that never had a backup (nothing existed before `apply`) are simply unlinked.
+- Regular user files that are not managed symlinks are never touched; a backup is only restored into an absent destination or over a managed symlink — never over a real file that appeared later.
+- On unfiltered runs, the AgentSync-managed `.gitignore` block is removed. With `--agents`, the block is left alone because other agents may still be applied (re-run `apply` to regenerate it).
+
+Examples:
+
+Preview the restore:
+
+<CommandTabs command="revert --dry-run" />
+
+Revert only one agent:
+
+<CommandTabs command="revert --agents claude" />
+
+Revert but keep `.bak` files for inspection:
+
+<CommandTabs command="revert --keep-backups" />
+
+---
+
 ### `skill`
 
 Manage installable AI agent skills from skills.sh/other providers.

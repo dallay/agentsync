@@ -50,32 +50,9 @@ impl Linker {
             );
             let _agent_enter = agent_span.enter();
 
-            // Skip disabled agents
-            if !agent_config.enabled {
-                tracing::debug!(reason = "disabled", "Skipping agent");
-                agent_span.record("outcome", "skipped");
-                continue;
-            }
-
-            // Filter by agent name if specified
-            // Priority: CLI --agents flag > default_agents config > all enabled agents
-            if let Some(ref filter) = options.agents {
-                if !filter
-                    .iter()
-                    .any(|f| crate::agent_ids::sync_filter_matches(agent_name, f))
-                {
-                    tracing::debug!(reason = "filtered", "Skipping agent");
-                    agent_span.record("outcome", "skipped");
-                    continue;
-                }
-            } else if !self.config.default_agents.is_empty()
-                && !self
-                    .config
-                    .default_agents
-                    .iter()
-                    .any(|f| crate::agent_ids::sync_filter_matches(agent_name, f))
-            {
-                tracing::debug!(reason = "not in default_agents", "Skipping agent");
+            // Skip disabled/filtered-out agents (shared semantics with revert)
+            if !super::agent_selected(&self.config, agent_name, agent_config.enabled, options) {
+                tracing::debug!(reason = "filtered", "Skipping agent");
                 agent_span.record("outcome", "skipped");
                 continue;
             }

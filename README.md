@@ -318,6 +318,14 @@ agentsync apply --clean
 # Remove all managed symlinks
 agentsync clean
 
+# Restore pre-apply state (remove managed symlinks, restore .bak backups)
+agentsync revert
+
+# Preview a revert, revert one agent, or keep .bak files for inspection
+agentsync revert --dry-run
+agentsync revert --agents claude
+agentsync revert --keep-backups
+
 # Use a custom config file
 agentsync apply --config /path/to/config.toml
 

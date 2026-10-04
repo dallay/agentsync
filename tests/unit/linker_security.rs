@@ -63,6 +63,7 @@ fn test_ensure_safe_destination_rejects_absolute_paths() {
         dry_run: false,
         verbose: false,
         agents: Some(vec!["test".to_string()]),
+        keep_backups: false,
     });
 
     // Should fail or report error
@@ -93,6 +94,7 @@ fn test_ensure_safe_destination_rejects_parent_dir_traversal() {
         dry_run: false,
         verbose: false,
         agents: Some(vec!["test".to_string()]),
+        keep_backups: false,
     });
 
     // Should fail or report error due to path traversal
@@ -123,6 +125,7 @@ fn test_ensure_safe_destination_rejects_empty_path() {
         dry_run: false,
         verbose: false,
         agents: Some(vec!["test".to_string()]),
+        keep_backups: false,
     });
 
     // Should fail or report error due to empty path
@@ -153,6 +156,7 @@ fn test_ensure_safe_destination_accepts_valid_relative_path() {
         dry_run: false,
         verbose: false,
         agents: Some(vec!["test".to_string()]),
+        keep_backups: false,
     });
 
     assert!(result.is_ok(), "Expected success, got: {:?}", result);
@@ -180,6 +184,7 @@ fn test_repeated_sync_succeeds() {
         dry_run: false,
         verbose: false,
         agents: Some(vec!["test".to_string()]),
+        keep_backups: false,
     });
 
     let result2 = linker.sync(&agentsync::linker::SyncOptions {
@@ -187,6 +192,7 @@ fn test_repeated_sync_succeeds() {
         dry_run: false,
         verbose: false,
         agents: Some(vec!["test".to_string()]),
+        keep_backups: false,
     });
 
     assert!(result1.is_ok());
@@ -209,6 +215,7 @@ fn test_canonicalize_cached_handles_nonexistent_path() {
         dry_run: false,
         verbose: false,
         agents: Some(vec!["test".to_string()]),
+        keep_backups: false,
     });
 
     // Should report error because source doesn't exist
@@ -241,6 +248,7 @@ fn test_revalidate_unlink_path_works_for_valid_symlink() {
         dry_run: false,
         verbose: false,
         agents: Some(vec!["test".to_string()]),
+        keep_backups: false,
     });
 
     assert!(result.is_ok());
@@ -251,6 +259,7 @@ fn test_revalidate_unlink_path_works_for_valid_symlink() {
         dry_run: false,
         verbose: false,
         agents: Some(vec!["test".to_string()]),
+        keep_backups: false,
     });
 
     assert!(clean_result.is_ok());
@@ -278,6 +287,7 @@ fn test_revalidate_path_with_parent_dir_component() {
         dry_run: false,
         verbose: false,
         agents: Some(vec!["test".to_string()]),
+        keep_backups: false,
     });
 
     // Should fail or report error due to parent dir component
@@ -307,6 +317,7 @@ fn test_nested_glob_error_handling_with_verbose() {
         dry_run: false,
         verbose: true,
         agents: Some(vec!["test".to_string()]),
+        keep_backups: false,
     });
 
     // Should succeed even if no files match
@@ -333,6 +344,7 @@ fn test_relative_path_with_missing_source() {
         dry_run: false,
         verbose: false,
         agents: Some(vec!["test".to_string()]),
+        keep_backups: false,
     });
 
     // Should report error with source not found
@@ -366,6 +378,7 @@ fn test_ensure_safe_path_with_nonexistent_ancestor() {
         dry_run: false,
         verbose: false,
         agents: Some(vec!["test".to_string()]),
+        keep_backups: false,
     });
 
     // Should succeed and create parent directories
