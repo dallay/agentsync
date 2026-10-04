@@ -574,6 +574,30 @@ fn handle_clean(
     Ok(())
 }
 
+/// Revert drops the managed gitignore block only on unfiltered runs: it is
+/// filtered whenever `--agents` is passed OR `default_agents` is non-empty
+/// and does not cover every enabled agent (other agents stay applied and
+/// still need their entries; re-running apply regenerates the block anyway).
+fn revert_should_cleanup_gitignore(config: &Config, agents: &Option<Vec<String>>) -> bool {
+    if agents.is_some() {
+        return false;
+    }
+    if config.default_agents.is_empty() {
+        return true;
+    }
+    // Reuse the exact apply/revert filter semantics: an enabled agent is
+    // covered when `default_agents` selects it.
+    let defaults_as_filter = SyncOptions {
+        agents: Some(config.default_agents.clone()),
+        ..Default::default()
+    };
+    config
+        .agents
+        .iter()
+        .filter(|(_, agent)| agent.enabled)
+        .all(|(name, _)| agentsync::linker::agent_selected(config, name, true, &defaults_as_filter))
+}
+
 fn handle_revert(
     path: Option<PathBuf>,
     config: Option<PathBuf>,
@@ -605,9 +629,9 @@ fn handle_revert(
     };
     let result = linker.revert(&options)?;
     // Revert drops the managed gitignore block only on unfiltered runs: with
-    // --agents, other agents stay applied and still need their entries
-    // (re-running apply regenerates the block anyway).
-    if options.agents.is_none() {
+    // --agents (or a narrowing default_agents), other agents stay applied and
+    // still need their entries (re-running apply regenerates the block anyway).
+    if revert_should_cleanup_gitignore(linker.config(), &options.agents) {
         println!();
         print_lines(&render_gitignore_phase_with_color(
             false, dry_run, use_color,
@@ -1016,5 +1040,73 @@ mod tests {
         let dry_run = Cli::try_parse_from(["agentsync", "apply", "--dry-run"])
             .expect("apply --dry-run should parse");
         assert!(should_spawn_update_check(&dry_run.command));
+    }
+
+    fn make_revert_gate_config(
+        default_agents: Vec<&str>,
+        agents: Vec<(&str, bool)>,
+    ) -> agentsync::config::Config {
+        use agentsync::config::{AgentConfig, Config};
+        use std::collections::BTreeMap;
+        let mut map = BTreeMap::new();
+        for (name, enabled) in agents {
+            map.insert(
+                name.to_string(),
+                AgentConfig {
+                    enabled,
+                    description: String::new(),
+                    targets: BTreeMap::new(),
+                },
+            );
+        }
+        Config {
+            source_dir: ".".to_string(),
+            compress_agents_md: false,
+            default_agents: default_agents.into_iter().map(str::to_string).collect(),
+            agents: map,
+            gitignore: Default::default(),
+            mcp: Default::default(),
+            mcp_servers: Default::default(),
+            plugins: Default::default(),
+        }
+    }
+
+    #[test]
+    fn revert_gitignore_cleanup_runs_when_unfiltered() {
+        let config = make_revert_gate_config(vec![], vec![("claude", true), ("copilot", true)]);
+        assert!(super::revert_should_cleanup_gitignore(&config, &None));
+    }
+
+    #[test]
+    fn revert_gitignore_cleanup_skips_with_agents_filter() {
+        let config = make_revert_gate_config(vec![], vec![("claude", true), ("copilot", true)]);
+        assert!(!super::revert_should_cleanup_gitignore(
+            &config,
+            &Some(vec!["claude".to_string()])
+        ));
+    }
+
+    #[test]
+    fn revert_gitignore_cleanup_skips_with_narrowing_default_agents() {
+        let config =
+            make_revert_gate_config(vec!["claude"], vec![("claude", true), ("copilot", true)]);
+        assert!(!super::revert_should_cleanup_gitignore(&config, &None));
+    }
+
+    #[test]
+    fn revert_gitignore_cleanup_runs_when_default_agents_cover_all_enabled() {
+        let config = make_revert_gate_config(
+            vec!["claude", "copilot"],
+            vec![("claude", true), ("copilot", true)],
+        );
+        assert!(super::revert_should_cleanup_gitignore(&config, &None));
+    }
+
+    #[test]
+    fn revert_gitignore_cleanup_ignores_disabled_agents() {
+        // `copilot` is disabled, so defaults covering only `claude` are unfiltered.
+        let config =
+            make_revert_gate_config(vec!["claude"], vec![("claude", true), ("copilot", false)]);
+        assert!(super::revert_should_cleanup_gitignore(&config, &None));
     }
 }

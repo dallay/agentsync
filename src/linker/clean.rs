@@ -1,13 +1,13 @@
 //! Cleanup implementation for managed symlink targets.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use colored::Colorize;
 use std::fs;
 use std::path::Path;
 
 use crate::config::SyncType;
 
-use super::{Linker, SyncOptions, SyncResult, symlinks};
+use super::{Linker, SyncOptions, SyncResult, enumerate, symlinks};
 
 impl Linker {
     /// Clean all symlinks managed by this configuration.
@@ -57,7 +57,7 @@ impl Linker {
         options: &SyncOptions,
         result: &mut SyncResult,
     ) -> Result<()> {
-        let dest = match self.ensure_safe_destination(&target_config.destination) {
+        let dest = match self.resolve_destination(&target_config.destination) {
             Ok(d) => d,
             Err(_) => return Ok(()),
         };
@@ -114,27 +114,15 @@ impl Linker {
         options: &SyncOptions,
         result: &mut SyncResult,
     ) -> Result<()> {
-        let dest = match self.ensure_safe_destination(&target_config.destination) {
+        let dest = match self.resolve_destination(&target_config.destination) {
             Ok(d) => d,
             Err(_) => return Ok(()),
         };
         if !dest.is_dir() {
             return Ok(());
         }
-        for entry in fs::read_dir(&dest)
-            .with_context(|| format!("Failed to read destination directory: {}", dest.display()))?
-        {
-            let entry =
-                entry.with_context(|| format!("Failed to read entry in: {}", dest.display()))?;
-            let entry_path = entry.path();
-            if entry_path.is_symlink()
-                && (crate::agent_ids::canonical_any_agent_id(agent_name) != Some("zcode")
-                    || !target_config.destination.ends_with(".zcode/commands")
-                    || entry_path
-                        .file_name()
-                        .and_then(|name| name.to_str())
-                        .is_some_and(|name| name.ends_with(".md")))
-            {
+        for entry_path in self.read_contents_entries(&dest)? {
+            if enumerate::contents_child_is_managed(agent_name, target_config, &entry_path) {
                 self.remove_managed_symlink(&entry_path, options.dry_run, result)?;
             }
         }
@@ -153,34 +141,13 @@ impl Linker {
         options: &SyncOptions,
         result: &mut SyncResult,
     ) -> Result<()> {
-        if self
-            .ensure_safe_destination(&target_config.destination)
-            .is_err()
-        {
+        let enumeration = self.enumerate_nested_glob(target_config, options)?;
+        if enumeration.template.is_err() {
             return Ok(());
         }
 
-        let search_root = self.project_root.join(&target_config.source);
-        if self.revalidate_path(&search_root).is_err() {
-            return Ok(());
-        }
-        if !search_root.exists() || !search_root.is_dir() {
-            return Ok(());
-        }
-        let glob_pattern = target_config.pattern.as_deref().unwrap_or("**/AGENTS.md");
-        let dest_template = &target_config.destination;
-        let excludes = &target_config.exclude;
-
-        let matches =
-            self.get_nested_glob_matches(&search_root, glob_pattern, excludes, options)?;
-
-        for (_, rel_path) in matches.iter() {
-            let dest_str = Self::expand_destination_template(dest_template, rel_path);
-            if dest_str.is_empty() {
-                continue;
-            }
-
-            let dest = match self.ensure_safe_destination(&dest_str) {
+        for item in enumeration.entries {
+            let dest = match item.dest {
                 Ok(dest) => dest,
                 Err(_) => continue,
             };
@@ -199,18 +166,12 @@ impl Linker {
         options: &SyncOptions,
         result: &mut SyncResult,
     ) -> Result<()> {
-        for mapping in &target_config.mappings {
-            let dest_str = super::apply::module_map_destination(mapping, agent_name);
-            let dest = match self.ensure_safe_destination(&dest_str) {
+        for item in self.enumerate_module_map(agent_name, target_config) {
+            let dest = match item.dest {
                 Ok(d) => d,
                 Err(e) => {
                     if options.verbose {
-                        println!(
-                            "  {} Skipping mapping {}: {}",
-                            "!".yellow(),
-                            mapping.source,
-                            e
-                        );
+                        println!("  {} Skipping mapping {}: {}", "!".yellow(), item.source, e);
                     }
                     continue;
                 }
@@ -226,50 +187,9 @@ impl Linker {
 
 #[cfg(test)]
 mod tests {
+    use super::super::test_support::{make_linker, make_target};
     use super::*;
-    use crate::config::{AgentConfig, Config, TargetConfig};
-    use std::collections::BTreeMap;
-    use std::path::Path;
     use tempfile::TempDir;
-
-    fn make_target(source: &str, destination: &str, sync_type: SyncType) -> TargetConfig {
-        TargetConfig {
-            source: source.to_string(),
-            destination: destination.to_string(),
-            sync_type,
-            pattern: None,
-            exclude: vec![],
-            mappings: vec![],
-        }
-    }
-
-    fn make_linker(project_root: &Path, agent_enabled: bool, target: TargetConfig) -> Linker {
-        let mut targets = BTreeMap::new();
-        targets.insert("target".to_string(), target);
-
-        let agent_config = AgentConfig {
-            enabled: agent_enabled,
-            description: String::new(),
-            targets,
-        };
-
-        let mut agents = BTreeMap::new();
-        agents.insert("test".to_string(), agent_config);
-
-        let config = Config {
-            source_dir: ".agents".to_string(),
-            compress_agents_md: false,
-            default_agents: vec![],
-            agents,
-            gitignore: Default::default(),
-            mcp: Default::default(),
-            mcp_servers: Default::default(),
-            plugins: Default::default(),
-        };
-
-        let config_path = project_root.join("agentsync.toml");
-        Linker::new(config, config_path)
-    }
 
     #[test]
     #[cfg(unix)]
