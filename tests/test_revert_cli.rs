@@ -1,0 +1,156 @@
+use std::fs;
+use std::path::Path;
+use std::process::{Command, Output};
+
+use tempfile::TempDir;
+
+#[cfg(unix)]
+fn agentsync_bin() -> &'static str {
+    env!("CARGO_BIN_EXE_agentsync")
+}
+
+#[cfg(unix)]
+fn run_agentsync(project_root: &Path, args: &[&str]) -> Output {
+    Command::new(agentsync_bin())
+        .current_dir(project_root)
+        .args(args)
+        .output()
+        .unwrap_or_else(|error| panic!("failed to run agentsync {:?}: {error}", args))
+}
+
+#[cfg(unix)]
+fn write_fixture(project_root: &Path) {
+    fs::create_dir_all(project_root.join(".agents")).unwrap();
+    fs::write(project_root.join(".agents/AGENTS.md"), "# hello\n").unwrap();
+    fs::write(
+        project_root.join(".agents/agentsync.toml"),
+        "source_dir = \".\"\n\n[agents.claude]\nenabled = true\n\n[agents.claude.targets.instructions]\nsource = \"AGENTS.md\"\ndestination = \"CLAUDE.md\"\ntype = \"symlink\"\n",
+    )
+    .unwrap();
+    fs::write(project_root.join("CLAUDE.md"), "original\n").unwrap();
+}
+
+#[test]
+#[cfg(unix)]
+fn test_revert_restores_pre_apply_file() {
+    let temp_dir = TempDir::new().unwrap();
+    let project_root = temp_dir.path();
+    write_fixture(project_root);
+
+    let apply = run_agentsync(project_root, &["apply"]);
+    assert!(
+        apply.status.success(),
+        "apply failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&apply.stdout),
+        String::from_utf8_lossy(&apply.stderr)
+    );
+    assert!(project_root.join("CLAUDE.md").is_symlink());
+    assert!(project_root.join("CLAUDE.md.bak").exists());
+
+    let revert = run_agentsync(project_root, &["revert"]);
+    assert!(
+        revert.status.success(),
+        "revert failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&revert.stdout),
+        String::from_utf8_lossy(&revert.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(project_root.join("CLAUDE.md")).unwrap(),
+        "original\n"
+    );
+    assert!(!project_root.join("CLAUDE.md").is_symlink());
+    assert!(!project_root.join("CLAUDE.md.bak").exists());
+    // Managed gitignore block is gone after an unfiltered revert.
+    let gitignore = project_root.join(".gitignore");
+    if gitignore.exists() {
+        assert!(
+            !fs::read_to_string(&gitignore).unwrap().contains("START"),
+            "managed block should be removed"
+        );
+    }
+}
+
+#[test]
+#[cfg(unix)]
+fn test_revert_dry_run_changes_nothing() {
+    let temp_dir = TempDir::new().unwrap();
+    let project_root = temp_dir.path();
+    write_fixture(project_root);
+    let apply = run_agentsync(project_root, &["apply"]);
+    assert!(apply.status.success());
+
+    let revert = run_agentsync(project_root, &["revert", "--dry-run"]);
+    assert!(
+        revert.status.success(),
+        "revert --dry-run failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&revert.stdout),
+        String::from_utf8_lossy(&revert.stderr)
+    );
+    // Symlink AND backup both still present.
+    assert!(project_root.join("CLAUDE.md").is_symlink());
+    assert!(project_root.join("CLAUDE.md.bak").exists());
+}
+
+#[test]
+#[cfg(unix)]
+fn test_revert_keep_backups_preserves_bak() {
+    let temp_dir = TempDir::new().unwrap();
+    let project_root = temp_dir.path();
+    write_fixture(project_root);
+    assert!(run_agentsync(project_root, &["apply"]).status.success());
+
+    let revert = run_agentsync(project_root, &["revert", "--keep-backups"]);
+    assert!(
+        revert.status.success(),
+        "revert --keep-backups failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&revert.stdout),
+        String::from_utf8_lossy(&revert.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(project_root.join("CLAUDE.md")).unwrap(),
+        "original\n"
+    );
+    assert_eq!(
+        fs::read_to_string(project_root.join("CLAUDE.md.bak")).unwrap(),
+        "original\n"
+    );
+}
+
+#[cfg(unix)]
+fn write_two_agent_fixture(project_root: &Path) {
+    fs::create_dir_all(project_root.join(".agents")).unwrap();
+    fs::write(project_root.join(".agents/AGENTS.md"), "# hello\n").unwrap();
+    fs::write(
+        project_root.join(".agents/agentsync.toml"),
+        "source_dir = \".\"\n\n[agents.claude]\nenabled = true\n\n[agents.claude.targets.instructions]\nsource = \"AGENTS.md\"\ndestination = \"CLAUDE.md\"\ntype = \"symlink\"\n\n[agents.copilot]\nenabled = true\n\n[agents.copilot.targets.instructions]\nsource = \"AGENTS.md\"\ndestination = \"COPILOT.md\"\ntype = \"symlink\"\n",
+    )
+    .unwrap();
+    fs::write(project_root.join("CLAUDE.md"), "original-claude\n").unwrap();
+    fs::write(project_root.join("COPILOT.md"), "original-copilot\n").unwrap();
+}
+
+#[test]
+#[cfg(unix)]
+fn test_revert_agents_filter_limits_scope() {
+    let temp_dir = TempDir::new().unwrap();
+    let project_root = temp_dir.path();
+    write_two_agent_fixture(project_root);
+    assert!(run_agentsync(project_root, &["apply"]).status.success());
+    assert!(project_root.join("CLAUDE.md").is_symlink());
+    assert!(project_root.join("COPILOT.md").is_symlink());
+
+    let revert = run_agentsync(project_root, &["revert", "--agents", "claude"]);
+    assert!(
+        revert.status.success(),
+        "revert --agents failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&revert.stdout),
+        String::from_utf8_lossy(&revert.stderr)
+    );
+    // Claude restored; copilot untouched.
+    assert_eq!(
+        fs::read_to_string(project_root.join("CLAUDE.md")).unwrap(),
+        "original-claude\n"
+    );
+    assert!(project_root.join("COPILOT.md").is_symlink());
+    assert!(project_root.join("COPILOT.md.bak").exists());
+}

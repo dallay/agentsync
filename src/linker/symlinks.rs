@@ -316,7 +316,7 @@ fn sorted_dir_entries(dir: &Path) -> anyhow::Result<Vec<fs::DirEntry>> {
     Ok(entries)
 }
 
-fn backup_path_for_destination(dest: &Path) -> PathBuf {
+pub(super) fn backup_path_for_destination(dest: &Path) -> PathBuf {
     // Performance: Use OsString::push to avoid string formatting and UTF-8 validation overhead.
     let mut os_string = dest.as_os_str().to_os_string();
     os_string.push(".bak");

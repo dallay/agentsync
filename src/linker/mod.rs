@@ -24,6 +24,7 @@ mod apply;
 mod clean;
 mod discovery;
 mod paths;
+mod revert;
 mod symlinks;
 pub mod timing;
 
@@ -51,6 +52,8 @@ pub struct SyncOptions {
     pub verbose: bool,
     /// Filter to specific agents
     pub agents: Option<Vec<String>>,
+    /// Keep .bak backups after a revert restore instead of consuming them
+    pub keep_backups: bool,
 }
 
 /// Result of a sync operation
@@ -60,6 +63,7 @@ pub struct SyncResult {
     pub updated: usize,
     pub skipped: usize,
     pub removed: usize,
+    pub restored: usize,
     pub errors: usize,
 }
 
@@ -341,6 +345,31 @@ impl Linker {
 /// while preserving legacy substring matching for unknown/custom filters.
 fn mcp_agent_matches_filter(agent: crate::mcp::McpAgent, filter: &str) -> bool {
     crate::agent_ids::mcp_filter_matches(agent.id(), filter)
+}
+
+/// Shared agent selection: CLI --agents > default_agents > all enabled agents.
+/// Used by apply and revert so both honor the same filter semantics.
+pub(super) fn agent_selected(
+    config: &crate::config::Config,
+    agent_name: &str,
+    enabled: bool,
+    options: &SyncOptions,
+) -> bool {
+    if !enabled {
+        return false;
+    }
+    if let Some(ref filter) = options.agents {
+        return filter
+            .iter()
+            .any(|f| crate::agent_ids::sync_filter_matches(agent_name, f));
+    }
+    if !config.default_agents.is_empty() {
+        return config
+            .default_agents
+            .iter()
+            .any(|f| crate::agent_ids::sync_filter_matches(agent_name, f));
+    }
+    true
 }
 
 #[cfg(test)]

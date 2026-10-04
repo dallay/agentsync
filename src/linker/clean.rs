@@ -69,7 +69,7 @@ impl Linker {
 
     /// Remove a single managed symlink, emitting a per-path span
     /// (`operation="remove"`, `path`, `outcome`) around the decision.
-    fn remove_managed_symlink(
+    pub(super) fn remove_managed_symlink(
         &self,
         dest: &Path,
         dry_run: bool,
