@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 use tempfile::TempDir;
@@ -180,4 +180,47 @@ fn test_revert_agents_filter_limits_scope() {
     );
     assert!(project_root.join("COPILOT.md").is_symlink());
     assert!(project_root.join("COPILOT.md.bak").exists());
+}
+
+#[test]
+#[cfg(unix)]
+fn test_revert_leaves_repointed_symlink_untouched() {
+    use std::os::unix::fs::symlink;
+
+    let temp_dir = TempDir::new().unwrap();
+    let project_root = temp_dir.path();
+    write_fixture(project_root);
+    assert!(run_agentsync(project_root, &["apply"]).status.success());
+    assert!(project_root.join("CLAUDE.md").is_symlink());
+    assert!(project_root.join("CLAUDE.md.bak").exists());
+
+    // User repoints the managed symlink elsewhere after apply.
+    fs::remove_file(project_root.join("CLAUDE.md")).unwrap();
+    fs::write(project_root.join("ELSEWHERE.md"), "elsewhere\n").unwrap();
+    symlink("ELSEWHERE.md", project_root.join("CLAUDE.md")).unwrap();
+    assert!(project_root.join("CLAUDE.md").is_symlink());
+
+    let revert = run_agentsync(project_root, &["revert"]);
+    assert!(
+        revert.status.success(),
+        "revert failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&revert.stdout),
+        String::from_utf8_lossy(&revert.stderr)
+    );
+    // Neither the repointed link nor its backup is touched, and the skip is
+    // warned about on stdout.
+    assert!(project_root.join("CLAUDE.md").is_symlink());
+    assert_eq!(
+        fs::read_link(project_root.join("CLAUDE.md")).unwrap(),
+        PathBuf::from("ELSEWHERE.md")
+    );
+    assert_eq!(
+        fs::read_to_string(project_root.join("CLAUDE.md.bak")).unwrap(),
+        "original\n"
+    );
+    let stdout = String::from_utf8_lossy(&revert.stdout);
+    assert!(
+        stdout.contains("Skipping unmanaged symlink"),
+        "expected unmanaged-symlink skip warning, got:\n{stdout}"
+    );
 }

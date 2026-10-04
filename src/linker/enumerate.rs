@@ -23,8 +23,11 @@ pub(super) struct SkippedDestination {
     pub error: String,
 }
 
-/// One expanded nested-glob destination: either validated or skipped.
+/// One expanded nested-glob destination: either validated or skipped,
+/// plus the discovered source file the destination was expanded from (used
+/// by revert to verify the symlink target before removing it).
 pub(super) struct NestedGlobEntry {
+    pub source: PathBuf,
     pub dest: Result<PathBuf, SkippedDestination>,
 }
 
@@ -115,12 +118,13 @@ impl Linker {
             self.get_nested_glob_matches(&search_root, glob_pattern, excludes, options)?;
 
         let mut entries = Vec::with_capacity(matches.len());
-        for (_, rel_path) in matches.iter() {
+        for (full_path, rel_path) in matches.iter() {
             let dest_str = Self::expand_destination_template(dest_template, rel_path);
             if dest_str.is_empty() {
                 continue;
             }
             entries.push(NestedGlobEntry {
+                source: full_path.clone(),
                 dest: self.resolve_destination(&dest_str),
             });
         }

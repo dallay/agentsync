@@ -348,6 +348,29 @@ fn mcp_agent_matches_filter(agent: crate::mcp::McpAgent, filter: &str) -> bool {
     crate::agent_ids::mcp_filter_matches(agent.id(), filter)
 }
 
+/// Revert-only agent selection: CLI `--agents` / `default_agents` filters
+/// still apply, but `enabled = false` does NOT exclude the agent. Revert must
+/// process disabled agents so stale links and `.bak` backups left behind when
+/// an agent was disabled after `apply` are still cleaned up. Apply and clean
+/// keep using `agent_selected` and are untouched.
+pub fn revert_agent_selected(
+    config: &crate::config::Config,
+    agent_name: &str,
+    options: &SyncOptions,
+) -> bool {
+    if let Some(ref filter) = options.agents {
+        return filter
+            .iter()
+            .any(|f| crate::agent_ids::sync_filter_matches(agent_name, f));
+    }
+    if !config.default_agents.is_empty() {
+        return config
+            .default_agents
+            .iter()
+            .any(|f| crate::agent_ids::sync_filter_matches(agent_name, f));
+    }
+    true
+}
 /// Shared agent selection: CLI --agents > default_agents > all enabled agents.
 // `pub` so the `revert` CLI gate in `main.rs` reuses the exact same filter
 // semantics as apply/revert instead of reimplementing them.
