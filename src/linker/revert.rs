@@ -8,7 +8,7 @@ use std::path::Path;
 
 use crate::config::SyncType;
 
-use super::{Linker, SyncOptions, SyncResult, symlinks};
+use super::{Linker, SyncOptions, SyncResult, enumerate, symlinks};
 
 impl Linker {
     /// Revert managed destinations to their pre-apply state.
@@ -18,9 +18,19 @@ impl Linker {
         println!("{}", "Reverting managed symlinks...".cyan());
 
         for (agent_name, agent_config) in &self.config.agents {
+            let agent_span = tracing::info_span!(
+                "agentsync",
+                operation = "revert",
+                agent_id = %agent_name,
+                outcome = tracing::field::Empty
+            );
+            let _agent_enter = agent_span.enter();
             if !super::agent_selected(&self.config, agent_name, agent_config.enabled, options) {
+                tracing::debug!(reason = "filtered", "Skipping agent");
+                agent_span.record("outcome", "skipped");
                 continue;
             }
+            let errors_before = result.errors;
             for target_config in agent_config.targets.values() {
                 match target_config.sync_type {
                     SyncType::Symlink => {
@@ -47,6 +57,14 @@ impl Linker {
                     }
                 }
             }
+            agent_span.record(
+                "outcome",
+                if result.errors > errors_before {
+                    "error"
+                } else {
+                    "ok"
+                },
+            );
         }
 
         Ok(result)
@@ -60,9 +78,13 @@ impl Linker {
         options: &SyncOptions,
         result: &mut SyncResult,
     ) -> Result<()> {
-        let dest = match self.ensure_safe_destination(&target_config.destination) {
+        let dest = match self.resolve_destination(&target_config.destination) {
             Ok(d) => d,
-            Err(_) => return Ok(()),
+            Err(s) => {
+                result.errors += 1;
+                tracing::warn!(destination = %s.dest, error = %s.error, "Skipping revert target with unsafe destination");
+                return Ok(());
+            }
         };
         self.revert_destination(&dest, options, result)
     }
@@ -78,28 +100,26 @@ impl Linker {
         result: &mut SyncResult,
     ) -> Result<()> {
         use std::ffi::OsStr;
-        let dest = match self.ensure_safe_destination(&target_config.destination) {
+        let dest = match self.resolve_destination(&target_config.destination) {
             Ok(d) => d,
-            Err(_) => return Ok(()),
+            Err(s) => {
+                result.errors += 1;
+                tracing::warn!(destination = %s.dest, error = %s.error, "Skipping revert target with unsafe destination");
+                return Ok(());
+            }
         };
+        // Never traverse a destination that is itself a symlink: `read_dir`
+        // would follow the link out of the project root. Revert the link
+        // itself instead.
+        if matches!(fs::symlink_metadata(&dest), Ok(m) if m.file_type().is_symlink()) {
+            return self.revert_destination(&dest, options, result);
+        }
         if !dest.is_dir() {
             return Ok(());
         }
-        let is_zcode_commands = crate::agent_ids::canonical_any_agent_id(agent_name)
-            == Some("zcode")
-            && target_config.destination.ends_with(".zcode/commands");
-        for entry in fs::read_dir(&dest)
-            .with_context(|| format!("Failed to read destination directory: {}", dest.display()))?
-        {
-            let entry =
-                entry.with_context(|| format!("Failed to read entry in: {}", dest.display()))?;
-            let entry_path = entry.path();
+        for entry_path in self.read_contents_entries(&dest)? {
             if entry_path.is_symlink() {
-                if is_zcode_commands
-                    && !entry_path
-                        .file_name()
-                        .and_then(OsStr::to_str)
-                        .is_some_and(|name| name.ends_with(".md"))
+                if enumerate::zcode_contents_child_filtered(agent_name, target_config, &entry_path)
                 {
                     continue;
                 }
@@ -134,36 +154,21 @@ impl Linker {
         options: &SyncOptions,
         result: &mut SyncResult,
     ) -> Result<()> {
-        if self
-            .ensure_safe_destination(&target_config.destination)
-            .is_err()
-        {
+        let enumeration = self.enumerate_nested_glob(target_config, options)?;
+        if let Err(s) = enumeration.template {
+            result.errors += 1;
+            tracing::warn!(destination = %s.dest, error = %s.error, "Skipping revert target with unsafe destination");
             return Ok(());
         }
 
-        let search_root = self.project_root.join(&target_config.source);
-        if self.revalidate_path(&search_root).is_err() {
-            return Ok(());
-        }
-        if !search_root.exists() || !search_root.is_dir() {
-            return Ok(());
-        }
-        let glob_pattern = target_config.pattern.as_deref().unwrap_or("**/AGENTS.md");
-        let dest_template = &target_config.destination;
-        let excludes = &target_config.exclude;
-
-        let matches =
-            self.get_nested_glob_matches(&search_root, glob_pattern, excludes, options)?;
-
-        for (_, rel_path) in matches.iter() {
-            let dest_str = Self::expand_destination_template(dest_template, rel_path);
-            if dest_str.is_empty() {
-                continue;
-            }
-
-            let dest = match self.ensure_safe_destination(&dest_str) {
+        for item in enumeration.entries {
+            let dest = match item.dest {
                 Ok(dest) => dest,
-                Err(_) => continue,
+                Err(s) => {
+                    result.errors += 1;
+                    tracing::warn!(destination = %s.dest, error = %s.error, "Skipping revert destination with unsafe path");
+                    continue;
+                }
             };
             self.revert_destination(&dest, options, result)?;
         }
@@ -179,18 +184,14 @@ impl Linker {
         options: &SyncOptions,
         result: &mut SyncResult,
     ) -> Result<()> {
-        for mapping in &target_config.mappings {
-            let dest_str = super::apply::module_map_destination(mapping, agent_name);
-            let dest = match self.ensure_safe_destination(&dest_str) {
+        for item in self.enumerate_module_map(agent_name, target_config) {
+            let dest = match item.dest {
                 Ok(d) => d,
                 Err(e) => {
+                    result.errors += 1;
+                    tracing::warn!(mapping = %item.source, destination = %item.dest_str, error = %e, "Skipping revert mapping with unsafe destination");
                     if options.verbose {
-                        println!(
-                            "  {} Skipping mapping {}: {}",
-                            "!".yellow(),
-                            mapping.source,
-                            e
-                        );
+                        println!("  {} Skipping mapping {}: {}", "!".yellow(), item.source, e);
                     }
                     continue;
                 }
@@ -208,13 +209,36 @@ impl Linker {
         options: &SyncOptions,
         result: &mut SyncResult,
     ) -> Result<()> {
+        let span = tracing::info_span!(
+            "agentsync",
+            operation = "revert",
+            path = %dest.display(),
+            outcome = tracing::field::Empty
+        );
+        let _enter = span.enter();
         if dest.is_symlink() {
             self.remove_managed_symlink(dest, options.dry_run, result)?;
         }
         let backup = symlinks::backup_path_for_destination(dest);
         if backup.exists() {
+            // Never restore a backup over a real user file that appeared after
+            // apply: refusing avoids data loss in both the `rename` and the
+            // `--keep-backups` copy paths, and leaves the `.bak` in place.
+            // Dry-run never touches the backup, so only real runs can refuse.
+            if !options.dry_run && dest.exists() && !dest.is_symlink() {
+                result.errors += 1;
+                span.record("outcome", "skipped");
+                println!(
+                    "  {} Refusing to restore over user file: {}",
+                    "!".yellow(),
+                    dest.display()
+                );
+                tracing::warn!(path = %dest.display(), "Refusing to restore backup over existing non-symlink destination");
+                return Ok(());
+            }
             self.restore_backup(dest, &backup, options, result)?;
         }
+        span.record("outcome", "ok");
         Ok(())
     }
 
@@ -226,27 +250,45 @@ impl Linker {
         options: &SyncOptions,
         result: &mut SyncResult,
     ) -> Result<()> {
+        let span = tracing::info_span!(
+            "agentsync",
+            operation = "restore",
+            path = %dest.display(),
+            outcome = tracing::field::Empty
+        );
+        let _enter = span.enter();
         if options.dry_run {
             println!("  {} Would restore: {}", "→".cyan(), dest.display());
+            span.record("outcome", "would_restore");
+            result.restored += 1;
             return Ok(());
         }
         if let Err(e) = self.revalidate_unlink_path(dest) {
             result.errors += 1;
+            span.record("outcome", "error");
             tracing::error!(error = %e, path = %dest.display(), "Failed to revalidate revert destination");
             return Ok(());
         }
         if let Err(e) = self.revalidate_path(backup) {
             result.errors += 1;
+            span.record("outcome", "error");
             tracing::error!(error = %e, path = %backup.display(), "Failed to revalidate revert backup");
             return Ok(());
         }
         let op = if options.keep_backups {
             copy_backup_contents(backup, dest)
         } else {
-            fs::rename(backup, dest).map_err(anyhow::Error::from)
+            fs::rename(backup, dest).with_context(|| {
+                format!(
+                    "Failed to restore backup {} to {}",
+                    backup.display(),
+                    dest.display()
+                )
+            })
         };
         if let Err(e) = op {
             result.errors += 1;
+            span.record("outcome", "error");
             tracing::error!(error = %e, path = %dest.display(), "Failed to restore backup");
             return Ok(());
         }
@@ -254,6 +296,7 @@ impl Linker {
         self.invalidate_path(backup);
         self.invalidate_glob_cache();
         println!("  {} Restored: {}", "✔".green(), dest.display());
+        span.record("outcome", "restored");
         result.restored += 1;
         Ok(())
     }
@@ -261,28 +304,67 @@ impl Linker {
 
 /// Copy a backup over `dest` without consuming it (for `--keep-backups`).
 fn copy_backup_contents(backup: &Path, dest: &Path) -> anyhow::Result<()> {
-    let metadata = fs::symlink_metadata(backup)?;
+    let metadata = fs::symlink_metadata(backup)
+        .with_context(|| format!("Failed to stat backup for restore: {}", backup.display()))?;
     if metadata.is_dir() {
         copy_dir_all(backup, dest)
-    } else {
+    } else if metadata.is_file() {
         fs::copy(backup, dest)
+            .with_context(|| {
+                format!(
+                    "Failed to copy backup {} to {}",
+                    backup.display(),
+                    dest.display()
+                )
+            })
             .map(|_| ())
-            .map_err(anyhow::Error::from)
+    } else {
+        // Never materialize symlinks, fifos, sockets, or other special files
+        // from a backup into the project tree.
+        println!(
+            "  {} Skipping special backup file (not a regular file or directory): {}",
+            "!".yellow(),
+            backup.display()
+        );
+        tracing::warn!(path = %backup.display(), "Skipping backup restore: not a regular file or directory");
+        Ok(())
     }
 }
 
-/// Recursive directory copy (std has none). Skips nothing; caller guarantees
-/// both paths are inside the project root via revalidation.
+/// Recursive directory copy (std has none). Skips non-regular entries;
+/// caller guarantees both paths are inside the project root via revalidation.
 fn copy_dir_all(src: &Path, dst: &Path) -> anyhow::Result<()> {
-    fs::create_dir_all(dst)?;
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
+    fs::create_dir_all(dst)
+        .with_context(|| format!("Failed to create restore directory: {}", dst.display()))?;
+    for entry in fs::read_dir(src)
+        .with_context(|| format!("Failed to read backup directory: {}", src.display()))?
+    {
+        let entry =
+            entry.with_context(|| format!("Failed to read entry in backup: {}", src.display()))?;
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
-        if entry.file_type()?.is_dir() {
+        let file_type = entry
+            .file_type()
+            .with_context(|| format!("Failed to stat backup entry: {}", src_path.display()))?;
+        if file_type.is_dir() {
             copy_dir_all(&src_path, &dst_path)?;
+        } else if file_type.is_file() {
+            fs::copy(&src_path, &dst_path).with_context(|| {
+                format!(
+                    "Failed to copy backup entry {} to {}",
+                    src_path.display(),
+                    dst_path.display()
+                )
+            })?;
         } else {
-            fs::copy(&src_path, &dst_path)?;
+            // Never materialize symlinks, fifos, sockets, or other special
+            // files from a backup into the project tree.
+            println!(
+                "  {} Skipping special backup entry: {}",
+                "!".yellow(),
+                src_path.display()
+            );
+            tracing::warn!(path = %src_path.display(), "Skipping backup entry: not a regular file or directory");
         }
     }
     Ok(())
@@ -290,49 +372,9 @@ fn copy_dir_all(src: &Path, dst: &Path) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::test_support::{make_linker, make_target};
     use super::*;
-    use crate::config::{AgentConfig, Config, TargetConfig};
-    use std::collections::BTreeMap;
     use tempfile::TempDir;
-
-    fn make_target(source: &str, destination: &str, sync_type: SyncType) -> TargetConfig {
-        TargetConfig {
-            source: source.to_string(),
-            destination: destination.to_string(),
-            sync_type,
-            pattern: None,
-            exclude: vec![],
-            mappings: vec![],
-        }
-    }
-
-    fn make_linker(project_root: &Path, agent_enabled: bool, target: TargetConfig) -> Linker {
-        let mut targets = BTreeMap::new();
-        targets.insert("target".to_string(), target);
-
-        let agent_config = AgentConfig {
-            enabled: agent_enabled,
-            description: String::new(),
-            targets,
-        };
-
-        let mut agents = BTreeMap::new();
-        agents.insert("test".to_string(), agent_config);
-
-        let config = Config {
-            source_dir: ".agents".to_string(),
-            compress_agents_md: false,
-            default_agents: vec![],
-            agents,
-            gitignore: Default::default(),
-            mcp: Default::default(),
-            mcp_servers: Default::default(),
-            plugins: Default::default(),
-        };
-
-        let config_path = project_root.join("agentsync.toml");
-        Linker::new(config, config_path)
-    }
 
     #[test]
     #[cfg(unix)]

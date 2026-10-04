@@ -23,6 +23,7 @@ pub use timing::TimingSink;
 mod apply;
 mod clean;
 mod discovery;
+mod enumerate;
 mod paths;
 mod revert;
 mod symlinks;
@@ -348,8 +349,9 @@ fn mcp_agent_matches_filter(agent: crate::mcp::McpAgent, filter: &str) -> bool {
 }
 
 /// Shared agent selection: CLI --agents > default_agents > all enabled agents.
-/// Used by apply and revert so both honor the same filter semantics.
-pub(super) fn agent_selected(
+// `pub` so the `revert` CLI gate in `main.rs` reuses the exact same filter
+// semantics as apply/revert instead of reimplementing them.
+pub fn agent_selected(
     config: &crate::config::Config,
     agent_name: &str,
     enabled: bool,
@@ -370,6 +372,62 @@ pub(super) fn agent_selected(
             .any(|f| crate::agent_ids::sync_filter_matches(agent_name, f));
     }
     true
+}
+
+/// Shared unit-test fixtures for the linker sibling modules (`clean`,
+/// `revert`): a single `make_target`/`make_linker` pair instead of one copy
+/// per file.
+#[cfg(test)]
+pub(crate) mod test_support {
+    use super::*;
+    use crate::config::{AgentConfig, SyncType};
+
+    pub(crate) fn make_target(
+        source: &str,
+        destination: &str,
+        sync_type: SyncType,
+    ) -> TargetConfig {
+        TargetConfig {
+            source: source.to_string(),
+            destination: destination.to_string(),
+            sync_type,
+            pattern: None,
+            exclude: vec![],
+            mappings: vec![],
+        }
+    }
+
+    pub(crate) fn make_linker(
+        project_root: &Path,
+        agent_enabled: bool,
+        target: TargetConfig,
+    ) -> Linker {
+        let mut targets = BTreeMap::new();
+        targets.insert("target".to_string(), target);
+
+        let agent_config = AgentConfig {
+            enabled: agent_enabled,
+            description: String::new(),
+            targets,
+        };
+
+        let mut agents = BTreeMap::new();
+        agents.insert("test".to_string(), agent_config);
+
+        let config = Config {
+            source_dir: ".agents".to_string(),
+            compress_agents_md: false,
+            default_agents: vec![],
+            agents,
+            gitignore: Default::default(),
+            mcp: Default::default(),
+            mcp_servers: Default::default(),
+            plugins: Default::default(),
+        };
+
+        let config_path = project_root.join("agentsync.toml");
+        Linker::new(config, config_path)
+    }
 }
 
 #[cfg(test)]

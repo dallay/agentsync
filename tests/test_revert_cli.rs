@@ -116,6 +116,33 @@ fn test_revert_keep_backups_preserves_bak() {
     );
 }
 
+#[test]
+#[cfg(unix)]
+fn test_revert_refuses_to_overwrite_user_file() {
+    let temp_dir = TempDir::new().unwrap();
+    let project_root = temp_dir.path();
+    write_fixture(project_root);
+    assert!(run_agentsync(project_root, &["apply"]).status.success());
+    assert!(project_root.join("CLAUDE.md").is_symlink());
+    assert!(project_root.join("CLAUDE.md.bak").exists());
+
+    // User replaces the managed symlink with a regular file after apply.
+    fs::remove_file(project_root.join("CLAUDE.md")).unwrap();
+    fs::write(project_root.join("CLAUDE.md"), "user edit\n").unwrap();
+    assert!(!project_root.join("CLAUDE.md").is_symlink());
+
+    let _ = run_agentsync(project_root, &["revert"]);
+    // User content is preserved and the backup is left in place for manual recovery.
+    assert_eq!(
+        fs::read_to_string(project_root.join("CLAUDE.md")).unwrap(),
+        "user edit\n"
+    );
+    assert_eq!(
+        fs::read_to_string(project_root.join("CLAUDE.md.bak")).unwrap(),
+        "original\n"
+    );
+}
+
 #[cfg(unix)]
 fn write_two_agent_fixture(project_root: &Path) {
     fs::create_dir_all(project_root.join(".agents")).unwrap();
