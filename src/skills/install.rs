@@ -583,16 +583,15 @@ fn archive_ext_from_url(url_base: &str) -> String {
     // Strip fragment (`#subpath`) first — callers split it before, but be safe.
     let without_fragment = url_base.split('#').next().unwrap_or(url_base);
     // If it parses as URL, use only the path so `?query` never pollutes ext.
-    if let Ok(parsed) = url::Url::parse(without_fragment) {
-        if let Some(path) = parsed.path().rsplit('/').next() {
-            if let Some(ext) = path.rsplit('.').next() {
-                // No dot in last segment → no extension.
-                if ext.len() != path.len() {
-                    return ext.to_ascii_lowercase();
-                }
-                return String::new();
-            }
+    if let Ok(parsed) = url::Url::parse(without_fragment)
+        && let Some(path) = parsed.path().rsplit('/').next()
+        && let Some(ext) = path.rsplit('.').next()
+    {
+        // No dot in last segment → no extension.
+        if ext.len() != path.len() {
+            return ext.to_ascii_lowercase();
         }
+        return String::new();
     }
     // Fallback for bare paths: strip query manually then take ext.
     let without_query = without_fragment
