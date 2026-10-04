@@ -31,6 +31,7 @@ pub fn update_gitignore(
         anyhow::bail!("gitignore entry must not contain newline: {:?}", evil);
     }
     let gitignore_path = project_root.join(".gitignore");
+    reject_gitignore_symlink(&gitignore_path)?;
     let (start_marker, end_marker) = managed_markers(marker);
 
     // Read existing content or start fresh
@@ -100,6 +101,7 @@ pub fn cleanup_gitignore(project_root: &Path, marker: &str, dry_run: bool) -> Re
         anyhow::bail!("gitignore marker must not contain newline: {:?}", marker);
     }
     let gitignore_path = project_root.join(".gitignore");
+    reject_gitignore_symlink(&gitignore_path)?;
     if !gitignore_path.exists() {
         return Ok(());
     }
@@ -124,6 +126,21 @@ pub fn cleanup_gitignore(project_root: &Path, marker: &str, dry_run: bool) -> Re
     println!("  {} Removed managed .gitignore section", "✔".green(),);
 
     Ok(())
+}
+
+fn reject_gitignore_symlink(gitignore_path: &Path) -> Result<()> {
+    match fs::symlink_metadata(gitignore_path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            anyhow::bail!(
+                "Refusing to read or write symlinked .gitignore: {}",
+                gitignore_path.display()
+            );
+        }
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error)
+            .with_context(|| format!("Failed to inspect .gitignore: {}", gitignore_path.display())),
+    }
 }
 
 /// Remove the managed section from gitignore content
@@ -568,5 +585,48 @@ trailing_content
             result.is_err(),
             "newline in marker must be rejected, got Ok"
         );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn update_gitignore_rejects_symlink_without_modifying_target() {
+        use std::os::unix::fs::symlink;
+
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path().join("project");
+        fs::create_dir_all(&project_root).unwrap();
+        let external = temp_dir.path().join("external.gitignore");
+        let original = "# START AgentSync\nmanaged-entry\n# END AgentSync\n";
+        fs::write(&external, original).unwrap();
+        symlink(&external, project_root.join(".gitignore")).unwrap();
+
+        let error = update_gitignore(
+            &project_root,
+            "AgentSync",
+            &["new-entry".to_string()],
+            false,
+        )
+        .expect_err("symlinked .gitignore must be rejected");
+        assert!(format!("{error:#}").contains(".gitignore"));
+        assert_eq!(fs::read_to_string(&external).unwrap(), original);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn cleanup_gitignore_rejects_symlink_without_modifying_target() {
+        use std::os::unix::fs::symlink;
+
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path().join("project");
+        fs::create_dir_all(&project_root).unwrap();
+        let external = temp_dir.path().join("external.gitignore");
+        let original = "# START AgentSync\nmanaged-entry\n# END AgentSync\n";
+        fs::write(&external, original).unwrap();
+        symlink(&external, project_root.join(".gitignore")).unwrap();
+
+        let error = cleanup_gitignore(&project_root, "AgentSync", false)
+            .expect_err("symlinked .gitignore must be rejected");
+        assert!(format!("{error:#}").contains(".gitignore"));
+        assert_eq!(fs::read_to_string(&external).unwrap(), original);
     }
 }

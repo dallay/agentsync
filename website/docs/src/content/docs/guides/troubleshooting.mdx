@@ -205,8 +205,9 @@ Know the limits:
 
 - Destinations that did not exist before `apply` are simply unlinked (there is nothing to restore).
 - A backup is never restored over a real file that appeared after the backup was taken.
+- For `symlink-contents`, `revert` removes managed child links but may leave the destination directory empty because it cannot infer whether the container existed before `apply`.
 - `clean` does not restore backups — it only deletes managed links. Use `revert` when you want your originals back.
-- On unfiltered runs, `revert` also removes the AgentSync-managed `.gitignore` block; with `--agents` the block is left alone. Re-run `apply` to regenerate it.
+- On a complete, unfiltered run, `revert` also removes the AgentSync-managed `.gitignore` block; with `--agents`, a narrowing `default_agents`, or any revert error/skip, the block is left alone because managed destinations may remain. Re-run `apply` to reconcile it.
 
 See the <BaseLink href="/reference/cli/">CLI Reference</BaseLink> for all `revert` flags.
 

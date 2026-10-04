@@ -121,6 +121,11 @@ impl Linker {
         for entry in fs::read_dir(&source_dir).ok()?.flatten() {
             let item_name = entry.file_name();
             let item_str = item_name.to_string_lossy();
+            if let Some(pattern) = target_config.pattern.as_deref()
+                && !super::matches_pattern(&item_str, pattern)
+            {
+                continue;
+            }
             let destination_name = if crate::agent_ids::canonical_any_agent_id(agent_name)
                 == Some("zcode")
                 && target_config.destination.ends_with(".zcode/commands")
@@ -138,8 +143,8 @@ impl Linker {
     }
 
     /// Revert a symlink-contents target: revert every managed child symlink
-    /// and restore every orphaned `.bak` backup, then drop the directory if
-    /// it is left empty.
+    /// and restore every orphaned `.bak` backup. Leave the directory in place
+    /// because revert cannot prove whether it existed before apply.
     fn revert_symlink_contents_target(
         &self,
         agent_name: &str,
@@ -226,15 +231,6 @@ impl Linker {
                     result.skipped += 1;
                 }
             }
-        }
-        // Try to remove the directory if empty
-        if !options.dry_run {
-            if let Err(e) = self.revalidate_unlink_path(&dest) {
-                result.errors += 1;
-                tracing::warn!(error = %e, path = %dest.display(), "Skipping revert directory removal: unsafe destination");
-                return Ok(());
-            }
-            let _ = fs::remove_dir(&dest);
         }
         Ok(())
     }
@@ -352,7 +348,39 @@ impl Linker {
                         span.record("outcome", "skipped");
                         return Ok(());
                     }
+                    let errors_before_remove = result.errors;
                     self.remove_managed_symlink(dest, options.dry_run, result)?;
+                    if !options.dry_run {
+                        match fs::symlink_metadata(dest) {
+                            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                            Ok(_) => {
+                                if result.errors == errors_before_remove {
+                                    result.errors += 1;
+                                }
+                                println!(
+                                    "  {} Refusing to restore while destination remains: {}",
+                                    "!".yellow(),
+                                    dest.display()
+                                );
+                                tracing::warn!(path = %dest.display(), "Refusing to restore backup because managed symlink destination remains after removal");
+                                span.record("outcome", "error");
+                                return Ok(());
+                            }
+                            Err(e) => {
+                                if result.errors == errors_before_remove {
+                                    result.errors += 1;
+                                }
+                                println!(
+                                    "  {} Refusing to restore because destination could not be inspected: {}",
+                                    "!".yellow(),
+                                    dest.display()
+                                );
+                                tracing::warn!(error = %e, path = %dest.display(), "Refusing to restore backup because destination inspection failed after symlink removal");
+                                span.record("outcome", "error");
+                                return Ok(());
+                            }
+                        }
+                    }
                 }
                 None => {
                     println!(
@@ -369,20 +397,29 @@ impl Linker {
         }
         let backup = symlinks::backup_path_for_destination(dest);
         if backup.exists() {
-            // Never restore a backup over a real user file that appeared after
-            // apply: refusing avoids data loss in both the `rename` and the
-            // `--keep-backups` copy paths, and leaves the `.bak` in place.
-            // Dry-run never touches the backup, so only real runs can refuse.
-            if !options.dry_run && dest.exists() && !dest.is_symlink() {
-                result.errors += 1;
-                span.record("outcome", "error");
-                println!(
-                    "  {} Refusing to restore over user file: {}",
-                    "!".yellow(),
-                    dest.display()
-                );
-                tracing::warn!(path = %dest.display(), "Refusing to restore backup over existing non-symlink destination");
-                return Ok(());
+            // Never restore over a real user file that appeared after apply,
+            // including during dry-run. A verified managed symlink remains in
+            // place only in dry-run, so it is the sole existing entry allowed.
+            match fs::symlink_metadata(dest) {
+                Ok(metadata) if !metadata.file_type().is_symlink() || !options.dry_run => {
+                    result.errors += 1;
+                    span.record("outcome", "error");
+                    println!(
+                        "  {} Refusing to restore over existing destination: {}",
+                        "!".yellow(),
+                        dest.display()
+                    );
+                    tracing::warn!(path = %dest.display(), "Refusing to restore backup over existing destination");
+                    return Ok(());
+                }
+                Ok(_) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => {
+                    result.errors += 1;
+                    span.record("outcome", "error");
+                    tracing::warn!(error = %e, path = %dest.display(), "Refusing to restore backup because destination inspection failed");
+                    return Ok(());
+                }
             }
             self.restore_backup(dest, &backup, options, result)?;
         }
@@ -410,6 +447,27 @@ impl Linker {
             span.record("outcome", "would_restore");
             result.restored += 1;
             return Ok(());
+        }
+        match fs::symlink_metadata(dest) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                result.errors += 1;
+                span.record("outcome", "error");
+                println!(
+                    "  {} Refusing to restore through symlink destination: {}",
+                    "!".yellow(),
+                    dest.display()
+                );
+                tracing::warn!(path = %dest.display(), "Refusing to restore backup through existing symlink destination");
+                return Ok(());
+            }
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                result.errors += 1;
+                span.record("outcome", "error");
+                tracing::error!(error = %e, path = %dest.display(), "Failed to inspect revert destination");
+                return Ok(());
+            }
         }
         if let Err(e) = self.revalidate_unlink_path(dest) {
             result.errors += 1;
@@ -849,5 +907,120 @@ mod tests {
             "orig-inner\n"
         );
         assert_eq!(result.restored, 1);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn restore_backup_refuses_existing_symlink_destination_with_keep_backups() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path().join("project");
+        let external_file = temp.path().join("external.txt");
+        fs::create_dir_all(project_root.join(".agents")).unwrap();
+        fs::write(&external_file, "external-original\n").unwrap();
+
+        let target = make_target("source.md", "dest.txt", SyncType::Symlink);
+        let linker = make_linker(&project_root, true, target);
+        let dest = project_root.join("dest.txt");
+        symlink(&external_file, &dest).unwrap();
+        let backup = project_root.join("dest.txt.bak");
+        fs::write(&backup, "backup-content\n").unwrap();
+        let options = SyncOptions {
+            keep_backups: true,
+            ..Default::default()
+        };
+        let mut result = SyncResult::default();
+
+        linker
+            .restore_backup(&dest, &backup, &options, &mut result)
+            .unwrap();
+
+        assert!(dest.is_symlink());
+        assert_eq!(
+            fs::read_to_string(&external_file).unwrap(),
+            "external-original\n"
+        );
+        assert_eq!(fs::read_to_string(&backup).unwrap(), "backup-content\n");
+        assert_eq!(result.errors, 1);
+        assert_eq!(result.restored, 0);
+    }
+
+    #[test]
+    fn revert_refuses_regular_destination_conflict_in_dry_run_and_real_run() {
+        for dry_run in [false, true] {
+            let temp = TempDir::new().unwrap();
+            let project_root = temp.path();
+            fs::create_dir_all(project_root.join(".agents")).unwrap();
+            let target = make_target("source.md", "dest.txt", SyncType::Symlink);
+            let linker = make_linker(project_root, true, target);
+            let dest = project_root.join("dest.txt");
+            let backup = project_root.join("dest.txt.bak");
+            fs::write(&dest, "user-edit\n").unwrap();
+            fs::write(&backup, "backup-content\n").unwrap();
+            let options = SyncOptions {
+                dry_run,
+                ..Default::default()
+            };
+            let mut result = SyncResult::default();
+
+            linker
+                .revert_destination(&dest, None, &options, &mut result)
+                .unwrap();
+
+            assert_eq!(fs::read_to_string(&dest).unwrap(), "user-edit\n");
+            assert_eq!(fs::read_to_string(&backup).unwrap(), "backup-content\n");
+            assert_eq!(result.errors, 1, "dry_run={dry_run}");
+            assert_eq!(result.restored, 0, "dry_run={dry_run}");
+        }
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn revert_preserves_symlink_contents_child_excluded_by_pattern() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+        let source_dir = project_root.join(".agents/src");
+        fs::create_dir_all(&source_dir).unwrap();
+        let source_file = source_dir.join("ignored.md");
+        fs::write(&source_file, "not selected by apply\n").unwrap();
+
+        let dest_dir = project_root.join("dest");
+        fs::create_dir_all(&dest_dir).unwrap();
+        let dest_child = dest_dir.join("ignored.md");
+        let mut target = make_target("src", "dest", SyncType::SymlinkContents);
+        target.pattern = Some("*.txt".to_string());
+        let linker = make_linker(project_root, true, target);
+        let expected = linker
+            .relative_path(&dest_child, &source_file, false)
+            .unwrap();
+        symlink(&expected, &dest_child).unwrap();
+
+        let result = linker.revert(&SyncOptions::default()).unwrap();
+
+        assert!(dest_child.is_symlink());
+        assert_eq!(fs::read_link(&dest_child).unwrap(), expected);
+        assert_eq!(result.removed, 0);
+        assert_eq!(result.skipped, 1);
+    }
+
+    #[test]
+    fn revert_keeps_empty_symlink_contents_container() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+        fs::create_dir_all(project_root.join(".agents/src")).unwrap();
+        let dest_dir = project_root.join("dest");
+        fs::create_dir_all(&dest_dir).unwrap();
+        let target = make_target("src", "dest", SyncType::SymlinkContents);
+        let linker = make_linker(project_root, true, target);
+
+        linker.revert(&SyncOptions::default()).unwrap();
+
+        assert!(
+            dest_dir.is_dir(),
+            "revert must preserve the empty container"
+        );
     }
 }
