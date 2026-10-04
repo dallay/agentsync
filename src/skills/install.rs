@@ -459,11 +459,10 @@ async fn fetch_remote_data(
 ) -> Result<(FetchedSource, String), SkillInstallError> {
     const MAX_DOWNLOAD_SIZE: u64 = 100 * 1024 * 1024; // 100 MB
 
-    let ext = url_base
-        .rsplit('.')
-        .next()
-        .unwrap_or("")
-        .to_ascii_lowercase();
+    // SECURITY: Extension from URL path only (query/fragment stripped).
+    // Previous `rsplit('.')` on the raw URL turned `archive.zip?token=x`
+    // into ext `zip?token=x` → spurious "unknown archive format".
+    let ext = archive_ext_from_url(url_base);
 
     let client = if bearer_token.filter(|token| !token.is_empty()).is_some() {
         Client::builder()
@@ -574,6 +573,39 @@ async fn fetch_remote_response(
 
 fn is_trusted_github_archive_url(url: &url::Url) -> bool {
     url.scheme() == "https" && matches!(url.host_str(), Some("github.com" | "codeload.github.com"))
+}
+
+/// Extract the archive extension from a URL or path, ignoring query strings
+/// and fragments (e.g. `archive.zip?token=abc` → `zip`).
+/// Falls back to plain `rsplit('.')` when the input is not a valid URL
+/// (e.g. bare filesystem paths used in tests).
+fn archive_ext_from_url(url_base: &str) -> String {
+    // Strip fragment (`#subpath`) first — callers split it before, but be safe.
+    let without_fragment = url_base.split('#').next().unwrap_or(url_base);
+    // If it parses as URL, use only the path so `?query` never pollutes ext.
+    if let Ok(parsed) = url::Url::parse(without_fragment) {
+        if let Some(path) = parsed.path().rsplit('/').next() {
+            if let Some(ext) = path.rsplit('.').next() {
+                // No dot in last segment → no extension.
+                if ext.len() != path.len() {
+                    return ext.to_ascii_lowercase();
+                }
+                return String::new();
+            }
+        }
+    }
+    // Fallback for bare paths: strip query manually then take ext.
+    let without_query = without_fragment
+        .split('?')
+        .next()
+        .unwrap_or(without_fragment);
+    without_query
+        .rsplit('/')
+        .next()
+        .and_then(|last| last.rsplit('.').next())
+        .filter(|ext| ext.len() != without_query.rsplit('/').next().unwrap_or("").len())
+        .unwrap_or("")
+        .to_ascii_lowercase()
 }
 
 fn copy_archive_entry(
@@ -1403,6 +1435,23 @@ mod tests {
     #[test]
     fn test_archive_path_is_unsafe_backslash_prefix() {
         assert!(archive_path_is_unsafe("\\\\server\\share"));
+    }
+
+    #[test]
+    fn test_archive_ext_strips_query_and_fragment() {
+        assert_eq!(
+            archive_ext_from_url("https://example.com/skill.zip?token=abc"),
+            "zip"
+        );
+        assert_eq!(
+            archive_ext_from_url("https://example.com/a/archive.tar.gz#subpath"),
+            "gz"
+        );
+        assert_eq!(
+            archive_ext_from_url("https://example.com/archive.ZIP"),
+            "zip"
+        );
+        assert_eq!(archive_ext_from_url("/tmp/local/archive.tgz"), "tgz");
     }
 
     #[tokio::test]
