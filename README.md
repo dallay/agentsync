@@ -5,6 +5,7 @@
 [![Catalog E2E](https://github.com/dallay/agentsync/actions/workflows/catalog-e2e.yml/badge.svg)](https://github.com/dallay/agentsync/actions/workflows/catalog-e2e.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub release](https://img.shields.io/github/v/release/dallay/agentsync)](https://github.com/dallay/agentsync/releases)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/dallay/agentsync)
 [![Codecov](https://codecov.io/gh/dallay/agentsync/graph/badge.svg)](https://codecov.io/gh/dallay/agentsync)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=dallay_agentsync&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=dallay_agentsync)
 [![Bugs](https://sonarcloud.io/api/project_badges/measure?project=dallay_agentsync&metric=bugs)](https://sonarcloud.io/summary/new_code?id=dallay_agentsync)
