@@ -25,11 +25,12 @@ merge_strategy = "merge"
 
 ### Reverting Managed Servers
 
-`agentsync revert` removes the servers defined in `agentsync.toml` from each agent config while keeping your own servers untouched. Know the limits:
+`agentsync revert` removes supported servers defined in `agentsync.toml` from each agent config while keeping unrelated server entries and top-level settings. Know the limits:
 
-- MCP apply has no exact restore: merge writes directly with no `.bak`, so revert removes by server **name**. If you customized a user server under the same name as a managed one, revert removes it too (symmetric with merge-wins on apply) — use distinct names for personal servers.
+- MCP apply has no exact restore or apply-time ownership manifest. Revert removes a server only when both its **name and current value** match the configured managed server. If the managed definition changed after `apply`, the old value is conservatively kept with a warning; if a pre-existing user server had the same name and identical value, it cannot be distinguished from the managed entry. Use distinct names for personal servers and remove retained stale entries manually when needed.
 - Only servers from `[mcp_servers]` in `agentsync.toml` are removed. Servers contributed by plugins are not reverted yet.
 - Claude Desktop (global config), Gemini CLI, OpenCode, and Z-Code are skipped with a warning in this version — their files carry extra top-level settings that need an exact round-trip before automated removal is safe.
+- Symlinked MCP config files are skipped with an error rather than replacing the symlink. MCP agents disabled since `apply` are not selected for removal; their previous config may need manual cleanup.
 
 {/* agentsync:mcp:start */}
 - **Claude Code** — `.mcp.json` (agent id: `claude`) — JSON; Standard format

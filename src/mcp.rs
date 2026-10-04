@@ -1908,14 +1908,43 @@ impl McpGenerator {
                 span.record("outcome", "skipped");
                 continue;
             }
-            if !path.exists() {
-                tracing::debug!(
+            let path_metadata = match fs::symlink_metadata(&path) {
+                Ok(metadata) => metadata,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    tracing::debug!(
+                        agent = %agent.name(),
+                        config_path = %path.display(),
+                        "Skipping missing MCP config for revert"
+                    );
+                    total_result.skipped += 1;
+                    span.record("outcome", "skipped");
+                    continue;
+                }
+                Err(error) => {
+                    tracing::error!(
+                        agent = %agent.name(),
+                        config_path = %path.display(),
+                        error = %error,
+                        "Error inspecting MCP config for revert"
+                    );
+                    total_result.errors += 1;
+                    span.record("outcome", "error");
+                    continue;
+                }
+            };
+            if path_metadata.file_type().is_symlink() {
+                println!(
+                    "  {} MCP revert skipped for symlinked config: {}",
+                    "!".yellow(),
+                    path.display()
+                );
+                tracing::warn!(
                     agent = %agent.name(),
                     config_path = %path.display(),
-                    "Skipping missing MCP config for revert"
+                    "Skipping symlinked MCP config to preserve its link and target"
                 );
-                total_result.skipped += 1;
-                span.record("outcome", "skipped");
+                total_result.errors += 1;
+                span.record("outcome", "error");
                 continue;
             }
             let existing = match fs::read_to_string(&path) {
@@ -2850,6 +2879,45 @@ command = "remove-cmd"
             .cloned()
             .collect();
         assert_eq!(keys, BTreeSet::from(["mine".to_string()]));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_remove_all_skips_symlinked_config_without_replacing_link() {
+        use std::os::unix::fs::symlink;
+
+        let temp_dir = TempDir::new().unwrap();
+        let config_dir = temp_dir.path().join("project");
+        fs::create_dir_all(&config_dir).unwrap();
+        let server = create_test_server();
+        let managed_value = serde_json::to_value(&server).unwrap();
+        let servers = BTreeMap::from([("filesystem".to_string(), server)]);
+        let doc = serde_json::json!({
+            "mcpServers": { "filesystem": managed_value }
+        });
+        let external = temp_dir.path().join("external-mcp.json");
+        let original = serde_json::to_string_pretty(&doc).unwrap();
+        fs::write(&external, &original).unwrap();
+        let config_path = config_dir.join(".mcp.json");
+        symlink(&external, &config_path).unwrap();
+
+        let generator = McpGenerator::new(servers, McpMergeStrategy::Merge);
+        let result = generator
+            .remove_all(
+                &config_dir,
+                &[McpAgent::ClaudeCode],
+                &[McpAgent::ClaudeCode],
+                false,
+            )
+            .unwrap();
+
+        assert!(
+            config_path.is_symlink(),
+            "revert must preserve MCP config symlink"
+        );
+        assert_eq!(fs::read_to_string(&external).unwrap(), original);
+        assert_eq!(result.updated, 0);
+        assert_eq!(result.errors, 1);
     }
 
     #[test]

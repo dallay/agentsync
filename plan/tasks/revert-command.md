@@ -32,8 +32,8 @@ Fuera de alcance aquí (rama follow-up): remoción de MCP gestionados
 - [x] RPI-011 Rechazar `.gitignore` symlink antes de leer/escribir en update y cleanup; prueba que protege el archivo externo
 - [x] RPI-012 No limpiar el bloque `.gitignore` si revert deja errores/destinos gestionados sin revertir; incluye agentes deshabilitados seleccionados por `default_agents`
 - [x] RPI-013 No borrar directorios vacíos que `apply` no puede probar que creó; documentar el contenedor vacío conservado
-- [ ] RPI-014 No reemplazar archivos MCP configurados como symlink durante persistencia de revert; saltar con aviso seguro
-- [ ] RPI-015 Documentar límites de ownership MCP: si el valor actual difiere del esperado se conserva; ownership persistente requiere manifest/follow-up
+- [x] RPI-014 No reemplazar archivos MCP configurados como symlink durante persistencia de revert; saltar con error visible y preservar enlace/target
+- [x] RPI-015 Documentar límites de ownership MCP: valores divergentes y agentes deshabilitados se conservan; ownership persistente sigue en follow-up #635
 - [ ] RPI-016 Ejecutar suite local integrada; revisar/responder todos los hilos; esperar workflows GitHub de ambas PRs
 
 ## Criterios de aceptación (de #630, alcance Part 1)
@@ -56,6 +56,8 @@ Fuera de alcance aquí (rama follow-up): remoción de MCP gestionados
 - RED/GREEN RPI-011: update y cleanup tienen pruebas separadas; cada una mostró RED contra el symlink y GREEN devolviendo error sin cambiar bytes externos.
 - RED/GREEN RPI-012: las pruebas CLI mostraron la limpieza indebida de `.gitignore` tras error/skip; las pruebas unitarias cubren además `default_agents` que no selecciona un agente deshabilitado, errores y skips.
 - RED/GREEN RPI-013: la prueba del contenedor vacío mostró que se borraba antes del cambio y que ahora permanece.
+- RED/GREEN RPI-014: prueba con `.mcp.json` symlink primero mostró que `persist` reemplazaba el enlace; ahora `remove_all` lo rechaza antes de leer/escribir y conserva destino y target.
+- RPI-015: `guides/mcp.mdx` documenta comparación nombre+valor, posible igualdad indistinguible, config cambiada desde `apply`, agentes deshabilitados y plugin servers; seguimiento en #635.
 - Verificación repetida localmente: `cargo test -p agentsync --lib` (647 OK), `cargo test --test test_revert_cli` (7 OK), `cargo test --bin agentsync` (198 OK, 1 ignorado), `cargo fmt --all -- --check`, clippy con `-D warnings` limpios. Una ejecución paralela inicial de la suite lib tuvo un fallo transitorio de HTTP local; la repetición serial pasó 647/647.
 - Docs tras esta edición: `cd website/docs && ./node_modules/.bin/astro build` OK (con warnings existentes de i18n/404); `pnpm run docs:build` no alcanzó el build porque su instalación automática ejecutó `prepare` y faltó el binario workspace `agentsync`.
 
@@ -66,5 +68,4 @@ Fuera de alcance aquí (rama follow-up): remoción de MCP gestionados
 
 ## Siguiente paso
 
-- Corregir RPI-014..RPI-015 en la rama MCP, prueba primero.
-- Re-ejecutar jueces y workflows; no resolver hilos Semgrep ni quitar draft mientras quede un blocker.
+- RPI-016: suite local integrada, hilos de review y workflows GitHub de ambas PRs; no resolver hilos Semgrep ni quitar draft mientras quede un blocker.
