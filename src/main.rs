@@ -576,26 +576,31 @@ fn handle_clean(
 
 /// Revert drops the managed gitignore block only on unfiltered runs: it is
 /// filtered whenever `--agents` is passed OR `default_agents` is non-empty
-/// and does not cover every enabled agent (other agents stay applied and
-/// still need their entries; re-running apply regenerates the block anyway).
-fn revert_should_cleanup_gitignore(config: &Config, agents: &Option<Vec<String>>) -> bool {
+/// and does not cover every configured agent (revert processes disabled agents
+/// too, so their entries may still be needed).
+fn revert_should_cleanup_gitignore(
+    config: &Config,
+    agents: &Option<Vec<String>>,
+    result: &SyncResult,
+) -> bool {
+    if result.errors > 0 || result.skipped > 0 {
+        return false;
+    }
     if agents.is_some() {
         return false;
     }
     if config.default_agents.is_empty() {
         return true;
     }
-    // Reuse the exact apply/revert filter semantics: an enabled agent is
-    // covered when `default_agents` selects it.
+    // Revert includes disabled agents, unlike apply; use its selector so this
+    // gate accounts for every agent that the revert loop will process.
     let defaults_as_filter = SyncOptions {
         agents: Some(config.default_agents.clone()),
         ..Default::default()
     };
-    config
-        .agents
-        .iter()
-        .filter(|(_, agent)| agent.enabled)
-        .all(|(name, _)| agentsync::linker::agent_selected(config, name, true, &defaults_as_filter))
+    config.agents.iter().all(|(name, _)| {
+        agentsync::linker::revert_agent_selected(config, name, &defaults_as_filter)
+    })
 }
 
 fn handle_revert(
@@ -628,10 +633,9 @@ fn handle_revert(
         ..Default::default()
     };
     let result = linker.revert(&options)?;
-    // Revert drops the managed gitignore block only on unfiltered runs: with
-    // --agents (or a narrowing default_agents), other agents stay applied and
-    // still need their entries (re-running apply regenerates the block anyway).
-    if revert_should_cleanup_gitignore(linker.config(), &options.agents) {
+    // Clean up only after a complete, unfiltered revert: with --agents (or a
+    // narrowing default_agents), other agents may still need their entries.
+    if revert_should_cleanup_gitignore(linker.config(), &options.agents, &result) {
         println!();
         print_lines(&render_gitignore_phase_with_color(
             false, dry_run, use_color,
@@ -1074,7 +1078,11 @@ mod tests {
     #[test]
     fn revert_gitignore_cleanup_runs_when_unfiltered() {
         let config = make_revert_gate_config(vec![], vec![("claude", true), ("copilot", true)]);
-        assert!(super::revert_should_cleanup_gitignore(&config, &None));
+        assert!(super::revert_should_cleanup_gitignore(
+            &config,
+            &None,
+            &SyncResult::default()
+        ));
     }
 
     #[test]
@@ -1082,7 +1090,8 @@ mod tests {
         let config = make_revert_gate_config(vec![], vec![("claude", true), ("copilot", true)]);
         assert!(!super::revert_should_cleanup_gitignore(
             &config,
-            &Some(vec!["claude".to_string()])
+            &Some(vec!["claude".to_string()]),
+            &SyncResult::default()
         ));
     }
 
@@ -1090,23 +1099,62 @@ mod tests {
     fn revert_gitignore_cleanup_skips_with_narrowing_default_agents() {
         let config =
             make_revert_gate_config(vec!["claude"], vec![("claude", true), ("copilot", true)]);
-        assert!(!super::revert_should_cleanup_gitignore(&config, &None));
+        assert!(!super::revert_should_cleanup_gitignore(
+            &config,
+            &None,
+            &SyncResult::default()
+        ));
     }
 
     #[test]
-    fn revert_gitignore_cleanup_runs_when_default_agents_cover_all_enabled() {
+    fn revert_gitignore_cleanup_runs_when_default_agents_cover_all_configured_agents() {
         let config = make_revert_gate_config(
             vec!["claude", "copilot"],
             vec![("claude", true), ("copilot", true)],
         );
-        assert!(super::revert_should_cleanup_gitignore(&config, &None));
+        assert!(super::revert_should_cleanup_gitignore(
+            &config,
+            &None,
+            &SyncResult::default()
+        ));
     }
 
     #[test]
-    fn revert_gitignore_cleanup_ignores_disabled_agents() {
-        // `copilot` is disabled, so defaults covering only `claude` are unfiltered.
+    fn revert_gitignore_cleanup_respects_disabled_agent_selection() {
+        // Revert still processes disabled `copilot`, so selecting only
+        // `claude` narrows the actual revert scope and must keep gitignore.
         let config =
             make_revert_gate_config(vec!["claude"], vec![("claude", true), ("copilot", false)]);
-        assert!(super::revert_should_cleanup_gitignore(&config, &None));
+        assert!(!super::revert_should_cleanup_gitignore(
+            &config,
+            &None,
+            &SyncResult::default()
+        ));
+    }
+
+    #[test]
+    fn revert_gitignore_cleanup_skips_when_revert_has_errors() {
+        let config = make_revert_gate_config(vec![], vec![("claude", true)]);
+        let result = SyncResult {
+            errors: 1,
+            ..Default::default()
+        };
+
+        assert!(!super::revert_should_cleanup_gitignore(
+            &config, &None, &result
+        ));
+    }
+
+    #[test]
+    fn revert_gitignore_cleanup_skips_when_revert_has_skips() {
+        let config = make_revert_gate_config(vec![], vec![("claude", true)]);
+        let result = SyncResult {
+            skipped: 1,
+            ..Default::default()
+        };
+
+        assert!(!super::revert_should_cleanup_gitignore(
+            &config, &None, &result
+        ));
     }
 }

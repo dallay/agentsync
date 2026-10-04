@@ -118,6 +118,36 @@ fn test_revert_keep_backups_preserves_bak() {
 
 #[test]
 #[cfg(unix)]
+fn test_revert_keeps_gitignore_when_destination_errors() {
+    let temp_dir = TempDir::new().unwrap();
+    let project_root = temp_dir.path();
+    fs::create_dir_all(project_root.join(".agents")).unwrap();
+    fs::write(
+        project_root.join(".agents/agentsync.toml"),
+        "source_dir = \".\"\n\n[agents.claude]\nenabled = true\n\n[agents.claude.targets.instructions]\nsource = \"AGENTS.md\"\ndestination = \"/etc/passwd\"\ntype = \"symlink\"\n",
+    )
+    .unwrap();
+    fs::write(
+        project_root.join(".gitignore"),
+        "# START AI Agent Symlinks\nCLAUDE.md\n# END AI Agent Symlinks\n",
+    )
+    .unwrap();
+
+    let revert = run_agentsync(project_root, &["revert"]);
+
+    assert!(
+        !revert.status.success(),
+        "unsafe destination should be an error"
+    );
+    let gitignore = fs::read_to_string(project_root.join(".gitignore")).unwrap();
+    assert!(
+        gitignore.contains("# START AI Agent Symlinks"),
+        "managed gitignore block must remain when revert reports an error"
+    );
+}
+
+#[test]
+#[cfg(unix)]
 fn test_revert_refuses_to_overwrite_user_file() {
     let temp_dir = TempDir::new().unwrap();
     let project_root = temp_dir.path();
@@ -222,5 +252,10 @@ fn test_revert_leaves_repointed_symlink_untouched() {
     assert!(
         stdout.contains("Skipping unmanaged symlink"),
         "expected unmanaged-symlink skip warning, got:\n{stdout}"
+    );
+    let gitignore = fs::read_to_string(project_root.join(".gitignore")).unwrap();
+    assert!(
+        gitignore.contains("# START AI Agent Symlinks"),
+        "managed gitignore block must remain when revert skips a destination"
     );
 }
