@@ -3,12 +3,38 @@
 //! This module centralizes alias handling so MCP parsing, filtering, and
 //! gitignore pattern generation remain consistent.
 
+/// Fast zero-allocation ASCII lowercasing helper.
+///
+/// Fast-paths strings without ASCII uppercase characters directly (0 allocations).
+/// Lowercases ASCII strings up to 64 bytes using a stack buffer (0 heap allocations).
+/// Safely falls back to heap allocation for long or non-ASCII strings.
+#[inline]
+fn with_lowercase<F, R>(id: &str, f: F) -> R
+where
+    F: FnOnce(&str) -> R,
+{
+    if !id.is_ascii() {
+        f(&id.to_lowercase())
+    } else if !id.bytes().any(|b| b.is_ascii_uppercase()) {
+        f(id)
+    } else if id.len() <= 64 {
+        let mut buf = [0u8; 64];
+        buf[..id.len()].copy_from_slice(id.as_bytes());
+        buf[..id.len()].make_ascii_lowercase();
+        // SAFETY: `id` is valid UTF-8 and ASCII lowercasing preserves UTF-8 validity.
+        let lower = unsafe { std::str::from_utf8_unchecked(&buf[..id.len()]) };
+        f(lower)
+    } else {
+        f(&id.to_lowercase())
+    }
+}
+
 /// Normalize a user-provided agent identifier to a canonical MCP ID.
 ///
 /// Returns `Some(canonical)` for agents with native MCP generation support,
 /// `None` for agents that use only configurable symlink targets.
 pub fn canonical_mcp_agent_id(id: &str) -> Option<&'static str> {
-    match id.to_lowercase().as_str() {
+    with_lowercase(id, |lower| match lower {
         "claude" | "claude-code" | "claude_code" => Some("claude"),
         "claude-desktop" | "claude_desktop" | "claudedesktop" => Some("claude-desktop"),
         "copilot" | "github-copilot" | "github_copilot" => Some("copilot"),
@@ -20,7 +46,7 @@ pub fn canonical_mcp_agent_id(id: &str) -> Option<&'static str> {
         "zcode" | "z-code" | "z_code" => Some("zcode"),
         "minimax" | "minimax-code" | "minimax_code" | "minimaxcode" => Some("minimax"),
         _ => None,
-    }
+    })
 }
 
 /// Normalize a user-provided agent identifier to a canonical non-MCP agent ID.
@@ -29,7 +55,7 @@ pub fn canonical_mcp_agent_id(id: &str) -> Option<&'static str> {
 /// but do not have native MCP generation. Returns a canonical string for use
 /// in `known_ignore_patterns`.
 pub fn canonical_configurable_agent_id(id: &str) -> Option<&'static str> {
-    match id.to_lowercase().as_str() {
+    with_lowercase(id, |lower| match lower {
         // Rules-only agents with a unique rules file location
         "windsurf" => Some("windsurf"),
         "cline" => Some("cline"),
@@ -59,7 +85,7 @@ pub fn canonical_configurable_agent_id(id: &str) -> Option<&'static str> {
         "pi" | "pi-coding" | "pi_coding" | "pi-coding-agent" | "pi_coding_agent" => Some("pi"),
         "jules" => Some("jules"),
         _ => None,
-    }
+    })
 }
 
 /// Return the convention instruction filename for a known agent.
@@ -155,8 +181,9 @@ pub fn mcp_filter_matches(agent_id: &str, filter: &str) -> bool {
     if let Some(canonical_filter) = canonical_mcp_agent_id(filter) {
         canonical_filter == agent_id
     } else {
-        let filter_lower = filter.to_lowercase();
-        agent_id.to_lowercase().contains(&filter_lower)
+        with_lowercase(filter, |filter_lower| {
+            with_lowercase(agent_id, |agent_lower| agent_lower.contains(filter_lower))
+        })
     }
 }
 
@@ -179,12 +206,18 @@ pub fn sync_filter_matches(config_agent_name: &str, filter: &str) -> bool {
         if let Some(canonical_agent) = canonical_any_agent_id(config_agent_name) {
             canonical_agent == canonical_filter
         } else {
-            let filter_lower = filter.to_lowercase();
-            config_agent_name.to_lowercase().contains(&filter_lower)
+            with_lowercase(filter, |filter_lower| {
+                with_lowercase(config_agent_name, |agent_lower| {
+                    agent_lower.contains(filter_lower)
+                })
+            })
         }
     } else {
-        let filter_lower = filter.to_lowercase();
-        config_agent_name.to_lowercase().contains(&filter_lower)
+        with_lowercase(filter, |filter_lower| {
+            with_lowercase(config_agent_name, |agent_lower| {
+                agent_lower.contains(filter_lower)
+            })
+        })
     }
 }
 

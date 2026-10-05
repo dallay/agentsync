@@ -180,3 +180,9 @@ of items in a loop. Use `Clone` bounds on iterators to support backtracking with
 **Learning:** `EmbeddedSkillCatalog::default()` and `load_catalog(None)` were re-parsing `catalog.v1.toml` and validating policy rules against 199+ skill IDs on every invocation. Additionally, policy validation was performing an $O(N)$ linear scan over `APPROVED_EMBEDDED_EXTERNAL_SKILL_IDS`. Sorting and deduplicating `APPROVED_EMBEDDED_EXTERNAL_SKILL_IDS` allowed using $O(\log N)$ `binary_search`, while memoizing the parsed baseline using `std::sync::OnceLock` completely eliminated redundant TOML parsing and policy validation across CLI commands.
 
 **Action:** Use `std::sync::OnceLock` to cache embedded static metadata structures parsed from compile-time assets (`include_str!`). Ensure static slice lookup tables are sorted alphabetically to leverage zero-allocation `binary_search`.
+
+## 2026-05-27 - Zero-Allocation Agent Identifier Normalization and Filtering
+
+**Learning:** `canonical_mcp_agent_id`, `canonical_configurable_agent_id`, `mcp_filter_matches`, and `sync_filter_matches` were calling `id.to_lowercase()`, unconditionally allocating a new `String` on the heap for every lookup and filter match. Since agent IDs in configurations are predominantly ASCII and under 64 characters, implementing a fast-path for lowercase ASCII strings (0 allocations) and a stack buffer `[u8; 64]` for uppercase ASCII (0 heap allocations) completely eliminated heap allocations during normalization and filtering.
+
+**Action:** When normalizing or matching short ASCII identifiers or CLI tokens against static string sets, avoid unconditional `to_lowercase()` calls. Fast-path lowercased ASCII directly or use stack-allocated byte arrays for case conversion before falling back to heap-allocated `String`s.
