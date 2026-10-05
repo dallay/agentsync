@@ -140,6 +140,49 @@ fn test_symlink_source_traversal() {
 }
 
 #[test]
+fn test_destination_backslash_traversal_rejection() {
+    let temp_dir = TempDir::new().unwrap();
+    let project_root = temp_dir.path().join("project");
+    let agents_dir = project_root.join(".agents");
+    fs::create_dir_all(&agents_dir).unwrap();
+
+    fs::write(project_root.join("AGENTS.md"), "safe source").unwrap();
+
+    let config_path = agents_dir.join("agentsync.toml");
+
+    // Malicious destination with backslash traversal
+    let toml = r#"
+        source_dir = "."
+        [agents.attacker]
+        enabled = true
+        [agents.attacker.targets.bypass]
+        source = "AGENTS.md"
+        destination = "..\\escaped\\CLAUDE.md"
+        type = "symlink"
+    "#;
+    fs::write(&config_path, toml).unwrap();
+
+    let config = Config::load(&config_path).unwrap();
+    let linker = Linker::new(config, config_path);
+    let options = SyncOptions {
+        verbose: true,
+        ..Default::default()
+    };
+
+    let result = linker.sync(&options).unwrap();
+    assert_eq!(
+        result.errors, 1,
+        "Sync must reject backslash path traversal in target destination"
+    );
+
+    let escaped_path = temp_dir.path().join("escaped").join("CLAUDE.md");
+    assert!(
+        !escaped_path.exists(),
+        "Sync must not create links outside project root via backslash traversal"
+    );
+}
+
+#[test]
 fn test_path_traversal_bypass_attempt() {
     let temp_dir = TempDir::new().unwrap();
     let project_root = temp_dir.path().join("project");

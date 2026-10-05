@@ -114,7 +114,19 @@ impl Linker {
     /// Returns the resolved path within project_root if safe.
     // `pub(super)` is required by the root façade and future apply/clean siblings.
     pub(super) fn ensure_safe_destination(&self, dest_path: &str) -> Result<PathBuf> {
-        let path = Path::new(dest_path);
+        // SECURITY: Reject Windows drive letters, UNC paths, and leading slashes/backslashes cross-platform.
+        if dest_path.starts_with('/')
+            || dest_path.starts_with('\\')
+            || (dest_path.len() >= 2 && dest_path.as_bytes()[1] == b':')
+        {
+            anyhow::bail!("Destination path must be relative: {}", dest_path);
+        }
+
+        // SECURITY: Normalize backslashes to forward slashes before component inspection.
+        // On Unix, `Path::components()` treats `\` as a normal character and fails to detect
+        // `Component::ParentDir` in paths like `..\escaped`.
+        let normalized = dest_path.replace('\\', "/");
+        let path = Path::new(&normalized);
 
         // SECURITY: Reject absolute paths to prevent writing to arbitrary locations.
         if path.is_absolute() {
@@ -141,7 +153,7 @@ impl Linker {
             anyhow::bail!("Destination path must not be empty: {}", dest_path);
         }
 
-        let joined = self.project_root.join(path);
+        let joined = self.project_root.join(Path::new(dest_path));
         self.ensure_safe_path(&joined, &dest_path)
     }
 
@@ -446,6 +458,61 @@ mod tests {
         let bad = temp.path().join("a/../../escape.md");
 
         assert!(linker.revalidate_path(&bad).is_err());
+    }
+
+    // ==========================================================================
+    // ensure_safe_destination
+    // ==========================================================================
+
+    #[test]
+    fn ensure_safe_destination_rejects_cross_platform_unsafe_paths() {
+        let temp = TempDir::new().unwrap();
+        let linker = make_linker(temp.path());
+
+        // Absolute / root paths
+        assert!(linker.ensure_safe_destination("/etc/passwd").is_err());
+        assert!(
+            linker
+                .ensure_safe_destination("\\Windows\\System32")
+                .is_err()
+        );
+
+        // Windows drive letters and UNC paths
+        assert!(
+            linker
+                .ensure_safe_destination("C:/System32/drivers")
+                .is_err()
+        );
+        assert!(
+            linker
+                .ensure_safe_destination("C:\\System32\\drivers")
+                .is_err()
+        );
+        assert!(
+            linker
+                .ensure_safe_destination("\\\\server\\share\\file")
+                .is_err()
+        );
+
+        // Backslash path traversal
+        assert!(linker.ensure_safe_destination("..\\outside.md").is_err());
+        assert!(
+            linker
+                .ensure_safe_destination("sub\\..\\..\\escape.md")
+                .is_err()
+        );
+
+        // Forward slash path traversal
+        assert!(linker.ensure_safe_destination("../outside.md").is_err());
+        assert!(
+            linker
+                .ensure_safe_destination("sub/../../escape.md")
+                .is_err()
+        );
+
+        // Valid relative paths must pass
+        assert!(linker.ensure_safe_destination("valid/dest.md").is_ok());
+        assert!(linker.ensure_safe_destination("valid\\dest.md").is_ok());
     }
 
     // ==========================================================================
