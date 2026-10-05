@@ -206,10 +206,23 @@ Know the limits:
 - Destinations that did not exist before `apply` are simply unlinked (there is nothing to restore).
 - A backup is never restored over a real file that appeared after the backup was taken.
 - For `symlink-contents`, `revert` removes managed child links but may leave the destination directory empty because it cannot infer whether the container existed before `apply`.
+- For `nested-glob`, `revert` must rediscover current source matches to verify each destination. If the configured source root is missing or unsafe, it reports an incomplete revert, leaves destinations it cannot identify untouched, and keeps the managed `.gitignore` block. Restore the source root and retry, then inspect any remaining links manually.
 - `clean` does not restore backups — it only deletes managed links. Use `revert` when you want your originals back.
 - On a complete, unfiltered run, `revert` also removes the AgentSync-managed `.gitignore` block; with `--agents`, a narrowing `default_agents`, or any revert error/skip, the block is left alone because managed destinations may remain. Re-run `apply` to reconcile it.
 
 See the <BaseLink href="/reference/cli/">CLI Reference</BaseLink> for all `revert` flags.
+
+## MCP revert skips a config or retains its journal
+
+MCP restore is conditional to protect changes made after `apply`. If the config changed, became a symlink, fails journal validation, or a shared destination is only partly selected, `revert` preserves the MCP file and journal and reports a skip or error. It does not perform a three-way merge.
+
+- Back up or safely resolve later edits before retrying. Do not delete the journal to force a restore.
+- For the shared `.vscode/mcp.json` destination, include every owner recorded for that file (often Copilot and VS Code). Check both `--agents` and `default_agents`; a recorded agent can be restored even if it is now disabled, but the selection must include it.
+- If the MCP config is a symlink, inspect and resolve it safely before retrying. AgentSync refuses to follow or replace symlinked MCP configs.
+- If no journal exists from an earlier AgentSync version, the pre-apply content cannot be reconstructed. The config is left as-is; AgentSync does not delete servers by name or value.
+- `--dry-run` does not create or change MCP files or journal state.
+
+The journal is outside the repository and snapshots the whole original MCP config, which may include credentials. It has no automatic expiry and remains until successful restore; `clean` does not remove it. See the <BaseLink href="/guides/mcp/#reverting-mcp-configurations">MCP journal and restore guide</BaseLink> for its location, retention, and full restore rules.
 
 ## Quick checklist before opening an issue
 

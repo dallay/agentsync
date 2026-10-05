@@ -23,14 +23,33 @@ merge_strategy = "merge"
 - **`merge` (Default)**: AgentSync will read the existing agent-specific config file, add the servers defined in your TOML, and preserve existing servers that are not in the TOML. If a conflict occurs (same server name), the TOML configuration wins.
 - **`overwrite`**: AgentSync will completely replace the agent-specific config file with the servers defined in your TOML.
 
-### Reverting Managed Servers
+### Reverting MCP Configurations
 
-`agentsync revert` removes supported servers defined in `agentsync.toml` from each agent config while keeping unrelated server entries and top-level settings. Know the limits:
+`agentsync revert` uses the apply-time snapshot to restore the MCP config file, rather than trying to identify managed servers by name or value. When `apply` writes an MCP config, AgentSync records the complete original file content and the state it wrote. The snapshot covers the whole file, including top-level settings and plugin-generated MCP output.
 
-- MCP apply has no exact restore or apply-time ownership manifest. Revert removes a server only when both its **name and current value** match the configured managed server. If the managed definition changed after `apply`, the old value is conservatively kept with a warning; if a pre-existing user server had the same name and identical value, it cannot be distinguished from the managed entry. Use distinct names for personal servers and remove retained stale entries manually when needed.
-- Only servers from `[mcp_servers]` in `agentsync.toml` are removed. Servers contributed by plugins are not reverted yet.
-- Claude Desktop (global config), Gemini CLI, OpenCode, and Z-Code are skipped with a warning in this version — their files carry extra top-level settings that need an exact round-trip before automated removal is safe.
-- Symlinked MCP config files are skipped with an error rather than replacing the symlink. MCP agents disabled since `apply` are not selected for removal; their previous config may need manual cleanup.
+Restore is conditional:
+
+- If the file still matches the state recorded by `apply`, `revert` restores the original content exactly.
+- If the file did not exist before `apply`, `revert` removes the generated regular file only if it still matches the recorded state.
+- If the file changed after `apply`, became a symlink, fails journal validation, or the selected agents omit an owner of a shared MCP destination, `revert` preserves the file and journal and reports a skip or error. It does not merge later edits into the snapshot.
+
+For a skipped restore, safely save or resolve any later edits and retry `revert` with every recorded owner selected. Copilot and VS Code share `.vscode/mcp.json`, so that file is restored only when every owner recorded for it is included. Restore uses the recorded agent IDs even if an agent or `[mcp]` is now disabled; `--agents` and `default_agents` still control which owners are selected.
+
+If there is no journal from an earlier AgentSync version, `revert` cannot reconstruct the pre-apply file. It leaves the MCP config as-is and warns when relevant; it does not delete servers based on their names or values. Reverting plugin-generated MCP output uses the same snapshot and does not resolve, materialize, or run plugins.
+
+#### Journal location and privacy
+
+The journal is stored outside the repository at `dirs::data_local_dir()/agentsync/mcp-ownership/<sha256-canonical-project-root>/ownership.json`. The platform data directory is:
+
+- Linux: `$XDG_DATA_HOME` when set, otherwise `$HOME/.local/share`.
+- macOS: `$HOME/Library/Application Support`.
+- Windows: `%LOCALAPPDATA%` (LocalAppData).
+
+The snapshot may contain credentials or tokens from the original MCP config. AgentSync never logs the content. On Unix, state directories use mode `0700` and files use mode `0600`. On Windows, AgentSync does not set custom ACLs; it relies on the OS-provided user-local LocalAppData ACLs.
+
+Journal records have no expiry or automatic cleanup. A record remains until its MCP config is successfully restored. `agentsync clean` does not remove the journal. After successful restore, the record is removed, but the empty `ownership.lock` file remains. `--keep-backups` applies only to `.bak` symlink backups; it does not retain an MCP journal after successful restore. `--dry-run` does not create or change MCP files or journal state. Symlinked MCP config files are refused rather than followed or replaced.
+
+Claude Desktop's MCP config is global, while its journal record belongs to the project that ran `apply`. AgentSync `apply` and `revert` operations targeting the same MCP path are serialized by a shared per-path lock, including operations started from different projects. A change detected before the final publish or restore check is preserved, and `revert` retains its journal record. This lock coordinates AgentSync processes only: an external editor that writes during the final compare-and-publish (or compare-and-remove) window is not coordinated and can still race with the operation.
 
 {/* agentsync:mcp:start */}
 - **Claude Code** — `.mcp.json` (agent id: `claude`) — JSON; Standard format

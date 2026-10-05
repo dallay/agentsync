@@ -6,6 +6,7 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 use std::fs;
+use std::io::Write;
 use std::path::Path;
 
 /// Build the start/end marker pair used to delimit the managed section in `.gitignore`.
@@ -31,7 +32,7 @@ pub fn update_gitignore(
         anyhow::bail!("gitignore entry must not contain newline: {:?}", evil);
     }
     let gitignore_path = project_root.join(".gitignore");
-    reject_gitignore_symlink(&gitignore_path)?;
+    let existing_permissions = reject_gitignore_symlink(&gitignore_path)?;
     let (start_marker, end_marker) = managed_markers(marker);
 
     // Read existing content or start fresh
@@ -80,9 +81,7 @@ pub fn update_gitignore(
         return Ok(());
     }
 
-    // Write the file
-    fs::write(&gitignore_path, &new_content)
-        .with_context(|| format!("Failed to write .gitignore: {}", gitignore_path.display()))?;
+    write_gitignore_atomically(&gitignore_path, &new_content, existing_permissions)?;
 
     println!(
         "  {} Updated .gitignore with {} managed entries",
@@ -101,7 +100,7 @@ pub fn cleanup_gitignore(project_root: &Path, marker: &str, dry_run: bool) -> Re
         anyhow::bail!("gitignore marker must not contain newline: {:?}", marker);
     }
     let gitignore_path = project_root.join(".gitignore");
-    reject_gitignore_symlink(&gitignore_path)?;
+    let existing_permissions = reject_gitignore_symlink(&gitignore_path)?;
     if !gitignore_path.exists() {
         return Ok(());
     }
@@ -120,15 +119,14 @@ pub fn cleanup_gitignore(project_root: &Path, marker: &str, dry_run: bool) -> Re
         return Ok(());
     }
 
-    fs::write(&gitignore_path, &cleaned_content)
-        .with_context(|| format!("Failed to write .gitignore: {}", gitignore_path.display()))?;
+    write_gitignore_atomically(&gitignore_path, &cleaned_content, existing_permissions)?;
 
     println!("  {} Removed managed .gitignore section", "✔".green(),);
 
     Ok(())
 }
 
-fn reject_gitignore_symlink(gitignore_path: &Path) -> Result<()> {
+fn reject_gitignore_symlink(gitignore_path: &Path) -> Result<Option<fs::Permissions>> {
     match fs::symlink_metadata(gitignore_path) {
         Ok(metadata) if metadata.file_type().is_symlink() => {
             anyhow::bail!(
@@ -136,11 +134,211 @@ fn reject_gitignore_symlink(gitignore_path: &Path) -> Result<()> {
                 gitignore_path.display()
             );
         }
-        Ok(_) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Ok(metadata) if metadata.file_type().is_file() => Ok(Some(metadata.permissions())),
+        Ok(_) => Ok(None),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(error)
             .with_context(|| format!("Failed to inspect .gitignore: {}", gitignore_path.display())),
     }
+}
+
+fn write_gitignore_atomically(
+    gitignore_path: &Path,
+    content: &str,
+    existing_permissions: Option<fs::Permissions>,
+) -> Result<()> {
+    write_gitignore_atomically_with_hook(gitignore_path, content, existing_permissions, || Ok(()))
+}
+
+fn write_gitignore_atomically_with_hook<F>(
+    gitignore_path: &Path,
+    content: &str,
+    existing_permissions: Option<fs::Permissions>,
+    before_persist: F,
+) -> Result<()>
+where
+    F: FnOnce() -> Result<()>,
+{
+    let parent = gitignore_path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let mut builder = tempfile::Builder::new();
+
+    #[cfg(unix)]
+    if existing_permissions.is_none() {
+        use std::os::unix::fs::PermissionsExt;
+        builder.permissions(fs::Permissions::from_mode(0o666));
+    }
+
+    let mut temporary_file = builder.tempfile_in(parent).with_context(|| {
+        format!(
+            "Failed to create temporary .gitignore in {}",
+            parent.display()
+        )
+    })?;
+    temporary_file
+        .write_all(content.as_bytes())
+        .with_context(|| {
+            format!(
+                "Failed to write temporary .gitignore for {}",
+                gitignore_path.display()
+            )
+        })?;
+    if let Some(permissions) = existing_permissions {
+        preserve_native_owner_group(gitignore_path, temporary_file.path())?;
+        temporary_file
+            .as_file()
+            .set_permissions(permissions)
+            .with_context(|| {
+                format!(
+                    "Failed to preserve .gitignore permissions for {}",
+                    gitignore_path.display()
+                )
+            })?;
+        preserve_native_acl(gitignore_path, temporary_file.path())?;
+    }
+    temporary_file.as_file().sync_all().with_context(|| {
+        format!(
+            "Failed to sync temporary .gitignore for {}",
+            gitignore_path.display()
+        )
+    })?;
+
+    before_persist()?;
+
+    temporary_file.persist(gitignore_path).with_context(|| {
+        format!(
+            "Failed to atomically replace .gitignore: {}",
+            gitignore_path.display()
+        )
+    })?;
+    Ok(())
+}
+
+#[cfg(unix)]
+pub(crate) fn preserve_native_owner_group(source: &Path, destination: &Path) -> Result<()> {
+    use std::os::unix::fs::MetadataExt;
+
+    let metadata = fs::symlink_metadata(source).with_context(|| {
+        format!(
+            "Failed to inspect .gitignore ownership: {}",
+            source.display()
+        )
+    })?;
+    if !metadata.file_type().is_file() {
+        anyhow::bail!(
+            "Refusing to preserve metadata from non-regular .gitignore: {}",
+            source.display()
+        );
+    }
+    std::os::unix::fs::chown(destination, Some(metadata.uid()), Some(metadata.gid()))
+        .with_context(|| {
+            format!(
+                "Failed to preserve .gitignore owner/group on staged file: {}",
+                destination.display()
+            )
+        })?;
+    let staged = fs::metadata(destination).with_context(|| {
+        format!(
+            "Failed to verify staged .gitignore ownership: {}",
+            destination.display()
+        )
+    })?;
+    anyhow::ensure!(
+        staged.uid() == metadata.uid() && staged.gid() == metadata.gid(),
+        "Staged .gitignore owner/group does not match the original: {}",
+        destination.display()
+    );
+    Ok(())
+}
+
+#[cfg(not(unix))]
+pub(crate) fn preserve_native_owner_group(_source: &Path, _destination: &Path) -> Result<()> {
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn preserve_native_acl(source: &Path, destination: &Path) -> Result<()> {
+    const POSIX_ACCESS_ACL: &str = "system.posix_acl_access";
+
+    let expected_acl = xattr::get(source, POSIX_ACCESS_ACL)
+        .with_context(|| format!("Failed to read .gitignore POSIX ACL: {}", source.display()))?;
+    match &expected_acl {
+        Some(acl) => xattr::set(destination, POSIX_ACCESS_ACL, acl).with_context(|| {
+            format!(
+                "Failed to preserve .gitignore POSIX ACL on staged file: {}",
+                destination.display()
+            )
+        })?,
+        None => match xattr::remove(destination, POSIX_ACCESS_ACL) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(error).with_context(|| {
+                    format!(
+                        "Failed to remove inherited POSIX ACL from staged .gitignore: {}",
+                        destination.display()
+                    )
+                });
+            }
+        },
+    }
+    let actual_acl = xattr::get(destination, POSIX_ACCESS_ACL).with_context(|| {
+        format!(
+            "Failed to verify staged .gitignore POSIX ACL: {}",
+            destination.display()
+        )
+    })?;
+    anyhow::ensure!(
+        actual_acl == expected_acl,
+        "Staged .gitignore POSIX ACL does not match the original: {}",
+        destination.display()
+    );
+    Ok(())
+}
+
+#[cfg(any(target_os = "macos", target_os = "freebsd"))]
+pub(crate) fn preserve_native_acl(source: &Path, destination: &Path) -> Result<()> {
+    let expected_acl = exacl::getfacl(source, None)
+        .with_context(|| format!("Failed to read .gitignore ACL: {}", source.display()))?;
+    exacl::setfacl(&[destination], &expected_acl, None).with_context(|| {
+        format!(
+            "Failed to preserve .gitignore ACL on staged file: {}",
+            destination.display()
+        )
+    })?;
+    let actual_acl = exacl::getfacl(destination, None).with_context(|| {
+        format!(
+            "Failed to verify staged .gitignore ACL: {}",
+            destination.display()
+        )
+    })?;
+    anyhow::ensure!(
+        actual_acl == expected_acl,
+        "Staged .gitignore ACL does not match the original: {}",
+        destination.display()
+    );
+    Ok(())
+}
+
+#[cfg(windows)]
+pub(crate) fn preserve_native_acl(source: &Path, destination: &Path) -> Result<()> {
+    crate::mcp::preserve_windows_file_dacl(source, destination)
+        .with_context(|| format!("Failed to preserve .gitignore DACL: {}", source.display()))
+}
+
+#[cfg(not(any(
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "freebsd",
+    windows
+)))]
+pub(crate) fn preserve_native_acl(source: &Path, _destination: &Path) -> Result<()> {
+    anyhow::bail!(
+        "Native ACL preservation is unsupported for this target; refusing to replace .gitignore: {}",
+        source.display()
+    )
 }
 
 /// Remove the managed section from gitignore content
@@ -304,6 +502,58 @@ after
         assert!(content.contains("# START AI Agent Symlinks"));
         assert!(content.contains("CLAUDE.md"));
         assert!(content.contains("# END AI Agent Symlinks"));
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn update_gitignore_preserves_existing_posix_acl() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp_dir = TempDir::new_in(".").unwrap();
+        let gitignore_path = temp_dir.path().join(".gitignore");
+        fs::write(&gitignore_path, "existing-rule\n").unwrap();
+        fs::set_permissions(&gitignore_path, fs::Permissions::from_mode(0o640)).unwrap();
+        let mut posix_acl = 2_u32.to_le_bytes().to_vec();
+        for (tag, permissions, id) in [
+            (0x01_u16, 0x06_u16, u32::MAX), // ACL_USER_OBJ
+            (0x02, 0x04, 123_456),          // ACL_USER
+            (0x04, 0x04, u32::MAX),         // ACL_GROUP_OBJ
+            (0x10, 0x04, u32::MAX),         // ACL_MASK
+            (0x20, 0x00, u32::MAX),         // ACL_OTHER
+        ] {
+            posix_acl.extend_from_slice(&tag.to_le_bytes());
+            posix_acl.extend_from_slice(&permissions.to_le_bytes());
+            posix_acl.extend_from_slice(&id.to_le_bytes());
+        }
+        if let Err(error) = xattr::set(&gitignore_path, "system.posix_acl_access", &posix_acl) {
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::Unsupported | std::io::ErrorKind::InvalidInput
+            ) {
+                eprintln!("Skipping POSIX ACL test: filesystem does not support ACLs");
+                return;
+            }
+            panic!("failed to establish test ACL: {error}");
+        }
+        let original_acl = xattr::get(&gitignore_path, "system.posix_acl_access")
+            .unwrap()
+            .expect("test ACL must be present");
+
+        update_gitignore(
+            temp_dir.path(),
+            "AgentSync",
+            &["generated.md".to_string()],
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(
+            xattr::get(&gitignore_path, "system.posix_acl_access")
+                .unwrap()
+                .expect("the ACL must remain present"),
+            original_acl,
+            "atomic replacement must preserve the original extended ACL"
+        );
     }
 
     #[test]
@@ -628,5 +878,164 @@ trailing_content
             .expect_err("symlinked .gitignore must be rejected");
         assert!(format!("{error:#}").contains(".gitignore"));
         assert_eq!(fs::read_to_string(&external).unwrap(), original);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn atomic_gitignore_write_replaces_symlink_at_persist_boundary() {
+        use std::os::unix::fs::symlink;
+
+        let temp_dir = TempDir::new().unwrap();
+        let gitignore_path = temp_dir.path().join(".gitignore");
+        let external = temp_dir.path().join("external.gitignore");
+        let external_original = "external content must remain unchanged\n";
+        let intended_content = "new managed gitignore content\n";
+        fs::write(&gitignore_path, "old .gitignore content\n").unwrap();
+        fs::write(&external, external_original).unwrap();
+        let existing_permissions = fs::symlink_metadata(&gitignore_path).unwrap().permissions();
+
+        write_gitignore_atomically_with_hook(
+            &gitignore_path,
+            intended_content,
+            Some(existing_permissions),
+            || {
+                fs::remove_file(&gitignore_path)
+                    .unwrap_or_else(|error| panic!("failed to remove old .gitignore: {error}"));
+                symlink(&external, &gitignore_path).unwrap_or_else(|error| {
+                    panic!("failed to arrange final-boundary symlink: {error}")
+                });
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        assert_eq!(fs::read_to_string(&external).unwrap(), external_original);
+        assert_eq!(
+            fs::read_to_string(&gitignore_path).unwrap(),
+            intended_content
+        );
+        assert!(
+            !fs::symlink_metadata(&gitignore_path)
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "atomic replacement should replace the swapped-in symlink path"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn update_and_cleanup_gitignore_preserve_regular_file_permissions() {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+        let temp_dir = TempDir::new().unwrap();
+        let gitignore_path = temp_dir.path().join(".gitignore");
+        fs::write(&gitignore_path, "# START Marker\nold-entry\n# END Marker\n").unwrap();
+        fs::set_permissions(&gitignore_path, fs::Permissions::from_mode(0o640)).unwrap();
+        let original_metadata = fs::metadata(&gitignore_path).unwrap();
+        let original_uid = original_metadata.uid();
+        let original_gid = original_metadata.gid();
+
+        update_gitignore(temp_dir.path(), "Marker", &["new-entry".to_string()], false).unwrap();
+        let metadata = fs::metadata(&gitignore_path).unwrap();
+        assert_eq!(metadata.permissions().mode() & 0o777, 0o640);
+        assert_eq!(metadata.uid(), original_uid);
+        assert_eq!(metadata.gid(), original_gid);
+
+        cleanup_gitignore(temp_dir.path(), "Marker", false).unwrap();
+        let metadata = fs::metadata(&gitignore_path).unwrap();
+        assert_eq!(metadata.permissions().mode() & 0o777, 0o640);
+        assert_eq!(metadata.uid(), original_uid);
+        assert_eq!(metadata.gid(), original_gid);
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn update_gitignore_preserves_restricted_windows_dacl() {
+        let temp_dir = TempDir::new().unwrap();
+        let gitignore_path = temp_dir.path().join(".gitignore");
+        fs::write(&gitignore_path, "old-entry\n").unwrap();
+        crate::mcp::set_restricted_permissions(&gitignore_path).unwrap();
+
+        update_gitignore(
+            temp_dir.path(),
+            "AgentSync",
+            &["new-entry".to_string()],
+            false,
+        )
+        .unwrap();
+
+        crate::mcp::verify_restricted_permissions(&gitignore_path).unwrap();
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn update_gitignore_preserves_existing_mode_under_restrictive_umask() {
+        use std::os::unix::fs::PermissionsExt;
+        use std::process::Command;
+
+        const CHILD_PATH_ENV: &str = "AGENTSYNC_GITIGNORE_UMASK_TEST_PATH";
+
+        if let Some(path) = std::env::var_os(CHILD_PATH_ENV) {
+            // SAFETY: This subprocess runs only this test, so changing its process umask
+            // cannot affect other test threads or processes.
+            unsafe {
+                umask(0o077);
+            }
+
+            let project_root = Path::new(&path);
+            update_gitignore(project_root, "Marker", &["new-entry".to_string()], false).unwrap();
+            let gitignore_path = project_root.join(".gitignore");
+            assert_eq!(
+                fs::metadata(&gitignore_path).unwrap().permissions().mode() & 0o777,
+                0o644,
+                ".gitignore mode should be restored exactly despite umask 077"
+            );
+
+            let new_project_root = project_root.join("new-file-project");
+            fs::create_dir(&new_project_root).unwrap();
+            update_gitignore(
+                &new_project_root,
+                "Marker",
+                &["new-entry".to_string()],
+                false,
+            )
+            .unwrap();
+            assert_eq!(
+                fs::metadata(new_project_root.join(".gitignore"))
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o600,
+                "new .gitignore should retain the default 0666 filtered by umask 077"
+            );
+            return;
+        }
+
+        let temp_dir = TempDir::new().unwrap();
+        let gitignore_path = temp_dir.path().join(".gitignore");
+        fs::write(&gitignore_path, "# START Marker\nold-entry\n# END Marker\n").unwrap();
+        fs::set_permissions(&gitignore_path, fs::Permissions::from_mode(0o644)).unwrap();
+
+        let test_name = std::thread::current().name().unwrap().to_owned();
+        let output = Command::new(std::env::current_exe().unwrap())
+            .arg("--exact")
+            .arg(test_name)
+            .arg("--nocapture")
+            .env(CHILD_PATH_ENV, temp_dir.path())
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "isolated umask test subprocess failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[cfg(unix)]
+    unsafe extern "C" {
+        fn umask(mask: u32) -> u32;
     }
 }

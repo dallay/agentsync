@@ -462,6 +462,8 @@ AgentSync also supports 32+ configurable agents including Windsurf, Cline, Amazo
 
 See the [MCP Integration Guide](https://dallay.github.io/agentsync/guides/mcp/) for formatter details and merge behavior.
 
+`agentsync revert` restores MCP configs from a whole-file snapshot stored outside the repository. Original configs may contain credentials, and snapshots have no automatic expiry; see the [MCP journal and restore guide](https://dallay.github.io/agentsync/guides/mcp/#reverting-mcp-configurations) for details.
+
 #### Merge Behavior
 
 When `merge_strategy = "merge"`:

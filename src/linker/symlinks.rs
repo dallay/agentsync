@@ -268,6 +268,11 @@ impl Linker {
             }
 
             let source_path = entry.path();
+            if super::enumerate::zcode_contents_child_filtered(agent_name, target, &source_path) {
+                result.skipped += 1;
+                continue;
+            }
+
             let destination_name = if crate::agent_ids::canonical_any_agent_id(agent_name)
                 == Some("zcode")
                 && target.destination.ends_with(".zcode/commands")
@@ -307,7 +312,7 @@ impl Linker {
 /// Directory iteration order from the OS is unspecified (often hash/creation
 /// order on APFS), so sorting by file name makes `symlink-contents` link
 /// creation and printed output reproducible across runs and platforms.
-fn sorted_dir_entries(dir: &Path) -> anyhow::Result<Vec<fs::DirEntry>> {
+pub(super) fn sorted_dir_entries(dir: &Path) -> anyhow::Result<Vec<fs::DirEntry>> {
     let mut entries: Vec<fs::DirEntry> = fs::read_dir(dir)
         .with_context(|| format!("Failed to read source directory: {}", dir.display()))?
         .collect::<Result<_, _>>()

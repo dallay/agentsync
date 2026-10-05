@@ -8,11 +8,12 @@ use colored::Colorize;
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use toml::{Table as TomlTable, Value as TomlValue};
 
 use crate::agent_ids;
 use crate::config::{McpMergeStrategy, McpServerConfig};
+use crate::mcp_ownership::McpOwnershipStore;
 
 // =============================================================================
 // MCP Output Format
@@ -305,10 +306,8 @@ impl McpAgent {
 
 /// Trait for formatting MCP configuration for different agents.
 ///
-/// New formatters must consider removal support: either delegate to
-/// `remove_standard_mcp_servers` (via `standard_remove_servers!`), add a
-/// format-specific `remove_servers` impl, or inherit the default which bails
-/// so `revert` skips the format with a warning instead of touching user data.
+/// Revert restores the exact apply-time file snapshot from the ownership journal;
+/// formatters do not implement format-specific deletion.
 pub trait McpFormatter: Send + Sync {
     /// Format MCP servers into an agent-specific logical `Value` representation.
     ///
@@ -341,26 +340,6 @@ pub trait McpFormatter: Send + Sync {
         new_servers: &BTreeMap<&str, &McpServerConfig>,
     ) -> Result<String> {
         self.merge(existing_content, new_servers)
-    }
-
-    /// Remove named servers from an existing config, keeping everything else
-    /// (user servers, top-level keys) intact. Used by `revert`.
-    /// Defaults to bailing so unsupported formats are skipped with a warning.
-    fn remove_servers(&self, _existing_content: &str, _names: &BTreeSet<String>) -> Result<String> {
-        anyhow::bail!("MCP revert not supported for this agent format yet")
-    }
-
-    /// Whether this formatter can safely remove named servers during `revert`.
-    fn supports_removal(&self) -> bool {
-        false
-    }
-
-    /// Canonical on-disk value for one managed server, used by `revert` to
-    /// compare before deleting (name collisions with user servers must not
-    /// delete user data). Defaults to the standard JSON encoding; the Codex
-    /// TOML formatter overrides this.
-    fn server_config_value(&self, config: &McpServerConfig) -> Value {
-        server_to_json(config)
     }
 
     /// Whether this formatter wraps mcpServers in another key
@@ -472,50 +451,6 @@ fn merge_standard_mcp_filtered(
     serde_json::to_string_pretty(&output).context("Failed to serialize merged config")
 }
 
-/// Drop named servers from a standard `{"mcpServers": {...}}` JSON doc,
-/// keeping user servers untouched. Shared by the standard-family formatters
-/// for `revert`.
-fn remove_standard_mcp_servers(
-    existing_content: &str,
-    names: &BTreeSet<String>,
-    err_ctx: &str,
-) -> Result<String> {
-    let mut existing_doc: Value =
-        serde_json::from_str(existing_content).context(err_ctx.to_string())?;
-
-    if let Some(doc_obj) = existing_doc.as_object_mut() {
-        if let Some(servers) = doc_obj.get_mut("mcpServers").and_then(Value::as_object_mut) {
-            servers.retain(|name, _| !names.contains(name));
-        } else {
-            doc_obj.insert("mcpServers".to_string(), Value::Object(Map::new()));
-        }
-
-        return serde_json::to_string_pretty(&existing_doc)
-            .context("Failed to serialize reverted MCP config");
-    }
-
-    let existing = parse_standard_mcp(existing_content, err_ctx)?;
-    let kept: BTreeMap<String, Value> = existing
-        .into_iter()
-        .filter(|(name, _)| !names.contains(name))
-        .collect();
-    merge_standard_mcp_filtered(kept, &BTreeMap::new(), err_ctx)
-}
-
-/// Expand a standard-family `remove_servers` impl delegating to
-/// [`remove_standard_mcp_servers`] with the given parse-error context.
-macro_rules! standard_remove_servers {
-    ($ctx:literal) => {
-        fn remove_servers(
-            &self,
-            existing_content: &str,
-            names: &BTreeSet<String>,
-        ) -> Result<String> {
-            remove_standard_mcp_servers(existing_content, names, $ctx)
-        }
-    };
-}
-
 // =============================================================================
 // Claude Code Formatter
 // =============================================================================
@@ -526,12 +461,6 @@ macro_rules! standard_remove_servers {
 pub struct ClaudeCodeFormatter;
 
 impl McpFormatter for ClaudeCodeFormatter {
-    standard_remove_servers!("Failed to parse existing MCP config as JSON");
-
-    fn supports_removal(&self) -> bool {
-        true
-    }
-
     fn format(&self, servers: &BTreeMap<&str, &McpServerConfig>) -> Value {
         format_standard_mcp(servers)
     }
@@ -683,12 +612,6 @@ impl McpFormatter for ClaudeDesktopFormatter {
 pub struct GithubCopilotFormatter;
 
 impl McpFormatter for GithubCopilotFormatter {
-    standard_remove_servers!("Failed to parse existing Copilot MCP config as JSON");
-
-    fn supports_removal(&self) -> bool {
-        true
-    }
-
     fn format(&self, servers: &BTreeMap<&str, &McpServerConfig>) -> Value {
         format_standard_mcp(servers)
     }
@@ -746,29 +669,6 @@ impl McpFormatter for GithubCopilotFormatter {
 pub struct CodexCliFormatter;
 
 impl McpFormatter for CodexCliFormatter {
-    fn server_config_value(&self, config: &McpServerConfig) -> Value {
-        toml_to_json_value(&server_to_codex_toml(config))
-    }
-
-    fn remove_servers(&self, existing_content: &str, names: &BTreeSet<String>) -> Result<String> {
-        let mut doc = parse_codex_doc(existing_content)?;
-        let mut servers = if let Some(TomlValue::Table(table)) = doc.remove("mcp_servers") {
-            table
-        } else {
-            TomlTable::new()
-        };
-        servers.retain(|name, _| !names.contains(name));
-        if !servers.is_empty() {
-            doc.insert("mcp_servers".to_string(), TomlValue::Table(servers));
-        }
-        toml::to_string_pretty(&TomlValue::Table(doc))
-            .context("Failed to serialize reverted Codex config")
-    }
-
-    fn supports_removal(&self) -> bool {
-        true
-    }
-
     /// Returns a logical Value representation (`mcp_servers`) for parity with the
     /// formatter trait. Codex file output is TOML and is produced by
     /// `format_to_string()`.
@@ -1010,12 +910,6 @@ impl McpFormatter for GeminiCliFormatter {
 pub struct VsCodeFormatter;
 
 impl McpFormatter for VsCodeFormatter {
-    standard_remove_servers!("Failed to parse existing VS Code MCP config as JSON");
-
-    fn supports_removal(&self) -> bool {
-        true
-    }
-
     fn format(&self, servers: &BTreeMap<&str, &McpServerConfig>) -> Value {
         format_standard_mcp(servers)
     }
@@ -1073,12 +967,6 @@ impl McpFormatter for VsCodeFormatter {
 pub struct CursorFormatter;
 
 impl McpFormatter for CursorFormatter {
-    standard_remove_servers!("Failed to parse existing Cursor MCP config as JSON");
-
-    fn supports_removal(&self) -> bool {
-        true
-    }
-
     fn format(&self, servers: &BTreeMap<&str, &McpServerConfig>) -> Value {
         format_standard_mcp(servers)
     }
@@ -1223,12 +1111,6 @@ impl McpFormatter for ZCodeFormatter {
 pub struct MiniMaxFormatter;
 
 impl McpFormatter for MiniMaxFormatter {
-    standard_remove_servers!("Failed to parse existing MiniMax MCP config as JSON");
-
-    fn supports_removal(&self) -> bool {
-        true
-    }
-
     fn format(&self, servers: &BTreeMap<&str, &McpServerConfig>) -> Value {
         format_standard_mcp(servers)
     }
@@ -1423,45 +1305,691 @@ fn server_to_opencode_json(config: &McpServerConfig) -> Value {
 /// This is used to protect MCP configuration files that may contain credentials.
 /// This function explicitly enforces permissions on existing files.
 #[cfg(unix)]
-fn set_restricted_permissions(path: &Path) -> std::io::Result<()> {
+pub(crate) fn set_restricted_permissions(path: &Path) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
     fs::set_permissions(path, fs::Permissions::from_mode(0o600))
 }
 
-/// Restrict file permissions on Windows using icacls.
-/// Removes inheritance and all access except for the current user (Full Control).
+#[cfg(unix)]
+pub(crate) fn set_restricted_directory_permissions(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o700))
+}
+
+/// Render a protected DACL granting full control only to a validated user SID.
+///
+/// SID input is kept numeric-only so this policy cannot accidentally interpret
+/// an account name or group alias (for example, `Users`) as an identity.
+#[cfg(any(windows, test))]
+fn render_owner_only_dacl(sid: &str) -> Result<String> {
+    let mut components = sid.split('-');
+    anyhow::ensure!(components.next() == Some("S"), "invalid Windows SID: {sid}");
+    anyhow::ensure!(components.next() == Some("1"), "invalid Windows SID: {sid}");
+
+    let _authority = components
+        .next()
+        .filter(|value| !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()))
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value <= 0x0000_FFFF_FFFF_FFFF)
+        .ok_or_else(|| anyhow::anyhow!("invalid Windows SID authority: {sid}"))?;
+    let subauthorities: Vec<u32> = components
+        .map(|value| {
+            if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+                return Err("non-decimal subauthority");
+            }
+            value
+                .parse::<u32>()
+                .map_err(|_| "out-of-range subauthority")
+        })
+        .collect::<std::result::Result<_, _>>()
+        .map_err(|_| anyhow::anyhow!("invalid Windows SID subauthority: {sid}"))?;
+    anyhow::ensure!(
+        !subauthorities.is_empty() && subauthorities.len() <= 15,
+        "invalid Windows SID subauthority count: {sid}"
+    );
+    Ok(format!("D:P(A;;FA;;;{sid})"))
+}
+
+/// Restrict file permissions on Windows to the current process-token user.
+/// The DACL is protected and read back before success is reported.
 #[cfg(windows)]
-fn set_restricted_permissions(path: &Path) -> std::io::Result<()> {
-    use std::process::Command;
+pub(crate) fn set_restricted_permissions(path: &Path) -> std::io::Result<()> {
+    windows_mcp_acl::set_owner_only(path)
+}
 
-    let username = std::env::var("USERNAME").unwrap_or_else(|_| "Users".to_string());
+#[cfg(windows)]
+pub(crate) fn set_restricted_directory_permissions(path: &Path) -> std::io::Result<()> {
+    windows_mcp_acl::set_owner_only(path)
+}
 
-    // Use icacls to:
-    // /inheritance:r - Remove all inherited ACEs
-    // /grant:r <user>:F - Grant current user full access
-    // /remove:g *S-1-1-0 - Remove "Everyone" group access explicitly
-    let status = Command::new("icacls")
-        .arg(path)
-        .arg("/inheritance:r")
-        .arg("/grant:r")
-        .arg(format!("{}:F", username))
-        .arg("/remove:g")
-        .arg("*S-1-1-0")
-        .status()?;
+#[cfg(windows)]
+pub(crate) fn preserve_windows_file_dacl(source: &Path, destination: &Path) -> std::io::Result<()> {
+    windows_mcp_acl::preserve_dacl(source, destination)
+}
 
-    if !status.success() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("icacls failed with status: {}", status),
-        ));
-    }
+#[cfg(windows)]
+pub(crate) fn verify_restricted_permissions(path: &Path) -> std::io::Result<()> {
+    let sid = windows_mcp_acl::current_process_user_sid()?;
+    windows_mcp_acl::verify_owner_only(path, &sid)
+}
+
+#[cfg(not(any(unix, windows)))]
+pub(crate) fn set_restricted_permissions(_path: &Path) -> std::io::Result<()> {
     Ok(())
+}
+
+#[cfg(not(any(unix, windows)))]
+pub(crate) fn set_restricted_directory_permissions(_path: &Path) -> std::io::Result<()> {
+    Ok(())
+}
+
+#[cfg(windows)]
+mod windows_mcp_acl {
+    use std::ffi::c_void;
+    use std::io;
+    use std::mem::size_of;
+    use std::os::windows::ffi::OsStrExt;
+    use std::path::Path;
+    use std::ptr::{addr_of, null_mut};
+
+    use windows_sys::Win32::Foundation::{CloseHandle, HLOCAL, LocalFree};
+    use windows_sys::Win32::Security::Authorization::{
+        ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW,
+        GetNamedSecurityInfoW, SE_FILE_OBJECT, SetNamedSecurityInfoW,
+    };
+    use windows_sys::Win32::Security::{
+        ACCESS_ALLOWED_ACE, ACL, ACL_SIZE_INFORMATION, AclSizeInformation,
+        DACL_SECURITY_INFORMATION, GetAce, GetAclInformation, GetSecurityDescriptorControl,
+        GetSecurityDescriptorDacl, GetTokenInformation, IsValidSid,
+        PROTECTED_DACL_SECURITY_INFORMATION, SE_DACL_PROTECTED, TOKEN_QUERY, TOKEN_USER, TokenUser,
+    };
+    use windows_sys::Win32::Storage::FileSystem::FILE_ALL_ACCESS;
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+    const SDDL_REVISION_1: u32 = 1;
+    const ACCESS_ALLOWED_ACE_TYPE: u8 = 0;
+
+    struct LocalAllocation(*mut c_void);
+
+    impl Drop for LocalAllocation {
+        fn drop(&mut self) {
+            if !self.0.is_null() {
+                // SAFETY: These allocations are returned by LocalAlloc-backed
+                // Windows security APIs and must be released with LocalFree.
+                unsafe {
+                    LocalFree(self.0 as HLOCAL);
+                }
+            }
+        }
+    }
+
+    struct TokenHandle(windows_sys::Win32::Foundation::HANDLE);
+
+    impl Drop for TokenHandle {
+        fn drop(&mut self) {
+            if !self.0.is_null() {
+                // SAFETY: OpenProcessToken created this owned handle.
+                unsafe {
+                    CloseHandle(self.0);
+                }
+            }
+        }
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct DaclSnapshot {
+        present: bool,
+        acl: Option<Vec<u8>>,
+        protected: bool,
+    }
+
+    struct NamedDacl {
+        _descriptor: LocalAllocation,
+        acl: *mut ACL,
+        snapshot: DaclSnapshot,
+    }
+
+    fn api_error() -> io::Error {
+        io::Error::last_os_error()
+    }
+
+    fn path_wide(path: &Path) -> io::Result<Vec<u16>> {
+        let mut wide: Vec<u16> = path.as_os_str().encode_wide().collect();
+        if wide.contains(&0) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Windows path contains an interior NUL",
+            ));
+        }
+        wide.push(0);
+        Ok(wide)
+    }
+
+    fn named_dacl(path: &Path) -> io::Result<NamedDacl> {
+        let wide_path = path_wide(path)?;
+        // SAFETY: GetNamedSecurityInfoW initializes the descriptor on success;
+        // LocalAllocation releases it after the DACL snapshot is copied.
+        unsafe {
+            let mut descriptor = null_mut();
+            let status = GetNamedSecurityInfoW(
+                wide_path.as_ptr(),
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION,
+                null_mut(),
+                null_mut(),
+                null_mut(),
+                null_mut(),
+                &mut descriptor,
+            );
+            if status != 0 {
+                return Err(io::Error::from_raw_os_error(status as i32));
+            }
+            if descriptor.is_null() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "Windows returned an empty security descriptor",
+                ));
+            }
+            let descriptor = LocalAllocation(descriptor);
+            let mut present = 0;
+            let mut acl = null_mut();
+            let mut defaulted = 0;
+            if GetSecurityDescriptorDacl(descriptor.0, &mut present, &mut acl, &mut defaulted) == 0
+            {
+                return Err(api_error());
+            }
+            let mut control = 0;
+            let mut revision = 0;
+            if GetSecurityDescriptorControl(descriptor.0, &mut control, &mut revision) == 0 {
+                return Err(api_error());
+            }
+            let acl_bytes = if acl.is_null() {
+                None
+            } else {
+                let size = (*acl).AclSize as usize;
+                Some(std::slice::from_raw_parts(acl.cast::<u8>(), size).to_vec())
+            };
+            Ok(NamedDacl {
+                _descriptor: descriptor,
+                acl,
+                snapshot: DaclSnapshot {
+                    present: present != 0,
+                    acl: acl_bytes,
+                    protected: control & SE_DACL_PROTECTED != 0,
+                },
+            })
+        }
+    }
+
+    pub(super) fn preserve_dacl(source: &Path, destination: &Path) -> io::Result<()> {
+        use windows_sys::Win32::Security::{
+            PROTECTED_DACL_SECURITY_INFORMATION, UNPROTECTED_DACL_SECURITY_INFORMATION,
+        };
+
+        let source_dacl = named_dacl(source)?;
+        if !source_dacl.snapshot.present || source_dacl.acl.is_null() {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "Refusing to copy an absent or NULL .gitignore DACL",
+            ));
+        }
+        if named_dacl(destination)?.snapshot == source_dacl.snapshot {
+            return Ok(());
+        }
+
+        let wide_destination = path_wide(destination)?;
+        let protection = if source_dacl.snapshot.protected {
+            PROTECTED_DACL_SECURITY_INFORMATION
+        } else {
+            UNPROTECTED_DACL_SECURITY_INFORMATION
+        };
+        // SAFETY: The source descriptor keeps the ACL pointer valid for the
+        // duration of SetNamedSecurityInfoW, and the destination path is NUL-terminated.
+        let status = unsafe {
+            SetNamedSecurityInfoW(
+                wide_destination.as_ptr(),
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION | protection,
+                null_mut(),
+                null_mut(),
+                source_dacl.acl,
+                null_mut(),
+            )
+        };
+        if status != 0 {
+            return Err(io::Error::from_raw_os_error(status as i32));
+        }
+        if named_dacl(destination)?.snapshot != source_dacl.snapshot {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "staged .gitignore DACL does not match the original",
+            ));
+        }
+        Ok(())
+    }
+
+    fn sid_to_string(sid: *mut c_void) -> io::Result<String> {
+        // SAFETY: The caller supplies a SID pointer from a validated token or
+        // a validated ACE in a Windows security descriptor.
+        unsafe {
+            if IsValidSid(sid) == 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "Windows returned an invalid SID",
+                ));
+            }
+            let mut string_sid = std::ptr::null_mut();
+            if ConvertSidToStringSidW(sid, &mut string_sid) == 0 || string_sid.is_null() {
+                return Err(api_error());
+            }
+            let allocation = LocalAllocation(string_sid.cast());
+            let mut length = 0;
+            while *string_sid.add(length) != 0 {
+                length += 1;
+            }
+            let value = String::from_utf16(std::slice::from_raw_parts(string_sid, length))
+                .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+            drop(allocation);
+            Ok(value)
+        }
+    }
+
+    pub(super) fn current_process_user_sid() -> io::Result<String> {
+        // SAFETY: GetCurrentProcess returns the current process pseudo-handle;
+        // OpenProcessToken opens an owned query-only token handle.
+        unsafe {
+            let mut token = null_mut();
+            if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
+                return Err(api_error());
+            }
+            let token = TokenHandle(token);
+
+            let mut required = 0;
+            GetTokenInformation(token.0, TokenUser, null_mut(), 0, &mut required);
+            if required < size_of::<TOKEN_USER>() as u32 {
+                return Err(api_error());
+            }
+            let word_size = size_of::<usize>();
+            let mut buffer = vec![0usize; (required as usize).div_ceil(word_size)];
+            if GetTokenInformation(
+                token.0,
+                TokenUser,
+                buffer.as_mut_ptr().cast(),
+                required,
+                &mut required,
+            ) == 0
+            {
+                return Err(api_error());
+            }
+            let token_user = &*(buffer.as_ptr().cast::<TOKEN_USER>());
+            sid_to_string(token_user.User.Sid)
+        }
+    }
+
+    pub(super) fn verify_owner_only(path: &Path, expected_sid: &str) -> io::Result<()> {
+        let wide_path = path_wide(path)?;
+        // SAFETY: GetNamedSecurityInfoW initializes the descriptor on success;
+        // LocalAllocation releases it after the DACL has been inspected.
+        unsafe {
+            let mut descriptor = null_mut();
+            let status = GetNamedSecurityInfoW(
+                wide_path.as_ptr(),
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION,
+                null_mut(),
+                null_mut(),
+                null_mut(),
+                null_mut(),
+                &mut descriptor,
+            );
+            if status != 0 {
+                return Err(io::Error::from_raw_os_error(status as i32));
+            }
+            let descriptor = LocalAllocation(descriptor);
+
+            let mut control = 0;
+            let mut revision = 0;
+            if GetSecurityDescriptorControl(descriptor.0, &mut control, &mut revision) == 0 {
+                return Err(api_error());
+            }
+            if control & SE_DACL_PROTECTED == 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "MCP file DACL is not protected from inheritance",
+                ));
+            }
+
+            let mut dacl_present = 0;
+            let mut dacl: *mut ACL = null_mut();
+            let mut dacl_defaulted = 0;
+            if GetSecurityDescriptorDacl(
+                descriptor.0,
+                &mut dacl_present,
+                &mut dacl,
+                &mut dacl_defaulted,
+            ) == 0
+            {
+                return Err(api_error());
+            }
+            if dacl_present == 0 || dacl.is_null() {
+                return Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "MCP file has no explicit DACL",
+                ));
+            }
+
+            let mut acl_info = ACL_SIZE_INFORMATION::default();
+            if GetAclInformation(
+                dacl,
+                (&mut acl_info as *mut ACL_SIZE_INFORMATION).cast(),
+                size_of::<ACL_SIZE_INFORMATION>() as u32,
+                AclSizeInformation,
+            ) == 0
+            {
+                return Err(api_error());
+            }
+            if acl_info.AceCount != 1 {
+                return Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "MCP file DACL contains unexpected access entries",
+                ));
+            }
+
+            let mut ace = null_mut();
+            if GetAce(dacl, 0, &mut ace) == 0 || ace.is_null() {
+                return Err(api_error());
+            }
+            let header = &*(ace.cast::<windows_sys::Win32::Security::ACE_HEADER>());
+            if header.AceType != ACCESS_ALLOWED_ACE_TYPE || header.AceFlags != 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "MCP file DACL is not a single explicit allow entry",
+                ));
+            }
+            let allowed = &*(ace.cast::<ACCESS_ALLOWED_ACE>());
+            if allowed.Mask != FILE_ALL_ACCESS {
+                return Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "MCP file DACL does not grant exactly full control",
+                ));
+            }
+            let ace_sid = addr_of!(allowed.SidStart).cast_mut().cast::<c_void>();
+            if sid_to_string(ace_sid)? != expected_sid {
+                return Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "MCP file DACL does not grant access only to the process-token user",
+                ));
+            }
+            drop(descriptor);
+            Ok(())
+        }
+    }
+
+    pub(super) fn set_owner_only(path: &Path) -> io::Result<()> {
+        let sid = current_process_user_sid()?;
+        let sddl = super::render_owner_only_dacl(&sid)
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))?;
+        let mut wide_sddl: Vec<u16> = sddl.encode_utf16().chain(std::iter::once(0)).collect();
+        let wide_path = path_wide(path)?;
+
+        // SAFETY: The SDDL and path buffers are NUL-terminated and remain live
+        // through both Windows calls. The descriptor is released with LocalFree.
+        unsafe {
+            let mut descriptor = null_mut();
+            if ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                wide_sddl.as_mut_ptr(),
+                SDDL_REVISION_1,
+                &mut descriptor,
+                null_mut(),
+            ) == 0
+                || descriptor.is_null()
+            {
+                return Err(api_error());
+            }
+            let descriptor = LocalAllocation(descriptor);
+            let mut dacl_present = 0;
+            let mut dacl: *mut ACL = null_mut();
+            let mut dacl_defaulted = 0;
+            if GetSecurityDescriptorDacl(
+                descriptor.0,
+                &mut dacl_present,
+                &mut dacl,
+                &mut dacl_defaulted,
+            ) == 0
+                || dacl_present == 0
+                || dacl.is_null()
+            {
+                return Err(api_error());
+            }
+            let status = SetNamedSecurityInfoW(
+                wide_path.as_ptr(),
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+                null_mut(),
+                null_mut(),
+                dacl,
+                null_mut(),
+            );
+            if status != 0 {
+                return Err(io::Error::from_raw_os_error(status as i32));
+            }
+        }
+
+        verify_owner_only(path, &sid)
+    }
 }
 
 /// No-op on other systems.
 #[cfg(not(any(unix, windows)))]
 fn set_restricted_permissions(_path: &Path) -> std::io::Result<()> {
     Ok(())
+}
+
+pub(crate) fn set_restricted_mcp_staging_permissions(path: &Path) -> Result<()> {
+    set_restricted_permissions(path).with_context(|| {
+        format!(
+            "Failed to restrict permissions on staged MCP file: {}",
+            path.display()
+        )
+    })
+}
+
+/// Reject symlinks and non-directory parents beneath an MCP agent's trusted
+/// root before touching its config path. Project-root symlinks are intentional:
+/// canonicalizing the root first preserves that behavior while checking every
+/// component below it.
+pub(crate) fn validate_mcp_config_path(
+    agent: McpAgent,
+    project_root: &Path,
+    config_path: &Path,
+) -> Result<()> {
+    let (canonical_root, relative_path) = if agent.is_global() {
+        // Claude Desktop is intentionally rooted at the platform-selected user
+        // config directory, not at project_root. Treat that configured root (or
+        // its nearest existing ancestor when it does not exist yet) as trusted;
+        // reject symlinks in all remaining components, including the final file.
+        let global_root = dirs::config_dir()
+            .ok_or_else(|| anyhow::anyhow!("Cannot resolve global MCP config directory"))?;
+        let expected_path = agent
+            .resolved_config_path(project_root)
+            .ok_or_else(|| anyhow::anyhow!("Cannot resolve global MCP config path"))?;
+        anyhow::ensure!(
+            config_path == expected_path,
+            "MCP config path does not match the global agent destination"
+        );
+
+        let mut trusted_root = global_root;
+        loop {
+            match fs::canonicalize(&trusted_root) {
+                Ok(canonical_root) => {
+                    anyhow::ensure!(
+                        canonical_root.is_dir(),
+                        "Global MCP config root is not a directory: {}",
+                        trusted_root.display()
+                    );
+                    let relative_path =
+                        expected_path.strip_prefix(&trusted_root).with_context(|| {
+                            format!(
+                                "Global MCP config path is outside its configured root: {}",
+                                expected_path.display()
+                            )
+                        })?;
+                    break (canonical_root, relative_path.to_path_buf());
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    trusted_root = trusted_root
+                        .parent()
+                        .ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "Cannot find an existing ancestor of the global MCP root"
+                            )
+                        })?
+                        .to_path_buf();
+                }
+                Err(error) => {
+                    return Err(error).with_context(|| {
+                        format!(
+                            "Failed to resolve global MCP config root: {}",
+                            trusted_root.display()
+                        )
+                    });
+                }
+            }
+        }
+    } else {
+        let expected_path = project_root.join(agent.config_path());
+        anyhow::ensure!(
+            config_path == expected_path,
+            "MCP config path does not match the project agent destination"
+        );
+        let canonical_root = fs::canonicalize(project_root).with_context(|| {
+            format!("Failed to resolve project root: {}", project_root.display())
+        })?;
+        anyhow::ensure!(
+            canonical_root.is_dir(),
+            "Project root is not a directory: {}",
+            project_root.display()
+        );
+        (canonical_root, PathBuf::from(agent.config_path()))
+    };
+
+    validate_mcp_path_components(&canonical_root, &relative_path)
+}
+
+fn validate_mcp_path_components(canonical_root: &Path, relative_path: &Path) -> Result<()> {
+    let components: Vec<_> = relative_path.components().collect();
+    anyhow::ensure!(
+        !components.is_empty()
+            && components
+                .iter()
+                .all(|component| matches!(component, Component::Normal(_))),
+        "Invalid relative MCP config path: {}",
+        relative_path.display()
+    );
+
+    let mut current = canonical_root.to_path_buf();
+    for (index, component) in components.iter().enumerate() {
+        let Component::Normal(name) = component else {
+            unreachable!("MCP path components were validated above")
+        };
+        current.push(name);
+        let metadata = match fs::symlink_metadata(&current) {
+            Ok(metadata) => metadata,
+            // Once a component is missing, no later component can exist
+            // beneath it. The path will be checked again after parent creation
+            // and immediately before a write.
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => {
+                return Err(error).with_context(|| {
+                    format!(
+                        "Failed to inspect MCP config path component: {}",
+                        current.display()
+                    )
+                });
+            }
+        };
+
+        anyhow::ensure!(
+            !metadata.file_type().is_symlink(),
+            "refusing symlinked MCP config path component: {}",
+            current.display()
+        );
+        let is_final = index + 1 == components.len();
+        if is_final {
+            anyhow::ensure!(
+                metadata.is_file(),
+                "MCP config is not a regular file: {}",
+                current.display()
+            );
+        } else {
+            anyhow::ensure!(
+                metadata.is_dir(),
+                "MCP config parent is not a directory: {}",
+                current.display()
+            );
+        }
+
+        let canonical_component = fs::canonicalize(&current).with_context(|| {
+            format!(
+                "Failed to resolve MCP config path component: {}",
+                current.display()
+            )
+        })?;
+        anyhow::ensure!(
+            canonical_component.starts_with(canonical_root),
+            "MCP config path escapes its trusted root: {}",
+            current.display()
+        );
+    }
+    Ok(())
+}
+
+fn read_mcp_config_if_regular(
+    agent: McpAgent,
+    project_root: &Path,
+    path: &Path,
+) -> Result<Option<String>> {
+    validate_mcp_config_path(agent, project_root, path)?;
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("Failed to inspect MCP config: {}", path.display()));
+        }
+    };
+    if metadata.file_type().is_symlink() {
+        anyhow::bail!("refusing symlinked MCP config: {}", path.display());
+    }
+    if !metadata.is_file() {
+        anyhow::bail!("MCP config is not a regular file: {}", path.display());
+    }
+    fs::read_to_string(path)
+        .with_context(|| format!("Failed to read existing config: {}", path.display()))
+        .map(Some)
+}
+
+fn set_mcp_restricted_permissions(agent: McpAgent, project_root: &Path, path: &Path) -> Result<()> {
+    validate_mcp_config_path(agent, project_root, path)?;
+    set_restricted_permissions(path).with_context(|| {
+        format!(
+            "Failed to set restricted permissions on MCP config: {}",
+            path.display()
+        )
+    })
+}
+
+fn create_mcp_parent(agent: McpAgent, project_root: &Path, path: &Path) -> Result<()> {
+    validate_mcp_config_path(agent, project_root, path)?;
+    if let Some(parent) = path.parent().filter(|parent| !parent.exists()) {
+        fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "Failed to create MCP config directory: {}",
+                parent.display()
+            )
+        })?;
+    }
+    validate_mcp_config_path(agent, project_root, path)
 }
 
 /// Convert McpServerConfig to JSON Value.
@@ -1552,6 +2080,14 @@ pub struct McpSyncResult {
     pub errors: usize,
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("fatal MCP ownership/safety failure: {0}")]
+struct FatalMcpError(#[source] anyhow::Error);
+
+fn fatal_mcp<T>(result: Result<T>) -> Result<T> {
+    result.map_err(|error| FatalMcpError(error).into())
+}
+
 /// Generator for MCP configuration files
 pub struct McpGenerator {
     servers: BTreeMap<String, McpServerConfig>,
@@ -1578,22 +2114,20 @@ impl McpGenerator {
         dry_run: bool,
     ) -> Result<McpSyncResult> {
         let enabled_servers = self.get_enabled_servers();
-        self.generate_for_agent_with_servers(agent, project_root, &enabled_servers, dry_run)
+        self.generate_for_agent_with_servers(agent, project_root, &enabled_servers, dry_run, None)
     }
 
-    /// Resolve the content to write for an MCP config file, returning (content, existing_content).
+    /// Resolve the content to write from the exact previously-read file snapshot.
     fn resolve_config_content(
         &self,
         formatter: &dyn McpFormatter,
-        config_path: &Path,
+        current_content: Option<&str>,
         enabled_servers: &BTreeMap<&str, &McpServerConfig>,
-    ) -> Result<(String, Option<String>)> {
-        if config_path.exists() && self.merge_strategy == McpMergeStrategy::Merge {
-            let existing = fs::read_to_string(config_path).with_context(|| {
-                format!("Failed to read existing config: {}", config_path.display())
-            })?;
-
-            let existing_servers = formatter.parse_existing(&existing)?;
+    ) -> Result<String> {
+        if let Some(existing) =
+            current_content.filter(|_| self.merge_strategy == McpMergeStrategy::Merge)
+        {
+            let existing_servers = formatter.parse_existing(existing)?;
             let removed_servers: Vec<&String> = existing_servers
                 .keys()
                 .filter(|name| !enabled_servers.contains_key(name.as_str()))
@@ -1601,44 +2135,29 @@ impl McpGenerator {
 
             let merged = if !removed_servers.is_empty() {
                 if existing_servers.len() != enabled_servers.len() {
-                    formatter.cleanup_removed_servers(&existing, enabled_servers)?
+                    formatter.cleanup_removed_servers(existing, enabled_servers)?
                 } else {
-                    formatter.merge(&existing, enabled_servers)?
+                    formatter.merge(existing, enabled_servers)?
                 }
             } else {
-                formatter.merge(&existing, enabled_servers)?
+                formatter.merge(existing, enabled_servers)?
             };
-            Ok((merged, Some(existing)))
-        } else if config_path.exists()
-            && self.merge_strategy == McpMergeStrategy::Overwrite
+            Ok(merged)
+        } else if let Some(existing) =
+            current_content.filter(|_| self.merge_strategy == McpMergeStrategy::Overwrite)
             && formatter.preserve_on_overwrite()
         {
-            let existing = fs::read_to_string(config_path).with_context(|| {
-                format!("Failed to read existing config: {}", config_path.display())
-            })?;
-            let preserved = formatter.cleanup_removed_servers(&existing, enabled_servers)?;
-            Ok((preserved, Some(existing)))
+            formatter.cleanup_removed_servers(existing, enabled_servers)
         } else {
-            Ok((formatter.format_to_string(enabled_servers)?, None))
-        }
-    }
-
-    /// Check if config content is identical to what's already on disk.
-    fn is_content_identical(
-        config_path: &Path,
-        content: &str,
-        existing_content: Option<String>,
-    ) -> bool {
-        if let Some(existing) = existing_content {
-            existing == content
-        } else {
-            fs::read_to_string(config_path).is_ok_and(|existing| existing == content)
+            formatter.format_to_string(enabled_servers)
         }
     }
 
     /// Write config (or report what would be done in dry-run mode), returning result delta.
     fn write_or_report_config(
         &self,
+        agent: McpAgent,
+        project_root: &Path,
         config_path: &Path,
         content: &str,
         was_existing: bool,
@@ -1662,13 +2181,8 @@ impl McpGenerator {
                 result.created += 1;
             }
         } else {
-            self.write_atomic_secure(config_path, content)?;
-            set_restricted_permissions(config_path).with_context(|| {
-                format!(
-                    "Failed to set restricted permissions on MCP config: {}",
-                    config_path.display()
-                )
-            })?;
+            self.write_atomic_secure(agent, project_root, config_path, content)?;
+            set_mcp_restricted_permissions(agent, project_root, config_path)?;
             if was_existing {
                 println!(
                     "  {} Updated MCP config: {}",
@@ -1695,6 +2209,7 @@ impl McpGenerator {
         project_root: &Path,
         enabled_servers: &BTreeMap<&str, &McpServerConfig>,
         dry_run: bool,
+        ownership: Option<(&McpOwnershipStore, &BTreeSet<String>)>,
     ) -> Result<McpSyncResult> {
         let mut result = McpSyncResult::default();
         let formatter = agent.formatter();
@@ -1711,34 +2226,153 @@ impl McpGenerator {
             return Ok(result);
         }
 
-        let (content, existing_content) =
-            self.resolve_config_content(formatter.as_ref(), &config_path, enabled_servers)?;
-
-        // Create parent directories if needed
-        if let Some(parent) = config_path.parent().filter(|p| !p.exists()) {
-            if dry_run {
-                println!(
-                    "  {} Would create directory: {}",
-                    "→".cyan(),
-                    parent.display()
-                );
-            } else {
-                fs::create_dir_all(parent)?;
+        if !dry_run && let Some((store, agent_ids)) = ownership {
+            fatal_mcp(validate_mcp_config_path(agent, project_root, &config_path))?;
+            // Lock order: project ownership journal first, then one destination.
+            // Do not acquire another project journal lock while holding this guard.
+            let mut locked = fatal_mcp(store.lock())?;
+            let _destination_lock = fatal_mcp(store.lock_config_path(&config_path))?;
+            let current_content = fatal_mcp(read_mcp_config_if_regular(
+                agent,
+                project_root,
+                &config_path,
+            ))?;
+            let content = self.resolve_config_content(
+                formatter.as_ref(),
+                current_content.as_deref(),
+                enabled_servers,
+            )?;
+            let was_existing = current_content.is_some();
+            if current_content.as_deref() == Some(content.as_str()) {
+                if locked.add_owners_if_recorded(
+                    project_root,
+                    &config_path,
+                    current_content.as_deref(),
+                    agent_ids.clone(),
+                ) {
+                    fatal_mcp(locked.persist())?;
+                }
+                fatal_mcp(set_mcp_restricted_permissions(
+                    agent,
+                    project_root,
+                    &config_path,
+                ))?;
+                result.skipped += 1;
+                return Ok(result);
             }
+
+            fatal_mcp(locked.record_before_write(
+                project_root,
+                &config_path,
+                agent_ids.clone(),
+                current_content.as_deref(),
+                &content,
+            ))?;
+            fatal_mcp(locked.persist())?;
+            if fatal_mcp(read_mcp_config_if_regular(
+                agent,
+                project_root,
+                &config_path,
+            ))? != current_content
+            {
+                return Err(FatalMcpError(anyhow::anyhow!(
+                    "MCP config changed after ownership snapshot; refusing to overwrite: {}",
+                    config_path.display()
+                ))
+                .into());
+            }
+            fatal_mcp(create_mcp_parent(agent, project_root, &config_path))?;
+            fatal_mcp(self.write_atomic_secure_with_hook(
+                agent,
+                project_root,
+                &config_path,
+                &content,
+                Some(current_content.as_deref()),
+                || Ok(()),
+            ))?;
+            fatal_mcp(set_mcp_restricted_permissions(
+                agent,
+                project_root,
+                &config_path,
+            ))?;
+            if was_existing {
+                println!(
+                    "  {} Updated MCP config: {}",
+                    "✔".green(),
+                    config_path.display()
+                );
+                result.updated += 1;
+            } else {
+                println!(
+                    "  {} Created MCP config: {}",
+                    "✔".green(),
+                    config_path.display()
+                );
+                result.created += 1;
+            }
+            return Ok(result);
         }
 
+        let current_content = if ownership.is_some() {
+            fatal_mcp(read_mcp_config_if_regular(
+                agent,
+                project_root,
+                &config_path,
+            ))?
+        } else {
+            read_mcp_config_if_regular(agent, project_root, &config_path)?
+        };
+        let content = self.resolve_config_content(
+            formatter.as_ref(),
+            current_content.as_deref(),
+            enabled_servers,
+        )?;
+
         // Check if content has changed before writing to avoid redundant I/O
-        let was_existing = config_path.exists();
-        if was_existing && Self::is_content_identical(&config_path, &content, existing_content) {
-            if !dry_run && let Err(e) = set_restricted_permissions(&config_path) {
+        let was_existing = current_content.is_some();
+        if current_content.as_deref() == Some(content.as_str()) && (dry_run || ownership.is_none())
+        {
+            if !dry_run
+                && let Err(e) = set_mcp_restricted_permissions(agent, project_root, &config_path)
+            {
                 tracing::warn!(error = %e, path = %config_path.display(), "Failed to remediate restricted permissions on existing MCP config");
             }
             result.skipped += 1;
             return Ok(result);
         }
 
-        let write_result =
-            self.write_or_report_config(&config_path, &content, was_existing, dry_run)?;
+        if dry_run {
+            validate_mcp_config_path(agent, project_root, &config_path)?;
+            if let Some(parent) = config_path.parent().filter(|p| !p.exists()) {
+                println!(
+                    "  {} Would create directory: {}",
+                    "→".cyan(),
+                    parent.display()
+                );
+            }
+            let write_result = self.write_or_report_config(
+                agent,
+                project_root,
+                &config_path,
+                &content,
+                was_existing,
+                true,
+            )?;
+            result.created += write_result.created;
+            result.updated += write_result.updated;
+            return Ok(result);
+        }
+
+        create_mcp_parent(agent, project_root, &config_path)?;
+
+        let write_result = self.write_or_report_config(
+            agent,
+            project_root,
+            &config_path,
+            &content,
+            was_existing,
+            dry_run,
+        )?;
         result.created += write_result.created;
         result.updated += write_result.updated;
 
@@ -1751,6 +2385,48 @@ impl McpGenerator {
         project_root: &Path,
         enabled_agents: &[McpAgent],
         dry_run: bool,
+    ) -> Result<McpSyncResult> {
+        self.generate_all_internal(project_root, enabled_agents, dry_run, None, enabled_agents)
+    }
+
+    /// Apply generated MCP configs while journaling exact pre-write snapshots.
+    pub(crate) fn generate_all_with_ownership(
+        &self,
+        project_root: &Path,
+        enabled_agents: &[McpAgent],
+        configured_agents: &[McpAgent],
+        dry_run: bool,
+        data_root: Option<&Path>,
+    ) -> Result<McpSyncResult> {
+        let store = if let Some(data_root) = data_root {
+            #[cfg(test)]
+            {
+                McpOwnershipStore::open_at(project_root, data_root)?
+            }
+            #[cfg(not(test))]
+            {
+                let _ = data_root;
+                McpOwnershipStore::open(project_root)?
+            }
+        } else {
+            McpOwnershipStore::open(project_root)?
+        };
+        self.generate_all_internal(
+            project_root,
+            enabled_agents,
+            dry_run,
+            Some(&store),
+            configured_agents,
+        )
+    }
+
+    fn generate_all_internal(
+        &self,
+        project_root: &Path,
+        enabled_agents: &[McpAgent],
+        dry_run: bool,
+        ownership_store: Option<&McpOwnershipStore>,
+        configured_agents: &[McpAgent],
     ) -> Result<McpSyncResult> {
         let mut total_result = McpSyncResult::default();
         let enabled_servers = self.get_enabled_servers();
@@ -1782,11 +2458,19 @@ impl McpGenerator {
                 continue;
             }
 
+            let owners: BTreeSet<String> = configured_agents
+                .iter()
+                .filter(|owner| owner.resolved_config_path(project_root).as_deref() == Some(&path))
+                .map(|owner| owner.id().to_string())
+                .chain(std::iter::once(agent.id().to_string()))
+                .collect();
+
             match self.generate_for_agent_with_servers(
                 *agent,
                 project_root,
                 &enabled_servers,
                 dry_run,
+                ownership_store.map(|store| (store, &owners)),
             ) {
                 Ok(result) => {
                     total_result.created += result.created;
@@ -1811,263 +2495,12 @@ impl McpGenerator {
                         "Error generating agent config"
                     );
                     span.record("outcome", "error");
-                    total_result.errors += 1;
-                }
-            }
-        }
-
-        Ok(total_result)
-    }
-
-    /// Remove managed servers from every handled agent config, keeping user
-    /// servers. Formatters without revert support are skipped with a warning.
-    /// `enabled_agents` is the current (possibly `--agents`-filtered) slice;
-    /// `all_agents` is the full enabled-agent list used to detect shared
-    /// config paths whose other claimants are filtered out (those paths are
-    /// skipped so a filtered revert never strips a sibling agent's servers).
-    pub fn remove_all(
-        &self,
-        project_root: &Path,
-        enabled_agents: &[McpAgent],
-        all_agents: &[McpAgent],
-        dry_run: bool,
-    ) -> Result<McpSyncResult> {
-        let mut total_result = McpSyncResult::default();
-        // Enabled-only: a `disabled = true` server must never delete a
-        // same-named user server.
-        let managed: BTreeSet<String> = self
-            .servers
-            .iter()
-            .filter(|(_, config)| !config.disabled)
-            .map(|(name, _)| name.clone())
-            .collect();
-        if managed.is_empty() {
-            return Ok(total_result);
-        }
-        let mut handled_paths: BTreeSet<PathBuf> = BTreeSet::new();
-
-        for agent in enabled_agents {
-            let span = tracing::info_span!(
-                "agentsync",
-                operation = "mcp-revert",
-                agent_id = %agent.id(),
-                outcome = tracing::field::Empty
-            );
-            let _enter = span.enter();
-
-            let formatter = agent.formatter();
-            if !formatter.supports_removal() {
-                println!(
-                    "  {} MCP revert skipped for {}: format does not support removal",
-                    "!".yellow(),
-                    agent.name()
-                );
-                tracing::warn!(
-                    agent = %agent.name(),
-                    "MCP revert skipped: format does not support removal"
-                );
-                total_result.skipped += 1;
-                span.record("outcome", "skipped");
-                continue;
-            }
-
-            let path = match agent.resolved_config_path(project_root) {
-                Some(p) => p,
-                None => continue,
-            };
-            if !handled_paths.insert(path.clone()) {
-                tracing::debug!(
-                    config_path = %path.display(),
-                    agent = %agent.name(),
-                    "Skipping already-handled MCP config path for revert"
-                );
-                continue;
-            }
-            // Shared-path filtered skip: if any claimant of this path is not
-            // in the current (filtered) slice, leave the file untouched.
-            let outside_claimant = all_agents.iter().any(|other| {
-                if enabled_agents.contains(other) {
-                    return false;
-                }
-                other
-                    .resolved_config_path(project_root)
-                    .is_some_and(|p| p == path)
-            });
-            if outside_claimant {
-                println!(
-                    "  {} MCP revert skipped for {}: shared with agents outside the current filter",
-                    "!".yellow(),
-                    path.display()
-                );
-                tracing::warn!(
-                    config_path = %path.display(),
-                    agent = %agent.name(),
-                    "Skipping shared MCP config path: other claimant agents are filtered out"
-                );
-                total_result.skipped += 1;
-                span.record("outcome", "skipped");
-                continue;
-            }
-            let path_metadata = match fs::symlink_metadata(&path) {
-                Ok(metadata) => metadata,
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                    tracing::debug!(
-                        agent = %agent.name(),
-                        config_path = %path.display(),
-                        "Skipping missing MCP config for revert"
-                    );
-                    total_result.skipped += 1;
-                    span.record("outcome", "skipped");
-                    continue;
-                }
-                Err(error) => {
-                    tracing::error!(
-                        agent = %agent.name(),
-                        config_path = %path.display(),
-                        error = %error,
-                        "Error inspecting MCP config for revert"
-                    );
-                    total_result.errors += 1;
-                    span.record("outcome", "error");
-                    continue;
-                }
-            };
-            if path_metadata.file_type().is_symlink() {
-                println!(
-                    "  {} MCP revert skipped for symlinked config: {}",
-                    "!".yellow(),
-                    path.display()
-                );
-                tracing::warn!(
-                    agent = %agent.name(),
-                    config_path = %path.display(),
-                    "Skipping symlinked MCP config to preserve its link and target"
-                );
-                total_result.errors += 1;
-                span.record("outcome", "error");
-                continue;
-            }
-            let existing = match fs::read_to_string(&path) {
-                Ok(content) => content,
-                Err(e) => {
-                    tracing::error!(
-                        agent = %agent.name(),
-                        config_path = %path.display(),
-                        error = %e,
-                        "Error reading agent config for revert"
-                    );
-                    span.record("outcome", "error");
-                    total_result.errors += 1;
-                    continue;
-                }
-            };
-            let existing_servers = match formatter.parse_existing(&existing) {
-                Ok(servers) => servers,
-                Err(e) => {
-                    tracing::error!(
-                        agent = %agent.name(),
-                        config_path = %path.display(),
-                        error = %e,
-                        "Error parsing agent config for revert"
-                    );
-                    span.record("outcome", "error");
-                    total_result.errors += 1;
-                    continue;
-                }
-            };
-            if !existing_servers.keys().any(|name| managed.contains(name)) {
-                total_result.skipped += 1;
-                span.record("outcome", "skipped");
-                continue;
-            }
-            // Value-match guard: only remove a managed name when the on-disk
-            // value equals what apply would have written. A user server that
-            // merely collides on name is kept with a warning.
-            let mut to_remove: BTreeSet<String> = BTreeSet::new();
-            for name in managed.iter().filter(|n| existing_servers.contains_key(*n)) {
-                if let Some(cfg) = self.servers.get(name) {
-                    if existing_servers
-                        .get(name)
-                        .is_some_and(|v| *v == formatter.server_config_value(cfg))
-                    {
-                        to_remove.insert(name.clone());
-                    } else {
-                        println!(
-                            "  {} MCP revert kept colliding server {:?} in {}: value differs from managed config",
-                            "!".yellow(),
-                            name,
-                            path.display()
-                        );
-                        tracing::warn!(
-                            agent = %agent.name(),
-                            config_path = %path.display(),
-                            server = %name,
-                            "Keeping colliding MCP server: on-disk value differs from managed config"
-                        );
+                    if ownership_store.is_some() && e.downcast_ref::<FatalMcpError>().is_some() {
+                        return Err(e);
                     }
-                }
-            }
-            if to_remove.is_empty() {
-                total_result.skipped += 1;
-                span.record("outcome", "skipped");
-                continue;
-            }
-            let cleaned = match formatter.remove_servers(&existing, &to_remove) {
-                Ok(c) => c,
-                Err(e) => {
-                    println!(
-                        "  {} MCP revert skipped for {}: {e}",
-                        "!".yellow(),
-                        path.display()
-                    );
-                    tracing::warn!(
-                        agent = %agent.name(),
-                        config_path = %path.display(),
-                        error = %e,
-                        "MCP revert skipped: format does not support removal"
-                    );
-                    total_result.skipped += 1;
-                    span.record("outcome", "skipped");
-                    continue;
-                }
-            };
-            if dry_run {
-                println!(
-                    "  {} Would remove managed MCP servers: {}",
-                    "→".cyan(),
-                    path.display()
-                );
-            } else {
-                if let Err(e) = self.write_atomic_secure(&path, &cleaned) {
-                    tracing::error!(
-                        agent = %agent.name(),
-                        config_path = %path.display(),
-                        error = %e,
-                        "Error writing reverted agent config"
-                    );
-                    span.record("outcome", "error");
                     total_result.errors += 1;
-                    continue;
                 }
-                if let Err(e) = set_restricted_permissions(&path) {
-                    tracing::error!(
-                        agent = %agent.name(),
-                        config_path = %path.display(),
-                        error = %e,
-                        "Error setting permissions on reverted agent config"
-                    );
-                    span.record("outcome", "error");
-                    total_result.errors += 1;
-                    continue;
-                }
-                println!(
-                    "  {} Removed managed MCP servers: {}",
-                    "✔".green(),
-                    path.display()
-                );
             }
-            total_result.updated += 1;
-            span.record("outcome", "updated");
         }
 
         Ok(total_result)
@@ -2082,22 +2515,62 @@ impl McpGenerator {
             .collect()
     }
 
-    /// SECURITY: Atomically write file with restricted permissions (0o600 on Unix)
-    /// to avoid a race where sensitive data is world-readable.
-    fn write_atomic_secure(&self, path: &Path, content: &str) -> Result<()> {
+    /// SECURITY: Restrict and verify the staging file before writing sensitive
+    /// contents, then atomically publish it with those permissions intact.
+    fn write_atomic_secure(
+        &self,
+        agent: McpAgent,
+        project_root: &Path,
+        path: &Path,
+        content: &str,
+    ) -> Result<()> {
+        self.write_atomic_secure_with_hook(agent, project_root, path, content, None, || Ok(()))
+    }
+
+    fn write_atomic_secure_with_hook<F>(
+        &self,
+        agent: McpAgent,
+        project_root: &Path,
+        path: &Path,
+        content: &str,
+        expected_current: Option<Option<&str>>,
+        after_staging: F,
+    ) -> Result<()>
+    where
+        F: FnOnce() -> Result<()>,
+    {
+        self.write_atomic_secure_with_prewrite_hook(
+            agent,
+            project_root,
+            path,
+            content,
+            expected_current,
+            (set_restricted_mcp_staging_permissions, after_staging),
+        )
+    }
+
+    fn write_atomic_secure_with_prewrite_hook<B, F>(
+        &self,
+        agent: McpAgent,
+        project_root: &Path,
+        path: &Path,
+        content: &str,
+        expected_current: Option<Option<&str>>,
+        hooks: (B, F),
+    ) -> Result<()>
+    where
+        B: FnOnce(&Path) -> Result<()>,
+        F: FnOnce() -> Result<()>,
+    {
+        let (before_write, after_staging) = hooks;
+        validate_mcp_config_path(agent, project_root, path)?;
         let parent = path
             .parent()
             .ok_or_else(|| anyhow::anyhow!("Invalid config path"))?;
         let mut temp_file = tempfile::NamedTempFile::new_in(parent)
             .context("Failed to create temporary file for atomic write")?;
 
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(temp_file.path())?.permissions();
-            perms.set_mode(0o600);
-            fs::set_permissions(temp_file.path(), perms)?;
-        }
+        before_write(temp_file.path())?;
 
         use std::io::Write;
         temp_file
@@ -2108,6 +2581,18 @@ impl McpGenerator {
             .sync_all()
             .context("Failed to sync temporary file")?;
 
+        after_staging()?;
+        if let Some(expected_current) = expected_current {
+            let current = read_mcp_config_if_regular(agent, project_root, path)?;
+            if current.as_deref() != expected_current {
+                anyhow::bail!(
+                    "MCP config changed after staging; refusing to overwrite: {}",
+                    path.display()
+                );
+            }
+        } else {
+            validate_mcp_config_path(agent, project_root, path)?;
+        }
         temp_file
             .persist(path)
             .map_err(|e| anyhow::anyhow!("Failed to atomically rename temporary file: {}", e))?;
@@ -2143,82 +2628,19 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
+    #[test]
+    fn owner_only_dacl_policy_renders_and_validates_sid() {
+        assert_eq!(
+            render_owner_only_dacl("S-1-5-21-100-200-300-1001").unwrap(),
+            "D:P(A;;FA;;;S-1-5-21-100-200-300-1001)"
+        );
+        assert!(render_owner_only_dacl("Users").is_err());
+        assert!(render_owner_only_dacl("S-1-5-21-100x").is_err());
+        assert!(render_owner_only_dacl("S-1-+5-21").is_err());
+    }
+
     // ==========================================================================
     // REVERT TESTS
-    // ==========================================================================
-
-    #[test]
-    fn test_remove_standard_mcp_servers_keeps_user_servers() {
-        let existing = r#"{"inputs":{"workspace":"project"},"$schema":"https://example.com/mcp.json","mcpServers":{"managed":{"command":"npx"},"mine":{"command":"my-tool"}}}"#;
-        let names: BTreeSet<String> = ["managed".to_string()].into_iter().collect();
-        let out = remove_standard_mcp_servers(existing, &names, "test").unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
-        assert!(parsed["mcpServers"].get("managed").is_none());
-        assert!(parsed["mcpServers"].get("mine").is_some());
-        assert_eq!(
-            parsed["inputs"],
-            serde_json::json!({"workspace": "project"})
-        );
-        assert_eq!(parsed["$schema"], "https://example.com/mcp.json");
-    }
-
-    #[test]
-    fn test_formatter_remove_servers_roundtrip() {
-        let json_doc =
-            r#"{"mcpServers": {"managed": {"command": "npx"}, "mine": {"command": "my-tool"}}}"#;
-        let names: BTreeSet<String> = ["managed".to_string()].into_iter().collect();
-        let formatters: Vec<Box<dyn McpFormatter>> = vec![
-            Box::new(ClaudeCodeFormatter),
-            Box::new(GithubCopilotFormatter),
-            Box::new(VsCodeFormatter),
-            Box::new(CursorFormatter),
-            Box::new(MiniMaxFormatter),
-        ];
-        for formatter in &formatters {
-            let out = formatter.remove_servers(json_doc, &names).unwrap();
-            let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
-            let keys: BTreeSet<String> = parsed["mcpServers"]
-                .as_object()
-                .unwrap()
-                .keys()
-                .cloned()
-                .collect();
-            assert_eq!(keys, BTreeSet::from(["mine".to_string()]));
-        }
-
-        let toml_doc = "[mcp_servers.managed]\ncommand = \"npx\"\n\n[mcp_servers.mine]\ncommand = \"my-tool\"\n";
-        let out = CodexCliFormatter.remove_servers(toml_doc, &names).unwrap();
-        assert!(!out.contains("managed"), "managed server should be removed");
-        assert!(out.contains("mine"), "user server should be kept");
-    }
-
-    #[test]
-    fn test_codex_remove_servers_omits_empty_mcp_servers_table() {
-        let toml_doc = "[mcp_servers.managed]\ncommand = \"npx\"\n";
-        let names: BTreeSet<String> = ["managed".to_string()].into_iter().collect();
-
-        let out = CodexCliFormatter.remove_servers(toml_doc, &names).unwrap();
-        let parsed: TomlValue = toml::from_str(&out).unwrap();
-
-        assert!(parsed.as_table().unwrap().get("mcp_servers").is_none());
-    }
-
-    #[test]
-    fn test_formatter_removal_support_matches_implemented_formats() {
-        assert!(ClaudeCodeFormatter.supports_removal());
-        assert!(GithubCopilotFormatter.supports_removal());
-        assert!(VsCodeFormatter.supports_removal());
-        assert!(CursorFormatter.supports_removal());
-        assert!(MiniMaxFormatter.supports_removal());
-        assert!(CodexCliFormatter.supports_removal());
-        assert!(!ClaudeDesktopFormatter.supports_removal());
-        assert!(!GeminiCliFormatter.supports_removal());
-        assert!(!OpenCodeFormatter.supports_removal());
-        assert!(!ZCodeFormatter.supports_removal());
-    }
-
-    // ==========================================================================
-    // AGENT TESTS
     // ==========================================================================
 
     #[test]
@@ -2841,390 +3263,6 @@ command = "remove-cmd"
     // ==========================================================================
 
     #[test]
-    fn test_remove_all_drops_managed_keeps_user() {
-        let temp_dir = TempDir::new().unwrap();
-        let server = create_test_server();
-        let managed_value = serde_json::to_value(&server).unwrap();
-        let servers = BTreeMap::from([("filesystem".to_string(), server)]);
-
-        let doc = serde_json::json!({
-            "mcpServers": {
-                "filesystem": managed_value,
-                "mine": {"command": "my-tool"}
-            }
-        });
-        fs::write(
-            temp_dir.path().join(".mcp.json"),
-            serde_json::to_string_pretty(&doc).unwrap(),
-        )
-        .unwrap();
-
-        let generator = McpGenerator::new(servers, McpMergeStrategy::Merge);
-        let result = generator
-            .remove_all(
-                temp_dir.path(),
-                &[McpAgent::ClaudeCode],
-                &[McpAgent::ClaudeCode],
-                false,
-            )
-            .unwrap();
-
-        assert_eq!(result.updated, 1);
-        let content = fs::read_to_string(temp_dir.path().join(".mcp.json")).unwrap();
-        let parsed: Value = serde_json::from_str(&content).unwrap();
-        let keys: BTreeSet<String> = parsed["mcpServers"]
-            .as_object()
-            .unwrap()
-            .keys()
-            .cloned()
-            .collect();
-        assert_eq!(keys, BTreeSet::from(["mine".to_string()]));
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn test_remove_all_skips_symlinked_config_without_replacing_link() {
-        use std::os::unix::fs::symlink;
-
-        let temp_dir = TempDir::new().unwrap();
-        let config_dir = temp_dir.path().join("project");
-        fs::create_dir_all(&config_dir).unwrap();
-        let server = create_test_server();
-        let managed_value = serde_json::to_value(&server).unwrap();
-        let servers = BTreeMap::from([("filesystem".to_string(), server)]);
-        let doc = serde_json::json!({
-            "mcpServers": { "filesystem": managed_value }
-        });
-        let external = temp_dir.path().join("external-mcp.json");
-        let original = serde_json::to_string_pretty(&doc).unwrap();
-        fs::write(&external, &original).unwrap();
-        let config_path = config_dir.join(".mcp.json");
-        symlink(&external, &config_path).unwrap();
-
-        let generator = McpGenerator::new(servers, McpMergeStrategy::Merge);
-        let result = generator
-            .remove_all(
-                &config_dir,
-                &[McpAgent::ClaudeCode],
-                &[McpAgent::ClaudeCode],
-                false,
-            )
-            .unwrap();
-
-        assert!(
-            config_path.is_symlink(),
-            "revert must preserve MCP config symlink"
-        );
-        assert_eq!(fs::read_to_string(&external).unwrap(), original);
-        assert_eq!(result.updated, 0);
-        assert_eq!(result.errors, 1);
-    }
-
-    #[test]
-    fn test_remove_all_codex_toml_roundtrip_keeps_user_server_and_headers() {
-        let temp_dir = TempDir::new().unwrap();
-        let managed_server = McpServerConfig {
-            command: None,
-            args: vec![],
-            env: BTreeMap::new(),
-            url: Some("https://managed.example.com/mcp".to_string()),
-            headers: BTreeMap::from([("Authorization".to_string(), "Bearer managed".to_string())]),
-            transport_type: Some("http".to_string()),
-            disabled: false,
-        };
-        let servers = BTreeMap::from([("managed".to_string(), managed_server.clone())]);
-        let managed_refs = BTreeMap::from([("managed", &managed_server)]);
-        let managed_content = CodexCliFormatter.format_to_string(&managed_refs).unwrap();
-        let existing = format!(
-            "model = \"gpt-5-codex\"\n\n{managed_content}\n[mcp_servers.user]\nurl = \"https://user.example.com/mcp\"\n\n[mcp_servers.user.http_headers]\nAuthorization = \"Bearer user\"\n"
-        );
-
-        let codex_dir = temp_dir.path().join(".codex");
-        fs::create_dir_all(&codex_dir).unwrap();
-        let config_path = codex_dir.join("config.toml");
-        fs::write(&config_path, existing).unwrap();
-
-        let generator = McpGenerator::new(servers, McpMergeStrategy::Merge);
-        let result = generator
-            .remove_all(
-                temp_dir.path(),
-                &[McpAgent::CodexCli],
-                &[McpAgent::CodexCli],
-                false,
-            )
-            .unwrap();
-
-        assert_eq!(result.updated, 1);
-        let content = fs::read_to_string(config_path).unwrap();
-        let parsed: TomlValue = toml::from_str(&content).unwrap();
-        let doc = parsed.as_table().unwrap();
-        assert_eq!(doc["model"].as_str(), Some("gpt-5-codex"));
-        let mcp_servers = doc["mcp_servers"].as_table().unwrap();
-        assert!(mcp_servers.get("managed").is_none());
-        let user_headers = mcp_servers["user"].as_table().unwrap()["http_headers"]
-            .as_table()
-            .unwrap();
-        assert_eq!(user_headers["Authorization"].as_str(), Some("Bearer user"));
-    }
-
-    #[test]
-    fn test_remove_all_skips_unsupported_formatters() {
-        let temp_dir = TempDir::new().unwrap();
-        let server = create_test_server();
-        let servers = BTreeMap::from([("filesystem".to_string(), server)]);
-        let server_refs: BTreeMap<&str, &McpServerConfig> = servers
-            .iter()
-            .map(|(name, config)| (name.as_str(), config))
-            .collect();
-        let agents = [
-            McpAgent::ClaudeDesktop,
-            McpAgent::GeminiCli,
-            McpAgent::OpenCode,
-            McpAgent::ZCode,
-        ];
-
-        let mut original_contents = BTreeMap::new();
-        for agent in [McpAgent::GeminiCli, McpAgent::OpenCode, McpAgent::ZCode] {
-            let path = temp_dir.path().join(agent.config_path());
-            fs::create_dir_all(path.parent().unwrap()).unwrap();
-            let content = agent.formatter().format_to_string(&server_refs).unwrap();
-            fs::write(&path, &content).unwrap();
-            original_contents.insert(path, content);
-        }
-
-        let generator = McpGenerator::new(servers, McpMergeStrategy::Merge);
-        let result = generator
-            .remove_all(temp_dir.path(), &agents, &agents, false)
-            .unwrap();
-
-        assert_eq!(result.updated, 0);
-        assert_eq!(result.errors, 0);
-        assert_eq!(result.skipped, agents.len());
-        for (path, original) in original_contents {
-            assert_eq!(fs::read_to_string(path).unwrap(), original);
-        }
-    }
-
-    #[test]
-    fn test_remove_all_skips_when_nothing_managed_present() {
-        let temp_dir = TempDir::new().unwrap();
-        let servers = BTreeMap::from([("filesystem".to_string(), create_test_server())]);
-
-        fs::write(
-            temp_dir.path().join(".mcp.json"),
-            r#"{"mcpServers": {"mine": {"command": "my-tool"}}}"#,
-        )
-        .unwrap();
-
-        let generator = McpGenerator::new(servers, McpMergeStrategy::Merge);
-        let result = generator
-            .remove_all(
-                temp_dir.path(),
-                &[McpAgent::ClaudeCode],
-                &[McpAgent::ClaudeCode],
-                false,
-            )
-            .unwrap();
-
-        assert_eq!(result.updated, 0);
-        assert_eq!(result.skipped, 1);
-        let content = fs::read_to_string(temp_dir.path().join(".mcp.json")).unwrap();
-        assert!(content.contains("mine"));
-    }
-
-    #[test]
-    fn test_remove_all_keeps_colliding_user_server_on_value_mismatch() {
-        let temp_dir = TempDir::new().unwrap();
-        let servers = BTreeMap::from([("tool".to_string(), create_test_server())]);
-
-        // Same name as managed, but a different (user) value.
-        fs::write(
-            temp_dir.path().join(".mcp.json"),
-            r#"{"mcpServers": {"tool": {"command": "user-tool"}, "mine": {"command": "my-tool"}}}"#,
-        )
-        .unwrap();
-
-        let generator = McpGenerator::new(servers, McpMergeStrategy::Merge);
-        let result = generator
-            .remove_all(
-                temp_dir.path(),
-                &[McpAgent::ClaudeCode],
-                &[McpAgent::ClaudeCode],
-                false,
-            )
-            .unwrap();
-
-        assert_eq!(result.updated, 0);
-        assert_eq!(result.skipped, 1);
-        let content = fs::read_to_string(temp_dir.path().join(".mcp.json")).unwrap();
-        let parsed: Value = serde_json::from_str(&content).unwrap();
-        assert_eq!(
-            parsed["mcpServers"]["tool"]["command"],
-            serde_json::json!("user-tool")
-        );
-        assert!(parsed["mcpServers"].get("mine").is_some());
-    }
-
-    #[test]
-    fn test_remove_all_ignores_disabled_managed_server() {
-        let temp_dir = TempDir::new().unwrap();
-        let mut disabled = create_test_server();
-        disabled.disabled = true;
-        let disabled_value = serde_json::to_value(&disabled).unwrap();
-        let servers = BTreeMap::from([("tool".to_string(), disabled)]);
-
-        let doc = serde_json::json!({
-            "mcpServers": {
-                "tool": disabled_value,
-            }
-        });
-        fs::write(
-            temp_dir.path().join(".mcp.json"),
-            serde_json::to_string_pretty(&doc).unwrap(),
-        )
-        .unwrap();
-
-        let generator = McpGenerator::new(servers, McpMergeStrategy::Merge);
-        let result = generator
-            .remove_all(
-                temp_dir.path(),
-                &[McpAgent::ClaudeCode],
-                &[McpAgent::ClaudeCode],
-                false,
-            )
-            .unwrap();
-
-        // Disabled servers form an empty enabled set: nothing to remove.
-        assert_eq!(result.updated, 0);
-        let content = fs::read_to_string(temp_dir.path().join(".mcp.json")).unwrap();
-        assert!(content.contains("tool"));
-    }
-
-    #[test]
-    fn test_remove_all_malformed_json_counts_error_leaves_bytes() {
-        let temp_dir = TempDir::new().unwrap();
-        let servers = BTreeMap::from([("filesystem".to_string(), create_test_server())]);
-        let before = "not json {{{";
-        fs::write(temp_dir.path().join(".mcp.json"), before).unwrap();
-
-        let generator = McpGenerator::new(servers, McpMergeStrategy::Merge);
-        let result = generator
-            .remove_all(
-                temp_dir.path(),
-                &[McpAgent::ClaudeCode],
-                &[McpAgent::ClaudeCode],
-                false,
-            )
-            .unwrap();
-
-        assert_eq!(result.errors, 1);
-        assert_eq!(result.updated, 0);
-        let after = fs::read_to_string(temp_dir.path().join(".mcp.json")).unwrap();
-        assert_eq!(after, before);
-    }
-
-    #[test]
-    fn test_remove_all_dry_run_leaves_bytes_but_counts_updated() {
-        let temp_dir = TempDir::new().unwrap();
-        let server = create_test_server();
-        let managed_value = serde_json::to_value(&server).unwrap();
-        let servers = BTreeMap::from([("filesystem".to_string(), server)]);
-        let doc = serde_json::json!({
-            "mcpServers": {
-                "filesystem": managed_value,
-                "mine": {"command": "my-tool"}
-            }
-        });
-        let before = serde_json::to_string_pretty(&doc).unwrap();
-        fs::write(temp_dir.path().join(".mcp.json"), &before).unwrap();
-
-        let generator = McpGenerator::new(servers, McpMergeStrategy::Merge);
-        let result = generator
-            .remove_all(
-                temp_dir.path(),
-                &[McpAgent::ClaudeCode],
-                &[McpAgent::ClaudeCode],
-                true,
-            )
-            .unwrap();
-
-        // Established convention (mirrors `generate_all`): dry-run counts as updated.
-        assert_eq!(result.updated, 1);
-        let after = fs::read_to_string(temp_dir.path().join(".mcp.json")).unwrap();
-        assert_eq!(after, before);
-    }
-
-    #[test]
-    fn test_remove_all_shared_path_filtered_skip() {
-        let temp_dir = TempDir::new().unwrap();
-        let server = create_test_server();
-        let managed_value = serde_json::to_value(&server).unwrap();
-        let servers = BTreeMap::from([("filesystem".to_string(), server)]);
-        let vscode_dir = temp_dir.path().join(".vscode");
-        fs::create_dir_all(&vscode_dir).unwrap();
-        let doc = serde_json::json!({
-            "mcpServers": {
-                "filesystem": managed_value,
-            }
-        });
-        let before = serde_json::to_string_pretty(&doc).unwrap();
-        fs::write(vscode_dir.join("mcp.json"), &before).unwrap();
-
-        let generator = McpGenerator::new(servers, McpMergeStrategy::Merge);
-        // Filtered to VsCode only while Copilot (same `.vscode/mcp.json`) is enabled.
-        let result = generator
-            .remove_all(
-                temp_dir.path(),
-                &[McpAgent::VsCode],
-                &[McpAgent::GithubCopilot, McpAgent::VsCode],
-                false,
-            )
-            .unwrap();
-
-        assert_eq!(result.updated, 0);
-        let after = fs::read_to_string(vscode_dir.join("mcp.json")).unwrap();
-        assert_eq!(after, before);
-    }
-
-    #[test]
-    fn test_remove_all_shared_path_unfiltered_removes() {
-        let temp_dir = TempDir::new().unwrap();
-        let server = create_test_server();
-        let managed_value = serde_json::to_value(&server).unwrap();
-        let servers = BTreeMap::from([("filesystem".to_string(), server)]);
-        let vscode_dir = temp_dir.path().join(".vscode");
-        fs::create_dir_all(&vscode_dir).unwrap();
-        let doc = serde_json::json!({
-            "mcpServers": {
-                "filesystem": managed_value,
-                "mine": {"command": "my-tool"}
-            }
-        });
-        fs::write(
-            vscode_dir.join("mcp.json"),
-            serde_json::to_string_pretty(&doc).unwrap(),
-        )
-        .unwrap();
-
-        let generator = McpGenerator::new(servers, McpMergeStrategy::Merge);
-        let agents = vec![McpAgent::GithubCopilot, McpAgent::VsCode];
-        let result = generator
-            .remove_all(temp_dir.path(), &agents, &agents, false)
-            .unwrap();
-
-        assert_eq!(result.updated, 1);
-        let content = fs::read_to_string(vscode_dir.join("mcp.json")).unwrap();
-        let parsed: Value = serde_json::from_str(&content).unwrap();
-        let keys: BTreeSet<String> = parsed["mcpServers"]
-            .as_object()
-            .unwrap()
-            .keys()
-            .cloned()
-            .collect();
-        assert_eq!(keys, BTreeSet::from(["mine".to_string()]));
-    }
-
-    #[test]
     fn test_generator_creates_config() {
         let temp_dir = TempDir::new().unwrap();
         let servers = BTreeMap::from([("filesystem".to_string(), create_test_server())]);
@@ -3249,6 +3287,191 @@ command = "remove-cmd"
                 .unwrap()
                 .get("filesystem")
                 .is_some()
+        );
+    }
+
+    #[test]
+    fn staged_apply_preserves_external_edit_and_write_ahead_record() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path().join("project");
+        fs::create_dir_all(&project_root).unwrap();
+        let config_path = project_root.join(".mcp.json");
+        let original = r#"{"before":"apply"}"#;
+        let external_edit = r#"{"edited":"externally"}"#;
+        fs::write(&config_path, original).unwrap();
+
+        let data_root = temp_dir.path().join("local-data");
+        let store = McpOwnershipStore::open_at(&project_root, &data_root).unwrap();
+        let mut locked = store.lock().unwrap();
+        locked
+            .record_before_write(
+                &project_root,
+                &config_path,
+                BTreeSet::from(["claude".to_string()]),
+                Some(original),
+                "generated config",
+            )
+            .unwrap();
+        locked.persist().unwrap();
+        drop(locked);
+
+        let generator = McpGenerator::new(
+            BTreeMap::from([("filesystem".to_string(), create_test_server())]),
+            McpMergeStrategy::Overwrite,
+        );
+        let error = generator
+            .write_atomic_secure_with_hook(
+                McpAgent::ClaudeCode,
+                &project_root,
+                &config_path,
+                "generated config",
+                Some(Some(original)),
+                || fs::write(&config_path, external_edit).map_err(Into::into),
+            )
+            .unwrap_err();
+
+        assert!(error.to_string().contains("changed after staging"));
+        assert_eq!(fs::read_to_string(&config_path).unwrap(), external_edit);
+        assert!(store.read_existing().unwrap().is_some());
+    }
+
+    #[test]
+    fn staged_apply_runs_restriction_hook_before_writing_content() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path().join("project");
+        fs::create_dir_all(&project_root).unwrap();
+        let config_path = project_root.join(".mcp.json");
+        let generator = McpGenerator::new(
+            BTreeMap::from([("filesystem".to_string(), create_test_server())]),
+            McpMergeStrategy::Overwrite,
+        );
+        let mut restriction_ran = false;
+
+        generator
+            .write_atomic_secure_with_prewrite_hook(
+                McpAgent::ClaudeCode,
+                &project_root,
+                &config_path,
+                "sensitive credentials",
+                None,
+                (
+                    |staged_path| {
+                        restriction_ran = true;
+                        assert_eq!(fs::metadata(staged_path)?.len(), 0);
+                        Ok(())
+                    },
+                    || Ok(()),
+                ),
+            )
+            .unwrap();
+
+        assert!(restriction_ran);
+        assert_eq!(
+            fs::read_to_string(config_path).unwrap(),
+            "sensitive credentials"
+        );
+    }
+
+    #[test]
+    fn staged_apply_restriction_failure_does_not_publish_content() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path().join("project");
+        fs::create_dir_all(&project_root).unwrap();
+        let config_path = project_root.join(".mcp.json");
+        let generator = McpGenerator::new(
+            BTreeMap::from([("filesystem".to_string(), create_test_server())]),
+            McpMergeStrategy::Overwrite,
+        );
+
+        let error = generator
+            .write_atomic_secure_with_prewrite_hook(
+                McpAgent::ClaudeCode,
+                &project_root,
+                &config_path,
+                "sensitive credentials",
+                None,
+                (|_| anyhow::bail!("restriction failed"), || Ok(())),
+            )
+            .unwrap_err();
+
+        assert!(error.to_string().contains("restriction failed"));
+        assert!(!config_path.exists());
+        assert_eq!(fs::read_dir(&project_root).unwrap().count(), 0);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_dacl_uses_token_sid_not_username_environment() {
+        const CHILD_MARKER: &str = "AGENTSYNC_WINDOWS_DACL_TEST_CHILD";
+        if std::env::var_os(CHILD_MARKER).is_some() {
+            let temp_dir = TempDir::new().unwrap();
+            let path = temp_dir.path().join("mcp.json");
+            fs::write(&path, "test content").unwrap();
+            let token_sid = windows_mcp_acl::current_process_user_sid().unwrap();
+            set_restricted_permissions(&path).unwrap();
+            windows_mcp_acl::verify_owner_only(&path, &token_sid).unwrap();
+            return;
+        }
+
+        let test_executable = std::env::current_exe().unwrap();
+        for username in [Some("Users"), None] {
+            let mut child = std::process::Command::new(&test_executable);
+            child
+                .arg("--exact")
+                .arg("mcp::tests::windows_dacl_uses_token_sid_not_username_environment")
+                .arg("--nocapture")
+                .env(CHILD_MARKER, "1");
+            if let Some(username) = username {
+                child.env("USERNAME", username);
+            } else {
+                child.env_remove("USERNAME");
+            }
+            let output = child.output().unwrap();
+            assert!(
+                output.status.success(),
+                "Windows DACL child failed (USERNAME={username:?}):\n{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_staged_apply_dacl_is_private_before_content() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path().join("project");
+        fs::create_dir_all(&project_root).unwrap();
+        let config_path = project_root.join(".mcp.json");
+        let token_sid = windows_mcp_acl::current_process_user_sid().unwrap();
+        let generator = McpGenerator::new(
+            BTreeMap::from([("filesystem".to_string(), create_test_server())]),
+            McpMergeStrategy::Overwrite,
+        );
+
+        generator
+            .write_atomic_secure_with_prewrite_hook(
+                McpAgent::ClaudeCode,
+                &project_root,
+                &config_path,
+                "sensitive credentials",
+                None,
+                (
+                    |staged_path| {
+                        set_restricted_mcp_staging_permissions(staged_path)?;
+                        windows_mcp_acl::verify_owner_only(staged_path, &token_sid)?;
+                        assert_eq!(fs::metadata(staged_path)?.len(), 0);
+                        Ok(())
+                    },
+                    || Ok(()),
+                ),
+            )
+            .unwrap();
+
+        windows_mcp_acl::verify_owner_only(&config_path, &token_sid).unwrap();
+        assert_eq!(
+            fs::read_to_string(config_path).unwrap(),
+            "sensitive credentials"
         );
     }
 

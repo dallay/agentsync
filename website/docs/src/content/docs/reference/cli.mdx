@@ -206,8 +206,8 @@ agentsync revert [FLAGS]
 - `-c, --config <PATH>`: Path to a custom configuration file.
 - `--dry-run`: Shows what would be removed and restored without changing anything on disk.
 - `-v, --verbose`: Enable verbose logging.
-- `-a, --agents <AGENTS>`: Revert only the listed agents (comma-separated, e.g., `claude,copilot`). Same selection priority as `apply`: `--agents` flag, then `default_agents` in config, then all enabled agents.
-- `--keep-backups`: Copy backups back instead of moving them, so `.bak` files remain afterwards for inspection.
+- `-a, --agents <AGENTS>`: Revert only the listed agents (comma-separated, e.g., `claude,copilot`). Selection follows `--agents`, then `default_agents`, then all configured agents, including disabled agents. MCP restoration uses recorded owner IDs even if an agent or `[mcp]` is now disabled; the selected set must still include every recorded owner of a shared MCP destination.
+- `--keep-backups`: Copy `.bak` symlink backups back instead of moving them, so those backup files remain afterwards for inspection. This does not retain MCP ownership records after a successful restore. On Windows, the staged copy is refused if a backup entry has an inherited DACL that cannot be safely reproduced; the `.bak` remains untouched. Revert without `--keep-backups` to move the original backup and preserve its inherited permissions.
 
 Behavior:
 
@@ -215,7 +215,7 @@ Behavior:
 - Regular user files that are not managed symlinks are never touched; a backup is only restored into an absent destination or over a managed symlink — never over a real file that appeared later.
 - On complete, unfiltered runs, the AgentSync-managed `.gitignore` block is removed. With `--agents`, a narrowing `default_agents`, or any revert error/skip, the block is left alone because some managed destinations may remain (re-run `apply` to reconcile it).
 - For `symlink-contents` targets, `revert` removes managed child links but may leave the destination directory empty. It cannot infer whether the container existed before `apply`, so it does not delete it.
-- Managed MCP servers are removed from agent configs while user-defined servers are kept. See the [MCP guide](/guides/mcp/) for the exact revert semantics and limitations.
+- MCP configs are restored from the complete apply-time snapshot when the file still matches the state recorded by `apply`. If no file existed before, the generated regular file is removed only when it is unchanged. Later edits, symlinks, invalid journal state, or a partial owner selection preserve the file and journal and report a skip or error; there is no three-way merge. A missing journal from an older AgentSync version means the original state cannot be reconstructed, so the MCP file is left as-is rather than removing servers by name or value. See the [MCP journal and restore guide](/guides/mcp/#reverting-mcp-configurations) for journal location, retention, and recovery details.
 
 Examples:
 

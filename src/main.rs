@@ -633,30 +633,28 @@ fn handle_revert(
         ..Default::default()
     };
     let mut result = linker.revert(&options)?;
-    if linker.config().mcp.enabled && !linker.config().mcp_servers.is_empty() {
-        println!();
-        print_lines(&render_mcp_phase(dry_run, use_color));
-        match linker.remove_managed_mcp(dry_run, options.agents.as_ref()) {
-            Ok(mcp_result) => {
-                if mcp_result.updated > 0 || mcp_result.skipped > 0 || mcp_result.errors > 0 {
-                    print_lines(&render_mcp_summary_with_color(&mcp_result, use_color));
-                }
-                result.updated += mcp_result.updated;
-                result.skipped += mcp_result.skipped;
-                result.errors += mcp_result.errors;
+    println!();
+    print_lines(&render_mcp_phase(dry_run, use_color));
+    match linker.restore_mcp_ownership(dry_run, options.agents.as_ref()) {
+        Ok(mcp_result) => {
+            if mcp_result.updated > 0 || mcp_result.skipped > 0 || mcp_result.errors > 0 {
+                print_lines(&render_mcp_summary_with_color(&mcp_result, use_color));
             }
-            Err(e) => {
-                tracing::error!(
-                    config_path = %linker.config_path().display(),
-                    error = %e,
-                    "Error reverting MCP configs"
-                );
-                println!(
-                    "  {} Warning: failed to revert MCP configs: {e}",
-                    "!".yellow()
-                );
-                result.errors += 1;
-            }
+            result.updated += mcp_result.updated;
+            result.skipped += mcp_result.skipped;
+            result.errors += mcp_result.errors;
+        }
+        Err(e) => {
+            tracing::error!(
+                config_path = %linker.config_path().display(),
+                error = %e,
+                "Error reverting MCP configs"
+            );
+            println!(
+                "  {} Warning: failed to revert MCP configs: {e}",
+                "!".yellow()
+            );
+            result.errors += 1;
         }
     }
     // Clean up only after a complete, unfiltered revert: with --agents (or a

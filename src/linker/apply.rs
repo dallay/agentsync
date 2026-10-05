@@ -1,15 +1,23 @@
 //! Apply orchestration and source-resolution implementation.
 
 use anyhow::{Context, Result};
+#[cfg(unix)]
+use cap_fs_ext::OpenOptionsExt;
+use cap_fs_ext::{FollowSymlinks, OpenOptionsFollowExt};
+use cap_std::fs::OpenOptions as CapabilityOpenOptions;
 use colored::Colorize;
 use std::fs;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::config::{ModuleMapping, SyncType, TargetConfig};
 
 use super::timing::{SpanKind, sync_type_name};
 use super::{Linker, ResolvedSource, SyncOptions, SyncResult};
+
+static COMPRESSED_OUTPUT_TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 impl Linker {
     pub(super) fn should_compress_agents_md(&self, source: &Path, target: &TargetConfig) -> bool {
@@ -269,23 +277,135 @@ impl Linker {
             }
         };
 
-        // SECURITY: Validate destination path before any filesystem operation
-        self.revalidate_path(dest)?;
+        let parent = dest
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("Compressed AGENTS.md destination has no parent"))?;
+        self.ensure_directory(parent, options)?;
+        let directory = self.open_project_relative_directory(parent)?;
+        let file_name = dest
+            .file_name()
+            .ok_or_else(|| anyhow::anyhow!("Compressed AGENTS.md destination has no file name"))?;
+        let existing_metadata = match directory.symlink_metadata(file_name) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                anyhow::bail!(
+                    "Refusing symlinked compressed AGENTS.md output: {}",
+                    dest.display()
+                );
+            }
+            Ok(metadata) if !metadata.is_file() => {
+                anyhow::bail!(
+                    "Compressed AGENTS.md output is not a regular file: {}",
+                    dest.display()
+                );
+            }
+            Ok(metadata) => Some(metadata),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => {
+                return Err(error).with_context(|| {
+                    format!(
+                        "Failed to inspect compressed AGENTS.md output: {}",
+                        dest.display()
+                    )
+                });
+            }
+        };
 
-        if let Ok(existing) = fs::read_to_string(dest)
-            && existing.as_str() == compressed.as_ref()
-        {
-            self.ensured_compressed
-                .borrow_mut()
-                .insert(dest.to_path_buf());
-            return Ok(());
+        if existing_metadata.is_some() {
+            let mut read_options = CapabilityOpenOptions::new();
+            read_options.read(true).follow(FollowSymlinks::No);
+            if let Ok(mut existing_file) = directory.open_with(file_name, &read_options) {
+                let mut existing = String::new();
+                if existing_file.read_to_string(&mut existing).is_ok()
+                    && existing.as_str() == compressed.as_ref()
+                {
+                    self.ensured_compressed
+                        .borrow_mut()
+                        .insert(dest.to_path_buf());
+                    return Ok(());
+                }
+            }
         }
 
-        if let Some(parent) = dest.parent() {
-            self.ensure_directory(parent, options)?;
+        let mut staged_name = None;
+        let mut staged_file = None;
+        for _ in 0..32 {
+            let candidate = format!(
+                ".agentsync-compact-{}-{}.tmp",
+                std::process::id(),
+                COMPRESSED_OUTPUT_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
+            );
+            let mut create_options = CapabilityOpenOptions::new();
+            create_options
+                .write(true)
+                .create_new(true)
+                .follow(FollowSymlinks::No);
+            #[cfg(unix)]
+            create_options.mode(0o666);
+
+            match directory.open_with(candidate.as_str(), &create_options) {
+                Ok(file) => {
+                    staged_name = Some(candidate);
+                    staged_file = Some(file);
+                    break;
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(error) => {
+                    return Err(error).with_context(|| {
+                        format!(
+                            "Failed to create staged compressed AGENTS.md in {}",
+                            parent.display()
+                        )
+                    });
+                }
+            }
         }
-        fs::write(dest, compressed.as_bytes())
-            .with_context(|| format!("Failed to write compressed AGENTS.md: {}", dest.display()))?;
+        let staged_name = staged_name.ok_or_else(|| {
+            anyhow::anyhow!("Could not allocate a unique staged compressed AGENTS.md name")
+        })?;
+        let mut staged_file = staged_file
+            .ok_or_else(|| anyhow::anyhow!("Staged compressed AGENTS.md file was not created"))?;
+        let stage_result = (|| -> Result<()> {
+            staged_file
+                .write_all(compressed.as_bytes())
+                .with_context(|| {
+                    format!(
+                        "Failed to write staged compressed AGENTS.md: {}",
+                        dest.display()
+                    )
+                })?;
+            if let Some(metadata) = existing_metadata.as_ref() {
+                let staged_path = parent.join(&staged_name);
+                crate::gitignore::preserve_native_owner_group(dest, &staged_path)?;
+                staged_file
+                    .set_permissions(metadata.permissions())
+                    .with_context(|| {
+                        format!(
+                            "Failed to preserve compressed AGENTS.md permissions: {}",
+                            dest.display()
+                        )
+                    })?;
+                crate::gitignore::preserve_native_acl(dest, &staged_path)?;
+            }
+            staged_file.sync_all().with_context(|| {
+                format!(
+                    "Failed to sync staged compressed AGENTS.md: {}",
+                    dest.display()
+                )
+            })?;
+            Ok(())
+        })();
+        drop(staged_file);
+        if let Err(error) = stage_result {
+            let _ = directory.remove_file(&staged_name);
+            return Err(error);
+        }
+
+        if let Err(error) = directory.rename(&staged_name, &directory, file_name) {
+            let _ = directory.remove_file(&staged_name);
+            return Err(error).with_context(|| {
+                format!("Failed to publish compressed AGENTS.md: {}", dest.display())
+            });
+        }
         self.invalidate_path(dest);
         self.invalidate_glob_cache();
 
