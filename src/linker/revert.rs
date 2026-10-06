@@ -43,12 +43,23 @@ struct DaclSnapshot {
 #[cfg(windows)]
 struct LocalSecurityDescriptor(windows_sys::Win32::Security::PSECURITY_DESCRIPTOR);
 
+#[cfg(all(windows, test))]
+fn av_diag(label: &str) {
+    if std::env::var_os("AGENTSYNC_WINDOWS_AV_DIAG").is_some() {
+        eprintln!("[AV-DIAG-RPI058] {label}");
+    }
+}
+
 #[cfg(windows)]
 impl Drop for LocalSecurityDescriptor {
     fn drop(&mut self) {
+        #[cfg(test)]
+        av_diag("LocalSecurityDescriptor::drop before LocalFree");
         unsafe {
             windows_sys::Win32::Foundation::LocalFree(self.0.cast());
         }
+        #[cfg(test)]
+        av_diag("LocalSecurityDescriptor::drop after LocalFree");
     }
 }
 
@@ -111,6 +122,7 @@ fn get_named_dacl(path: &Path) -> anyhow::Result<NamedDacl> {
     let wide_path = windows_wide_path(path);
     let mut acl = std::ptr::null_mut();
     let mut descriptor = std::ptr::null_mut();
+    av_diag("get_named_dacl before GetNamedSecurityInfoW");
     let status = unsafe {
         GetNamedSecurityInfoW(
             wide_path.as_ptr(),
@@ -123,6 +135,7 @@ fn get_named_dacl(path: &Path) -> anyhow::Result<NamedDacl> {
             &mut descriptor,
         )
     };
+    av_diag("get_named_dacl after GetNamedSecurityInfoW");
     if status != 0 {
         return Err(std::io::Error::from_raw_os_error(status as i32))
             .with_context(|| format!("Failed to query Windows DACL for {}", path.display()));
@@ -130,6 +143,7 @@ fn get_named_dacl(path: &Path) -> anyhow::Result<NamedDacl> {
     let descriptor = LocalSecurityDescriptor(descriptor);
     let mut present = 0;
     let mut descriptor_acl: *mut ACL = std::ptr::null_mut();
+    av_diag("get_named_dacl before GetSecurityDescriptorDacl");
     if unsafe {
         GetSecurityDescriptorDacl(
             descriptor.0,
@@ -142,8 +156,10 @@ fn get_named_dacl(path: &Path) -> anyhow::Result<NamedDacl> {
         return Err(std::io::Error::last_os_error())
             .with_context(|| format!("Failed to inspect Windows DACL for {}", path.display()));
     }
+    av_diag("get_named_dacl after GetSecurityDescriptorDacl");
     let mut control = 0;
     let mut revision = 0;
+    av_diag("get_named_dacl before GetSecurityDescriptorControl");
     if unsafe { GetSecurityDescriptorControl(descriptor.0, &mut control, &mut revision) } == 0 {
         return Err(std::io::Error::last_os_error()).with_context(|| {
             format!(
@@ -152,12 +168,14 @@ fn get_named_dacl(path: &Path) -> anyhow::Result<NamedDacl> {
             )
         });
     }
+    av_diag("get_named_dacl after GetSecurityDescriptorControl");
     let acl_bytes = if descriptor_acl.is_null() {
         None
     } else {
         let size = unsafe { (*descriptor_acl).AclSize as usize };
         Some(unsafe { std::slice::from_raw_parts(descriptor_acl.cast::<u8>(), size) }.to_vec())
     };
+    av_diag("get_named_dacl after ACL bytes snapshot");
 
     Ok(NamedDacl {
         _descriptor: descriptor,
@@ -185,6 +203,7 @@ fn set_path_dacl_from_sddl(path: &Path, sddl: &str) -> anyhow::Result<()> {
 
     let wide_sddl: Vec<u16> = sddl.encode_utf16().chain(Some(0)).collect();
     let mut descriptor = std::ptr::null_mut();
+    av_diag("set_path_dacl_from_sddl before ConvertStringSecurityDescriptorToSecurityDescriptorW");
     if unsafe {
         ConvertStringSecurityDescriptorToSecurityDescriptorW(
             wide_sddl.as_ptr(),
@@ -197,9 +216,11 @@ fn set_path_dacl_from_sddl(path: &Path, sddl: &str) -> anyhow::Result<()> {
         return Err(std::io::Error::last_os_error())
             .with_context(|| format!("Failed to parse Windows security descriptor for {sddl}"));
     }
+    av_diag("set_path_dacl_from_sddl after ConvertStringSecurityDescriptorToSecurityDescriptorW");
     let descriptor = LocalSecurityDescriptor(descriptor);
     let mut present = 0;
     let mut acl: *mut ACL = std::ptr::null_mut();
+    av_diag("set_path_dacl_from_sddl before GetSecurityDescriptorDacl");
     if unsafe {
         GetSecurityDescriptorDacl(descriptor.0, &mut present, &mut acl, std::ptr::null_mut())
     } == 0
@@ -207,6 +228,7 @@ fn set_path_dacl_from_sddl(path: &Path, sddl: &str) -> anyhow::Result<()> {
         return Err(std::io::Error::last_os_error())
             .with_context(|| format!("Failed to read Windows security descriptor for {sddl}"));
     }
+    av_diag("set_path_dacl_from_sddl after GetSecurityDescriptorDacl");
     if present == 0 {
         anyhow::bail!("Windows security descriptor contains no DACL: {sddl}");
     }
@@ -216,8 +238,10 @@ fn set_path_dacl_from_sddl(path: &Path, sddl: &str) -> anyhow::Result<()> {
         let size = unsafe { (*acl).AclSize as usize };
         Some(unsafe { std::slice::from_raw_parts(acl.cast::<u8>(), size) }.to_vec())
     };
+    av_diag("set_path_dacl_from_sddl after ACL bytes snapshot");
 
     let wide_path = windows_wide_path(path);
+    av_diag("set_path_dacl_from_sddl before SetNamedSecurityInfoW");
     let status = unsafe {
         SetNamedSecurityInfoW(
             wide_path.as_ptr(),
@@ -230,11 +254,14 @@ fn set_path_dacl_from_sddl(path: &Path, sddl: &str) -> anyhow::Result<()> {
             std::ptr::null_mut(),
         )
     };
+    av_diag("set_path_dacl_from_sddl after SetNamedSecurityInfoW");
     if status != 0 {
         return Err(std::io::Error::from_raw_os_error(status as i32))
             .with_context(|| format!("Failed to set Windows DACL for {}", path.display()));
     }
+    av_diag("set_path_dacl_from_sddl before read_path_dacl verification");
     let actual = read_path_dacl(path)?;
+    av_diag("set_path_dacl_from_sddl after read_path_dacl verification");
     if actual
         != (DaclSnapshot {
             present: true,
@@ -251,15 +278,22 @@ fn set_path_dacl_from_sddl(path: &Path, sddl: &str) -> anyhow::Result<()> {
 fn copy_path_dacl(source: &Path, destination: &Path) -> anyhow::Result<()> {
     use windows_sys::Win32::Security::Authorization::{SE_FILE_OBJECT, SetNamedSecurityInfoW};
 
+    av_diag("copy_path_dacl before get_named_dacl");
     let source_dacl = get_named_dacl(source)?;
+    av_diag("copy_path_dacl after get_named_dacl");
+    av_diag("copy_path_dacl before validate_copyable_dacl");
     validate_copyable_dacl(
         source_dacl.snapshot.present,
         source_dacl.snapshot.acl.is_none(),
         source,
     )?;
+    av_diag("copy_path_dacl after validate_copyable_dacl");
+    av_diag("copy_path_dacl before validate_keep_backup_dacl");
     validate_keep_backup_dacl(source_dacl.snapshot.protected, source)?;
+    av_diag("copy_path_dacl after validate_keep_backup_dacl");
 
     let wide_destination = windows_wide_path(destination);
+    av_diag("copy_path_dacl before SetNamedSecurityInfoW");
     let status = unsafe {
         SetNamedSecurityInfoW(
             wide_destination.as_ptr(),
@@ -272,6 +306,7 @@ fn copy_path_dacl(source: &Path, destination: &Path) -> anyhow::Result<()> {
             std::ptr::null_mut(),
         )
     };
+    av_diag("copy_path_dacl after SetNamedSecurityInfoW");
     if status != 0 {
         return Err(std::io::Error::from_raw_os_error(status as i32)).with_context(|| {
             format!(
@@ -281,7 +316,9 @@ fn copy_path_dacl(source: &Path, destination: &Path) -> anyhow::Result<()> {
         });
     }
 
+    av_diag("copy_path_dacl before read_path_dacl verification");
     let restored_dacl = read_path_dacl(destination)?;
+    av_diag("copy_path_dacl after read_path_dacl verification");
     let expected_dacl = DaclSnapshot {
         protected: true,
         ..source_dacl.snapshot
@@ -297,24 +334,32 @@ fn copy_path_dacl(source: &Path, destination: &Path) -> anyhow::Result<()> {
 
 #[cfg(all(windows, test))]
 fn protect_staging_directory(path: &Path) -> anyhow::Result<()> {
+    av_diag("protect_staging_directory before set_path_dacl_from_sddl");
     set_path_dacl_from_sddl(path, PRIVATE_STAGING_DACL_SDDL).with_context(|| {
         format!(
             "Failed to restrict Windows restore staging directory before copying bytes: {}",
             path.display()
         )
-    })
+    })?;
+    av_diag("protect_staging_directory after set_path_dacl_from_sddl");
+    Ok(())
 }
 
 #[cfg(all(windows, test))]
 fn copy_file_with_windows_security(source: &Path, destination: &Path) -> anyhow::Result<()> {
     use windows_sys::Win32::Storage::FileSystem::{COPY_FILE_FAIL_IF_EXISTS, CopyFileExW};
 
+    av_diag("copy_file_with_windows_security before read_path_dacl");
     let source_dacl = read_path_dacl(source)?;
+    av_diag("copy_file_with_windows_security after read_path_dacl");
+    av_diag("copy_file_with_windows_security before validate_keep_backup_dacl");
     validate_keep_backup_dacl(source_dacl.protected, source)?;
+    av_diag("copy_file_with_windows_security after validate_keep_backup_dacl");
 
     let wide_source = windows_wide_path(source);
     let wide_destination = windows_wide_path(destination);
-    if unsafe {
+    av_diag("copy_file_with_windows_security before CopyFileExW");
+    let copied = unsafe {
         CopyFileExW(
             wide_source.as_ptr(),
             wide_destination.as_ptr(),
@@ -323,8 +368,9 @@ fn copy_file_with_windows_security(source: &Path, destination: &Path) -> anyhow:
             std::ptr::null_mut(),
             COPY_FILE_FAIL_IF_EXISTS,
         )
-    } == 0
-    {
+    };
+    av_diag("copy_file_with_windows_security after CopyFileExW");
+    if copied == 0 {
         return Err(std::io::Error::last_os_error()).with_context(|| {
             format!(
                 "Failed to copy backup file with Windows security properties: {}",
@@ -332,7 +378,10 @@ fn copy_file_with_windows_security(source: &Path, destination: &Path) -> anyhow:
             )
         });
     }
-    copy_path_dacl(source, destination)
+    av_diag("copy_file_with_windows_security before copy_path_dacl");
+    copy_path_dacl(source, destination)?;
+    av_diag("copy_file_with_windows_security after copy_path_dacl");
+    Ok(())
 }
 
 #[cfg(all(test, unix))]
@@ -2205,8 +2254,12 @@ fn copy_backup_contents_with_file_publish_hook<F>(
 where
     F: FnOnce() -> anyhow::Result<()>,
 {
+    #[cfg(windows)]
+    av_diag("copy_backup_contents before symlink_metadata");
     let metadata = fs::symlink_metadata(backup)
         .with_context(|| format!("Failed to stat backup for restore: {}", backup.display()))?;
+    #[cfg(windows)]
+    av_diag("copy_backup_contents after symlink_metadata");
     if metadata.is_dir() {
         let parent = dest.parent().unwrap_or_else(|| Path::new("."));
         let staging = tempfile::Builder::new()
@@ -2254,7 +2307,12 @@ where
         }
         Ok(0)
     } else if metadata.is_file() {
-        copy_backup_file_staged_exclusive(backup, dest, before_file_publish).map(|()| 0)
+        #[cfg(windows)]
+        av_diag("copy_backup_contents before copy_backup_file_staged_exclusive");
+        let copied = copy_backup_file_staged_exclusive(backup, dest, before_file_publish);
+        #[cfg(windows)]
+        av_diag("copy_backup_contents after copy_backup_file_staged_exclusive");
+        copied.map(|()| 0)
     } else {
         // Never materialize symlinks, fifos, sockets, or other special files
         // from a backup into the project tree.
@@ -2312,11 +2370,19 @@ where
 /// restore, whose enclosing tree is already private and published atomically.
 #[cfg(test)]
 fn copy_file_exclusive(src: &Path, dst: &Path) -> anyhow::Result<()> {
+    #[cfg(windows)]
+    av_diag("copy_file_exclusive before File::open");
     let source = fs::File::open(src)
         .with_context(|| format!("Failed to open backup file: {}", src.display()))?;
+    #[cfg(windows)]
+    av_diag("copy_file_exclusive after File::open");
+    #[cfg(windows)]
+    av_diag("copy_file_exclusive before File::metadata");
     let metadata = source
         .metadata()
         .with_context(|| format!("Failed to stat open backup file: {}", src.display()))?;
+    #[cfg(windows)]
+    av_diag("copy_file_exclusive after File::metadata");
     if !metadata.is_file() {
         anyhow::bail!(
             "Backup entry is no longer a regular file: {}",
@@ -2325,7 +2391,9 @@ fn copy_file_exclusive(src: &Path, dst: &Path) -> anyhow::Result<()> {
     }
     #[cfg(windows)]
     {
+        av_diag("copy_file_exclusive before copy_file_with_windows_security");
         copy_file_with_windows_security(src, dst)?;
+        av_diag("copy_file_exclusive after copy_file_with_windows_security");
         return Ok(());
     }
     #[cfg(not(windows))]
@@ -2368,11 +2436,19 @@ fn copy_backup_file_staged_exclusive<F>(
 where
     F: FnOnce() -> anyhow::Result<()>,
 {
+    #[cfg(windows)]
+    av_diag("copy_backup_file_staged_exclusive before File::open");
     let source = fs::File::open(src)
         .with_context(|| format!("Failed to open backup file: {}", src.display()))?;
+    #[cfg(windows)]
+    av_diag("copy_backup_file_staged_exclusive after File::open");
+    #[cfg(windows)]
+    av_diag("copy_backup_file_staged_exclusive before File::metadata");
     let metadata = source
         .metadata()
         .with_context(|| format!("Failed to stat open backup file: {}", src.display()))?;
+    #[cfg(windows)]
+    av_diag("copy_backup_file_staged_exclusive after File::metadata");
     if !metadata.is_file() {
         anyhow::bail!(
             "Backup entry is no longer a regular file: {}",
@@ -2380,6 +2456,8 @@ where
         );
     }
     let parent = dst.parent().unwrap_or_else(|| Path::new("."));
+    #[cfg(windows)]
+    av_diag("copy_backup_file_staged_exclusive before tempdir_in");
     let staging = tempfile::Builder::new()
         .prefix(".agentsync-restore-")
         .tempdir_in(parent)
@@ -2390,11 +2468,18 @@ where
             )
         })?;
     #[cfg(windows)]
+    av_diag("copy_backup_file_staged_exclusive after tempdir_in");
+    #[cfg(windows)]
+    av_diag("copy_backup_file_staged_exclusive before protect_staging_directory");
+    #[cfg(windows)]
     protect_staging_directory(staging.path())?;
+    #[cfg(windows)]
+    av_diag("copy_backup_file_staged_exclusive after protect_staging_directory");
 
     let staged_path;
     #[cfg(windows)]
     {
+        av_diag("copy_backup_file_staged_exclusive before tempfile_in");
         let staged_file = tempfile::Builder::new()
             .prefix("file-")
             .tempfile_in(staging.path())
@@ -2404,14 +2489,19 @@ where
                     dst.display()
                 )
             })?;
+        av_diag("copy_backup_file_staged_exclusive after tempfile_in");
         staged_path = staged_file.path().to_path_buf();
+        av_diag("copy_backup_file_staged_exclusive before staged_file.close");
         staged_file.close().with_context(|| {
             format!(
                 "Failed to prepare staged restore path for {}",
                 dst.display()
             )
         })?;
+        av_diag("copy_backup_file_staged_exclusive after staged_file.close");
+        av_diag("copy_backup_file_staged_exclusive before copy_file_exclusive");
         copy_file_exclusive(src, &staged_path)?;
+        av_diag("copy_backup_file_staged_exclusive after copy_file_exclusive");
     }
     #[cfg(not(windows))]
     {
@@ -2449,18 +2539,26 @@ where
         drop(destination);
         staged_path = path;
     }
+    #[cfg(windows)]
+    av_diag("copy_backup_file_staged_exclusive before before_publish hook");
     before_publish().with_context(|| {
         format!(
             "Failed before publishing staged restore file: {}",
             dst.display()
         )
     })?;
+    #[cfg(windows)]
+    av_diag("copy_backup_file_staged_exclusive after before_publish hook");
+    #[cfg(windows)]
+    av_diag("copy_backup_file_staged_exclusive before rename_exclusive");
     rename_exclusive(&staged_path, dst).with_context(|| {
         format!(
             "Failed to publish restored file exclusively: {}",
             dst.display()
         )
     })?;
+    #[cfg(windows)]
+    av_diag("copy_backup_file_staged_exclusive after rename_exclusive");
     Ok(())
 }
 
@@ -3871,7 +3969,11 @@ mod tests {
         fs::write(&backup, "backup bytes").unwrap();
         fs::write(&dest, "user bytes").unwrap();
 
+        #[cfg(windows)]
+        av_diag("copy_backup_contents test before call");
         let result = copy_backup_contents(&backup, &dest);
+        #[cfg(windows)]
+        av_diag("copy_backup_contents test after call");
 
         assert!(
             result.is_err(),
@@ -3879,6 +3981,11 @@ mod tests {
         );
         assert_eq!(fs::read(&dest).unwrap(), b"user bytes");
         assert_eq!(fs::read(&backup).unwrap(), b"backup bytes");
+        #[cfg(windows)]
+        av_diag("copy_backup_contents test before TempDir drop");
+        drop(temp);
+        #[cfg(windows)]
+        av_diag("copy_backup_contents test after TempDir drop");
     }
 
     #[test]

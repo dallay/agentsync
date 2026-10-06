@@ -191,6 +191,7 @@ jobs:
       - name: Diagnose Windows backup-copy test in isolation
         if: matrix.os == 'windows-latest'
         env:
+          AGENTSYNC_WINDOWS_AV_DIAG: '1'
           RUST_BACKTRACE: full
         run: >-
           cargo test --all-features --lib
