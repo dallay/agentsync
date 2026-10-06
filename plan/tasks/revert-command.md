@@ -3,8 +3,7 @@
 Issue: https://github.com/dallay/agentsync/issues/630
 Spec temporal: `tmp/plans/2026-10-04-revert-command-design.md`
 Plan táctico: `tmp/plans/2026-10-04-revert-command-implementation.md`
-Estado: Segundo ciclo de corrección/revisión autorizado; PR #632 y PR #633 siguen
-en draft hasta cerrar los riesgos y que los workflows actuales terminen en verde.
+Current publication status (2026-10-06): PR #632 is at `d52c6e7` and PR #633 is at `db7c0c5`. Both are open, `CHANGES_REQUESTED`, and not drafts. Latest check snapshot: #632 has 40 passing and 5 failing checks; #633 has 1 passing and 39 pending checks, including both Windows test jobs. The stack is not ready for review.
 
 Alcance de ESTA rama (Part 1 solamente):
 
@@ -117,7 +116,7 @@ Fuera de alcance aquí (rama follow-up): remoción de MCP gestionados
 - RED/GREEN RPI-027f: `clean_rejects_internal_symlink_replacement_before_reading_children` reemplaza el contenedor después del guard inicial por un symlink a otro directorio interno que contiene un symlink al mismo source gestionado. RED eliminó ese child (`removed=2`, `skipped=0`); GREEN rechaza el leaf symlink justo antes de `read_dir`, conserva child, target y contenedor, cuenta `skipped=1`, y limpia el target independiente (`removed=1`). La validación sigue siendo path-based: no afirma atomicidad frente a una carrera entre el `symlink_metadata` final y `read_dir`.
 - Verificación RPI-027e/f: `cargo test -p agentsync --lib clean_` (25 passed), `cargo test -p agentsync --lib nested_glob` (20 passed), `cargo fmt --all -- --check`, `cargo clippy --all-targets --all-features -- -D warnings` y `git diff --check` pasan.
 - Verificación integrada Round 6: `cargo test --all-features` pasó tras RPI-026i (705 library; bin 198 passed/1 ignored; `all_tests` 124 passed/2 ignored; restantes targets sin fallos), fmt, Clippy y diff-check pasan. El cross-check Windows GNU completo compila proyecto/tests; la revisión final doble ciega está en curso y el runtime ACL sigue pendiente.
-- GitHub verificado por `gh pr list`: seis PRs abiertas; cuatro con checks fallidos (#632 SonarCloud/Codecov patch/Semgrep; #633 SonarCloud/Codecov patch; #637 Coverage/Codecov/SonarCloud; #638 Coverage/Codecov/SonarCloud/Semgrep). #636 y #610 no muestran fallos. Los checks #632/#633 son de heads publicados anteriores al worktree local; no se ha hecho commit/push. CI tests/build/lint de #632/#633 figuran verdes; los fallos son análisis/coverage.
+- Historical GitHub snapshot, now superseded: `gh pr list` showed six open PRs and the listed failures on heads that predated the current stack updates. Do not treat this line as the current check state; see the publication status above.
 - Triage: el marcador `.gitignore` START sin END también fue reportado; `remove_managed_section` coincide con `origin/main` y este comportamiento es preexistente, fuera del diff funcional de esta ronda. Se difiere, sin cambio automático.
 - Revisión doble ciega final Round 7: lens reportó dos huecos en `clean`: fallos al inspeccionar el destino con `symlink_metadata`/`is_dir` se silencian antes del contador añadido por RPI-027d; y el leaf puede cambiar a symlink interno después del guard inicial, pasar containment en `read_contents_entries` y hacer que se limpien links del directorio interno. El segundo se clasifica como carrera teórica, pero plausible. Lens también reportó que CLI reference no documenta que Windows `--keep-backups` falla cerrado ante DACL heredada; el texto actual solo dice que se copia el backup. Mirror identificó fallback Windows `USERNAME` → `Users:F`, verificado en `origin/main` y usado por el helper owner-only actual.
 - Triage Round 7: estos findings no se implementaron automáticamente. Confirmar alcance con el usuario antes de un nuevo ciclo. RPI-026i ya cross-compila, pero el runtime Windows sigue sin ejecutar.
@@ -146,10 +145,10 @@ Fuera de alcance aquí (rama follow-up): remoción de MCP gestionados
 
 ## Gate de tamaño de PR core — aprobado
 
-- `gh pr view 632` confirma PR #632 abierta y draft, con 2,204 adiciones + 136 eliminaciones = 2,340 líneas cambiadas; el presupuesto de revisión es 400.
+- Historical size-gate snapshot: when the review exception was approved, PR #632 was open as a draft with 2,204 additions and 136 deletions (2,340 changed lines); the review budget was 400.
 - El usuario aprobó explícitamente una excepción para PR #632 con el tamaño publicado de 2,340 líneas; se conserva la cadena acordada #632 → #633. La excepción de #633 sigue aprobada por separado.
 - Verificar el tamaño final de cada capa antes de actualizar los heads remotos; no fusionar commits MCP dentro de #632.
-- Cabezas publicadas consultadas: #632=`f1aa750b764061af53e799d6ff00b07c21115f27`; #633=`5ab61de0174b3391e0b007a68bc1d5af8ed99351`. Round 8 está publicado solo en la capa #633 (`a9faa7c` y `5ab61de`). En esas cabezas, CI de #632 está verde y fallan SonarCloud/Codecov patch/Semgrep; #633 falla en macOS/Windows tests y en SonarCloud/Semgrep. Los cambios de esta remediación aún son locales; ambas PRs siguen draft.
+- Historical publication record: commit `a9faa7c` was pushed to #633 on 2026-10-05 (confirmed by the local remote-tracking reflog); it is not an ancestor of current #633 head `db7c0c5`. Current remote heads are #632 `d52c6e7` and #633 `db7c0c5`; later check results and publication state are recorded at the top of this file.
 - Round 1 double-blind confirmó en ambos jueces: symlink padre MCP puede escapar del repo, un error parcial de WalkDir no marcaba `nested-glob` incompleto y fallo de `create_mcp_parent` podía salir con éxito. Los tres están corregidos localmente. Round 2 confirmó RPI-023b/RPI-026b; ambos se implementaron y pasaron RED/GREEN.
 - Round 3 después del segundo ciclo encontró issues confirmados que requieren un nuevo ciclo autorizado: copy de backup file puede fallar dejando destino parcial y `.bak` (R1); fallo al mutar un MCP record aborta restores independientes posteriores (R3); y el mapeo Z-Code debe admitir también fuente plain `foo.md` tras desaparecer el source.
 - Nuevo ciclo autorizado completado: RPI-023b acepta identidad Z-Code directa y `.agent.md`; RPI-026d publica archivos desde staging privado con `renamore::rename_exclusive`; RPI-020d cuenta errores por record y continúa. `cargo test --all-features`, fmt, Clippy y `git diff --check` pasan antes de esta revisión fresca.
@@ -160,4 +159,4 @@ Fuera de alcance aquí (rama follow-up): remoción de MCP gestionados
 ## Siguiente paso
 
 - El ciclo RPI-023b/RPI-026d/RPI-020d, los RPI Round 4 autorizados y RPI-026h pasan sus gates locales.
-- RPI-020i/025b/027d/026i implementados; cross-check Windows GNU pasó, runtime ACL pendiente. RPI-029..035 están implementados y publicados en la capa #633; RPI-036..046 registran la remediación local de las revisiones actuales. `handle_clean` exit-code sigue excluido por ser preexistente en `origin/main`. Las PRs siguen draft; no se han respondido/resuelto hilos de GitHub ni publicado la remediación actual.
+- RPI-020i/025b/027d/026i are implemented; the Windows GNU cross-check passed, while runtime ACL coverage remains pending. RPI-029..035 were implemented and published in the #633 layer; RPI-036..046 track the current review remediation. Windows validation of the AV fix in #633 `db7c0c5` remains pending. `handle_clean` exit-code remains excluded as pre-existing in `origin/main`. Current PR heads and statuses are listed at the top; no GitHub review threads were replied to or resolved, and no draft state was changed.
