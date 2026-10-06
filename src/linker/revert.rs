@@ -2725,21 +2725,30 @@ mod tests {
                                     true,
                                 )
                             } else {
-                                let absolute_rename = set_file_rename_info(
-                                    &source_file,
-                                    None,
-                                    absolute_moved_path.as_os_str(),
-                                    false,
-                                );
+                                let simple_name_rename =
+                                    set_file_rename_info(&source_file, None, &moved_name, false);
                                 eprintln!(
-                                    "[ZCODE-CREATEFILE-RPI064] RootDirectory=NULL absolute rename result={absolute_rename:?}"
+                                    "[ZCODE-CREATEFILE-RPI064] RootDirectory=NULL simple-name rename result={simple_name_rename:?}"
                                 );
-                                (
-                                    absolute_rename,
-                                    None,
-                                    absolute_probe_path.as_os_str().to_os_string(),
-                                    false,
-                                )
+                                if simple_name_rename.is_ok() {
+                                    (simple_name_rename, None, probe_name.clone(), false)
+                                } else {
+                                    let absolute_rename = set_file_rename_info(
+                                        &source_file,
+                                        None,
+                                        absolute_moved_path.as_os_str(),
+                                        false,
+                                    );
+                                    eprintln!(
+                                        "[ZCODE-CREATEFILE-RPI064] RootDirectory=NULL absolute rename result={absolute_rename:?}"
+                                    );
+                                    (
+                                        absolute_rename,
+                                        None,
+                                        absolute_probe_path.as_os_str().to_os_string(),
+                                        false,
+                                    )
+                                }
                             }
                         };
                         if rename_result.is_ok() {
