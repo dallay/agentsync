@@ -2625,6 +2625,7 @@ mod tests {
 
     #[cfg(windows)]
     fn diagnose_reopenfile_handle_origin(linker: &Linker, directory: &Path) {
+        use std::os::windows::fs::OpenOptionsExt;
         use std::os::windows::io::{AsRawHandle, FromRawHandle};
         use windows_sys::Win32::Foundation::{HANDLE, INVALID_HANDLE_VALUE};
         use windows_sys::Win32::Storage::FileSystem::{
@@ -2653,6 +2654,21 @@ mod tests {
             same_identity,
             "capability and CreateFile diagnostic handles must refer to the same directory"
         );
+
+        let direct_createfile = std::fs::OpenOptions::new()
+            .access_mode(FILE_TRAVERSE | FILE_READ_ATTRIBUTES | SYNCHRONIZE)
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+            .open(directory);
+        match direct_createfile {
+            Ok(file) => {
+                eprintln!("[ZCODE-CREATEFILE-RPI064] direct requested-rights open succeeded");
+                drop(file);
+            }
+            Err(error) => eprintln!(
+                "[ZCODE-CREATEFILE-RPI064] direct requested-rights open failed: {error:?}"
+            ),
+        }
 
         for (label, handle) in [
             (
