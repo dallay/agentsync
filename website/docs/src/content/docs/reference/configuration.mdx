@@ -190,6 +190,8 @@ AgentSync automatically adds the following patterns to `.gitignore` based on whi
 | **factory** | `.factory/mcp.json`, `.factory/skills/` |
 | **vibe** | `.vibe/config.toml`, `.vibe/skills/` |
 | **jetbrains** | `.aiassistant/rules/` |
+| **minimax** | `.mcp.json` |
+| **zcode** | `.zcode/config.json`, `.zcode/commands/` |
 
 **Notes:**
 - The `entries` field in your config is only needed for additional files not covered by the patterns above
@@ -255,7 +257,7 @@ Those destinations stay as real directories:
 
 AgentSync has two support levels:
 
-- **Native MCP generation** (built-in formatter + merge behavior): `claude`, `claude-desktop`, `copilot`, `codex`, `gemini`, `cursor`, `vscode`, `opencode`.
+- **Native MCP generation** (built-in formatter + merge behavior): `claude`, `claude-desktop`, `copilot`, `codex`, `gemini`, `cursor`, `vscode`, `opencode`, `zcode`, `minimax`.
 - **Configurable sync targets** (rules/skills via symlink): any agent as long as you declare `[agents.<name>.targets.*]` entries.
 
 The matrix below documents common agent locations and whether AgentSync can handle them today.
@@ -284,6 +286,7 @@ The matrix below documents common agent locations and whether AgentSync can hand
 | Junie | - | No native MCP formatter; `.junie/` ignore | Configurable |
 | Kilo Code | - | No native MCP formatter; `.kilocode/mcp.json` ignore | Configurable |
 | Kiro | - | No native MCP formatter; `.kiro/steering/`, `.kiro/settings/mcp.json` ignores | Configurable |
+| MiniMax Code | `AGENTS.md` | `.mcp.json` (native MCP) | Configurable |
 | Mistral Vibe | - | No native MCP formatter; `.vibe/config.toml`, `.vibe/skills/` ignores | Configurable |
 | Open Hands | - | No native MCP formatter; `.openhands/microagents/` ignore | Configurable |
 | OpenAI Codex CLI | `AGENTS.md` | `.codex/config.toml` (native MCP) | Configurable; `.codex/skills/` |
@@ -295,6 +298,7 @@ The matrix below documents common agent locations and whether AgentSync can hand
 | VS Code | - | `.vscode/mcp.json` (native MCP) | Configurable |
 | Warp | `WARP.md` | No native MCP formatter | Configurable |
 | Windsurf | `.windsurfrules` | No native MCP formatter; `.windsurf/mcp_config.json` ignore | Configurable |
+| Z-Code | `AGENTS.md` | `.zcode/config.json` (native MCP) | Configurable |
 | Zed | - | No native MCP formatter; `.zed/settings.json` ignore | Configurable |
 
 **Note (Cursor rules filename):** `.cursor/rules/agentsync.mdc` is the documented example path used by AgentSync for Cursor rules. You may use a different `.mdc` filename/path if you configure it explicitly under your `[agents.<name>.targets.*]` entries.
