@@ -514,17 +514,21 @@ impl Linker {
         let filters = agents_filter.or_else(|| {
             (!self.config.default_agents.is_empty()).then_some(&self.config.default_agents)
         });
-        let has_selected_mcp_agent = self
+        let has_existing_selected_mcp_destination = self
             .config
             .agents
             .keys()
             .filter_map(|name| crate::mcp::McpAgent::from_id(name))
             .any(|agent| {
-                filters.is_none_or(|filters| {
+                let selected = filters.is_none_or(|filters| {
                     filters
                         .iter()
                         .any(|filter| mcp_agent_matches_filter(agent, filter))
-                })
+                });
+                selected
+                    && agent
+                        .resolved_config_path(&self.project_root)
+                        .is_some_and(|path| fs::symlink_metadata(path).is_ok())
             });
         let has_configured_servers = self
             .config
@@ -534,7 +538,10 @@ impl Linker {
             || (self.config.plugins.enabled
                 && !self.config.plugins.selections.is_empty()
                 && !self.config.plugins.allowed_mcp.is_empty());
-        if self.config.mcp.enabled && has_configured_servers && has_selected_mcp_agent {
+        if self.config.mcp.enabled
+            && has_configured_servers
+            && has_existing_selected_mcp_destination
+        {
             println!(
                 "  {} No MCP ownership journal found; leaving existing MCP configs unchanged",
                 "!".yellow()
@@ -1124,6 +1131,14 @@ mod tests {
             .get_mut("filesystem")
             .unwrap()
             .disabled = false;
+        linker.warn_if_legacy_mcp_is_unowned(&mut result, None);
+        assert_eq!(
+            result.skipped, 0,
+            "an active MCP server without an existing config entry is not a skipped restore"
+        );
+
+        fs::write(temp_dir.path().join(".mcp.json"), "{}")
+            .expect("create the existing Claude MCP destination");
         linker.warn_if_legacy_mcp_is_unowned(&mut result, None);
         assert_eq!(
             result.skipped, 1,
