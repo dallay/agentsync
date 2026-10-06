@@ -595,6 +595,71 @@ fn quarantine_path(display_path: &Path, quarantine_name: &OsStr) -> std::path::P
         .join(quarantine_name)
 }
 
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use super::{EntryIdentity, RemoveOutcome, remove_symlink_if_unchanged};
+    use cap_std::ambient_authority;
+    use cap_std::fs::{Dir, OpenOptions, OpenOptionsExt};
+    use std::ffi::OsStr;
+    use std::fs;
+    use std::os::windows::fs::symlink_file;
+    use windows_sys::Win32::Storage::FileSystem::{
+        DELETE, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ, FILE_SHARE_WRITE, SYNCHRONIZE,
+    };
+
+    #[test]
+    fn open_reparse_handle_matches_symlink_metadata_identity_and_is_removed() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let target = temp.path().join("target.md");
+        let link = temp.path().join("managed.md");
+        fs::write(&target, "target").unwrap();
+        symlink_file(&target, &link).unwrap();
+
+        let parent = Dir::open_ambient_dir(temp.path(), ambient_authority()).unwrap();
+        let name = OsStr::new("managed.md");
+        let observed = parent.symlink_metadata(name).unwrap();
+        assert!(
+            observed.file_type().is_symlink(),
+            "parent symlink_metadata must identify the link itself: {observed:?}"
+        );
+        let expected = EntryIdentity::capture(&observed);
+
+        let mut options = OpenOptions::new();
+        options
+            .read(true)
+            .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS)
+            .access_mode(DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE)
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE);
+        let opened = parent.open_with(name, &options).unwrap();
+        let handle_metadata = opened.metadata().unwrap();
+        assert!(
+            handle_metadata.file_type().is_symlink(),
+            "the no-reparse-point handle must identify the link itself: {handle_metadata:?}"
+        );
+        let actual = EntryIdentity::capture(&handle_metadata);
+        assert_eq!(
+            expected, actual,
+            "symlink_metadata identity must match the opened reparse-point handle"
+        );
+        drop(opened);
+
+        let outcome =
+            remove_symlink_if_unchanged(&parent, name, expected, &link, || {}, |_| {}).unwrap();
+        assert!(
+            matches!(outcome, RemoveOutcome::Removed),
+            "matching symlink should be quarantined and removed; target={}",
+            target.display()
+        );
+        assert!(
+            parent
+                .symlink_metadata(name)
+                .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound),
+            "removed link should no longer be present"
+        );
+    }
+}
+
 #[cfg(windows)]
 fn remove_windows<F, G>(
     parent: &CapabilityDir,
