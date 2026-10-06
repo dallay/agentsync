@@ -313,47 +313,61 @@ impl Linker {
         }
         // Try to remove the directory if empty
         if !options.dry_run {
-            match contents.remove_empty_directory(
-                || {
-                    #[cfg(test)]
-                    if let Some(hook) = self
-                        .quarantine_before_container_move_hook
-                        .borrow_mut()
-                        .take()
-                    {
-                        hook(&dest);
-                    }
-                },
-                |_path| {
-                    #[cfg(test)]
-                    if let Some(hook) = self.quarantine_after_move_hook.borrow_mut().take() {
-                        hook(_path);
-                    }
-                },
-            ) {
-                Ok(quarantine::RemoveDirectoryOutcome::Removed)
-                | Ok(quarantine::RemoveDirectoryOutcome::NotEmpty) => {}
-                Ok(quarantine::RemoveDirectoryOutcome::Changed) => {
-                    result.skipped += 1;
-                    if options.verbose {
-                        println!(
-                            "  {} Preserving destination directory changed during cleanup: {}",
-                            "!".yellow(),
-                            dest.display()
-                        );
-                    }
-                    tracing::warn!(
-                        path = %dest.display(),
-                        "Destination directory changed before quarantine; preserving it"
-                    );
-                }
+            let remaining_entries = match contents.entries() {
+                Ok(entries) => entries,
                 Err(error) => {
-                    result.errors += 1;
-                    tracing::error!(
+                    result.skipped += 1;
+                    tracing::warn!(
                         error = %error,
                         path = %dest.display(),
-                        "Failed to quarantine empty symlink-contents destination directory"
+                        "Skipping container cleanup after failing to recheck directory contents"
                     );
+                    return Ok(());
+                }
+            };
+            if remaining_entries.is_empty() {
+                match contents.remove_empty_directory(
+                    || {
+                        #[cfg(test)]
+                        if let Some(hook) = self
+                            .quarantine_before_container_move_hook
+                            .borrow_mut()
+                            .take()
+                        {
+                            hook(&dest);
+                        }
+                    },
+                    |_path| {
+                        #[cfg(test)]
+                        if let Some(hook) = self.quarantine_after_move_hook.borrow_mut().take() {
+                            hook(_path);
+                        }
+                    },
+                ) {
+                    Ok(quarantine::RemoveDirectoryOutcome::Removed)
+                    | Ok(quarantine::RemoveDirectoryOutcome::NotEmpty) => {}
+                    Ok(quarantine::RemoveDirectoryOutcome::Changed) => {
+                        result.skipped += 1;
+                        if options.verbose {
+                            println!(
+                                "  {} Preserving destination directory changed during cleanup: {}",
+                                "!".yellow(),
+                                dest.display()
+                            );
+                        }
+                        tracing::warn!(
+                            path = %dest.display(),
+                            "Destination directory changed before quarantine; preserving it"
+                        );
+                    }
+                    Err(error) => {
+                        result.errors += 1;
+                        tracing::error!(
+                            error = %error,
+                            path = %dest.display(),
+                            "Failed to quarantine empty symlink-contents destination directory"
+                        );
+                    }
                 }
             }
         }
@@ -980,6 +994,46 @@ mod tests {
         );
         assert_eq!(result.skipped, 1);
         assert_eq!(result.errors, 0);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn clean_does_not_quarantine_nonempty_symlink_contents_container() {
+        use std::cell::Cell;
+        use std::rc::Rc;
+
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path().join("project");
+        fs::create_dir_all(project_root.join(".agents/source-dir")).unwrap();
+        fs::write(
+            project_root.join(".agents/source-dir/managed.md"),
+            "managed",
+        )
+        .unwrap();
+
+        let destination = project_root.join("dest");
+        fs::create_dir_all(&destination).unwrap();
+        let user_file = destination.join("user.txt");
+        fs::write(&user_file, "keep this file").unwrap();
+
+        let linker = make_linker(
+            &project_root,
+            true,
+            make_target("source-dir", "dest", SyncType::SymlinkContents),
+        );
+        let quarantine_attempted = Rc::new(Cell::new(false));
+        let quarantine_attempted_in_hook = Rc::clone(&quarantine_attempted);
+        *linker.quarantine_before_container_move_hook.borrow_mut() =
+            Some(Rc::new(move |_| quarantine_attempted_in_hook.set(true)));
+
+        let result = linker.clean(&SyncOptions::default()).unwrap();
+
+        assert_eq!(result.removed, 0);
+        assert!(
+            !quarantine_attempted.get(),
+            "a container with user files should not be moved out of its path"
+        );
+        assert_eq!(fs::read_to_string(user_file).unwrap(), "keep this file");
     }
 
     #[test]
