@@ -1013,13 +1013,36 @@ pub(super) fn rename_open_handle(
             FILE_FLAG_BACKUP_SEMANTICS,
         )
     };
+    let reopen_error = (rename_root == INVALID_HANDLE_VALUE).then(io::Error::last_os_error);
     #[cfg(test)]
     eprintln!(
-        "[ZCODE-RENAME-RPI060] ReOpenFile returned valid={}",
-        rename_root != INVALID_HANDLE_VALUE
+        "[ZCODE-RENAME-RPI060] ReOpenFile returned valid={} error={:?}",
+        reopen_error.is_none(),
+        reopen_error
     );
-    if rename_root == INVALID_HANDLE_VALUE {
-        return Err(io::Error::last_os_error());
+    if let Some(error) = reopen_error {
+        #[cfg(test)]
+        {
+            let without_traverse = unsafe {
+                ReOpenFile(
+                    parent.as_raw_handle() as HANDLE,
+                    FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE,
+                    FILE_FLAG_BACKUP_SEMANTICS,
+                )
+            };
+            let without_traverse_error =
+                (without_traverse == INVALID_HANDLE_VALUE).then(io::Error::last_os_error);
+            eprintln!(
+                "[ZCODE-RENAME-RPI060] without FILE_TRAVERSE valid={} error={:?}",
+                without_traverse_error.is_none(),
+                without_traverse_error
+            );
+            if without_traverse != INVALID_HANDLE_VALUE {
+                drop(unsafe { std::fs::File::from_raw_handle(without_traverse as _) });
+            }
+        }
+        return Err(error);
     }
     let rename_root = unsafe { std::fs::File::from_raw_handle(rename_root as _) };
 
