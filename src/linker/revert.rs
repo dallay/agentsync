@@ -428,6 +428,11 @@ impl Linker {
 
     /// Revert managed destinations to their pre-apply state.
     pub fn revert(&self, options: &SyncOptions) -> Result<SyncResult> {
+        #[cfg(windows)]
+        if options.keep_backups {
+            anyhow::bail!("--keep-backups is not supported on Windows");
+        }
+
         let mut result = SyncResult::default();
 
         println!("{}", "Reverting managed symlinks...".cyan());

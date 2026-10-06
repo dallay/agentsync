@@ -210,7 +210,7 @@ agentsync revert [FLAGS]
 - `--dry-run`: Shows what would be removed and restored without changing anything on disk.
 - `-v, --verbose`: Enable verbose logging.
 - `-a, --agents <AGENTS>`: Revert only the listed agents (comma-separated, e.g., `claude,copilot`). Selection follows `--agents`, then `default_agents`, then all configured agents, including disabled agents. MCP restoration uses recorded owner IDs even if an agent or `[mcp]` is now disabled; the selected set must still include every recorded owner of a shared MCP destination.
-- `--keep-backups`: Copy `.bak` symlink backups back instead of moving them, so those backup files remain afterwards for inspection. This does not retain MCP ownership records after a successful restore. On Windows, the staged copy is refused if a backup entry has an inherited DACL that cannot be safely reproduced; the `.bak` remains untouched. Revert without `--keep-backups` to move the original backup and preserve its inherited permissions.
+- `--keep-backups`: On Unix, copy `.bak` backups back instead of moving them, so they remain available for inspection. This option is not supported on Windows; `revert` rejects it before changing managed destinations or backup files. Use normal Windows `revert` to move the original backup and preserve its inherited permissions.
 
 Behavior:
 
