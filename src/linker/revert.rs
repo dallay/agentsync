@@ -2677,6 +2677,11 @@ mod tests {
                 let moved_path = directory.join(&moved_name);
                 fs::write(&probe_path, b"ReOpenFile diagnostic probe")
                     .expect("write diagnostic source file");
+                let absolute_probe_path =
+                    fs::canonicalize(&probe_path).expect("canonicalize diagnostic source path");
+                let absolute_moved_path = fs::canonicalize(directory)
+                    .expect("canonicalize diagnostic parent")
+                    .join(&moved_name);
                 let source_file = std::fs::OpenOptions::new()
                     .access_mode(DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE)
                     .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
@@ -2684,22 +2689,40 @@ mod tests {
                     .open(&probe_path);
                 match source_file {
                     Ok(source_file) => {
-                        let direct_rename = set_direct_relative_rename(
+                        let direct_rename = set_file_rename_info(
                             &source_file,
-                            parent_file.as_raw_handle() as HANDLE,
+                            Some(parent_file.as_raw_handle() as HANDLE),
                             &moved_name,
                         );
                         eprintln!(
-                            "[ZCODE-CREATEFILE-RPI064] direct RootDirectory rename result={direct_rename:?}"
+                            "[ZCODE-CREATEFILE-RPI064] direct RootDirectory relative rename result={direct_rename:?}"
                         );
-                        if direct_rename.is_ok() {
-                            let restore_name = set_direct_relative_rename(
+                        let (rename_result, restore_root, restore_name) = if direct_rename.is_ok() {
+                            (
+                                direct_rename,
+                                Some(parent_file.as_raw_handle() as HANDLE),
+                                probe_name.clone(),
+                            )
+                        } else {
+                            let absolute_rename = set_file_rename_info(
                                 &source_file,
-                                parent_file.as_raw_handle() as HANDLE,
-                                &probe_name,
+                                None,
+                                absolute_moved_path.as_os_str(),
                             );
                             eprintln!(
-                                "[ZCODE-CREATEFILE-RPI064] direct RootDirectory rename-back result={restore_name:?}"
+                                "[ZCODE-CREATEFILE-RPI064] RootDirectory=NULL absolute rename result={absolute_rename:?}"
+                            );
+                            (
+                                absolute_rename,
+                                None,
+                                absolute_probe_path.as_os_str().to_os_string(),
+                            )
+                        };
+                        if rename_result.is_ok() {
+                            let restore_result =
+                                set_file_rename_info(&source_file, restore_root, &restore_name);
+                            eprintln!(
+                                "[ZCODE-CREATEFILE-RPI064] direct rename-back result={restore_result:?}"
                             );
                         }
                     }
@@ -2797,9 +2820,9 @@ mod tests {
     }
 
     #[cfg(windows)]
-    fn set_direct_relative_rename(
+    fn set_file_rename_info(
         source: &std::fs::File,
-        root: windows_sys::Win32::Foundation::HANDLE,
+        root: Option<windows_sys::Win32::Foundation::HANDLE>,
         name: &std::ffi::OsStr,
     ) -> std::io::Result<()> {
         use std::os::windows::ffi::OsStrExt;
@@ -2824,7 +2847,7 @@ mod tests {
         // NUL-terminated UTF-16 name tail, consumed synchronously by the API.
         let renamed = unsafe {
             (*info).Anonymous.ReplaceIfExists = false;
-            (*info).RootDirectory = root as HANDLE;
+            (*info).RootDirectory = root.unwrap_or(std::ptr::null_mut()) as HANDLE;
             (*info).FileNameLength = file_name_length;
             std::ptr::copy_nonoverlapping(
                 wide_name.as_ptr(),
