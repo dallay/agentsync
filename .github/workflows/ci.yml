@@ -188,9 +188,17 @@ jobs:
         continue-on-error: true
         run: cargo test --all-features --test test_windows_gitignore_security -- --nocapture
 
+      - name: Diagnose Windows backup-copy test in isolation
+        if: matrix.os == 'windows-latest'
+        env:
+          RUST_BACKTRACE: full
+        run: >-
+          cargo test --all-features --lib
+          linker::revert::tests::copy_backup_contents_refuses_existing_regular_file_without_modifying_it
+          -- --exact --nocapture
+
       - name: Diagnose Windows library tests serially
         if: matrix.os == 'windows-latest'
-        continue-on-error: true
         run: cargo test --all-features --lib -- --test-threads=1
 
       - name: Run tests
