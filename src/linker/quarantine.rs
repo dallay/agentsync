@@ -1006,17 +1006,16 @@ pub(super) fn rename_open_handle(
     let file_name_length = u32::try_from(wide_name.len() * std::mem::size_of::<u16>())
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "quarantine name too long"))?;
     let file_name_offset = std::mem::offset_of!(FILE_RENAME_INFO, FileName);
-    let buffer_length = file_name_offset + wide_name.len() * std::mem::size_of::<u16>();
+    let buffer_length = (file_name_offset + (wide_name.len() + 1) * std::mem::size_of::<u16>())
+        .max(std::mem::size_of::<FILE_RENAME_INFO>());
     let word_count = buffer_length.div_ceil(std::mem::size_of::<u64>());
     let mut buffer = vec![0u64; word_count];
     let info = buffer.as_mut_ptr().cast::<FILE_RENAME_INFO>();
     // SAFETY: `buffer` is suitably aligned and sized for FILE_RENAME_INFO's
-    // fixed header plus the UTF-16 filename tail; the API consumes it before
-    // this stack-owned buffer is dropped. Flags=0 means do not replace an
-    // existing destination, and RootDirectory makes FileName relative to the
-    // already-open parent directory handle. Use FileRenameInfo rather than
-    // FileRenameInfoEx: on Windows the extended class rejects this sibling
-    // rename with ERROR_INVALID_PARAMETER when RootDirectory is supplied.
+    // fixed header plus a NUL-terminated UTF-16 filename tail; the API consumes
+    // it before this stack-owned buffer is dropped. ReplaceIfExists=false
+    // preserves no-replace behavior, and RootDirectory makes FileName relative
+    // to the already-open parent directory handle.
     unsafe {
         (*info).Anonymous.ReplaceIfExists = false;
         (*info).RootDirectory = parent.as_raw_handle() as HANDLE;
@@ -1026,6 +1025,7 @@ pub(super) fn rename_open_handle(
             (*info).FileName.as_mut_ptr(),
             wide_name.len(),
         );
+        *(*info).FileName.as_mut_ptr().add(wide_name.len()) = 0;
         let renamed = SetFileInformationByHandle(
             file.as_raw_handle() as HANDLE,
             FileRenameInfo,
