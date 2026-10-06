@@ -209,7 +209,7 @@ agentsync revert [FLAGS]
 - `--dry-run`: Shows what would be removed and restored without changing anything on disk.
 - `-v, --verbose`: Enable verbose logging.
 - `-a, --agents <AGENTS>`: Revert only the listed agents (comma-separated, e.g., `claude,copilot`). Same selection priority as `apply`: `--agents` flag, then `default_agents` in config, then all enabled agents.
-- `--keep-backups`: Copy backups back instead of moving them, so `.bak` files remain afterwards for inspection.
+- `--keep-backups`: On Unix, copy `.bak` backups back instead of moving them, so they remain available for inspection. This option is not supported on Windows; `revert` rejects it before changing managed destinations or backup files. Use normal Windows `revert` to move the original backup and preserve its inherited permissions.
 
 Behavior:
 

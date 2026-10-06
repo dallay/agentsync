@@ -201,6 +201,8 @@ agentsync revert --agents claude
 agentsync revert --keep-backups
 ```
 
+`--keep-backups` is supported on Unix only. On Windows it is rejected before `revert` changes managed links or backup files; run normal `agentsync revert` to move the original `.bak` and preserve its inherited permissions.
+
 Know the limits:
 
 - Destinations that did not exist before `apply` are simply unlinked (there is nothing to restore).
