@@ -99,7 +99,15 @@ fn test_symlink_creation_and_cleanup_file() {
 
         // Cleanup
         let clean_result = linker.clean(&options).unwrap();
-        assert_eq!(clean_result.removed, 1);
+        assert_eq!(
+            clean_result.removed,
+            1,
+            "cleanup result: removed={}, skipped={}, errors={}, destination_is_symlink={}",
+            clean_result.removed,
+            clean_result.skipped,
+            clean_result.errors,
+            dest.is_symlink()
+        );
         assert!(!dest.exists());
         assert!(!dest.is_symlink());
     } else {
@@ -162,7 +170,15 @@ fn test_symlink_creation_and_cleanup_directory() {
 
         // Cleanup
         let clean_result = linker.clean(&options).unwrap();
-        assert_eq!(clean_result.removed, 1);
+        assert_eq!(
+            clean_result.removed,
+            1,
+            "cleanup result: removed={}, skipped={}, errors={}, destination_is_symlink={}",
+            clean_result.removed,
+            clean_result.skipped,
+            clean_result.errors,
+            dest_dir.is_symlink()
+        );
         assert!(!dest_dir.exists());
     } else {
         assert!(result.is_err() || result.unwrap().errors > 0);
@@ -251,7 +267,15 @@ fn test_broken_symlink_handling() {
 
     // Cleaning should successfully find and remove the broken symlink.
     let clean_result = linker.clean(&options).unwrap();
-    assert_eq!(clean_result.removed, 1, "Should remove the broken symlink");
+    assert_eq!(
+        clean_result.removed,
+        1,
+        "Should remove the broken symlink; cleanup result: removed={}, skipped={}, errors={}, destination_is_symlink={}",
+        clean_result.removed,
+        clean_result.skipped,
+        clean_result.errors,
+        dest.is_symlink()
+    );
     assert!(!dest.is_symlink());
 }
 
