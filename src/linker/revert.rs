@@ -143,13 +143,16 @@ fn get_named_dacl(path: &Path) -> anyhow::Result<NamedDacl> {
     let descriptor = LocalSecurityDescriptor(descriptor);
     let mut present = 0;
     let mut descriptor_acl: *mut ACL = std::ptr::null_mut();
+    // Win32 requires this output pointer even though restore policy does not
+    // use the defaulted flag.
+    let mut defaulted = 0;
     av_diag("get_named_dacl before GetSecurityDescriptorDacl");
     if unsafe {
         GetSecurityDescriptorDacl(
             descriptor.0,
             &mut present,
             &mut descriptor_acl,
-            std::ptr::null_mut(),
+            &mut defaulted,
         )
     } == 0
     {
@@ -220,10 +223,12 @@ fn set_path_dacl_from_sddl(path: &Path, sddl: &str) -> anyhow::Result<()> {
     let descriptor = LocalSecurityDescriptor(descriptor);
     let mut present = 0;
     let mut acl: *mut ACL = std::ptr::null_mut();
+    // Win32 requires this output pointer even though staging policy does not
+    // use the defaulted flag.
+    let mut defaulted = 0;
     av_diag("set_path_dacl_from_sddl before GetSecurityDescriptorDacl");
-    if unsafe {
-        GetSecurityDescriptorDacl(descriptor.0, &mut present, &mut acl, std::ptr::null_mut())
-    } == 0
+    if unsafe { GetSecurityDescriptorDacl(descriptor.0, &mut present, &mut acl, &mut defaulted) }
+        == 0
     {
         return Err(std::io::Error::last_os_error())
             .with_context(|| format!("Failed to read Windows security descriptor for {sddl}"));
@@ -1511,12 +1516,15 @@ fn get_handle_dacl(
     let descriptor = LocalSecurityDescriptor(descriptor);
     let mut present = 0;
     let mut descriptor_acl: *mut ACL = std::ptr::null_mut();
+    // Win32 requires this output pointer even though restore policy does not
+    // use the defaulted flag.
+    let mut defaulted = 0;
     if unsafe {
         GetSecurityDescriptorDacl(
             descriptor.0,
             &mut present,
             &mut descriptor_acl,
-            std::ptr::null_mut(),
+            &mut defaulted,
         )
     } == 0
     {
@@ -1678,9 +1686,11 @@ fn set_handle_dacl_from_sddl(
     let descriptor = LocalSecurityDescriptor(raw_descriptor);
     let mut present = 0;
     let mut acl: *mut ACL = std::ptr::null_mut();
-    if unsafe {
-        GetSecurityDescriptorDacl(descriptor.0, &mut present, &mut acl, std::ptr::null_mut())
-    } == 0
+    // Win32 requires this output pointer even though staging policy does not
+    // use the defaulted flag.
+    let mut defaulted = 0;
+    if unsafe { GetSecurityDescriptorDacl(descriptor.0, &mut present, &mut acl, &mut defaulted) }
+        == 0
         || present == 0
         || acl.is_null()
     {
