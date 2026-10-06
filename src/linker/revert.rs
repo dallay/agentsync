@@ -2,6 +2,7 @@
 //! restoring `.bak` backups of pre-existing files.
 
 use anyhow::{Context, Result};
+use cap_fs_ext::DirExt;
 use colored::Colorize;
 use std::collections::HashSet;
 use std::fs;
@@ -9,7 +10,37 @@ use std::path::{Path, PathBuf};
 
 use crate::config::SyncType;
 
-use super::{Linker, SyncOptions, SyncResult, enumerate, symlinks};
+use super::{Linker, SyncOptions, SyncResult, enumerate, quarantine, symlinks};
+
+#[cfg(windows)]
+#[derive(Debug, PartialEq, Eq)]
+struct DaclSnapshot {
+    present: bool,
+    acl: Option<Vec<u8>>,
+    protected: bool,
+}
+
+#[cfg(windows)]
+struct LocalSecurityDescriptor(windows_sys::Win32::Security::PSECURITY_DESCRIPTOR);
+
+#[cfg(windows)]
+impl Drop for LocalSecurityDescriptor {
+    fn drop(&mut self) {
+        unsafe {
+            windows_sys::Win32::Foundation::LocalFree(self.0.cast());
+        }
+    }
+}
+
+#[cfg(windows)]
+struct HandleDacl {
+    _descriptor: LocalSecurityDescriptor,
+    acl: *mut windows_sys::Win32::Security::ACL,
+    snapshot: DaclSnapshot,
+}
+
+#[cfg(windows)]
+const PRIVATE_STAGING_DACL_SDDL: &str = "D:P(A;;FA;;;OW)";
 
 impl Linker {
     /// Revert managed destinations to their pre-apply state.
@@ -249,6 +280,25 @@ impl Linker {
             tracing::warn!(destination = %s.dest, error = %s.error, "Skipping revert target with unsafe destination");
             return Ok(());
         }
+        if let enumerate::NestedGlobDiscoveryStatus::Incomplete {
+            search_root,
+            reason,
+        } = enumeration.discovery
+        {
+            result.skipped += 1;
+            println!(
+                "  {} Revert skipped: nested-glob source discovery is incomplete for {}: {}",
+                "!".yellow(),
+                search_root.display(),
+                reason
+            );
+            tracing::warn!(
+                search_root = %search_root.display(),
+                reason = %reason,
+                "Nested-glob revert discovery incomplete; target is skipped"
+            );
+            return Ok(());
+        }
 
         for item in enumeration.entries {
             let dest = match item.dest {
@@ -325,10 +375,38 @@ impl Linker {
             outcome = tracing::field::Empty
         );
         let _enter = span.enter();
-        if dest.is_symlink() {
+        let (Some(name), Some(parent_path)) = (dest.file_name(), dest.parent()) else {
+            result.errors += 1;
+            span.record("outcome", "error");
+            tracing::warn!(path = %dest.display(), "Skipping revert: destination lacks parent or final component");
+            return Ok(());
+        };
+        let parent = match self.open_project_relative_directory(parent_path) {
+            Ok(parent) => parent,
+            Err(error) => {
+                result.errors += 1;
+                span.record("outcome", "error");
+                tracing::warn!(error = %error, path = %dest.display(), "Skipping revert: failed to open destination parent capability");
+                return Ok(());
+            }
+        };
+        let dest_metadata = match parent.symlink_metadata(name) {
+            Ok(metadata) => Some(metadata),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => {
+                result.errors += 1;
+                span.record("outcome", "error");
+                tracing::warn!(error = %error, path = %dest.display(), "Skipping revert: failed to inspect destination relative to parent capability");
+                return Ok(());
+            }
+        };
+        if dest_metadata
+            .as_ref()
+            .is_some_and(|metadata| metadata.file_type().is_symlink())
+        {
             match &expected {
                 Some(want) => {
-                    let actual = match fs::read_link(dest) {
+                    let actual = match parent.read_link(name) {
                         Ok(target) => target,
                         Err(e) => {
                             result.errors += 1;
@@ -348,15 +426,53 @@ impl Linker {
                         span.record("outcome", "skipped");
                         return Ok(());
                     }
-                    let errors_before_remove = result.errors;
-                    self.remove_managed_symlink(dest, options.dry_run, result)?;
+                    let identity =
+                        quarantine::EntryIdentity::capture(dest_metadata.as_ref().ok_or_else(
+                            || anyhow::anyhow!("verified symlink metadata disappeared"),
+                        )?);
+                    if options.dry_run {
+                        println!("  {} Would remove: {}", "→".cyan(), dest.display());
+                        result.removed += 1;
+                    } else {
+                        match quarantine::remove_symlink_if_unchanged(
+                            &parent,
+                            name,
+                            identity,
+                            dest,
+                            || {
+                                #[cfg(test)]
+                                if let Some(hook) =
+                                    self.quarantine_before_move_hook.borrow_mut().take()
+                                {
+                                    hook(dest);
+                                }
+                            },
+                            |_path| {},
+                        ) {
+                            Ok(quarantine::RemoveOutcome::Removed) => {
+                                self.invalidate_path(dest);
+                                println!("  {} Removed: {}", "✔".green(), dest.display());
+                                result.removed += 1;
+                            }
+                            Ok(quarantine::RemoveOutcome::Changed) => {
+                                result.skipped += 1;
+                                span.record("outcome", "skipped");
+                                tracing::warn!(path = %dest.display(), "Destination changed before revert quarantine; preserving it and its backup");
+                                return Ok(());
+                            }
+                            Err(error) => {
+                                result.errors += 1;
+                                span.record("outcome", "error");
+                                tracing::error!(error = %error, path = %dest.display(), "Failed to quarantine managed symlink during revert");
+                                return Ok(());
+                            }
+                        }
+                    }
                     if !options.dry_run {
-                        match fs::symlink_metadata(dest) {
+                        match parent.symlink_metadata(name) {
                             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
                             Ok(_) => {
-                                if result.errors == errors_before_remove {
-                                    result.errors += 1;
-                                }
+                                result.errors += 1;
                                 println!(
                                     "  {} Refusing to restore while destination remains: {}",
                                     "!".yellow(),
@@ -367,9 +483,7 @@ impl Linker {
                                 return Ok(());
                             }
                             Err(e) => {
-                                if result.errors == errors_before_remove {
-                                    result.errors += 1;
-                                }
+                                result.errors += 1;
                                 println!(
                                     "  {} Refusing to restore because destination could not be inspected: {}",
                                     "!".yellow(),
@@ -396,38 +510,158 @@ impl Linker {
             }
         }
         let backup = symlinks::backup_path_for_destination(dest);
-        if backup.exists() {
-            // Never restore over a real user file that appeared after apply,
-            // including during dry-run. A verified managed symlink remains in
-            // place only in dry-run, so it is the sole existing entry allowed.
-            match fs::symlink_metadata(dest) {
-                Ok(metadata) if !metadata.file_type().is_symlink() || !options.dry_run => {
-                    result.errors += 1;
-                    span.record("outcome", "error");
-                    println!(
-                        "  {} Refusing to restore over existing destination: {}",
-                        "!".yellow(),
-                        dest.display()
-                    );
-                    tracing::warn!(path = %dest.display(), "Refusing to restore backup over existing destination");
-                    return Ok(());
-                }
-                Ok(_) => {}
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                Err(e) => {
-                    result.errors += 1;
-                    span.record("outcome", "error");
-                    tracing::warn!(error = %e, path = %dest.display(), "Refusing to restore backup because destination inspection failed");
-                    return Ok(());
-                }
+        let Some(backup_name) = backup.file_name() else {
+            result.errors += 1;
+            span.record("outcome", "error");
+            tracing::warn!(path = %backup.display(), "Skipping revert: backup lacks a final component");
+            return Ok(());
+        };
+        let backup_metadata = match parent.symlink_metadata(backup_name) {
+            Ok(metadata) => Some(metadata),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => {
+                result.errors += 1;
+                span.record("outcome", "error");
+                tracing::warn!(error = %error, path = %backup.display(), "Skipping revert: failed to inspect backup relative to parent capability");
+                return Ok(());
             }
-            self.restore_backup(dest, &backup, options, result)?;
+        };
+        if backup_metadata.is_some() {
+            self.restore_backup_with_parent(
+                &parent,
+                name,
+                backup_name,
+                dest,
+                &backup,
+                options,
+                result,
+            )?;
         }
         span.record("outcome", "ok");
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn restore_backup_with_parent(
+        &self,
+        parent: &cap_std::fs::Dir,
+        dest_name: &std::ffi::OsStr,
+        backup_name: &std::ffi::OsStr,
+        dest: &Path,
+        backup: &Path,
+        options: &SyncOptions,
+        result: &mut SyncResult,
+    ) -> Result<()> {
+        let backup_metadata = match parent.symlink_metadata(backup_name) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => {
+                result.errors += 1;
+                tracing::error!(error = %error, path = %backup.display(), "Failed to inspect backup relative to opened parent");
+                return Ok(());
+            }
+        };
+        if backup_metadata.file_type().is_symlink()
+            || (!backup_metadata.is_file() && !backup_metadata.is_dir())
+        {
+            result.errors += 1;
+            println!(
+                "  {} Skipping special backup entry: {}",
+                "!".yellow(),
+                backup.display()
+            );
+            tracing::warn!(path = %backup.display(), "Skipping backup restore: unsupported entry type");
+            return Ok(());
+        }
+
+        match parent.symlink_metadata(dest_name) {
+            Ok(metadata) if options.dry_run && metadata.file_type().is_symlink() => {}
+            Ok(_) => {
+                result.errors += 1;
+                println!(
+                    "  {} Refusing to restore over existing destination: {}",
+                    "!".yellow(),
+                    dest.display()
+                );
+                tracing::warn!(path = %dest.display(), "Refusing to restore backup over existing destination");
+                return Ok(());
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                result.errors += 1;
+                tracing::warn!(error = %error, path = %dest.display(), "Refusing to restore because destination inspection failed");
+                return Ok(());
+            }
+        }
+
+        if options.dry_run {
+            println!("  {} Would restore: {}", "→".cyan(), dest.display());
+            result.restored += 1;
+            return Ok(());
+        }
+
+        if options.keep_backups {
+            let skipped = match copy_backup_contents_capability(
+                parent,
+                backup_name,
+                dest_name,
+                backup,
+                dest,
+                &backup_metadata,
+            ) {
+                Ok(skipped) => skipped,
+                Err(error) => {
+                    result.errors += 1;
+                    tracing::error!(error = %error, path = %dest.display(), "Failed to copy backup through parent capability");
+                    return Ok(());
+                }
+            };
+            if skipped > 0 {
+                result.errors += 1;
+                tracing::warn!(path = %backup.display(), skipped, "Backup copy skipped special entries");
+                return Ok(());
+            }
+        } else {
+            let identity = quarantine::EntryIdentity::capture(&backup_metadata);
+            match quarantine::move_entry_no_replace(
+                quarantine::EntryLocation {
+                    parent,
+                    name: backup_name,
+                    path: backup,
+                },
+                quarantine::EntryLocation {
+                    parent,
+                    name: dest_name,
+                    path: dest,
+                },
+                identity,
+                || {},
+                |_path| {},
+            ) {
+                Ok(quarantine::MoveOutcome::Moved) => {}
+                Ok(quarantine::MoveOutcome::Changed) => {
+                    result.skipped += 1;
+                    tracing::warn!(path = %backup.display(), "Backup changed before capability-relative restore; preserving it");
+                    return Ok(());
+                }
+                Err(error) => {
+                    result.errors += 1;
+                    tracing::error!(error = %error, path = %dest.display(), "Failed to restore backup relative to opened parent");
+                    return Ok(());
+                }
+            }
+        }
+
+        self.invalidate_path(dest);
+        self.invalidate_path(backup);
+        self.invalidate_glob_cache();
+        println!("  {} Restored: {}", "✔".green(), dest.display());
+        result.restored += 1;
+        Ok(())
+    }
+
     /// Move (or, with keep_backups, copy) a `.bak` backup back to `dest`.
+    #[cfg(test)]
     fn restore_backup(
         &self,
         dest: &Path,
@@ -527,9 +761,902 @@ impl Linker {
     }
 }
 
+fn copy_backup_contents_capability(
+    parent: &cap_std::fs::Dir,
+    backup_name: &std::ffi::OsStr,
+    destination_name: &std::ffi::OsStr,
+    backup_path: &Path,
+    destination_path: &Path,
+    expected: &cap_std::fs::Metadata,
+) -> anyhow::Result<usize> {
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    {
+        if expected.is_file() {
+            copy_backup_file_capability(
+                parent,
+                backup_name,
+                destination_name,
+                backup_path,
+                destination_path,
+                quarantine::EntryIdentity::capture(expected),
+            )?;
+            return Ok(0);
+        }
+        if expected.is_dir() && !expected.file_type().is_symlink() {
+            return copy_backup_directory_capability(
+                parent,
+                backup_name,
+                destination_name,
+                backup_path,
+                destination_path,
+                quarantine::EntryIdentity::capture(expected),
+            );
+        }
+        Ok(1)
+    }
+
+    #[cfg(windows)]
+    {
+        if expected.is_file() {
+            copy_backup_file_capability_windows(
+                parent,
+                backup_name,
+                destination_name,
+                backup_path,
+                destination_path,
+                quarantine::EntryIdentity::capture(expected),
+            )?;
+            Ok(0)
+        } else {
+            anyhow::bail!(
+                "Capability-relative directory --keep-backups copy is unsupported on Windows; backup remains at {}",
+                backup_path.display()
+            )
+        }
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
+    {
+        let _ = (parent, backup_name, destination_name, expected);
+        anyhow::bail!(
+            "Capability-relative --keep-backups copy is unsupported on this platform; backup remains at {}",
+            backup_path.display()
+        )
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn copy_backup_file_capability(
+    parent: &cap_std::fs::Dir,
+    backup_name: &std::ffi::OsStr,
+    destination_name: &std::ffi::OsStr,
+    backup_path: &Path,
+    destination_path: &Path,
+    expected: quarantine::EntryIdentity,
+) -> anyhow::Result<()> {
+    let mut source = open_backup_file_capability(parent, backup_name, backup_path)?;
+    let source_metadata = source.metadata()?;
+    anyhow::ensure!(
+        source_metadata.is_file() && expected.matches(&source_metadata),
+        "Backup changed before capability-relative copy: {}",
+        backup_path.display()
+    );
+    let (staging_name, staging, staging_identity) =
+        create_restore_staging_directory(parent, destination_path)?;
+    let mut destination =
+        create_restore_file_capability(&staging, std::ffi::OsStr::new("file"), destination_path)?;
+    std::io::copy(&mut source, &mut destination).with_context(|| {
+        format!(
+            "Failed to copy backup bytes for {}",
+            destination_path.display()
+        )
+    })?;
+    destination.sync_all()?;
+    destination
+        .set_permissions(source_metadata.permissions())
+        .with_context(|| {
+            format!(
+                "Failed to preserve backup permissions for {}",
+                destination_path.display()
+            )
+        })?;
+    let staged_identity = quarantine::EntryIdentity::capture(&destination.metadata()?);
+    drop(destination);
+
+    if let Err(error) = quarantine::rename_between_no_replace(
+        &staging,
+        std::ffi::OsStr::new("file"),
+        parent,
+        destination_name,
+    ) {
+        return Err(error).with_context(|| {
+            format!(
+                "Failed to publish copied backup without replacement; staging recovery directory remains at {}",
+                restore_staging_path(destination_path, &staging_name).display()
+            )
+        });
+    }
+    let published = parent.symlink_metadata(destination_name).with_context(|| {
+        format!(
+            "Failed to verify restored file: {}",
+            destination_path.display()
+        )
+    })?;
+    anyhow::ensure!(
+        published.is_file() && staged_identity.matches(&published),
+        "Restored file changed identity before verification: {}",
+        destination_path.display()
+    );
+    cleanup_empty_restore_staging_directory(
+        parent,
+        &staging_name,
+        staging_identity,
+        destination_path,
+    )?;
+    Ok(())
+}
+
+#[cfg(windows)]
+fn get_handle_dacl(
+    handle: windows_sys::Win32::Foundation::HANDLE,
+    path: &Path,
+) -> anyhow::Result<HandleDacl> {
+    use windows_sys::Win32::Security::Authorization::{GetSecurityInfo, SE_FILE_OBJECT};
+    use windows_sys::Win32::Security::{
+        ACL, DACL_SECURITY_INFORMATION, GetSecurityDescriptorControl, GetSecurityDescriptorDacl,
+        SE_DACL_PROTECTED,
+    };
+
+    let mut acl = std::ptr::null_mut();
+    let mut descriptor = std::ptr::null_mut();
+    let status = unsafe {
+        GetSecurityInfo(
+            handle,
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            &mut acl,
+            std::ptr::null_mut(),
+            &mut descriptor,
+        )
+    };
+    if status != 0 {
+        return Err(std::io::Error::from_raw_os_error(status as i32))
+            .with_context(|| format!("Failed to query backup DACL by handle: {}", path.display()));
+    }
+    let descriptor = LocalSecurityDescriptor(descriptor);
+    let mut present = 0;
+    let mut descriptor_acl: *mut ACL = std::ptr::null_mut();
+    if unsafe {
+        GetSecurityDescriptorDacl(
+            descriptor.0,
+            &mut present,
+            &mut descriptor_acl,
+            std::ptr::null_mut(),
+        )
+    } == 0
+    {
+        return Err(std::io::Error::last_os_error())
+            .with_context(|| format!("Failed to inspect backup DACL: {}", path.display()));
+    }
+    let mut control = 0;
+    let mut revision = 0;
+    if unsafe { GetSecurityDescriptorControl(descriptor.0, &mut control, &mut revision) } == 0 {
+        return Err(std::io::Error::last_os_error()).with_context(|| {
+            format!(
+                "Failed to inspect backup DACL protection: {}",
+                path.display()
+            )
+        });
+    }
+    let acl_bytes = if descriptor_acl.is_null() {
+        None
+    } else {
+        let size = unsafe { (*descriptor_acl).AclSize as usize };
+        Some(unsafe { std::slice::from_raw_parts(descriptor_acl.cast::<u8>(), size) }.to_vec())
+    };
+    Ok(HandleDacl {
+        _descriptor: descriptor,
+        acl: descriptor_acl,
+        snapshot: DaclSnapshot {
+            present: present != 0,
+            acl: acl_bytes,
+            protected: control & SE_DACL_PROTECTED != 0,
+        },
+    })
+}
+
+#[cfg(windows)]
+fn copy_open_handle_dacl<S, D>(
+    source: &S,
+    destination: &D,
+    source_path: &Path,
+    destination_path: &Path,
+) -> anyhow::Result<()>
+where
+    S: std::os::windows::io::AsRawHandle,
+    D: std::os::windows::io::AsRawHandle,
+{
+    use windows_sys::Win32::Security::Authorization::{SE_FILE_OBJECT, SetSecurityInfo};
+    use windows_sys::Win32::Security::{
+        DACL_SECURITY_INFORMATION, PROTECTED_DACL_SECURITY_INFORMATION,
+    };
+
+    let source_dacl = get_handle_dacl(source.as_raw_handle() as _, source_path)?;
+    anyhow::ensure!(
+        source_dacl.snapshot.present && source_dacl.snapshot.acl.is_some(),
+        "Backup DACL is absent or NULL; refusing capability-relative keep-backups copy: {}",
+        source_path.display()
+    );
+    anyhow::ensure!(
+        source_dacl.snapshot.protected,
+        "Backup has an inherited DACL that cannot be safely reproduced by --keep-backups: {}",
+        source_path.display()
+    );
+    let status = unsafe {
+        SetSecurityInfo(
+            destination.as_raw_handle() as _,
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            source_dacl.acl,
+            std::ptr::null_mut(),
+        )
+    };
+    if status != 0 {
+        return Err(std::io::Error::from_raw_os_error(status as i32)).with_context(|| {
+            format!(
+                "Failed to preserve backup DACL on staged handle: {}",
+                destination_path.display()
+            )
+        });
+    }
+    let actual = get_handle_dacl(destination.as_raw_handle() as _, destination_path)?;
+    let expected = DaclSnapshot {
+        protected: true,
+        ..source_dacl.snapshot
+    };
+    anyhow::ensure!(
+        actual.snapshot == expected,
+        "Staged backup DACL differs from source: {}",
+        destination_path.display()
+    );
+    Ok(())
+}
+
+#[cfg(windows)]
+fn protect_staging_directory_capability(
+    parent: &cap_std::fs::Dir,
+    name: &std::ffi::OsStr,
+    display_path: &Path,
+) -> anyhow::Result<()> {
+    use cap_std::fs::{OpenOptions, OpenOptionsExt};
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_LIST_DIRECTORY,
+        FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, READ_CONTROL,
+        SYNCHRONIZE, WRITE_DAC,
+    };
+
+    let mut options = OpenOptions::new();
+    options
+        .read(true)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+        .access_mode(
+            WRITE_DAC | READ_CONTROL | FILE_READ_ATTRIBUTES | FILE_LIST_DIRECTORY | SYNCHRONIZE,
+        )
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE);
+    let handle = parent.open_with(name, &options).with_context(|| {
+        format!(
+            "Failed to open staging directory security handle: {}",
+            display_path.display()
+        )
+    })?;
+    set_handle_dacl_from_sddl(handle.as_raw_handle() as _, display_path)
+}
+
+#[cfg(windows)]
+fn set_handle_dacl_from_sddl(
+    handle: windows_sys::Win32::Foundation::HANDLE,
+    display_path: &Path,
+) -> anyhow::Result<()> {
+    use windows_sys::Win32::Security::Authorization::{
+        ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1, SE_FILE_OBJECT,
+        SetSecurityInfo,
+    };
+    use windows_sys::Win32::Security::{
+        ACL, DACL_SECURITY_INFORMATION, GetSecurityDescriptorDacl,
+        PROTECTED_DACL_SECURITY_INFORMATION,
+    };
+
+    let wide_sddl = PRIVATE_STAGING_DACL_SDDL
+        .encode_utf16()
+        .chain(Some(0))
+        .collect::<Vec<_>>();
+    let mut raw_descriptor = std::ptr::null_mut();
+    if unsafe {
+        ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            wide_sddl.as_ptr(),
+            SDDL_REVISION_1,
+            &mut raw_descriptor,
+            std::ptr::null_mut(),
+        )
+    } == 0
+    {
+        return Err(std::io::Error::last_os_error()).with_context(|| {
+            format!(
+                "Failed to create private staging DACL: {}",
+                display_path.display()
+            )
+        });
+    }
+    let descriptor = LocalSecurityDescriptor(raw_descriptor);
+    let mut present = 0;
+    let mut acl: *mut ACL = std::ptr::null_mut();
+    if unsafe {
+        GetSecurityDescriptorDacl(descriptor.0, &mut present, &mut acl, std::ptr::null_mut())
+    } == 0
+        || present == 0
+        || acl.is_null()
+    {
+        anyhow::bail!(
+            "Private staging DACL descriptor is invalid for {}",
+            display_path.display()
+        );
+    }
+    let status = unsafe {
+        SetSecurityInfo(
+            handle,
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            acl,
+            std::ptr::null_mut(),
+        )
+    };
+    if status != 0 {
+        return Err(std::io::Error::from_raw_os_error(status as i32)).with_context(|| {
+            format!(
+                "Failed to restrict restore staging DACL: {}",
+                display_path.display()
+            )
+        });
+    }
+    let actual = get_handle_dacl(handle, display_path)?;
+    anyhow::ensure!(
+        actual.snapshot.protected && actual.snapshot.present && actual.snapshot.acl.is_some(),
+        "Restore staging DACL is not protected: {}",
+        display_path.display()
+    );
+    Ok(())
+}
+
+#[cfg(windows)]
+fn create_restore_staging_directory(
+    parent: &cap_std::fs::Dir,
+    destination: &Path,
+) -> anyhow::Result<(
+    std::ffi::OsString,
+    cap_std::fs::Dir,
+    quarantine::EntryIdentity,
+)> {
+    for _ in 0..16 {
+        let name = std::ffi::OsString::from(format!(
+            ".agentsync-restore-{:032x}",
+            rand::random::<u128>()
+        ));
+        match parent.create_dir(&name) {
+            Ok(()) => {
+                let directory = parent.open_dir_nofollow(&name)?;
+                protect_staging_directory_capability(parent, &name, destination)?;
+                let identity = quarantine::EntryIdentity::capture(&directory.metadata(".")?);
+                return Ok((name, directory, identity));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(error).with_context(|| {
+                    format!(
+                        "Failed to create capability-relative restore staging directory for {}",
+                        destination.display()
+                    )
+                });
+            }
+        }
+    }
+    anyhow::bail!(
+        "Unable to reserve restore staging directory for {}",
+        destination.display()
+    )
+}
+
+#[cfg(windows)]
+fn cleanup_empty_restore_staging_directory_windows(
+    parent: &cap_std::fs::Dir,
+    name: &std::ffi::OsStr,
+    identity: quarantine::EntryIdentity,
+    destination: &Path,
+) -> anyhow::Result<()> {
+    match quarantine::remove_empty_directory_if_unchanged(
+        parent,
+        name,
+        identity,
+        destination,
+        || {},
+        |_path| {},
+    )? {
+        quarantine::RemoveDirectoryOutcome::Removed => Ok(()),
+        quarantine::RemoveDirectoryOutcome::Changed
+        | quarantine::RemoveDirectoryOutcome::NotEmpty => {
+            anyhow::bail!(
+                "Restore staging directory changed or remained non-empty beside {}",
+                destination.display()
+            )
+        }
+    }
+}
+
+#[cfg(windows)]
+fn copy_backup_file_capability_windows(
+    parent: &cap_std::fs::Dir,
+    backup_name: &std::ffi::OsStr,
+    destination_name: &std::ffi::OsStr,
+    backup_path: &Path,
+    destination_path: &Path,
+    expected: quarantine::EntryIdentity,
+) -> anyhow::Result<()> {
+    use cap_std::fs::{DirExt, OpenOptions, OpenOptionsExt};
+    use windows_sys::Win32::Storage::FileSystem::{
+        DELETE, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES,
+        FILE_READ_DATA, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_WRITE_DATA,
+        READ_CONTROL, SYNCHRONIZE, WRITE_DAC,
+    };
+
+    let mut source_options = OpenOptions::new();
+    source_options
+        .read(true)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS)
+        .access_mode(FILE_READ_DATA | FILE_READ_ATTRIBUTES | READ_CONTROL | SYNCHRONIZE)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE);
+    let mut source = parent
+        .open_with(backup_name, &source_options)
+        .with_context(|| {
+            format!(
+                "Failed to open backup by parent capability: {}",
+                backup_path.display()
+            )
+        })?;
+    let source_metadata = source.metadata()?;
+    anyhow::ensure!(
+        source_metadata.is_file()
+            && !source_metadata.file_type().is_symlink()
+            && expected.matches(&source_metadata),
+        "Backup changed before capability-relative copy: {}",
+        backup_path.display()
+    );
+
+    let mut staging_name = None;
+    let mut staging = None;
+    for _ in 0..16 {
+        let name = std::ffi::OsString::from(format!(
+            ".agentsync-restore-{:032x}",
+            rand::random::<u128>()
+        ));
+        match parent.create_dir(&name) {
+            Ok(()) => {
+                let directory = parent.open_dir_nofollow(&name)?;
+                protect_staging_directory_capability(parent, &name, destination_path)?;
+                staging_name = Some(name);
+                staging = Some(directory);
+                break;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(error).with_context(|| {
+                    format!(
+                        "Failed to create capability-relative staging directory for {}",
+                        destination_path.display()
+                    )
+                });
+            }
+        }
+    }
+    let staging_name = staging_name.ok_or_else(|| {
+        anyhow::anyhow!(
+            "Unable to reserve restore staging directory for {}",
+            destination_path.display()
+        )
+    })?;
+    let staging = staging
+        .ok_or_else(|| anyhow::anyhow!("Restore staging directory handle was not created"))?;
+
+    let mut destination_options = OpenOptions::new();
+    destination_options
+        .read(true)
+        .write(true)
+        .create_new(true)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS)
+        .access_mode(
+            DELETE
+                | FILE_READ_DATA
+                | FILE_WRITE_DATA
+                | FILE_READ_ATTRIBUTES
+                | READ_CONTROL
+                | WRITE_DAC
+                | SYNCHRONIZE,
+        )
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE);
+    let mut destination = staging
+        .open_with(std::ffi::OsStr::new("file"), &destination_options)
+        .with_context(|| {
+            format!(
+                "Failed to create staged backup file for {}",
+                destination_path.display()
+            )
+        })?;
+    std::io::copy(&mut source, &mut destination).with_context(|| {
+        format!(
+            "Failed to copy backup bytes for {}",
+            destination_path.display()
+        )
+    })?;
+    destination.sync_all()?;
+    destination.set_permissions(source_metadata.permissions())?;
+    copy_open_handle_dacl(&source, &destination, backup_path, destination_path)?;
+    let staged_identity = quarantine::EntryIdentity::capture(&destination.metadata()?);
+
+    quarantine::rename_open_handle(&destination, parent, destination_name).with_context(|| {
+        format!(
+            "Failed to publish copied backup without replacement; staging recovery directory remains at {}",
+            restore_staging_path(destination_path, &staging_name).display()
+        )
+    })?;
+    let published = parent.symlink_metadata(destination_name)?;
+    anyhow::ensure!(
+        published.is_file() && staged_identity.matches(&published),
+        "Restored file changed identity before verification: {}",
+        destination_path.display()
+    );
+    let staging_identity = quarantine::EntryIdentity::capture(&staging.metadata(".")?);
+    cleanup_empty_restore_staging_directory_windows(
+        parent,
+        &staging_name,
+        staging_identity,
+        destination_path,
+    )
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn copy_backup_directory_capability(
+    parent: &cap_std::fs::Dir,
+    backup_name: &std::ffi::OsStr,
+    destination_name: &std::ffi::OsStr,
+    backup_path: &Path,
+    destination_path: &Path,
+    expected: quarantine::EntryIdentity,
+) -> anyhow::Result<usize> {
+    let source_root = parent.open_dir_nofollow(backup_name).with_context(|| {
+        format!(
+            "Failed to open backup directory without following links: {}",
+            backup_path.display()
+        )
+    })?;
+    let source_metadata = source_root.metadata(".")?;
+    anyhow::ensure!(
+        expected.matches(&source_metadata),
+        "Backup directory changed before capability-relative copy: {}",
+        backup_path.display()
+    );
+    let (staging_name, staging, staging_identity) =
+        create_restore_staging_directory(parent, destination_path)?;
+    let tree_name = std::ffi::OsStr::new("tree");
+    staging.create_dir(tree_name).with_context(|| {
+        format!(
+            "Failed to create staged restore tree beside {}",
+            destination_path.display()
+        )
+    })?;
+    let staged_root = staging.open_dir_nofollow(tree_name)?;
+    let staged_root_identity = quarantine::EntryIdentity::capture(&staged_root.metadata(".")?);
+    let mut directories = vec![(
+        Vec::<std::ffi::OsString>::new(),
+        source_metadata.permissions(),
+    )];
+    let skipped = copy_directory_contents_capability(
+        &source_root,
+        &staged_root,
+        backup_path,
+        destination_path,
+        &mut directories,
+    )?;
+    if skipped > 0 {
+        staging.remove_dir_all(tree_name).with_context(|| {
+            format!(
+                "Failed to discard partial restore tree for {}",
+                destination_path.display()
+            )
+        })?;
+        cleanup_empty_restore_staging_directory(
+            parent,
+            &staging_name,
+            staging_identity,
+            destination_path,
+        )?;
+        return Ok(skipped);
+    }
+
+    for (relative, permissions) in directories.iter().rev() {
+        let directory = open_relative_directory(&staged_root, relative)?;
+        directory
+            .set_permissions(".", permissions.clone())
+            .with_context(|| {
+                format!(
+                    "Failed to preserve restored directory permissions for {}",
+                    destination_path.display()
+                )
+            })?;
+    }
+    if let Err(error) =
+        quarantine::rename_between_no_replace(&staging, tree_name, parent, destination_name)
+    {
+        return Err(error).with_context(|| {
+            format!(
+                "Failed to publish restored directory without replacement; staging recovery directory remains at {}",
+                restore_staging_path(destination_path, &staging_name).display()
+            )
+        });
+    }
+    let published = parent.symlink_metadata(destination_name).with_context(|| {
+        format!(
+            "Failed to verify restored directory: {}",
+            destination_path.display()
+        )
+    })?;
+    anyhow::ensure!(
+        published.is_dir()
+            && !published.file_type().is_symlink()
+            && staged_root_identity.matches(&published),
+        "Restored directory changed identity before verification: {}",
+        destination_path.display()
+    );
+    cleanup_empty_restore_staging_directory(
+        parent,
+        &staging_name,
+        staging_identity,
+        destination_path,
+    )?;
+    Ok(0)
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn copy_directory_contents_capability(
+    source_root: &cap_std::fs::Dir,
+    destination_root: &cap_std::fs::Dir,
+    source_display: &Path,
+    destination_display: &Path,
+    directories: &mut Vec<(Vec<std::ffi::OsString>, cap_std::fs::Permissions)>,
+) -> anyhow::Result<usize> {
+    let mut pending = vec![Vec::<std::ffi::OsString>::new()];
+    let mut skipped = 0usize;
+    while let Some(relative) = pending.pop() {
+        let source_directory = open_relative_directory(source_root, &relative)?;
+        let destination_directory = open_relative_directory(destination_root, &relative)?;
+        let entries = source_directory
+            .entries()
+            .with_context(|| {
+                format!(
+                    "Failed to read backup directory: {}",
+                    source_display.display()
+                )
+            })?
+            .map(|entry| {
+                let entry = entry.with_context(|| {
+                    format!("Failed to read backup entry: {}", source_display.display())
+                })?;
+                let name = entry.file_name();
+                let metadata = source_directory.symlink_metadata(&name).with_context(|| {
+                    format!(
+                        "Failed to inspect backup entry: {}",
+                        append_relative(source_display, &relative)
+                            .join(&name)
+                            .display()
+                    )
+                })?;
+                Ok((name, metadata))
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
+
+        for (name, metadata) in entries {
+            let mut child_relative = relative.clone();
+            child_relative.push(name.clone());
+            let source_path = append_relative(source_display, &child_relative);
+            let destination_path = append_relative(destination_display, &child_relative);
+            if metadata.file_type().is_symlink() {
+                skipped += 1;
+            } else if metadata.is_dir() {
+                let child = source_directory.open_dir_nofollow(&name)?;
+                let child_metadata = child.metadata(".")?;
+                anyhow::ensure!(
+                    quarantine::EntryIdentity::capture(&child_metadata)
+                        == quarantine::EntryIdentity::capture(&metadata),
+                    "Backup directory changed while staging: {}",
+                    source_path.display()
+                );
+                destination_directory.create_dir(&name).with_context(|| {
+                    format!(
+                        "Failed to create staged directory: {}",
+                        destination_path.display()
+                    )
+                })?;
+                directories.push((child_relative.clone(), metadata.permissions()));
+                pending.push(child_relative);
+            } else if metadata.is_file() {
+                let mut source_file =
+                    open_backup_file_capability(&source_directory, &name, &source_path)?;
+                let source_file_metadata = source_file.metadata()?;
+                anyhow::ensure!(
+                    source_file_metadata.is_file()
+                        && quarantine::EntryIdentity::capture(&source_file_metadata)
+                            == quarantine::EntryIdentity::capture(&metadata),
+                    "Backup file changed while staging: {}",
+                    source_path.display()
+                );
+                let mut destination_file = create_restore_file_capability(
+                    &destination_directory,
+                    &name,
+                    &destination_path,
+                )?;
+                std::io::copy(&mut source_file, &mut destination_file).with_context(|| {
+                    format!("Failed to copy backup file: {}", source_path.display())
+                })?;
+                destination_file.sync_all()?;
+                destination_file.set_permissions(metadata.permissions())?;
+            } else {
+                skipped += 1;
+                tracing::warn!(path = %source_path.display(), "Skipping special backup entry during keep-backups copy");
+            }
+        }
+    }
+    Ok(skipped)
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn open_relative_directory(
+    root: &cap_std::fs::Dir,
+    relative: &[std::ffi::OsString],
+) -> anyhow::Result<cap_std::fs::Dir> {
+    let mut current = root.try_clone()?;
+    for component in relative {
+        current = current.open_dir_nofollow(component)?;
+    }
+    Ok(current)
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn append_relative(root: &Path, relative: &[std::ffi::OsString]) -> std::path::PathBuf {
+    relative
+        .iter()
+        .fold(root.to_path_buf(), |path, part| path.join(part))
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn open_backup_file_capability(
+    parent: &cap_std::fs::Dir,
+    name: &std::ffi::OsStr,
+    display: &Path,
+) -> anyhow::Result<cap_std::fs::File> {
+    use cap_std::fs::OpenOptionsExt;
+
+    let mut options = cap_std::fs::OpenOptions::new();
+    options
+        .read(true)
+        .custom_flags(rustix::fs::OFlags::NOFOLLOW.bits() as i32);
+    parent.open_with(name, &options).with_context(|| {
+        format!(
+            "Failed to open backup without following links: {}",
+            display.display()
+        )
+    })
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn create_restore_file_capability(
+    parent: &cap_std::fs::Dir,
+    name: &std::ffi::OsStr,
+    display: &Path,
+) -> anyhow::Result<cap_std::fs::File> {
+    use cap_std::fs::OpenOptionsExt;
+
+    let mut options = cap_std::fs::OpenOptions::new();
+    options.read(true).write(true).create_new(true).mode(0o600);
+    parent.open_with(name, &options).with_context(|| {
+        format!(
+            "Failed to create staged restore file for {}",
+            display.display()
+        )
+    })
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn create_restore_staging_directory(
+    parent: &cap_std::fs::Dir,
+    destination: &Path,
+) -> anyhow::Result<(
+    std::ffi::OsString,
+    cap_std::fs::Dir,
+    quarantine::EntryIdentity,
+)> {
+    use cap_std::fs::DirBuilderExt;
+
+    for _ in 0..16 {
+        let name = std::ffi::OsString::from(format!(
+            ".agentsync-restore-{:032x}",
+            rand::random::<u128>()
+        ));
+        let mut builder = cap_std::fs::DirBuilder::new();
+        builder.mode(0o700);
+        match parent.create_dir_with(&name, &builder) {
+            Ok(()) => {
+                let directory = parent.open_dir_nofollow(&name)?;
+                let identity = quarantine::EntryIdentity::capture(&directory.metadata(".")?);
+                return Ok((name, directory, identity));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(error).with_context(|| {
+                    format!(
+                        "Failed to create restore staging directory for {}",
+                        destination.display()
+                    )
+                });
+            }
+        }
+    }
+    anyhow::bail!(
+        "Unable to reserve restore staging directory for {}",
+        destination.display()
+    )
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn cleanup_empty_restore_staging_directory(
+    parent: &cap_std::fs::Dir,
+    staging_name: &std::ffi::OsStr,
+    identity: quarantine::EntryIdentity,
+    destination: &Path,
+) -> anyhow::Result<()> {
+    match quarantine::remove_empty_directory_if_unchanged(
+        parent,
+        staging_name,
+        identity,
+        destination,
+        || {},
+        |_path| {},
+    )? {
+        quarantine::RemoveDirectoryOutcome::Removed => Ok(()),
+        quarantine::RemoveDirectoryOutcome::Changed
+        | quarantine::RemoveDirectoryOutcome::NotEmpty => {
+            anyhow::bail!(
+                "Restore staging directory changed or remained non-empty beside {}",
+                destination.display()
+            )
+        }
+    }
+}
+
+fn restore_staging_path(destination: &Path, staging_name: &std::ffi::OsStr) -> std::path::PathBuf {
+    destination
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(staging_name)
+}
+
 /// Copy a backup over `dest` without consuming it (for `--keep-backups`).
 /// Returns the number of special entries skipped along the way, so the caller
 /// can refuse to report a partial copy as a successful restore.
+#[cfg(test)]
 fn copy_backup_contents(backup: &Path, dest: &Path) -> anyhow::Result<usize> {
     let metadata = fs::symlink_metadata(backup)
         .with_context(|| format!("Failed to stat backup for restore: {}", backup.display()))?;
@@ -561,6 +1688,7 @@ fn copy_backup_contents(backup: &Path, dest: &Path) -> anyhow::Result<usize> {
 /// Recursive directory copy (std has none). Skips non-regular entries and
 /// returns how many were skipped; caller guarantees both paths are inside
 /// the project root via revalidation.
+#[cfg(test)]
 fn copy_dir_all(src: &Path, dst: &Path) -> anyhow::Result<usize> {
     fs::create_dir_all(dst)
         .with_context(|| format!("Failed to create restore directory: {}", dst.display()))?;
@@ -673,6 +1801,33 @@ mod tests {
         );
         assert!(!module_dir.join("CLAUDE.md.bak").exists());
         assert_eq!(result.restored, 1);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn revert_skips_missing_nested_glob_root_without_touching_destinations() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+        let target = make_target(
+            "missing-source",
+            "dest/{relative_path}/{file_name}",
+            SyncType::NestedGlob,
+        );
+        let linker = make_linker(project_root, true, target);
+        let destination = project_root.join("dest/retained.md");
+        fs::create_dir_all(destination.parent().unwrap()).unwrap();
+        let source = project_root.join("user-owned-source.md");
+        fs::write(&source, "keep this link").unwrap();
+        symlink(&source, &destination).unwrap();
+
+        let result = linker.revert(&SyncOptions::default()).unwrap();
+
+        assert_eq!(result.skipped, 1);
+        assert_eq!(result.removed, 0);
+        assert!(destination.is_symlink());
+        assert_eq!(fs::read_link(destination).unwrap(), source);
     }
 
     #[test]
@@ -973,6 +2128,197 @@ mod tests {
             assert_eq!(result.errors, 1, "dry_run={dry_run}");
             assert_eq!(result.restored, 0, "dry_run={dry_run}");
         }
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn revert_restores_backup_through_original_parent_after_parent_swap() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+        fs::create_dir_all(project_root.join(".agents")).unwrap();
+        let source = project_root.join(".agents/source.md");
+        fs::write(&source, "managed source").unwrap();
+        let original_parent = project_root.join("nested");
+        let moved_parent = project_root.join("nested-before-replacement");
+        fs::create_dir(&original_parent).unwrap();
+        let dest = original_parent.join("dest.md");
+        let linker = make_linker(
+            project_root,
+            true,
+            make_target("source.md", "nested/dest.md", SyncType::Symlink),
+        );
+        let expected = linker.relative_path(&dest, &source, false).unwrap();
+        symlink(&expected, &dest).unwrap();
+        let backup = symlinks::backup_path_for_destination(&dest);
+        fs::write(&backup, "original user content").unwrap();
+
+        let hook_original = original_parent.clone();
+        let hook_moved = moved_parent.clone();
+        let hook_expected = expected.clone();
+        *linker.quarantine_before_move_hook.borrow_mut() = Some(std::rc::Rc::new(move |_| {
+            fs::rename(&hook_original, &hook_moved).unwrap();
+            fs::create_dir(&hook_original).unwrap();
+            symlink(&hook_expected, hook_original.join("dest.md")).unwrap();
+        }));
+        let mut result = SyncResult::default();
+
+        linker
+            .revert_destination(&dest, Some(expected), &SyncOptions::default(), &mut result)
+            .unwrap();
+
+        assert_eq!(
+            fs::read_to_string(moved_parent.join("dest.md")).unwrap(),
+            "original user content"
+        );
+        assert!(original_parent.join("dest.md").is_symlink());
+        assert!(!moved_parent.join("dest.md.bak").exists());
+        assert_eq!(result.removed, 1);
+        assert_eq!(result.restored, 1);
+        assert_eq!(result.skipped, 0);
+        assert_eq!(result.errors, 0);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn revert_keep_backups_copies_through_original_parent_after_parent_swap() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+        fs::create_dir_all(project_root.join(".agents")).unwrap();
+        let source = project_root.join(".agents/source.md");
+        fs::write(&source, "managed source").unwrap();
+        let original_parent = project_root.join("nested");
+        let moved_parent = project_root.join("nested-before-replacement");
+        fs::create_dir(&original_parent).unwrap();
+        let dest = original_parent.join("dest.md");
+        let linker = make_linker(
+            project_root,
+            true,
+            make_target("source.md", "nested/dest.md", SyncType::Symlink),
+        );
+        let expected = linker.relative_path(&dest, &source, false).unwrap();
+        symlink(&expected, &dest).unwrap();
+        let backup = symlinks::backup_path_for_destination(&dest);
+        fs::write(&backup, "original user content").unwrap();
+
+        let hook_original = original_parent.clone();
+        let hook_moved = moved_parent.clone();
+        let hook_expected = expected.clone();
+        *linker.quarantine_before_move_hook.borrow_mut() = Some(std::rc::Rc::new(move |_| {
+            fs::rename(&hook_original, &hook_moved).unwrap();
+            fs::create_dir(&hook_original).unwrap();
+            symlink(&hook_expected, hook_original.join("dest.md")).unwrap();
+        }));
+        let options = SyncOptions {
+            keep_backups: true,
+            ..Default::default()
+        };
+        let mut result = SyncResult::default();
+
+        linker
+            .revert_destination(&dest, Some(expected), &options, &mut result)
+            .unwrap();
+
+        assert_eq!(
+            fs::read_to_string(moved_parent.join("dest.md")).unwrap(),
+            "original user content"
+        );
+        assert_eq!(
+            fs::read_to_string(moved_parent.join("dest.md.bak")).unwrap(),
+            "original user content"
+        );
+        assert!(original_parent.join("dest.md").is_symlink());
+        assert_eq!(result.restored, 1);
+        assert_eq!(result.errors, 0);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn revert_preserves_regular_file_replacing_managed_symlink_before_quarantine() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+        fs::create_dir_all(project_root.join(".agents")).unwrap();
+        let source = project_root.join(".agents/source.md");
+        fs::write(&source, "managed source").unwrap();
+        let dest = project_root.join("dest.md");
+        let backup = symlinks::backup_path_for_destination(&dest);
+        symlink(".agents/source.md", &dest).unwrap();
+        fs::write(&backup, "pre-apply contents").unwrap();
+
+        let linker = make_linker(
+            project_root,
+            true,
+            make_target("source.md", "dest.md", SyncType::Symlink),
+        );
+        let expected = linker.relative_path(&dest, &source, false).unwrap();
+        *linker.quarantine_before_move_hook.borrow_mut() = Some(std::rc::Rc::new(move |path| {
+            fs::remove_file(path).unwrap();
+            fs::write(path, "keep-user-data").unwrap();
+        }));
+        let mut result = SyncResult::default();
+
+        linker
+            .revert_destination(&dest, Some(expected), &SyncOptions::default(), &mut result)
+            .unwrap();
+
+        assert_eq!(fs::read_to_string(&dest).unwrap(), "keep-user-data");
+        assert_eq!(fs::read_to_string(&backup).unwrap(), "pre-apply contents");
+        assert_eq!(result.removed, 0);
+        assert_eq!(result.restored, 0);
+        assert_eq!(result.skipped, 1);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn revert_does_not_follow_replaced_parent_during_destination_removal() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+        fs::create_dir_all(project_root.join(".agents")).unwrap();
+        let source = project_root.join(".agents/source.md");
+        fs::write(&source, "managed source").unwrap();
+        let original_parent = project_root.join("nested");
+        let moved_parent = project_root.join("nested-before-replacement");
+        fs::create_dir(&original_parent).unwrap();
+        let dest = original_parent.join("dest.md");
+        let backup = symlinks::backup_path_for_destination(&dest);
+        let linker = make_linker(
+            project_root,
+            true,
+            make_target("source.md", "nested/dest.md", SyncType::Symlink),
+        );
+        let expected = linker.relative_path(&dest, &source, false).unwrap();
+        symlink(&expected, &dest).unwrap();
+        fs::write(&backup, "original user content").unwrap();
+
+        let hook_original = original_parent.clone();
+        let hook_moved = moved_parent.clone();
+        let hook_source = expected.clone();
+        *linker.quarantine_before_move_hook.borrow_mut() = Some(std::rc::Rc::new(move |_| {
+            fs::rename(&hook_original, &hook_moved).unwrap();
+            fs::create_dir(&hook_original).unwrap();
+            symlink(&hook_source, hook_original.join("dest.md")).unwrap();
+        }));
+        let mut result = SyncResult::default();
+
+        linker
+            .revert_destination(&dest, Some(expected), &SyncOptions::default(), &mut result)
+            .unwrap();
+
+        assert_eq!(
+            fs::read_to_string(moved_parent.join("dest.md")).unwrap(),
+            "original user content"
+        );
+        assert!(original_parent.join("dest.md").is_symlink());
+        assert!(!moved_parent.join("dest.md.bak").exists());
+        assert_eq!(result.removed, 1);
+        assert_eq!(result.restored, 1);
     }
 
     #[test]

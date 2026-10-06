@@ -26,7 +26,7 @@ use output::{
     render_apply_summary_with_color, render_clean_phase_with_color,
     render_clean_summary_with_color, render_dry_run_notice, render_gitignore_phase_with_color,
     render_mcp_phase, render_mcp_summary_with_color, render_revert_phase_with_color,
-    render_revert_summary_with_color, render_sync_phase_with_color,
+    render_symlink_revert_summary_with_color, render_sync_phase_with_color,
 };
 
 fn should_spawn_update_check(command: &Commands) -> bool {
@@ -646,8 +646,15 @@ fn handle_revert(
             dry_run,
         )?;
     }
+    println!(
+        "  {} MCP config files are not inspected or restored by this core-only revert; the full pre-apply state may remain",
+        "!".yellow()
+    );
+    tracing::warn!(
+        "Core-only revert restored symlink state only; MCP config files were not inspected or restored"
+    );
     println!();
-    print_lines(&render_revert_summary_with_color(
+    print_lines(&render_symlink_revert_summary_with_color(
         dry_run, &result, use_color,
     ));
     if result.errors > 0 {
@@ -666,7 +673,8 @@ mod tests {
         init_next_steps_lines, render_apply_summary_with_color, render_clean_phase_with_color,
         render_clean_summary_with_color, render_gitignore_phase_with_color,
         render_mcp_summary_with_color, render_revert_phase_with_color,
-        render_revert_summary_with_color, render_sync_phase_with_color,
+        render_revert_summary_with_color, render_symlink_revert_summary_with_color,
+        render_sync_phase_with_color,
     };
     use agentsync::{SyncResult, mcp::McpSyncResult};
     use clap::Parser;
@@ -683,6 +691,9 @@ mod tests {
     }
     fn render_revert_summary(dry_run: bool, result: &SyncResult) -> Vec<String> {
         render_revert_summary_with_color(dry_run, result, false)
+    }
+    fn render_symlink_revert_summary(dry_run: bool, result: &SyncResult) -> Vec<String> {
+        render_symlink_revert_summary_with_color(dry_run, result, false)
     }
     fn render_clean_summary(dry_run: bool, result: &SyncResult) -> Vec<String> {
         render_clean_summary_with_color(dry_run, result, false)
@@ -878,6 +889,19 @@ mod tests {
                 "  Would remove: 3".to_string(),
                 "  Would restore: 2".to_string(),
                 "  Errors: 1".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_render_core_revert_summary_names_the_restored_scope() {
+        assert_eq!(
+            render_symlink_revert_summary(false, &SyncResult::default()),
+            vec![
+                "✔ Symlink revert complete".to_string(),
+                "  Removed: 0".to_string(),
+                "  Restored: 0".to_string(),
+                "  Errors: 0".to_string()
             ]
         );
     }

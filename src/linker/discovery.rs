@@ -2,14 +2,58 @@
 
 use anyhow::Result;
 use colored::Colorize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use walkdir::WalkDir;
 
 use super::timing::SpanKind;
 use super::{Linker, NestedGlobKey, NestedGlobMatches, ResolvedSource, SyncOptions, SyncResult};
 
+pub(super) struct NestedGlobWalkError {
+    pub path: Option<PathBuf>,
+    pub message: String,
+}
+
+impl From<walkdir::Error> for NestedGlobWalkError {
+    fn from(error: walkdir::Error) -> Self {
+        Self {
+            path: error.path().map(Path::to_path_buf),
+            message: error.to_string(),
+        }
+    }
+}
+
+pub(super) trait NestedGlobWalkIterator {
+    fn next_entry(&mut self)
+    -> Option<std::result::Result<walkdir::DirEntry, NestedGlobWalkError>>;
+    fn skip_current_dir(&mut self);
+}
+
+struct WalkDirIterator(walkdir::IntoIter);
+
+impl NestedGlobWalkIterator for WalkDirIterator {
+    fn next_entry(
+        &mut self,
+    ) -> Option<std::result::Result<walkdir::DirEntry, NestedGlobWalkError>> {
+        self.0
+            .next()
+            .map(|entry| entry.map_err(NestedGlobWalkError::from))
+    }
+
+    fn skip_current_dir(&mut self) {
+        self.0.skip_current_dir();
+    }
+}
+
 impl Linker {
+    #[cfg(test)]
+    pub(super) fn set_nested_glob_walk_override_for_tests(
+        &self,
+        iterator: Box<dyn NestedGlobWalkIterator>,
+    ) {
+        *self.nested_glob_walk_override.borrow_mut() = Some(iterator);
+    }
+
     /// Expand a destination template for a single discovered file.
     ///
     /// Replaces the following placeholders:
@@ -164,6 +208,17 @@ impl Linker {
         excludes: &[String],
         options: &SyncOptions,
     ) -> Result<NestedGlobMatches> {
+        self.get_nested_glob_matches_with_status(search_root, glob_pattern, excludes, options)
+            .map(|(matches, _)| matches)
+    }
+
+    pub(super) fn get_nested_glob_matches_with_status(
+        &self,
+        search_root: &Path,
+        glob_pattern: &str,
+        excludes: &[String],
+        options: &SyncOptions,
+    ) -> Result<(NestedGlobMatches, bool)> {
         let _span = self.timing_span(SpanKind::Discovery);
         let key: NestedGlobKey = (
             search_root.to_path_buf(),
@@ -173,13 +228,13 @@ impl Linker {
 
         {
             let cache = self.glob_cache.borrow();
-            if let Some(cached) = cache.get(&key) {
-                return Ok(Rc::clone(cached));
+            if let Some((cached, complete)) = cache.get(&key) {
+                return Ok((Rc::clone(cached), *complete));
             }
         }
 
         let mut found = Vec::new();
-        self.for_each_nested_glob_match(
+        let complete = self.for_each_nested_glob_match(
             search_root,
             glob_pattern,
             excludes,
@@ -192,8 +247,8 @@ impl Linker {
         let rc_found = Rc::new(found);
         self.glob_cache
             .borrow_mut()
-            .insert(key, Rc::clone(&rc_found));
-        Ok(rc_found)
+            .insert(key, (Rc::clone(&rc_found), complete));
+        Ok((rc_found, complete))
     }
 
     fn for_each_nested_glob_match<F>(
@@ -203,7 +258,7 @@ impl Linker {
         excludes: &[String],
         options: &SyncOptions,
         mut on_match: F,
-    ) -> Result<()>
+    ) -> Result<bool>
     where
         F: FnMut(&Path, &Path) -> Result<()>,
     {
@@ -212,28 +267,45 @@ impl Linker {
         let split_excludes: Vec<Vec<&str>> =
             excludes.iter().map(|e| e.split('/').collect()).collect();
 
-        let mut it = WalkDir::new(search_root)
-            .follow_links(false)
-            .sort_by_file_name()
-            .into_iter();
+        #[cfg(test)]
+        let test_iterator = self.nested_glob_walk_override.borrow_mut().take();
+        #[cfg(test)]
+        let mut it: Box<dyn NestedGlobWalkIterator> = test_iterator.unwrap_or_else(|| {
+            Box::new(WalkDirIterator(
+                WalkDir::new(search_root)
+                    .follow_links(false)
+                    .sort_by_file_name()
+                    .into_iter(),
+            ))
+        });
+        #[cfg(not(test))]
+        let mut it: Box<dyn NestedGlobWalkIterator> = Box::new(WalkDirIterator(
+            WalkDir::new(search_root)
+                .follow_links(false)
+                .sort_by_file_name()
+                .into_iter(),
+        ));
 
-        while let Some(entry) = it.next() {
+        let mut complete = true;
+        while let Some(entry) = it.next_entry() {
             let entry = match entry {
                 Ok(entry) => entry,
                 Err(err) => {
+                    complete = false;
                     if options.verbose {
                         let path = err
-                            .path()
+                            .path
+                            .as_deref()
                             .map(|p| p.display().to_string())
                             .unwrap_or_else(|| "<unknown path>".to_string());
                         println!(
                             "  {} WalkDir error while traversing {}: {}",
                             "!".yellow(),
                             path,
-                            err
+                            err.message
                         );
                     }
-                    tracing::debug!(error = %err, path = ?err.path(), "WalkDir entry skipped during nested-glob traversal");
+                    tracing::debug!(error = %err.message, path = ?err.path, "WalkDir entry skipped during nested-glob traversal");
                     continue;
                 }
             };
@@ -290,7 +362,7 @@ impl Linker {
             on_match(full_path, rel_path)?;
         }
 
-        Ok(())
+        Ok(complete)
     }
 }
 
