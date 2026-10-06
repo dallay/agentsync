@@ -674,12 +674,9 @@ where
     G: FnOnce(&Path),
 {
     use cap_std::fs::{OpenOptions, OpenOptionsExt};
-    use std::os::windows::io::AsRawHandle;
-    use windows_sys::Win32::Foundation::HANDLE;
     use windows_sys::Win32::Storage::FileSystem::{
-        DELETE, FILE_DISPOSITION_FLAG_DELETE, FILE_FLAG_BACKUP_SEMANTICS,
-        FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES, FILE_SHARE_READ, FILE_SHARE_WRITE,
-        FileDispositionInfoEx, SYNCHRONIZE, SetFileInformationByHandle,
+        DELETE, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ, FILE_SHARE_WRITE, SYNCHRONIZE,
     };
 
     let mut options = OpenOptions::new();
@@ -689,7 +686,7 @@ where
         .access_mode(DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE)
         // Deliberately omit FILE_SHARE_DELETE while holding this handle: a
         // concurrent process cannot rename/unlink the inspected entry before
-        // our handle-relative quarantine rename completes.
+        // disposition is applied to this same verified handle.
         .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE);
     let file = match parent.open_with(name, &options) {
         Ok(file) => file,
@@ -704,47 +701,19 @@ where
     }
     before_move();
 
-    for _ in 0..16 {
-        let quarantine_name = random_quarantine_name();
-        match rename_open_handle(&file, parent, &quarantine_name) {
-            Ok(()) => {
-                after_move(display_path);
-                let disposition =
-                    windows_sys::Win32::Storage::FileSystem::FILE_DISPOSITION_INFO_EX {
-                        Flags: FILE_DISPOSITION_FLAG_DELETE,
-                    };
-                // SAFETY: `file` is a valid handle opened with DELETE access;
-                // `disposition` is the documented input structure for
-                // FileDispositionInfoEx.
-                let deleted = unsafe {
-                    SetFileInformationByHandle(
-                        file.as_raw_handle() as HANDLE,
-                        FileDispositionInfoEx,
-                        (&disposition
-                            as *const windows_sys::Win32::Storage::FileSystem::FILE_DISPOSITION_INFO_EX)
-                            .cast::<std::ffi::c_void>(),
-                        std::mem::size_of_val(&disposition) as u32,
-                    )
-                };
-                if deleted == 0 {
-                    let cause = io::Error::last_os_error();
-                    return Err(anyhow::anyhow!(
-                        "failed to delete quarantined symlink for {}: {}; recovery entry remains at {}",
-                        display_path.display(),
-                        cause,
-                        quarantine_path(display_path, &quarantine_name).display()
-                    ));
-                }
-                return Ok(RemoveOutcome::Removed);
-            }
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error).map_err(anyhow::Error::from),
-        }
-    }
-    anyhow::bail!(
-        "could not reserve a unique quarantine name for {}",
-        display_path.display()
-    )
+    // The verified handle was opened without FILE_SHARE_DELETE, so another
+    // process cannot rename or replace this directory entry before disposition.
+    // Delete the reparse point through that same handle rather than renaming it
+    // to a sibling: Windows rejects RootDirectory-based same-directory rename
+    // requests with ERROR_INVALID_PARAMETER on supported runners.
+    delete_open_handle(&file).with_context(|| {
+        format!(
+            "Failed to delete verified managed symlink: {}",
+            display_path.display()
+        )
+    })?;
+    after_move(display_path);
+    Ok(RemoveOutcome::Removed)
 }
 
 #[cfg(windows)]
@@ -996,11 +965,30 @@ pub(super) fn rename_open_handle(
     name: &OsStr,
 ) -> io::Result<()> {
     use std::os::windows::ffi::OsStrExt;
-    use std::os::windows::io::AsRawHandle;
-    use windows_sys::Win32::Foundation::HANDLE;
+    use std::os::windows::io::{AsRawHandle, FromRawHandle};
+    use windows_sys::Win32::Foundation::{HANDLE, INVALID_HANDLE_VALUE};
     use windows_sys::Win32::Storage::FileSystem::{
-        FILE_RENAME_INFO, FileRenameInfo, SetFileInformationByHandle,
+        FILE_FLAG_BACKUP_SEMANTICS, FILE_READ_ATTRIBUTES, FILE_RENAME_INFO, FILE_SHARE_READ,
+        FILE_SHARE_WRITE, FILE_TRAVERSE, FileRenameInfo, ReOpenFile, SYNCHRONIZE,
+        SetFileInformationByHandle,
     };
+
+    // The relative rename lookup needs FILE_TRAVERSE and FILE_READ_ATTRIBUTES
+    // on RootDirectory. A cap-std Dir is opened for directory listing, so
+    // reopen the same handle with the required access instead of resolving its
+    // path again.
+    let rename_root = unsafe {
+        ReOpenFile(
+            parent.as_raw_handle() as HANDLE,
+            FILE_TRAVERSE | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            FILE_FLAG_BACKUP_SEMANTICS,
+        )
+    };
+    if rename_root == INVALID_HANDLE_VALUE {
+        return Err(io::Error::last_os_error());
+    }
+    let rename_root = unsafe { std::fs::File::from_raw_handle(rename_root as _) };
 
     let wide_name = name.encode_wide().collect::<Vec<_>>();
     let file_name_length = u32::try_from(wide_name.len() * std::mem::size_of::<u16>())
@@ -1015,10 +1003,10 @@ pub(super) fn rename_open_handle(
     // fixed header plus a NUL-terminated UTF-16 filename tail; the API consumes
     // it before this stack-owned buffer is dropped. ReplaceIfExists=false
     // preserves no-replace behavior, and RootDirectory makes FileName relative
-    // to the already-open parent directory handle.
+    // to the reopened parent handle with traverse/read-attributes access.
     unsafe {
         (*info).Anonymous.ReplaceIfExists = false;
-        (*info).RootDirectory = parent.as_raw_handle() as HANDLE;
+        (*info).RootDirectory = rename_root.as_raw_handle() as HANDLE;
         (*info).FileNameLength = file_name_length;
         std::ptr::copy_nonoverlapping(
             wide_name.as_ptr(),
