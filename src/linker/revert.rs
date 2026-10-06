@@ -2845,53 +2845,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(windows)]
-    fn set_direct_relative_rename(
-        source: &std::fs::File,
-        root: windows_sys::Win32::Foundation::HANDLE,
-        name: &std::ffi::OsStr,
-    ) -> std::io::Result<()> {
-        use windows_sys::Win32::Foundation::HANDLE;
-        use windows_sys::Win32::Storage::FileSystem::{
-            FILE_RENAME_INFO, FileRenameInfo, SetFileInformationByHandle,
-        };
-
-        let wide_name = name.encode_wide().collect::<Vec<_>>();
-        let file_name_length = u32::try_from(wide_name.len() * std::mem::size_of::<u16>())
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "name too long"))?;
-        let file_name_offset = std::mem::offset_of!(FILE_RENAME_INFO, FileName);
-        let buffer_length = (file_name_offset + (wide_name.len() + 1) * std::mem::size_of::<u16>())
-            .max(std::mem::size_of::<FILE_RENAME_INFO>());
-        let buffer_length_u32 = u32::try_from(buffer_length).map_err(|_| {
-            std::io::Error::new(std::io::ErrorKind::InvalidInput, "buffer too long")
-        })?;
-        let mut buffer = vec![0u64; buffer_length.div_ceil(std::mem::size_of::<u64>())];
-        let info = buffer.as_mut_ptr().cast::<FILE_RENAME_INFO>();
-        // SAFETY: `buffer` is aligned and sized for the fixed structure and the
-        // NUL-terminated UTF-16 filename tail consumed synchronously by the API.
-        let renamed = unsafe {
-            (*info).Anonymous.ReplaceIfExists = false;
-            (*info).RootDirectory = root as HANDLE;
-            (*info).FileNameLength = file_name_length;
-            std::ptr::copy_nonoverlapping(
-                wide_name.as_ptr(),
-                (*info).FileName.as_mut_ptr(),
-                wide_name.len(),
-            );
-            *(*info).FileName.as_mut_ptr().add(wide_name.len()) = 0;
-            SetFileInformationByHandle(
-                source.as_raw_handle() as HANDLE,
-                FileRenameInfo,
-                info.cast(),
-                buffer_length_u32,
-            )
-        };
-        if renamed == 0 {
-            return Err(std::io::Error::last_os_error());
-        }
-        Ok(())
-    }
-
     fn make_linker_for_agent(
         project_root: &Path,
         agent_name: &str,
