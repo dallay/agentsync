@@ -6,6 +6,7 @@ use std::io;
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
 use std::ptr::null_mut;
+use std::sync::Mutex;
 
 use agentsync::gitignore::{cleanup_gitignore, update_gitignore};
 use tempfile::TempDir;
@@ -22,6 +23,8 @@ use windows_sys::Win32::Security::{
     SE_PRIVILEGE_ENABLED, SE_RESTORE_NAME, TOKEN_ADJUST_PRIVILEGES, TOKEN_PRIVILEGES, TOKEN_QUERY,
 };
 use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+static WINDOWS_SECURITY_TEST_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Debug, PartialEq, Eq)]
 struct SecuritySnapshot {
@@ -72,7 +75,7 @@ impl Drop for RestorePrivilegeGuard {
     }
 }
 
-fn enable_restore_privilege() -> io::Result<RestorePrivilegeGuard> {
+fn set_restore_privilege_enabled(enabled: bool) -> io::Result<RestorePrivilegeGuard> {
     let mut raw_token: HANDLE = null_mut();
     // SAFETY: GetCurrentProcess returns a pseudo-handle and OpenProcessToken
     // writes an owned token handle to `raw_token` on success.
@@ -99,7 +102,7 @@ fn enable_restore_privilege() -> io::Result<RestorePrivilegeGuard> {
         PrivilegeCount: 1,
         Privileges: [LUID_AND_ATTRIBUTES {
             Luid: privilege_luid,
-            Attributes: SE_PRIVILEGE_ENABLED,
+            Attributes: if enabled { SE_PRIVILEGE_ENABLED } else { 0 },
         }],
     };
     let mut previous = TOKEN_PRIVILEGES::default();
@@ -242,7 +245,10 @@ fn set_owner_sid(path: &Path, sid: &str) -> io::Result<()> {
 fn update_and_cleanup_preserve_gitignore_owner_sid_and_dacl() {
     const BUILTIN_USERS_SID: &str = "S-1-5-32-545";
 
-    let _restore_privilege = enable_restore_privilege()
+    let _serial = WINDOWS_SECURITY_TEST_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _restore_privilege = set_restore_privilege_enabled(true)
         .expect("test runner must have SeRestorePrivilege to construct a foreign-owner fixture");
     let temp = TempDir::new().unwrap();
     let gitignore = temp.path().join(".gitignore");
@@ -275,4 +281,40 @@ fn update_and_cleanup_preserve_gitignore_owner_sid_and_dacl() {
         expected,
         "atomic cleanup must preserve the original owner SID and DACL"
     );
+}
+
+#[test]
+fn update_fails_closed_and_keeps_original_when_owner_sid_cannot_be_restored() {
+    const BUILTIN_USERS_SID: &str = "S-1-5-32-545";
+
+    let _serial = WINDOWS_SECURITY_TEST_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _restore_privilege = set_restore_privilege_enabled(true)
+        .expect("test runner must have SeRestorePrivilege to construct a foreign-owner fixture");
+    let temp = TempDir::new().unwrap();
+    let gitignore = temp.path().join(".gitignore");
+    let original_contents = "existing-rule\n";
+    fs::write(&gitignore, original_contents).unwrap();
+    set_owner_sid(&gitignore, BUILTIN_USERS_SID).unwrap();
+    let expected_security = security_snapshot(&gitignore).unwrap();
+
+    // The original belongs to BUILTIN\Users, but the replacement runs without
+    // SeRestorePrivilege. It must fail before atomic persist rather than leave
+    // a staged file with a different owner SID.
+    let _restore_disabled = set_restore_privilege_enabled(false)
+        .expect("test runner must be able to disable SeRestorePrivilege temporarily");
+    let result = update_gitignore(
+        temp.path(),
+        "AgentSync",
+        &["generated.md".to_string()],
+        false,
+    );
+
+    assert!(
+        result.is_err(),
+        "update must fail closed when the original owner SID cannot be restored"
+    );
+    assert_eq!(fs::read_to_string(&gitignore).unwrap(), original_contents);
+    assert_eq!(security_snapshot(&gitignore).unwrap(), expected_security);
 }
