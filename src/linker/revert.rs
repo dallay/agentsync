@@ -2631,8 +2631,8 @@ mod tests {
         use windows_sys::Win32::Foundation::{HANDLE, INVALID_HANDLE_VALUE};
         use windows_sys::Win32::Storage::FileSystem::{
             DELETE, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES,
-            FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TRAVERSE, ReOpenFile,
-            SYNCHRONIZE,
+            FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TRAVERSE, FileRenameInfoEx,
+            ReOpenFile, SYNCHRONIZE,
         };
 
         let capability_directory = linker
@@ -2693,34 +2693,62 @@ mod tests {
                             &source_file,
                             Some(parent_file.as_raw_handle() as HANDLE),
                             &moved_name,
+                            false,
                         );
                         eprintln!(
                             "[ZCODE-CREATEFILE-RPI064] direct RootDirectory relative rename result={direct_rename:?}"
                         );
-                        let (rename_result, restore_root, restore_name) = if direct_rename.is_ok() {
+                        let (rename_result, restore_root, restore_name, extended) = if direct_rename
+                            .is_ok()
+                        {
                             (
                                 direct_rename,
                                 Some(parent_file.as_raw_handle() as HANDLE),
                                 probe_name.clone(),
+                                false,
                             )
                         } else {
-                            let absolute_rename = set_file_rename_info(
+                            let extended_relative_rename = set_file_rename_info(
                                 &source_file,
-                                None,
-                                absolute_moved_path.as_os_str(),
+                                Some(parent_file.as_raw_handle() as HANDLE),
+                                &moved_name,
+                                true,
                             );
                             eprintln!(
-                                "[ZCODE-CREATEFILE-RPI064] RootDirectory=NULL absolute rename result={absolute_rename:?}"
+                                "[ZCODE-CREATEFILE-RPI064] FileRenameInfoEx relative rename result={extended_relative_rename:?}"
                             );
-                            (
-                                absolute_rename,
-                                None,
-                                absolute_probe_path.as_os_str().to_os_string(),
-                            )
+                            if extended_relative_rename.is_ok() {
+                                (
+                                    extended_relative_rename,
+                                    Some(parent_file.as_raw_handle() as HANDLE),
+                                    probe_name.clone(),
+                                    true,
+                                )
+                            } else {
+                                let absolute_rename = set_file_rename_info(
+                                    &source_file,
+                                    None,
+                                    absolute_moved_path.as_os_str(),
+                                    false,
+                                );
+                                eprintln!(
+                                    "[ZCODE-CREATEFILE-RPI064] RootDirectory=NULL absolute rename result={absolute_rename:?}"
+                                );
+                                (
+                                    absolute_rename,
+                                    None,
+                                    absolute_probe_path.as_os_str().to_os_string(),
+                                    false,
+                                )
+                            }
                         };
                         if rename_result.is_ok() {
-                            let restore_result =
-                                set_file_rename_info(&source_file, restore_root, &restore_name);
+                            let restore_result = set_file_rename_info(
+                                &source_file,
+                                restore_root,
+                                &restore_name,
+                                extended,
+                            );
                             eprintln!(
                                 "[ZCODE-CREATEFILE-RPI064] direct rename-back result={restore_result:?}"
                             );
@@ -2824,12 +2852,13 @@ mod tests {
         source: &std::fs::File,
         root: Option<windows_sys::Win32::Foundation::HANDLE>,
         name: &std::ffi::OsStr,
+        extended: bool,
     ) -> std::io::Result<()> {
         use std::os::windows::ffi::OsStrExt;
         use std::os::windows::io::AsRawHandle;
         use windows_sys::Win32::Foundation::HANDLE;
         use windows_sys::Win32::Storage::FileSystem::{
-            FILE_RENAME_INFO, FileRenameInfo, SetFileInformationByHandle,
+            FILE_RENAME_INFO, FileRenameInfo, FileRenameInfoEx, SetFileInformationByHandle,
         };
 
         let wide_name = name.encode_wide().collect::<Vec<_>>();
@@ -2846,7 +2875,11 @@ mod tests {
         // SAFETY: `buffer` is aligned and sized for FILE_RENAME_INFO and its
         // NUL-terminated UTF-16 name tail, consumed synchronously by the API.
         let renamed = unsafe {
-            (*info).Anonymous.ReplaceIfExists = false;
+            if extended {
+                (*info).Anonymous.Flags = 0;
+            } else {
+                (*info).Anonymous.ReplaceIfExists = false;
+            }
             (*info).RootDirectory = root.unwrap_or(std::ptr::null_mut()) as HANDLE;
             (*info).FileNameLength = file_name_length;
             std::ptr::copy_nonoverlapping(
@@ -2857,7 +2890,11 @@ mod tests {
             *(*info).FileName.as_mut_ptr().add(wide_name.len()) = 0;
             SetFileInformationByHandle(
                 source.as_raw_handle() as HANDLE,
-                FileRenameInfo,
+                if extended {
+                    FileRenameInfoEx
+                } else {
+                    FileRenameInfo
+                },
                 info.cast(),
                 buffer_length_u32,
             )
