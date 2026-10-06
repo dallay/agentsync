@@ -3636,7 +3636,14 @@ mod tests {
         };
         let linker = Linker::new(config, project_root.join("agentsync.toml"));
 
-        let result = linker.revert(&SyncOptions::default()).unwrap();
+        let subscriber = tracing_subscriber::fmt()
+            .with_test_writer()
+            .with_max_level(tracing::Level::WARN)
+            .finish();
+        let result = tracing::subscriber::with_default(subscriber, || {
+            linker.revert(&SyncOptions::default())
+        })
+        .unwrap();
 
         assert_eq!(result.restored, 1, "unexpected revert result: {result:?}");
         assert_eq!(result.errors, 0, "unexpected revert result: {result:?}");
@@ -3682,7 +3689,14 @@ mod tests {
         let linker = Linker::new(config, project_root.join("agentsync.toml"));
         fs::remove_file(source).unwrap();
 
-        let result = linker.revert(&SyncOptions::default()).unwrap();
+        let subscriber = tracing_subscriber::fmt()
+            .with_test_writer()
+            .with_max_level(tracing::Level::WARN)
+            .finish();
+        let result = tracing::subscriber::with_default(subscriber, || {
+            linker.revert(&SyncOptions::default())
+        })
+        .unwrap();
 
         assert_eq!(result.restored, 1, "unexpected revert result: {result:?}");
         assert_eq!(result.errors, 0, "unexpected revert result: {result:?}");
