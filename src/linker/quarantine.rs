@@ -856,6 +856,11 @@ where
         .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS)
         .access_mode(DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE)
         .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE);
+    #[cfg(test)]
+    eprintln!(
+        "[ZCODE-MOVE-RPI060] before opening backup source: {}",
+        source_path.display()
+    );
     let file = match parent.open_with(source_name, &options) {
         Ok(file) => file,
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
@@ -863,7 +868,16 @@ where
         }
         Err(error) => return Err(error.into()),
     };
+    #[cfg(test)]
+    eprintln!(
+        "[ZCODE-MOVE-RPI060] opened backup source: {}",
+        source_path.display()
+    );
+    #[cfg(test)]
+    eprintln!("[ZCODE-MOVE-RPI060] before reading backup metadata");
     let metadata = file.metadata()?;
+    #[cfg(test)]
+    eprintln!("[ZCODE-MOVE-RPI060] read backup metadata");
     if metadata.file_type().is_symlink()
         || (!metadata.is_file() && !metadata.is_dir())
         || !expected.matches(&metadata)
@@ -874,8 +888,15 @@ where
 
     for _ in 0..16 {
         let quarantine_name = random_quarantine_name();
+        #[cfg(test)]
+        eprintln!(
+            "[ZCODE-MOVE-RPI060] before quarantine rename: {}",
+            quarantine_name.to_string_lossy()
+        );
         match rename_open_handle(&file, parent, &quarantine_name) {
             Ok(()) => {
+                #[cfg(test)]
+                eprintln!("[ZCODE-MOVE-RPI060] quarantined backup; before destination publish");
                 after_quarantine(source_path);
                 if let Err(error) = rename_open_handle(&file, parent, destination_name) {
                     return Err(restore_windows_or_report(
@@ -890,6 +911,8 @@ where
                         format!("failed to publish backup at {}", destination_path.display())
                     });
                 }
+                #[cfg(test)]
+                eprintln!("[ZCODE-MOVE-RPI060] published backup at destination");
                 return Ok(MoveOutcome::Moved);
             }
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
