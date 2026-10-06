@@ -9,14 +9,19 @@ use std::ptr::null_mut;
 
 use agentsync::gitignore::{cleanup_gitignore, update_gitignore};
 use tempfile::TempDir;
-use windows_sys::Win32::Foundation::{HLOCAL, LocalFree};
+use windows_sys::Win32::Foundation::{
+    CloseHandle, ERROR_NOT_ALL_ASSIGNED, GetLastError, HANDLE, HLOCAL, LocalFree, SetLastError,
+};
 use windows_sys::Win32::Security::Authorization::{
     ConvertStringSidToSidW, GetNamedSecurityInfoW, SE_FILE_OBJECT, SetNamedSecurityInfoW,
 };
 use windows_sys::Win32::Security::{
-    ACL, DACL_SECURITY_INFORMATION, GetLengthSid, GetSecurityDescriptorControl,
+    ACL, AdjustTokenPrivileges, DACL_SECURITY_INFORMATION, GetLengthSid,
+    GetSecurityDescriptorControl, LUID_AND_ATTRIBUTES, LookupPrivilegeValueW,
     OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID, SE_DACL_PROTECTED,
+    SE_PRIVILEGE_ENABLED, SE_RESTORE_NAME, TOKEN_ADJUST_PRIVILEGES, TOKEN_PRIVILEGES, TOKEN_QUERY,
 };
+use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
 #[derive(Debug, PartialEq, Eq)]
 struct SecuritySnapshot {
@@ -37,6 +42,94 @@ impl Drop for LocalAllocation {
             }
         }
     }
+}
+
+struct TokenHandle(HANDLE);
+
+impl Drop for TokenHandle {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            // SAFETY: OpenProcessToken created this owned handle.
+            unsafe {
+                CloseHandle(self.0);
+            }
+        }
+    }
+}
+
+struct RestorePrivilegeGuard {
+    token: TokenHandle,
+    previous: TOKEN_PRIVILEGES,
+}
+
+impl Drop for RestorePrivilegeGuard {
+    fn drop(&mut self) {
+        // SAFETY: The token remains open and `previous` contains the state
+        // returned by AdjustTokenPrivileges when the privilege was enabled.
+        unsafe {
+            AdjustTokenPrivileges(self.token.0, 0, &self.previous, 0, null_mut(), null_mut());
+        }
+    }
+}
+
+fn enable_restore_privilege() -> io::Result<RestorePrivilegeGuard> {
+    let mut raw_token: HANDLE = null_mut();
+    // SAFETY: GetCurrentProcess returns a pseudo-handle and OpenProcessToken
+    // writes an owned token handle to `raw_token` on success.
+    if unsafe {
+        OpenProcessToken(
+            GetCurrentProcess(),
+            TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY,
+            &mut raw_token,
+        )
+    } == 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+    let token = TokenHandle(raw_token);
+
+    let mut privilege_luid = windows_sys::Win32::Foundation::LUID::default();
+    // SAFETY: SE_RESTORE_NAME is a static NUL-terminated Windows string and
+    // `privilege_luid` is a valid output location.
+    if unsafe { LookupPrivilegeValueW(null_mut(), SE_RESTORE_NAME, &mut privilege_luid) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+
+    let requested = TOKEN_PRIVILEGES {
+        PrivilegeCount: 1,
+        Privileges: [LUID_AND_ATTRIBUTES {
+            Luid: privilege_luid,
+            Attributes: SE_PRIVILEGE_ENABLED,
+        }],
+    };
+    let mut previous = TOKEN_PRIVILEGES::default();
+    let mut returned_length = 0;
+    // A successful AdjustTokenPrivileges call may still leave the requested
+    // privilege unassigned; clear and inspect last error as required by Win32.
+    unsafe {
+        SetLastError(0);
+    }
+    // SAFETY: Both privilege structures and the returned-length output remain
+    // valid for the duration of the call; `token` holds the required access.
+    if unsafe {
+        AdjustTokenPrivileges(
+            token.0,
+            0,
+            &requested,
+            std::mem::size_of::<TOKEN_PRIVILEGES>() as u32,
+            &mut previous,
+            &mut returned_length,
+        )
+    } == 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+    let last_error = unsafe { GetLastError() };
+    if last_error == ERROR_NOT_ALL_ASSIGNED {
+        return Err(io::Error::from_raw_os_error(last_error as i32));
+    }
+
+    Ok(RestorePrivilegeGuard { token, previous })
 }
 
 fn wide_path(path: &Path) -> Vec<u16> {
@@ -149,6 +242,8 @@ fn set_owner_sid(path: &Path, sid: &str) -> io::Result<()> {
 fn update_and_cleanup_preserve_gitignore_owner_sid_and_dacl() {
     const BUILTIN_USERS_SID: &str = "S-1-5-32-545";
 
+    let _restore_privilege = enable_restore_privilege()
+        .expect("test runner must have SeRestorePrivilege to construct a foreign-owner fixture");
     let temp = TempDir::new().unwrap();
     let gitignore = temp.path().join(".gitignore");
     fs::write(&gitignore, "existing-rule\n").unwrap();
