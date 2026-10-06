@@ -3118,6 +3118,51 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
+    fn keep_backups_rejection_preserves_symlink_and_backup() {
+        use std::os::windows::fs::symlink_file;
+
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+        fs::create_dir_all(project_root.join(".agents")).unwrap();
+        let source = project_root.join(".agents/source.md");
+        fs::write(&source, "managed source").unwrap();
+
+        let dest = project_root.join("dest.md");
+        let target = make_target("source.md", "dest.md", SyncType::Symlink);
+        let linker = make_linker(project_root, true, target);
+        let expected = linker.relative_path(&dest, &source, false).unwrap();
+        symlink_file(&expected, &dest).unwrap();
+        let backup = project_root.join("dest.md.bak");
+        fs::write(&backup, "original user data").unwrap();
+
+        let options = SyncOptions {
+            keep_backups: true,
+            ..Default::default()
+        };
+        let error = match linker.revert(&options) {
+            Err(error) => error.to_string(),
+            Ok(result) => {
+                panic!("Windows keep-backups should be rejected before mutation; result={result:?}")
+            }
+        };
+
+        assert!(
+            error.contains("--keep-backups is not supported on Windows"),
+            "{error}"
+        );
+        assert!(
+            dest.is_symlink(),
+            "the managed symlink must remain in place"
+        );
+        assert_eq!(
+            fs::read_to_string(&backup).unwrap(),
+            "original user data",
+            "the backup must remain untouched"
+        );
+    }
+
+    #[test]
     #[cfg(unix)]
     fn restore_backup_refuses_existing_symlink_destination_with_keep_backups() {
         use std::os::unix::fs::symlink;
