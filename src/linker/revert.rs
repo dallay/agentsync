@@ -2713,6 +2713,24 @@ mod tests {
             if delete_share_reopen != INVALID_HANDLE_VALUE {
                 drop(unsafe { std::fs::File::from_raw_handle(delete_share_reopen as _) });
             }
+
+            let no_flags_reopen = unsafe {
+                ReOpenFile(
+                    handle as HANDLE,
+                    0,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                    0,
+                )
+            };
+            let no_flags_error =
+                (no_flags_reopen == INVALID_HANDLE_VALUE).then(std::io::Error::last_os_error);
+            eprintln!(
+                "[ZCODE-REOPEN-RPI063] {label} zero-access + no flags valid={} error={no_flags_error:?}",
+                no_flags_error.is_none()
+            );
+            if no_flags_reopen != INVALID_HANDLE_VALUE {
+                drop(unsafe { std::fs::File::from_raw_handle(no_flags_reopen as _) });
+            }
         }
     }
 
