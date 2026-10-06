@@ -2625,12 +2625,14 @@ mod tests {
 
     #[cfg(windows)]
     fn diagnose_reopenfile_handle_origin(linker: &Linker, directory: &Path) {
+        use std::os::windows::ffi::OsStrExt;
         use std::os::windows::fs::OpenOptionsExt;
         use std::os::windows::io::{AsRawHandle, FromRawHandle};
         use windows_sys::Win32::Foundation::{HANDLE, INVALID_HANDLE_VALUE};
         use windows_sys::Win32::Storage::FileSystem::{
-            FILE_FLAG_BACKUP_SEMANTICS, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_READ,
-            FILE_SHARE_WRITE, FILE_TRAVERSE, ReOpenFile, SYNCHRONIZE,
+            DELETE, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES,
+            FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TRAVERSE, ReOpenFile,
+            SYNCHRONIZE,
         };
 
         let capability_directory = linker
@@ -2661,9 +2663,53 @@ mod tests {
             .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
             .open(directory);
         match direct_createfile {
-            Ok(file) => {
+            Ok(parent_file) => {
                 eprintln!("[ZCODE-CREATEFILE-RPI064] direct requested-rights open succeeded");
-                drop(file);
+                let probe_name = std::ffi::OsString::from(format!(
+                    ".agentsync-reopen-probe-{:016x}.tmp",
+                    rand::random::<u64>()
+                ));
+                let moved_name = std::ffi::OsString::from(format!(
+                    ".agentsync-reopen-probe-moved-{:016x}.tmp",
+                    rand::random::<u64>()
+                ));
+                let probe_path = directory.join(&probe_name);
+                let moved_path = directory.join(&moved_name);
+                fs::write(&probe_path, b"ReOpenFile diagnostic probe")
+                    .expect("write diagnostic source file");
+                let source_file = std::fs::OpenOptions::new()
+                    .access_mode(DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE)
+                    .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+                    .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+                    .open(&probe_path);
+                match source_file {
+                    Ok(source_file) => {
+                        let direct_rename = set_direct_relative_rename(
+                            &source_file,
+                            parent_file.as_raw_handle() as HANDLE,
+                            &moved_name,
+                        );
+                        eprintln!(
+                            "[ZCODE-CREATEFILE-RPI064] direct RootDirectory rename result={direct_rename:?}"
+                        );
+                        if direct_rename.is_ok() {
+                            let restore_name = set_direct_relative_rename(
+                                &source_file,
+                                parent_file.as_raw_handle() as HANDLE,
+                                &probe_name,
+                            );
+                            eprintln!(
+                                "[ZCODE-CREATEFILE-RPI064] direct RootDirectory rename-back result={restore_name:?}"
+                            );
+                        }
+                    }
+                    Err(error) => eprintln!(
+                        "[ZCODE-CREATEFILE-RPI064] opening diagnostic source with DELETE failed: {error:?}"
+                    ),
+                }
+                drop(parent_file);
+                let _ = fs::remove_file(probe_path);
+                let _ = fs::remove_file(moved_path);
             }
             Err(error) => eprintln!(
                 "[ZCODE-CREATEFILE-RPI064] direct requested-rights open failed: {error:?}"
@@ -2748,6 +2794,102 @@ mod tests {
                 drop(unsafe { std::fs::File::from_raw_handle(no_flags_reopen as _) });
             }
         }
+    }
+
+    #[cfg(windows)]
+    fn set_direct_relative_rename(
+        source: &std::fs::File,
+        root: windows_sys::Win32::Foundation::HANDLE,
+        name: &std::ffi::OsStr,
+    ) -> std::io::Result<()> {
+        use std::os::windows::ffi::OsStrExt;
+        use std::os::windows::io::AsRawHandle;
+        use windows_sys::Win32::Foundation::HANDLE;
+        use windows_sys::Win32::Storage::FileSystem::{
+            FILE_RENAME_INFO, FileRenameInfo, SetFileInformationByHandle,
+        };
+
+        let wide_name = name.encode_wide().collect::<Vec<_>>();
+        let file_name_length = u32::try_from(wide_name.len() * std::mem::size_of::<u16>())
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "name too long"))?;
+        let file_name_offset = std::mem::offset_of!(FILE_RENAME_INFO, FileName);
+        let buffer_length = (file_name_offset + (wide_name.len() + 1) * std::mem::size_of::<u16>())
+            .max(std::mem::size_of::<FILE_RENAME_INFO>());
+        let buffer_length_u32 = u32::try_from(buffer_length).map_err(|_| {
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, "rename buffer too large")
+        })?;
+        let mut buffer = vec![0u64; buffer_length.div_ceil(std::mem::size_of::<u64>())];
+        let info = buffer.as_mut_ptr().cast::<FILE_RENAME_INFO>();
+        // SAFETY: `buffer` is aligned and sized for FILE_RENAME_INFO and its
+        // NUL-terminated UTF-16 name tail, consumed synchronously by the API.
+        let renamed = unsafe {
+            (*info).Anonymous.ReplaceIfExists = false;
+            (*info).RootDirectory = root as HANDLE;
+            (*info).FileNameLength = file_name_length;
+            std::ptr::copy_nonoverlapping(
+                wide_name.as_ptr(),
+                (*info).FileName.as_mut_ptr(),
+                wide_name.len(),
+            );
+            *(*info).FileName.as_mut_ptr().add(wide_name.len()) = 0;
+            SetFileInformationByHandle(
+                source.as_raw_handle() as HANDLE,
+                FileRenameInfo,
+                info.cast(),
+                buffer_length_u32,
+            )
+        };
+        if renamed == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    fn set_direct_relative_rename(
+        source: &std::fs::File,
+        root: windows_sys::Win32::Foundation::HANDLE,
+        name: &std::ffi::OsStr,
+    ) -> std::io::Result<()> {
+        use windows_sys::Win32::Foundation::HANDLE;
+        use windows_sys::Win32::Storage::FileSystem::{
+            FILE_RENAME_INFO, FileRenameInfo, SetFileInformationByHandle,
+        };
+
+        let wide_name = name.encode_wide().collect::<Vec<_>>();
+        let file_name_length = u32::try_from(wide_name.len() * std::mem::size_of::<u16>())
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "name too long"))?;
+        let file_name_offset = std::mem::offset_of!(FILE_RENAME_INFO, FileName);
+        let buffer_length = (file_name_offset + (wide_name.len() + 1) * std::mem::size_of::<u16>())
+            .max(std::mem::size_of::<FILE_RENAME_INFO>());
+        let buffer_length_u32 = u32::try_from(buffer_length).map_err(|_| {
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, "buffer too long")
+        })?;
+        let mut buffer = vec![0u64; buffer_length.div_ceil(std::mem::size_of::<u64>())];
+        let info = buffer.as_mut_ptr().cast::<FILE_RENAME_INFO>();
+        // SAFETY: `buffer` is aligned and sized for the fixed structure and the
+        // NUL-terminated UTF-16 filename tail consumed synchronously by the API.
+        let renamed = unsafe {
+            (*info).Anonymous.ReplaceIfExists = false;
+            (*info).RootDirectory = root as HANDLE;
+            (*info).FileNameLength = file_name_length;
+            std::ptr::copy_nonoverlapping(
+                wide_name.as_ptr(),
+                (*info).FileName.as_mut_ptr(),
+                wide_name.len(),
+            );
+            *(*info).FileName.as_mut_ptr().add(wide_name.len()) = 0;
+            SetFileInformationByHandle(
+                source.as_raw_handle() as HANDLE,
+                FileRenameInfo,
+                info.cast(),
+                buffer_length_u32,
+            )
+        };
+        if renamed == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(())
     }
 
     fn make_linker_for_agent(
