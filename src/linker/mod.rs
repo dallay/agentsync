@@ -25,6 +25,7 @@ mod clean;
 mod discovery;
 mod enumerate;
 mod paths;
+mod quarantine;
 mod revert;
 mod symlinks;
 pub mod timing;
@@ -41,6 +42,15 @@ enum ExistingSymlinkAction {
 
 type NestedGlobKey = (PathBuf, String, Vec<String>);
 type NestedGlobMatches = Rc<Vec<(PathBuf, PathBuf)>>;
+type NestedGlobCacheEntry = (NestedGlobMatches, bool);
+#[cfg(test)]
+type ReadContentsAfterOpenHook = Rc<dyn Fn(&Path)>;
+#[cfg(test)]
+type ProjectRootBeforeOpenHook = Box<dyn FnOnce(&Path)>;
+#[cfg(test)]
+type QuarantineBeforeMoveHook = Rc<dyn Fn(&Path)>;
+#[cfg(test)]
+type QuarantineAfterMoveHook = Rc<dyn Fn(&Path)>;
 
 /// Options for the sync operation
 #[derive(Debug, Default)]
@@ -93,15 +103,29 @@ pub struct Linker {
     /// of scanning the whole map per mutation.
     path_cache: RefCell<BTreeMap<PathBuf, Rc<PathBuf>>>,
     compression_cache: RefCell<HashMap<PathBuf, Rc<str>>>,
-    /// Cache for NestedGlob discovery results: (search_root, pattern, excludes) -> [(full_path, rel_path)]
-    glob_cache: RefCell<HashMap<NestedGlobKey, NestedGlobMatches>>,
+    /// Cache for NestedGlob discovery results and traversal completion:
+    /// (search_root, pattern, excludes) -> (matches, complete).
+    glob_cache: RefCell<HashMap<NestedGlobKey, NestedGlobCacheEntry>>,
     ensured_dirs: RefCell<HashSet<PathBuf>>,
     ensured_compressed: RefCell<HashSet<PathBuf>>,
     canonical_project_root: RefCell<Option<Rc<PathBuf>>>,
+    project_root_capability: RefCell<Option<cap_std::fs::Dir>>,
     /// Timing sink for the developer-only benchmark harness. `None` in normal
     /// runs, where the guarded spans short-circuit without any `Instant::now`
     /// cost.
     timing: RefCell<Option<Rc<RefCell<TimingSink>>>>,
+    #[cfg(test)]
+    read_contents_after_open_hook: RefCell<Option<ReadContentsAfterOpenHook>>,
+    #[cfg(test)]
+    project_root_before_open_hook: RefCell<Option<ProjectRootBeforeOpenHook>>,
+    #[cfg(test)]
+    quarantine_before_move_hook: RefCell<Option<QuarantineBeforeMoveHook>>,
+    #[cfg(test)]
+    quarantine_before_container_move_hook: RefCell<Option<QuarantineBeforeMoveHook>>,
+    #[cfg(test)]
+    quarantine_after_move_hook: RefCell<Option<QuarantineAfterMoveHook>>,
+    #[cfg(test)]
+    nested_glob_walk_override: RefCell<Option<Box<dyn discovery::NestedGlobWalkIterator>>>,
 }
 
 impl Linker {
@@ -121,7 +145,20 @@ impl Linker {
             ensured_dirs: RefCell::new(HashSet::new()),
             ensured_compressed: RefCell::new(HashSet::new()),
             canonical_project_root: RefCell::new(None),
+            project_root_capability: RefCell::new(None),
             timing: RefCell::new(None),
+            #[cfg(test)]
+            read_contents_after_open_hook: RefCell::new(None),
+            #[cfg(test)]
+            project_root_before_open_hook: RefCell::new(None),
+            #[cfg(test)]
+            quarantine_before_move_hook: RefCell::new(None),
+            #[cfg(test)]
+            quarantine_before_container_move_hook: RefCell::new(None),
+            #[cfg(test)]
+            quarantine_after_move_hook: RefCell::new(None),
+            #[cfg(test)]
+            nested_glob_walk_override: RefCell::new(None),
         }
     }
 
@@ -2696,6 +2733,7 @@ mod tests {
         let result = linker.clean(&SyncOptions::default()).unwrap();
 
         assert_eq!(result.removed, 0);
+        assert_eq!(result.skipped, 1);
     }
 
     #[test]
@@ -3276,6 +3314,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.removed, 0);
+        assert_eq!(result.skipped, 1);
         assert!(
             !temp_dir
                 .path()

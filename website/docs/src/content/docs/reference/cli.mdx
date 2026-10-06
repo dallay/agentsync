@@ -197,6 +197,8 @@ agentsync clean [FLAGS]
 
 Restores the pre-apply state: removes managed symbolic links and restores the `.bak` backups of files that existed before `apply` replaced them. Unlike `clean` (which only deletes), `revert` brings your original files back.
 
+This core revert restores managed symlink state only. It does not inspect or restore MCP config files; the full pre-apply state may therefore remain until the MCP-aware follow-up is available.
+
 ```bash
 agentsync revert [FLAGS]
 ```

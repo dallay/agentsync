@@ -72,6 +72,61 @@ fn test_revert_restores_pre_apply_file() {
 
 #[test]
 #[cfg(unix)]
+fn core_revert_discloses_mcp_phase_is_not_included_after_config_changes() {
+    let temp_dir = TempDir::new().unwrap();
+    let project_root = temp_dir.path();
+    write_fixture(project_root);
+    let config_path = project_root.join(".agents/agentsync.toml");
+    let config = fs::read_to_string(&config_path).unwrap();
+    fs::write(
+        &config_path,
+        format!(
+            "{config}\n[mcp]\nenabled = true\n\n[mcp_servers.fixture]\ncommand = \"fixture-server\"\n"
+        ),
+    )
+    .unwrap();
+
+    let apply = run_agentsync(project_root, &["apply"]);
+    assert!(
+        apply.status.success(),
+        "{}",
+        String::from_utf8_lossy(&apply.stderr)
+    );
+    let mcp_config = project_root.join(".mcp.json");
+    assert!(mcp_config.exists());
+
+    let config = fs::read_to_string(&config_path).unwrap();
+    let updated_config = config.replace(
+        "[mcp]\nenabled = true\n\n[mcp_servers.fixture]\ncommand = \"fixture-server\"\n",
+        "[mcp]\nenabled = false\n",
+    );
+    assert_ne!(updated_config, config);
+    fs::write(&config_path, updated_config).unwrap();
+
+    let revert = run_agentsync(project_root, &["revert"]);
+    assert!(
+        revert.status.success(),
+        "{}",
+        String::from_utf8_lossy(&revert.stderr)
+    );
+    let output = String::from_utf8_lossy(&revert.stdout);
+    assert!(
+        output.contains("MCP config files are not inspected or restored"),
+        "core-only scope must be explicit even when MCP is now disabled: {output}"
+    );
+    assert!(output.contains("Symlink revert complete"), "{output}");
+    assert!(
+        mcp_config.exists(),
+        "core-only revert must not modify MCP files"
+    );
+    let gitignore = project_root.join(".gitignore");
+    if gitignore.exists() {
+        assert!(!fs::read_to_string(gitignore).unwrap().contains("START"));
+    }
+}
+
+#[test]
+#[cfg(unix)]
 fn test_revert_dry_run_changes_nothing() {
     let temp_dir = TempDir::new().unwrap();
     let project_root = temp_dir.path();
