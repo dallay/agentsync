@@ -2677,6 +2677,24 @@ mod tests {
             if reopened != INVALID_HANDLE_VALUE {
                 drop(unsafe { std::fs::File::from_raw_handle(reopened as _) });
             }
+
+            let zero_access_reopen = unsafe {
+                ReOpenFile(
+                    handle as HANDLE,
+                    0,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE,
+                    FILE_FLAG_BACKUP_SEMANTICS,
+                )
+            };
+            let zero_access_error =
+                (zero_access_reopen == INVALID_HANDLE_VALUE).then(std::io::Error::last_os_error);
+            eprintln!(
+                "[ZCODE-REOPEN-RPI061] {label} zero-access reopen valid={} error={zero_access_error:?}",
+                zero_access_error.is_none()
+            );
+            if zero_access_reopen != INVALID_HANDLE_VALUE {
+                drop(unsafe { std::fs::File::from_raw_handle(zero_access_reopen as _) });
+            }
         }
     }
 
