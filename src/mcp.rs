@@ -1368,6 +1368,14 @@ pub(crate) fn preserve_windows_file_dacl(source: &Path, destination: &Path) -> s
 }
 
 #[cfg(windows)]
+pub(crate) fn preserve_windows_file_owner_sid(
+    source: &Path,
+    destination: &Path,
+) -> std::io::Result<()> {
+    windows_mcp_acl::preserve_owner_sid(source, destination)
+}
+
+#[cfg(windows)]
 pub(crate) fn verify_restricted_permissions(path: &Path) -> std::io::Result<()> {
     let sid = windows_mcp_acl::current_process_user_sid()?;
     windows_mcp_acl::verify_owner_only(path, &sid)
@@ -1449,6 +1457,12 @@ mod windows_mcp_acl {
         snapshot: DaclSnapshot,
     }
 
+    struct NamedOwner {
+        _descriptor: LocalAllocation,
+        owner: *mut c_void,
+        sid: String,
+    }
+
     fn api_error() -> io::Error {
         io::Error::last_os_error()
     }
@@ -1519,6 +1533,80 @@ mod windows_mcp_acl {
                 },
             })
         }
+    }
+
+    fn named_owner(path: &Path) -> io::Result<NamedOwner> {
+        use windows_sys::Win32::Security::OWNER_SECURITY_INFORMATION;
+
+        let wide_path = path_wide(path)?;
+        // SAFETY: GetNamedSecurityInfoW initializes the descriptor and owner
+        // pointer on success. LocalAllocation keeps the SID's storage alive.
+        unsafe {
+            let mut owner = null_mut();
+            let mut descriptor = null_mut();
+            let status = GetNamedSecurityInfoW(
+                wide_path.as_ptr(),
+                SE_FILE_OBJECT,
+                OWNER_SECURITY_INFORMATION,
+                &mut owner,
+                null_mut(),
+                null_mut(),
+                null_mut(),
+                &mut descriptor,
+            );
+            if status != 0 {
+                return Err(io::Error::from_raw_os_error(status as i32));
+            }
+            if descriptor.is_null() || owner.is_null() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "Windows returned an empty .gitignore owner SID or security descriptor",
+                ));
+            }
+            let descriptor = LocalAllocation(descriptor);
+            let sid = sid_to_string(owner)?;
+            Ok(NamedOwner {
+                _descriptor: descriptor,
+                owner,
+                sid,
+            })
+        }
+    }
+
+    pub(super) fn preserve_owner_sid(source: &Path, destination: &Path) -> io::Result<()> {
+        use windows_sys::Win32::Security::OWNER_SECURITY_INFORMATION;
+
+        let source_owner = named_owner(source)?;
+        if source_owner.sid == named_owner(destination)?.sid {
+            return Ok(());
+        }
+
+        let wide_destination = path_wide(destination)?;
+        // SAFETY: `source_owner.owner` points into the live security descriptor
+        // retained by `source_owner`; the destination path is NUL-terminated.
+        let status = unsafe {
+            SetNamedSecurityInfoW(
+                wide_destination.as_ptr(),
+                SE_FILE_OBJECT,
+                OWNER_SECURITY_INFORMATION,
+                source_owner.owner,
+                null_mut(),
+                null_mut(),
+                null_mut(),
+            )
+        };
+        if status != 0 {
+            return Err(io::Error::from_raw_os_error(status as i32));
+        }
+
+        let staged_owner = named_owner(destination)?;
+        if staged_owner.sid != source_owner.sid {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "staged .gitignore owner SID does not match the original",
+            ));
+        }
+        Ok(())
     }
 
     pub(super) fn preserve_dacl(source: &Path, destination: &Path) -> io::Result<()> {
@@ -2114,7 +2202,14 @@ impl McpGenerator {
         dry_run: bool,
     ) -> Result<McpSyncResult> {
         let enabled_servers = self.get_enabled_servers();
-        self.generate_for_agent_with_servers(agent, project_root, &enabled_servers, dry_run, None)
+        self.generate_for_agent_with_servers(
+            agent,
+            project_root,
+            &enabled_servers,
+            dry_run,
+            None,
+            false,
+        )
     }
 
     /// Resolve the content to write from the exact previously-read file snapshot.
@@ -2210,6 +2305,7 @@ impl McpGenerator {
         enabled_servers: &BTreeMap<&str, &McpServerConfig>,
         dry_run: bool,
         ownership: Option<(&McpOwnershipStore, &BTreeSet<String>)>,
+        allow_rebase: bool,
     ) -> Result<McpSyncResult> {
         let mut result = McpSyncResult::default();
         let formatter = agent.formatter();
@@ -2244,12 +2340,21 @@ impl McpGenerator {
             )?;
             let was_existing = current_content.is_some();
             if current_content.as_deref() == Some(content.as_str()) {
-                if locked.add_owners_if_recorded(
+                let owners_changed = locked.add_owners_if_recorded(
                     project_root,
                     &config_path,
                     current_content.as_deref(),
                     agent_ids.clone(),
-                ) {
+                );
+                let journal_changed = fatal_mcp(locked.record_before_write_with_rebase(
+                    project_root,
+                    &config_path,
+                    agent_ids.clone(),
+                    current_content.as_deref(),
+                    &content,
+                    allow_rebase,
+                ))?;
+                if owners_changed || journal_changed {
                     fatal_mcp(locked.persist())?;
                 }
                 fatal_mcp(set_mcp_restricted_permissions(
@@ -2261,12 +2366,13 @@ impl McpGenerator {
                 return Ok(result);
             }
 
-            fatal_mcp(locked.record_before_write(
+            fatal_mcp(locked.record_before_write_with_rebase(
                 project_root,
                 &config_path,
                 agent_ids.clone(),
                 current_content.as_deref(),
                 &content,
+                allow_rebase,
             ))?;
             fatal_mcp(locked.persist())?;
             if fatal_mcp(read_mcp_config_if_regular(
@@ -2386,7 +2492,14 @@ impl McpGenerator {
         enabled_agents: &[McpAgent],
         dry_run: bool,
     ) -> Result<McpSyncResult> {
-        self.generate_all_internal(project_root, enabled_agents, dry_run, None, enabled_agents)
+        self.generate_all_internal(
+            project_root,
+            enabled_agents,
+            dry_run,
+            None,
+            enabled_agents,
+            false,
+        )
     }
 
     /// Apply generated MCP configs while journaling exact pre-write snapshots.
@@ -2397,6 +2510,7 @@ impl McpGenerator {
         configured_agents: &[McpAgent],
         dry_run: bool,
         data_root: Option<&Path>,
+        allow_rebase: bool,
     ) -> Result<McpSyncResult> {
         let store = if let Some(data_root) = data_root {
             #[cfg(test)]
@@ -2417,6 +2531,7 @@ impl McpGenerator {
             dry_run,
             Some(&store),
             configured_agents,
+            allow_rebase,
         )
     }
 
@@ -2427,6 +2542,7 @@ impl McpGenerator {
         dry_run: bool,
         ownership_store: Option<&McpOwnershipStore>,
         configured_agents: &[McpAgent],
+        allow_rebase: bool,
     ) -> Result<McpSyncResult> {
         let mut total_result = McpSyncResult::default();
         let enabled_servers = self.get_enabled_servers();
@@ -2471,6 +2587,7 @@ impl McpGenerator {
                 &enabled_servers,
                 dry_run,
                 ownership_store.map(|store| (store, &owners)),
+                allow_rebase,
             ) {
                 Ok(result) => {
                     total_result.created += result.created;
@@ -3288,6 +3405,86 @@ command = "remove-cmd"
                 .get("filesystem")
                 .is_some()
         );
+    }
+
+    #[test]
+    fn explicit_rebase_refreshes_journal_when_generated_content_is_already_present() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path().join("project");
+        fs::create_dir_all(&project_root).unwrap();
+        let config_path = project_root.join(".mcp.json");
+        let generator = McpGenerator::new(
+            BTreeMap::from([("filesystem".to_string(), create_test_server())]),
+            McpMergeStrategy::Overwrite,
+        );
+        let enabled_servers = generator.get_enabled_servers();
+        let expected_content = generator
+            .resolve_config_content(
+                McpAgent::ClaudeCode.formatter().as_ref(),
+                None,
+                &enabled_servers,
+            )
+            .unwrap();
+        fs::write(&config_path, &expected_content).unwrap();
+
+        let data_root = temp_dir.path().join("local-data");
+        let store = McpOwnershipStore::open_at(&project_root, &data_root).unwrap();
+        let mut locked = store.lock().unwrap();
+        locked
+            .record_before_write(
+                &project_root,
+                &config_path,
+                BTreeSet::from(["claude".to_string()]),
+                Some("original snapshot"),
+                "previous applied content",
+            )
+            .unwrap();
+        locked.persist().unwrap();
+        drop(locked);
+
+        let owners = BTreeSet::from(["claude".to_string()]);
+        let manifest_before = serde_json::to_vec(&store.read_existing().unwrap().unwrap()).unwrap();
+        let default_apply = generator.generate_for_agent_with_servers(
+            McpAgent::ClaudeCode,
+            &project_root,
+            &enabled_servers,
+            false,
+            Some((&store, &owners)),
+            false,
+        );
+        assert!(
+            default_apply.is_err(),
+            "a no-op apply must still fail closed when the journal hash diverges"
+        );
+        assert_eq!(
+            serde_json::to_vec(&store.read_existing().unwrap().unwrap()).unwrap(),
+            manifest_before
+        );
+
+        let result = generator
+            .generate_for_agent_with_servers(
+                McpAgent::ClaudeCode,
+                &project_root,
+                &enabled_servers,
+                false,
+                Some((&store, &owners)),
+                true,
+            )
+            .unwrap();
+
+        assert_eq!(result.skipped, 1, "identical config needs no file rewrite");
+        let manifest = store.read_existing().unwrap().unwrap();
+        let record = manifest.configs.values().next().unwrap();
+        assert_eq!(
+            record.original_content.as_deref(),
+            Some("original snapshot")
+        );
+        let expected_hash = crate::mcp_ownership::sha256_bytes(expected_content.as_bytes());
+        assert_eq!(
+            record.pre_write_sha256.as_deref(),
+            Some(expected_hash.as_str())
+        );
+        assert_eq!(record.applied_sha256, expected_hash);
     }
 
     #[test]

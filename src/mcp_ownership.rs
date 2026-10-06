@@ -50,21 +50,26 @@ pub(crate) struct ConfigPathLock {
 
 impl McpOwnershipStore {
     pub(crate) fn open(project_root: &Path) -> Result<Self> {
-        let data_root = dirs::data_local_dir()
-            .ok_or_else(|| anyhow!("could not resolve the local data directory"))?;
-        Self::open_with_data_root(project_root, &data_root)
+        let override_path = std::env::var_os("AGENTSYNC_DATA_DIR");
+        let allow_home_data_root = override_path.is_none();
+        let data_root = configured_data_root(override_path)?;
+        Self::open_with_data_root(project_root, &data_root, allow_home_data_root)
     }
 
     #[cfg(test)]
     pub(crate) fn open_at(project_root: &Path, data_root: &Path) -> Result<Self> {
-        Self::open_with_data_root(project_root, data_root)
+        Self::open_with_data_root(project_root, data_root, false)
     }
 
-    fn open_with_data_root(project_root: &Path, data_root: &Path) -> Result<Self> {
+    fn open_with_data_root(
+        project_root: &Path,
+        data_root: &Path,
+        allow_home_data_root: bool,
+    ) -> Result<Self> {
         let project_root = project_root
             .canonicalize()
             .context("failed to canonicalize project root")?;
-        let data_root = canonical_data_root(&project_root, data_root)?;
+        let data_root = canonical_data_root(&project_root, data_root, allow_home_data_root)?;
         let project_id = sha256_path(&project_root);
         let state_dir = state_directory_path(&data_root, &project_id);
 
@@ -169,6 +174,26 @@ impl LockedOwnership {
         current_content: Option<&str>,
         applied_content: &str,
     ) -> Result<()> {
+        self.record_before_write_with_rebase(
+            project_root,
+            config_path,
+            agent_ids,
+            current_content,
+            applied_content,
+            false,
+        )
+        .map(|_| ())
+    }
+
+    pub(crate) fn record_before_write_with_rebase(
+        &mut self,
+        project_root: &Path,
+        config_path: &Path,
+        agent_ids: BTreeSet<String>,
+        current_content: Option<&str>,
+        applied_content: &str,
+        allow_rebase: bool,
+    ) -> Result<bool> {
         let config_id = config_path_id(project_root, config_path);
         let current_hash = current_content.map(sha256_text);
         let previous = self.manifest.configs.get(&config_id);
@@ -181,6 +206,15 @@ impl LockedOwnership {
                 owners.extend(agent_ids);
                 (previous.original_content.clone(), owners)
             }
+            Some(previous) if allow_rebase => {
+                tracing::warn!(
+                    config_path = %config_path.display(),
+                    "Explicit MCP ownership rebase accepted; the original snapshot is retained and a later revert can discard intervening edits"
+                );
+                let mut owners = previous.agent_ids.clone();
+                owners.extend(agent_ids);
+                (previous.original_content.clone(), owners)
+            }
             Some(_) => bail!(
                 "MCP config {} no longer matches its ownership journal; refusing to rebase ownership snapshot",
                 config_path.display()
@@ -188,16 +222,24 @@ impl LockedOwnership {
             None => (current_content.map(str::to_owned), agent_ids),
         };
 
-        self.manifest.configs.insert(
-            config_id,
-            OwnershipRecord {
-                agent_ids,
-                original_content,
-                pre_write_sha256: current_hash,
-                applied_sha256: sha256_text(applied_content),
-            },
-        );
-        Ok(())
+        let updated = OwnershipRecord {
+            agent_ids,
+            original_content,
+            pre_write_sha256: current_hash,
+            applied_sha256: sha256_text(applied_content),
+        };
+        let changed = self
+            .manifest
+            .configs
+            .get(&config_id)
+            .is_none_or(|previous| {
+                previous.agent_ids != updated.agent_ids
+                    || previous.original_content != updated.original_content
+                    || previous.pre_write_sha256 != updated.pre_write_sha256
+                    || previous.applied_sha256 != updated.applied_sha256
+            });
+        self.manifest.configs.insert(config_id, updated);
+        Ok(changed)
     }
 
     pub(crate) fn add_owners_if_recorded(
@@ -548,7 +590,41 @@ fn state_directory_path(data_root: &Path, project_id: &str) -> PathBuf {
         .join(project_id)
 }
 
-fn canonical_data_root(project_root: &Path, data_root: &Path) -> Result<PathBuf> {
+fn canonical_data_root(
+    project_root: &Path,
+    data_root: &Path,
+    allow_home_data_root: bool,
+) -> Result<PathBuf> {
+    let home_root = dirs::home_dir().and_then(|home| fs::canonicalize(home).ok());
+    canonical_data_root_with_home(
+        project_root,
+        data_root,
+        home_root.as_deref(),
+        allow_home_data_root,
+    )
+}
+
+fn configured_data_root(override_path: Option<std::ffi::OsString>) -> Result<PathBuf> {
+    match override_path {
+        Some(path) if path.is_empty() => bail!("AGENTSYNC_DATA_DIR must not be empty"),
+        Some(path) => {
+            let path = PathBuf::from(path);
+            if !path.is_absolute() {
+                bail!("AGENTSYNC_DATA_DIR must be an absolute path");
+            }
+            Ok(path)
+        }
+        None => dirs::data_local_dir()
+            .ok_or_else(|| anyhow!("could not resolve the local data directory")),
+    }
+}
+
+fn canonical_data_root_with_home(
+    project_root: &Path,
+    data_root: &Path,
+    home_root: Option<&Path>,
+    allow_home_data_root: bool,
+) -> Result<PathBuf> {
     use std::path::Component;
 
     let absolute_data_root = if data_root.is_absolute() {
@@ -589,7 +665,9 @@ fn canonical_data_root(project_root: &Path, data_root: &Path) -> Result<PathBuf>
         resolved_data_root.push(component);
     }
 
-    if resolved_data_root.starts_with(project_root) {
+    let project_is_home =
+        allow_home_data_root && home_root.is_some_and(|home| project_root == home);
+    if resolved_data_root.starts_with(project_root) && !project_is_home {
         bail!("MCP ownership journal directory must be outside the project root");
     }
 
@@ -672,10 +750,20 @@ fn set_private_file_permissions(path: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{McpOwnershipStore, OwnershipRecord, sha256_text};
+    use super::{
+        McpOwnershipStore, OwnershipRecord, canonical_data_root_with_home, configured_data_root,
+        sha256_text,
+    };
     use std::collections::BTreeSet;
     use std::fs;
+    use std::path::PathBuf;
     use tempfile::TempDir;
+
+    #[test]
+    fn data_dir_override_rejects_relative_paths() {
+        let error = configured_data_root(Some("relative-cache".into())).unwrap_err();
+        assert!(error.to_string().contains("absolute path"));
+    }
 
     #[test]
     fn ownership_store_roundtrips_records() {
@@ -1114,7 +1202,7 @@ mod tests {
         assert_ne!(first_store.state_path, second_store.state_path);
     }
 
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     #[test]
     fn ownership_store_distinguishes_non_utf8_project_roots() {
         use std::ffi::OsString;
@@ -1245,7 +1333,10 @@ mod tests {
         symlink(&real_data_parent, &data_parent_link).unwrap();
 
         let store = McpOwnershipStore::open_at(&project, &data_root).unwrap();
-        let expected_root = real_data_parent.join("missing/nested");
+        let expected_root = real_data_parent
+            .canonicalize()
+            .unwrap()
+            .join("missing/nested");
         assert_eq!(
             store.state_path,
             expected_root
@@ -1281,6 +1372,118 @@ mod tests {
 
         assert!(McpOwnershipStore::open_at(&project, &data_root).is_err());
         assert!(!data_root.exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn ownership_store_uses_agentsync_data_dir_override() {
+        const CHILD_MARKER: &str = "AGENTSYNC_TEST_DATA_DIR_OVERRIDE_CHILD";
+        const PROJECT_ROOT: &str = "AGENTSYNC_TEST_DATA_DIR_OVERRIDE_PROJECT";
+
+        if std::env::var_os(CHILD_MARKER).is_some() {
+            let project_root = PathBuf::from(std::env::var_os(PROJECT_ROOT).unwrap());
+            McpOwnershipStore::open(&project_root)
+                .unwrap()
+                .lock()
+                .unwrap()
+                .persist()
+                .unwrap();
+            return;
+        }
+
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path().join("project");
+        let explicit_data_root = temp.path().join("explicit-data");
+        let fallback_data_root = temp.path().join("fallback-data");
+        let fake_home = temp.path().join("home");
+        fs::create_dir_all(&project_root).unwrap();
+        fs::create_dir_all(&fallback_data_root).unwrap();
+        fs::create_dir_all(&fake_home).unwrap();
+
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .arg("--exact")
+            .arg("mcp_ownership::tests::ownership_store_uses_agentsync_data_dir_override")
+            .arg("--nocapture")
+            .env(CHILD_MARKER, "1")
+            .env(PROJECT_ROOT, &project_root)
+            .env("AGENTSYNC_DATA_DIR", &explicit_data_root)
+            .env("XDG_DATA_HOME", &fallback_data_root)
+            .env("HOME", &fake_home)
+            .output()
+            .unwrap();
+
+        assert!(
+            output.status.success(),
+            "child failed:\n{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(explicit_data_root.join("agentsync/mcp-ownership").is_dir());
+        assert!(
+            !fallback_data_root.join("agentsync").exists(),
+            "the platform default data directory must not be used when the override is set"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn explicit_data_dir_override_inside_home_project_is_rejected() {
+        const CHILD_MARKER: &str = "AGENTSYNC_TEST_HOME_OVERRIDE_CHILD";
+        const PROJECT_ROOT: &str = "AGENTSYNC_TEST_HOME_OVERRIDE_PROJECT";
+        const DATA_ROOT: &str = "AGENTSYNC_TEST_HOME_OVERRIDE_DATA";
+
+        if std::env::var_os(CHILD_MARKER).is_some() {
+            let project_root = PathBuf::from(std::env::var_os(PROJECT_ROOT).unwrap());
+            let data_root = PathBuf::from(std::env::var_os(DATA_ROOT).unwrap());
+            assert!(
+                McpOwnershipStore::open(&project_root).is_err(),
+                "an explicit override inside the home project must not be treated as default state"
+            );
+            assert!(!data_root.exists());
+            return;
+        }
+
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path().join("home-project");
+        let data_root = project_root.join("tracked-data");
+        fs::create_dir_all(&project_root).unwrap();
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .arg("--exact")
+            .arg("mcp_ownership::tests::explicit_data_dir_override_inside_home_project_is_rejected")
+            .arg("--nocapture")
+            .env(CHILD_MARKER, "1")
+            .env(PROJECT_ROOT, &project_root)
+            .env(DATA_ROOT, &data_root)
+            .env("AGENTSYNC_DATA_DIR", &data_root)
+            .env("XDG_DATA_HOME", project_root.join(".local/share"))
+            .env("HOME", &project_root)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "child failed:\n{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[test]
+    fn data_root_under_home_is_allowed_when_project_root_is_home() {
+        let home = dirs::home_dir()
+            .expect("the test environment must have a home directory")
+            .canonicalize()
+            .unwrap();
+        let data_root = home.join(".local/share/agentsync-test-data");
+
+        assert_eq!(
+            canonical_data_root_with_home(&home, &data_root, Some(&home), true).unwrap(),
+            data_root
+        );
+        assert!(canonical_data_root_with_home(&home, &data_root, Some(&home), false).is_err());
+        assert!(
+            !data_root.exists(),
+            "resolving the default data root must not create it"
+        );
     }
 
     #[test]

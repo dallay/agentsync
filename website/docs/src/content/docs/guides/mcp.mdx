@@ -32,6 +32,7 @@ Restore is conditional:
 - If the file still matches the state recorded by `apply`, `revert` restores the original content exactly.
 - If the file did not exist before `apply`, `revert` removes the generated regular file only if it still matches the recorded state.
 - If the file changed after `apply`, became a symlink, fails journal validation, or the selected agents omit an owner of a shared MCP destination, `revert` preserves the file and journal and reports a skip or error. It does not merge later edits into the snapshot.
+- If an intentional edit blocks a later `apply`, back up the file and use `agentsync apply --rebase-mcp-journal` to explicitly continue. The apply uses the configured merge strategy and refreshes the journal hashes while retaining the original pre-first-apply snapshot and owners. A later `revert` still restores that original snapshot and can discard edits made since the first apply; inspect the MCP config after rebasing.
 
 For a skipped restore, safely save or resolve any later edits and retry `revert` with every recorded owner selected. Copilot and VS Code share `.vscode/mcp.json`, so that file is restored only when every owner recorded for it is included. Restore uses the recorded agent IDs even if an agent or `[mcp]` is now disabled; `--agents` and `default_agents` still control which owners are selected.
 
@@ -39,17 +40,19 @@ If there is no journal from an earlier AgentSync version, `revert` cannot recons
 
 #### Journal location and privacy
 
-The journal is stored outside the repository at `dirs::data_local_dir()/agentsync/mcp-ownership/<sha256-canonical-project-root>/ownership.json`. The platform data directory is:
+The journal is stored at `AGENTSYNC_DATA_DIR/agentsync/mcp-ownership/<sha256-canonical-project-root>/ownership.json` when `AGENTSYNC_DATA_DIR` is set; otherwise it uses `dirs::data_local_dir()/agentsync/mcp-ownership/<sha256-canonical-project-root>/ownership.json`. A project rooted exactly at the user's home directory may use the OS default local data directory beneath that root. An explicit `AGENTSYNC_DATA_DIR` must still resolve outside the project root, even for a home-directory project. The platform data directory is:
+
+If `$HOME` is itself a Git repository (for example, a dotfiles repository), the default journal directory is inside that repository root. The journal files are permission-restricted, but Git permissions do not prevent the same user from staging them; ensure `.local/share/agentsync` is ignored or do not stage its files.
 
 - Linux: `$XDG_DATA_HOME` when set, otherwise `$HOME/.local/share`.
 - macOS: `$HOME/Library/Application Support`.
 - Windows: `%LOCALAPPDATA%` (LocalAppData).
 
-The snapshot may contain credentials or tokens from the original MCP config. AgentSync never logs the content. On Unix, state directories use mode `0700` and files use mode `0600`. On Windows, AgentSync does not set custom ACLs; it relies on the OS-provided user-local LocalAppData ACLs.
+The snapshot may contain credentials or tokens from the original MCP config. AgentSync never logs the content. On Unix, state directories use mode `0700` and files use mode `0600`. On Windows, AgentSync applies and verifies a protected DACL granting full control only to the current process-token user.
 
 Journal records have no expiry or automatic cleanup. A record remains until its MCP config is successfully restored. `agentsync clean` does not remove the journal. After successful restore, the record is removed, but the empty `ownership.lock` file remains. `--keep-backups` applies only to `.bak` symlink backups; it does not retain an MCP journal after successful restore. `--dry-run` does not create or change MCP files or journal state. Symlinked MCP config files are refused rather than followed or replaced.
 
-Claude Desktop's MCP config is global, while its journal record belongs to the project that ran `apply`. AgentSync `apply` and `revert` operations targeting the same MCP path are serialized by a shared per-path lock, including operations started from different projects. A change detected before the final publish or restore check is preserved, and `revert` retains its journal record. This lock coordinates AgentSync processes only: an external editor that writes during the final compare-and-publish (or compare-and-remove) window is not coordinated and can still race with the operation.
+Claude Desktop's MCP config is global, while its journal record belongs to the project that ran `apply`. AgentSync `apply` and `revert` operations targeting the same MCP path are serialized by a shared per-path lock when the projects use the same default data directory or the same absolute `AGENTSYNC_DATA_DIR`. Relative overrides are rejected because they can resolve differently from different project working directories. If projects sharing a global MCP path use different override directories, their locks are separate; configure the same absolute override for all of them. A change detected before the final publish or restore check is preserved, and `revert` retains its journal record. This lock coordinates AgentSync processes only: an external editor that writes during the final compare-and-publish (or compare-and-remove) window is not coordinated and can still race with the operation.
 
 {/* agentsync:mcp:start */}
 - **Claude Code** — `.mcp.json` (agent id: `claude`) — JSON; Standard format

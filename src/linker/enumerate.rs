@@ -17,7 +17,7 @@ use std::path::{Component, Path, PathBuf};
 
 use crate::config::TargetConfig;
 
-use super::{Linker, SyncOptions};
+use super::{Linker, SyncOptions, quarantine};
 
 /// A destination string that failed `ensure_safe_destination`, kept with its
 /// display strings so callers can warn (revert) or stay silent (clean).
@@ -51,6 +51,9 @@ pub(super) enum NestedGlobDiscoveryStatus {
         search_root: PathBuf,
         reason: String,
     },
+    IncompleteWalk {
+        search_root: PathBuf,
+    },
 }
 
 /// One module-map destination: either validated or skipped, in mapping order.
@@ -68,6 +71,7 @@ pub(super) struct ContentsDirectory {
     directory: CapabilityDir,
     name: OsString,
     path: PathBuf,
+    identity: quarantine::EntryIdentity,
 }
 
 pub(super) struct ContentsEntry {
@@ -101,12 +105,45 @@ impl ContentsDirectory {
         self.directory.symlink_metadata(name)
     }
 
-    pub fn remove_file_or_symlink(&self, name: &OsStr) -> std::io::Result<()> {
-        self.directory.remove_file_or_symlink(name)
+    pub fn remove_symlink_if_unchanged<F, G>(
+        &self,
+        name: &OsStr,
+        expected: quarantine::EntryIdentity,
+        display_path: &Path,
+        before_move: F,
+        after_move: G,
+    ) -> anyhow::Result<quarantine::RemoveOutcome>
+    where
+        F: FnOnce(),
+        G: FnOnce(&Path),
+    {
+        quarantine::remove_symlink_if_unchanged(
+            &self.directory,
+            name,
+            expected,
+            display_path,
+            before_move,
+            after_move,
+        )
     }
 
-    pub fn remove_empty_directory(&self) -> std::io::Result<()> {
-        self.parent.remove_dir(&self.name)
+    pub fn remove_empty_directory<F, G>(
+        &self,
+        before_move: F,
+        after_move: G,
+    ) -> anyhow::Result<quarantine::RemoveDirectoryOutcome>
+    where
+        F: FnOnce(),
+        G: FnOnce(&Path),
+    {
+        quarantine::remove_empty_directory_if_unchanged(
+            &self.parent,
+            &self.name,
+            self.identity,
+            &self.path,
+            before_move,
+            after_move,
+        )
     }
 }
 
@@ -126,26 +163,12 @@ impl Linker {
 
     /// Read the raw entry paths of a `symlink-contents` destination directory.
     pub(super) fn read_contents_entries(&self, dir: &Path) -> Result<Vec<PathBuf>> {
-        self.revalidate_path(dir)
+        let contents = self
+            .open_contents_directory(dir)
             .with_context(|| format!("Unsafe destination directory: {}", dir.display()))?;
-        let mut entries = Vec::new();
-        let metadata = fs::symlink_metadata(dir).with_context(|| {
-            format!("Failed to inspect destination directory: {}", dir.display())
-        })?;
-        if metadata.file_type().is_symlink() {
-            anyhow::bail!(
-                "Unsafe destination directory is a symlink: {}",
-                dir.display()
-            );
-        }
-        for entry in fs::read_dir(dir)
-            .with_context(|| format!("Failed to read destination directory: {}", dir.display()))?
-        {
-            let entry =
-                entry.with_context(|| format!("Failed to read entry in: {}", dir.display()))?;
-            entries.push(entry.path());
-        }
-        Ok(entries)
+        contents
+            .entries()
+            .map(|entries| entries.into_iter().map(|entry| entry.path).collect())
     }
 
     /// Open a `symlink-contents` destination by walking one component at a time
@@ -163,11 +186,13 @@ impl Linker {
         let directory = parent
             .open_dir_nofollow(name)
             .with_context(|| format!("Unsafe destination directory: {}", dir.display()))?;
+        let identity = quarantine::EntryIdentity::capture(&directory.metadata(".")?);
         let opened = ContentsDirectory {
             parent,
             directory,
             name: name.to_os_string(),
             path: dir.to_path_buf(),
+            identity,
         };
 
         #[cfg(test)]
@@ -184,16 +209,7 @@ impl Linker {
         let relative = dir
             .strip_prefix(&self.project_root)
             .with_context(|| format!("Directory is outside project root: {}", dir.display()))?;
-        let canonical_root = fs::canonicalize(&self.project_root).with_context(|| {
-            format!(
-                "Failed to canonicalize project root: {}",
-                self.project_root.display()
-            )
-        })?;
-        let mut current = CapabilityDir::open_ambient_dir(&canonical_root, ambient_authority())
-            .with_context(|| {
-                format!("Failed to open project root: {}", canonical_root.display())
-            })?;
+        let mut current = self.open_project_root_capability()?;
         for component in relative.components() {
             let Component::Normal(name) = component else {
                 anyhow::bail!(
@@ -208,11 +224,123 @@ impl Linker {
         Ok(current)
     }
 
+    fn open_project_root_capability(&self) -> Result<CapabilityDir> {
+        if let Some(root) = self.project_root_capability.borrow().as_ref() {
+            return root
+                .try_clone()
+                .context("failed to clone open project-root capability");
+        }
+        let canonical_root = fs::canonicalize(&self.project_root).with_context(|| {
+            format!(
+                "Failed to canonicalize project root: {}",
+                self.project_root.display()
+            )
+        })?;
+        let root_snapshot = CapabilityDir::open_ambient_dir(&canonical_root, ambient_authority())
+            .with_context(|| {
+            format!(
+                "Failed to snapshot project root: {}",
+                canonical_root.display()
+            )
+        })?;
+        let expected_identity = quarantine::EntryIdentity::capture(&root_snapshot.metadata(".")?);
+        #[cfg(test)]
+        if let Some(hook) = self.project_root_before_open_hook.borrow_mut().take() {
+            hook(&canonical_root);
+        }
+        let opened = Self::open_absolute_directory_nofollow(&canonical_root)?;
+        let opened_identity = quarantine::EntryIdentity::capture(&opened.metadata(".")?);
+        anyhow::ensure!(
+            opened_identity == expected_identity,
+            "Project root changed while opening its no-follow capability: {}",
+            canonical_root.display()
+        );
+        let mut cache = self.project_root_capability.borrow_mut();
+        if cache.is_none() {
+            *cache = Some(
+                opened
+                    .try_clone()
+                    .context("failed to cache project-root capability")?,
+            );
+        }
+        cache
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("project-root capability was not initialized"))?
+            .try_clone()
+            .context("failed to clone open project-root capability")
+    }
+
+    #[cfg(unix)]
+    fn open_absolute_directory_nofollow(path: &Path) -> Result<CapabilityDir> {
+        let mut components = path.components();
+        if !matches!(components.next(), Some(Component::RootDir)) {
+            anyhow::bail!("Project root is not absolute: {}", path.display());
+        }
+        let mut current = CapabilityDir::open_ambient_dir(Path::new("/"), ambient_authority())
+            .context("failed to open filesystem root capability")?;
+        for component in components {
+            let Component::Normal(name) = component else {
+                anyhow::bail!(
+                    "Invalid component in canonical project root: {}",
+                    path.display()
+                );
+            };
+            current = current.open_dir_nofollow(name).with_context(|| {
+                format!("Unsafe project-root component: {}", name.to_string_lossy())
+            })?;
+        }
+        Ok(current)
+    }
+
+    #[cfg(windows)]
+    fn open_absolute_directory_nofollow(path: &Path) -> Result<CapabilityDir> {
+        let mut components = path.components();
+        let prefix = match components.next() {
+            Some(Component::Prefix(prefix)) => prefix,
+            _ => anyhow::bail!(
+                "Project root has no Windows volume prefix: {}",
+                path.display()
+            ),
+        };
+        let root = match components.next() {
+            Some(Component::RootDir) => Path::new(std::path::MAIN_SEPARATOR_STR),
+            _ => anyhow::bail!("Project root is not rooted: {}", path.display()),
+        };
+        let mut anchor = PathBuf::from(prefix.as_os_str());
+        anchor.push(root);
+        let mut current = CapabilityDir::open_ambient_dir(&anchor, ambient_authority())
+            .with_context(|| {
+                format!(
+                    "failed to open volume root capability: {}",
+                    anchor.display()
+                )
+            })?;
+        for component in components {
+            let Component::Normal(name) = component else {
+                anyhow::bail!(
+                    "Invalid component in canonical project root: {}",
+                    path.display()
+                );
+            };
+            current = current.open_dir_nofollow(name).with_context(|| {
+                format!("Unsafe project-root component: {}", name.to_string_lossy())
+            })?;
+        }
+        Ok(current)
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    fn open_absolute_directory_nofollow(path: &Path) -> Result<CapabilityDir> {
+        anyhow::bail!(
+            "No-follow project-root capability opening is unsupported on this platform: {}",
+            path.display()
+        )
+    }
+
     /// Discover nested-glob destinations: validate the search root, expand the
     /// template per match, and resolve each expansion. Empty expansions are
     /// dropped silently (both callers agree). Missing or unsafe search roots
-    /// are marked incomplete; `clean` keeps its historical silent skip while
-    /// `revert` reports it.
+    /// are marked incomplete, and both callers report the skipped target.
     pub(super) fn enumerate_nested_glob(
         &self,
         target: &TargetConfig,
@@ -283,10 +411,7 @@ impl Linker {
             discovery: if discovery_complete {
                 NestedGlobDiscoveryStatus::Complete
             } else {
-                NestedGlobDiscoveryStatus::Incomplete {
-                    search_root,
-                    reason: "WalkDir traversal encountered one or more entry errors".to_string(),
-                }
+                NestedGlobDiscoveryStatus::IncompleteWalk { search_root }
             },
             entries,
         })
@@ -324,19 +449,19 @@ impl Linker {
         agent_name: &str,
         target: &TargetConfig,
         entry_path: &Path,
-    ) -> bool {
+    ) -> Result<bool> {
         let Some(pattern) = target.pattern.as_deref() else {
-            return true;
+            return Ok(true);
         };
         let Some(destination_name) = entry_path.file_name().and_then(OsStr::to_str) else {
-            return false;
+            return Ok(false);
         };
 
         let is_zcode_commands = crate::agent_ids::canonical_any_agent_id(agent_name)
             == Some("zcode")
             && target.destination.ends_with(".zcode/commands");
         if !is_zcode_commands {
-            return super::matches_pattern(destination_name, pattern);
+            return Ok(super::matches_pattern(destination_name, pattern));
         }
 
         let source_dir = self.source_dir.join(&target.source);
@@ -353,7 +478,7 @@ impl Linker {
                     }
                 }
                 if destination_has_source {
-                    return destination_has_matching_source;
+                    return Ok(destination_has_matching_source);
                 }
             }
             Err(error)
@@ -365,19 +490,19 @@ impl Linker {
                 // canonical `.agent.md` mapping from the destination name below.
             }
             Err(error) => {
-                tracing::warn!(
-                    error = %error,
-                    path = %source_dir.display(),
-                    "Cannot determine whether a Z-Code child matches the source pattern"
-                );
-                return false;
+                return Err(error).with_context(|| {
+                    format!(
+                        "Cannot determine whether a Z-Code child matches the source pattern under {}",
+                        source_dir.display()
+                    )
+                });
             }
         }
 
-        super::matches_pattern(destination_name, pattern)
+        Ok(super::matches_pattern(destination_name, pattern)
             || destination_name
                 .strip_suffix(".md")
-                .is_some_and(|stem| super::matches_pattern(&format!("{stem}.agent.md"), pattern))
+                .is_some_and(|stem| super::matches_pattern(&format!("{stem}.agent.md"), pattern)))
     }
 }
 
@@ -481,6 +606,95 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
+    fn read_contents_entries_stays_anchored_when_container_is_replaced() {
+        use std::cell::Cell;
+        use std::os::unix::fs::symlink;
+        use std::rc::Rc;
+
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path().join("project");
+        let outside = temp.path().join("outside");
+        let dest = project_root.join("dest");
+        std::fs::create_dir_all(project_root.join(".agents")).unwrap();
+        std::fs::create_dir_all(&dest).unwrap();
+        std::fs::create_dir(&outside).unwrap();
+        std::fs::write(dest.join("original.txt"), "original directory entry").unwrap();
+        std::fs::write(outside.join("attacker.txt"), "outside entry").unwrap();
+
+        let linker = make_linker(
+            &project_root,
+            true,
+            make_target("source", "dest", SyncType::SymlinkContents),
+        );
+        let hook_ran = Rc::new(Cell::new(false));
+        let hook_ran_in_hook = Rc::clone(&hook_ran);
+        let hook_dest = dest.clone();
+        let hook_outside = outside.clone();
+        let moved_destination = project_root.join("moved-destination");
+        *linker.read_contents_after_metadata_hook.borrow_mut() = Some(Rc::new(move |path| {
+            assert_eq!(path, hook_dest);
+            std::fs::rename(path, &moved_destination).unwrap();
+            symlink(&hook_outside, path).unwrap();
+            hook_ran_in_hook.set(true);
+        }));
+
+        let entries = linker.read_contents_entries(&dest).unwrap();
+
+        assert!(
+            hook_ran.get(),
+            "enumeration must use the opened directory handle"
+        );
+        assert_eq!(
+            entries
+                .iter()
+                .filter_map(|entry| entry.file_name())
+                .collect::<Vec<_>>(),
+            vec![std::ffi::OsStr::new("original.txt")]
+        );
+        assert!(outside.join("attacker.txt").exists());
+        assert!(dest.is_symlink());
+    }
+
+    #[test]
+    fn contents_child_matches_zcode_orphan_pattern_against_source_and_recreated_name() {
+        let project = TempDir::new().unwrap();
+        let source_dir = project.path().join(".agents/commands");
+        std::fs::create_dir_all(&source_dir).unwrap();
+        let source = source_dir.join("foo.agent.md");
+        std::fs::write(&source, "command source").unwrap();
+        let mut target = make_target("commands", ".zcode/commands", SyncType::SymlinkContents);
+        target.pattern = Some("*.agent.md".to_string());
+        let mut linker = make_linker(project.path(), true, target.clone());
+        let test_agent = linker.config.agents.remove("test").unwrap();
+        linker.config.agents.insert("zcode".to_string(), test_agent);
+        let orphan_destination = project.path().join(".zcode/commands/foo.md");
+
+        assert!(
+            linker
+                .contents_child_matches_pattern("zcode", &target, &orphan_destination)
+                .unwrap()
+        );
+
+        std::fs::remove_file(source).unwrap();
+        std::fs::remove_dir(&source_dir).unwrap();
+        assert!(
+            linker
+                .contents_child_matches_pattern("zcode", &target, &orphan_destination)
+                .unwrap()
+        );
+        assert!(
+            !linker
+                .contents_child_matches_pattern(
+                    "zcode",
+                    &target,
+                    &project.path().join(".zcode/commands/notes.txt")
+                )
+                .unwrap()
+        );
+    }
+
+    #[test]
     fn nested_glob_enumeration_marks_existing_empty_root_complete() {
         let project = TempDir::new().unwrap();
         std::fs::create_dir_all(project.path().join("source")).unwrap();
@@ -535,8 +749,8 @@ mod tests {
         );
         assert!(matches!(
             enumeration.discovery,
-            NestedGlobDiscoveryStatus::Incomplete { search_root: root, reason }
-                if root == search_root && reason.contains("WalkDir")
+            NestedGlobDiscoveryStatus::IncompleteWalk { search_root: root }
+                if root == search_root
         ));
     }
 

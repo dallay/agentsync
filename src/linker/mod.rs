@@ -26,6 +26,7 @@ mod clean;
 mod discovery;
 mod enumerate;
 mod paths;
+mod quarantine;
 mod revert;
 mod symlinks;
 pub mod timing;
@@ -47,6 +48,12 @@ type NestedGlobCacheValue = (NestedGlobMatches, bool);
 type CleanBeforeReadContentsHook = Rc<dyn Fn(&Path)>;
 #[cfg(test)]
 type ReadContentsAfterMetadataHook = Rc<dyn Fn(&Path)>;
+#[cfg(test)]
+type ProjectRootBeforeOpenHook = Box<dyn FnOnce(&Path)>;
+#[cfg(test)]
+type QuarantineBeforeMoveHook = Rc<dyn Fn(&Path)>;
+#[cfg(test)]
+type QuarantineAfterMoveHook = Rc<dyn Fn(&Path)>;
 
 /// Options for the sync operation
 #[derive(Debug, Default)]
@@ -104,6 +111,7 @@ pub struct Linker {
     ensured_dirs: RefCell<HashSet<PathBuf>>,
     ensured_compressed: RefCell<HashSet<PathBuf>>,
     canonical_project_root: RefCell<Option<Rc<PathBuf>>>,
+    project_root_capability: RefCell<Option<cap_std::fs::Dir>>,
     /// Timing sink for the developer-only benchmark harness. `None` in normal
     /// runs, where the guarded spans short-circuit without any `Instant::now`
     /// cost.
@@ -114,6 +122,14 @@ pub struct Linker {
     clean_before_read_contents_hook: RefCell<Option<CleanBeforeReadContentsHook>>,
     #[cfg(test)]
     read_contents_after_metadata_hook: RefCell<Option<ReadContentsAfterMetadataHook>>,
+    #[cfg(test)]
+    project_root_before_open_hook: RefCell<Option<ProjectRootBeforeOpenHook>>,
+    #[cfg(test)]
+    quarantine_before_move_hook: RefCell<Option<QuarantineBeforeMoveHook>>,
+    #[cfg(test)]
+    quarantine_before_container_move_hook: RefCell<Option<QuarantineBeforeMoveHook>>,
+    #[cfg(test)]
+    quarantine_after_move_hook: RefCell<Option<QuarantineAfterMoveHook>>,
     #[cfg(test)]
     clean_metadata_error_path: RefCell<Option<PathBuf>>,
     #[cfg(test)]
@@ -146,6 +162,7 @@ impl Linker {
             ensured_dirs: RefCell::new(HashSet::new()),
             ensured_compressed: RefCell::new(HashSet::new()),
             canonical_project_root: RefCell::new(None),
+            project_root_capability: RefCell::new(None),
             timing: RefCell::new(None),
             #[cfg(test)]
             mcp_ownership_data_root,
@@ -153,6 +170,14 @@ impl Linker {
             clean_before_read_contents_hook: RefCell::new(None),
             #[cfg(test)]
             read_contents_after_metadata_hook: RefCell::new(None),
+            #[cfg(test)]
+            project_root_before_open_hook: RefCell::new(None),
+            #[cfg(test)]
+            quarantine_before_move_hook: RefCell::new(None),
+            #[cfg(test)]
+            quarantine_before_container_move_hook: RefCell::new(None),
+            #[cfg(test)]
+            quarantine_after_move_hook: RefCell::new(None),
             #[cfg(test)]
             clean_metadata_error_path: RefCell::new(None),
             #[cfg(test)]
@@ -326,6 +351,18 @@ impl Linker {
         agents_filter: Option<&Vec<String>>,
         plugin_servers: &BTreeMap<String, crate::config::McpServerConfig>,
     ) -> Result<crate::mcp::McpSyncResult> {
+        self.sync_mcp_with_servers_with_rebase(dry_run, agents_filter, plugin_servers, false)
+    }
+
+    /// Sync MCP configs, optionally allowing an explicit ownership-journal rebase
+    /// after the user has edited a config since the previous apply.
+    pub fn sync_mcp_with_servers_with_rebase(
+        &self,
+        dry_run: bool,
+        agents_filter: Option<&Vec<String>>,
+        plugin_servers: &BTreeMap<String, crate::config::McpServerConfig>,
+        rebase_mcp_journal: bool,
+    ) -> Result<crate::mcp::McpSyncResult> {
         use crate::mcp::McpGenerator;
 
         if !self.config.mcp.enabled {
@@ -381,6 +418,7 @@ impl Linker {
             &configured_agents,
             dry_run,
             ownership_data_root,
+            rebase_mcp_journal,
         )
     }
 
@@ -425,7 +463,7 @@ impl Linker {
         let mut result = crate::mcp::McpSyncResult::default();
         if dry_run {
             let Some(manifest) = store.read_existing()? else {
-                self.warn_if_legacy_mcp_is_unowned(&mut result);
+                self.warn_if_legacy_mcp_is_unowned(&mut result, agents_filter);
                 return Ok(result);
             };
             restore_ownership_records(
@@ -446,7 +484,7 @@ impl Linker {
         }
 
         if store.read_existing()?.is_none() {
-            self.warn_if_legacy_mcp_is_unowned(&mut result);
+            self.warn_if_legacy_mcp_is_unowned(&mut result, agents_filter);
             return Ok(result);
         }
         let mut locked = store.lock()?;
@@ -468,8 +506,35 @@ impl Linker {
         Ok(result)
     }
 
-    fn warn_if_legacy_mcp_is_unowned(&self, result: &mut crate::mcp::McpSyncResult) {
-        if !self.config.mcp_servers.is_empty() {
+    fn warn_if_legacy_mcp_is_unowned(
+        &self,
+        result: &mut crate::mcp::McpSyncResult,
+        agents_filter: Option<&Vec<String>>,
+    ) {
+        let filters = agents_filter.or_else(|| {
+            (!self.config.default_agents.is_empty()).then_some(&self.config.default_agents)
+        });
+        let has_selected_mcp_agent = self
+            .config
+            .agents
+            .keys()
+            .filter_map(|name| crate::mcp::McpAgent::from_id(name))
+            .any(|agent| {
+                filters.is_none_or(|filters| {
+                    filters
+                        .iter()
+                        .any(|filter| mcp_agent_matches_filter(agent, filter))
+                })
+            });
+        let has_configured_servers = self
+            .config
+            .mcp_servers
+            .values()
+            .any(|server| !server.disabled)
+            || (self.config.plugins.enabled
+                && !self.config.plugins.selections.is_empty()
+                && !self.config.plugins.allowed_mcp.is_empty());
+        if self.config.mcp.enabled && has_configured_servers && has_selected_mcp_agent {
             println!(
                 "  {} No MCP ownership journal found; leaving existing MCP configs unchanged",
                 "!".yellow()
@@ -998,6 +1063,72 @@ mod tests {
     #[cfg(unix)]
     use std::os::unix::fs::symlink;
     use tempfile::TempDir;
+
+    #[test]
+    fn legacy_mcp_warning_requires_an_active_configured_destination() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut linker = test_support::make_linker(
+            temp_dir.path(),
+            true,
+            test_support::make_target("source", "destination", crate::config::SyncType::Symlink),
+        );
+        linker.config.mcp_servers.insert(
+            "filesystem".to_string(),
+            crate::config::McpServerConfig {
+                command: Some("fixture-server".to_string()),
+                args: Vec::new(),
+                env: BTreeMap::new(),
+                url: None,
+                headers: BTreeMap::new(),
+                transport_type: None,
+                disabled: false,
+            },
+        );
+
+        let mut result = crate::mcp::McpSyncResult::default();
+        linker.warn_if_legacy_mcp_is_unowned(&mut result, None);
+        assert_eq!(
+            result.skipped, 0,
+            "an unsupported agent has no MCP destination"
+        );
+
+        let test_agent = linker.config.agents.remove("test").unwrap();
+        linker
+            .config
+            .agents
+            .insert("claude".to_string(), test_agent);
+        linker.config.mcp.enabled = false;
+        linker.warn_if_legacy_mcp_is_unowned(&mut result, None);
+        assert_eq!(
+            result.skipped, 0,
+            "disabled MCP does not need an ownership journal"
+        );
+
+        linker.config.mcp.enabled = true;
+        linker
+            .config
+            .mcp_servers
+            .get_mut("filesystem")
+            .unwrap()
+            .disabled = true;
+        linker.warn_if_legacy_mcp_is_unowned(&mut result, None);
+        assert_eq!(
+            result.skipped, 0,
+            "disabled servers have no MCP destination"
+        );
+
+        linker
+            .config
+            .mcp_servers
+            .get_mut("filesystem")
+            .unwrap()
+            .disabled = false;
+        linker.warn_if_legacy_mcp_is_unowned(&mut result, None);
+        assert_eq!(
+            result.skipped, 1,
+            "active MCP destinations without a journal are skipped"
+        );
+    }
 
     #[test]
     fn revert_reconciles_write_ahead_record_before_second_apply_write() {
@@ -3509,6 +3640,7 @@ mod tests {
         let result = linker.clean(&SyncOptions::default()).unwrap();
 
         assert_eq!(result.removed, 0);
+        assert_eq!(result.skipped, 1);
     }
 
     #[test]
@@ -4089,6 +4221,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.removed, 0);
+        assert_eq!(result.skipped, 1);
         assert!(
             !temp_dir
                 .path()

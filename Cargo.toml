@@ -74,10 +74,14 @@ ratatui = { version = "0.30.0", default-features = false, features = ["crossterm
 crossterm = "0.29.0"
 cap-std = "=3.4.4"
 cap-fs-ext = "=3.4.4"
+rand = "0.10"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 rustix = { version = "1.1.4", features = ["fs"] }
 xattr = "1.6.1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+rustix = { version = "1.1.4", features = ["fs"] }
 
 [target.'cfg(any(target_os = "macos", target_os = "freebsd"))'.dependencies]
 exacl = "=0.13.0"
@@ -95,7 +99,6 @@ windows-sys = { version = "0.61.2", features = [
 ] }
 
 [dev-dependencies]
-rand = "0.10"
 
 [profile.release]
 lto = true

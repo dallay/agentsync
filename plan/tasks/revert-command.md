@@ -63,11 +63,11 @@ Fuera de alcance aquí (rama follow-up): remoción de MCP gestionados
 - [x] RPI-027b Rechazar un contenedor `symlink-contents` que sea symlink a otro directorio interno del proyecto antes de recorrer o borrar sus children.
 - [x] RPI-027c Reportar discovery `nested-glob` incompleto en `clean` si WalkDir omite errores parciales.
 - [x] RPI-028 Documentar que `revert` incluye agentes deshabilitados salvo que `--agents`/`default_agents` los filtren
-- [ ] RPI-023e Respetar `target.pattern` al limpiar children Z-Code para no quitar links que `apply` no habría creado (Round 8; revisar el comportamiento preexistente).
-- [ ] RPI-025c Preservar DACL Windows/POSIX extended ACL en el reemplazo atómico de `.gitignore`, o fallar sin reemplazar si no puede preservarse.
-- [ ] RPI-026l Rechazar NULL DACL (`present=true`, ACL pointer null) al copiar backups Windows con `--keep-backups`.
-- [ ] RPI-026m Rechazar symlink final/dangling de `AGENTS.compact.md` antes de leer/escribir el output comprimido.
-- [ ] RPI-027h Reportar errores de inspección de destinos/backup en `revert` en lugar de tratarlos como path ausente.
+- [x] RPI-023e Respetar `target.pattern` al limpiar children Z-Code para no quitar links que `apply` no habría creado (Round 8; implementado como RPI-030 en PR #633).
+- [x] RPI-025c Preservar DACL Windows/POSIX extended ACL en el reemplazo atómico de `.gitignore`, o fallar sin reemplazar si no puede preservarse (RPI-035 en PR #633; el filesystem local no permite comprobar ACL POSIX).
+- [x] RPI-026l Rechazar NULL DACL (`present=true`, ACL pointer null) al copiar backups Windows con `--keep-backups` (RPI-033 en PR #633; runtime Windows pendiente).
+- [x] RPI-026m Rechazar symlink final/dangling de `AGENTS.compact.md` antes de leer/escribir el output comprimido (RPI-032 en PR #633).
+- [x] RPI-027h Reportar errores de inspección de destinos/backup en `revert` en lugar de tratarlos como path ausente (RPI-031 en PR #633).
 
 ## Criterios de aceptación (de #630, alcance Part 1)
 
@@ -149,7 +149,7 @@ Fuera de alcance aquí (rama follow-up): remoción de MCP gestionados
 - `gh pr view 632` confirma PR #632 abierta y draft, con 2,204 adiciones + 136 eliminaciones = 2,340 líneas cambiadas; el presupuesto de revisión es 400.
 - El usuario aprobó explícitamente una excepción para PR #632 con el tamaño publicado de 2,340 líneas; se conserva la cadena acordada #632 → #633. La excepción de #633 sigue aprobada por separado.
 - Verificar el tamaño final de cada capa antes de actualizar los heads remotos; no fusionar commits MCP dentro de #632.
-- Los checks publicados en las cabezas remotas consultadas aún no incluyen los cambios locales: #632 tiene fallos en SonarCloud, Codecov patch y Semgrep; #633 tiene fallos en SonarCloud y Codecov patch. Ambas PRs continúan draft.
+- Cabezas publicadas consultadas: #632=`f1aa750b764061af53e799d6ff00b07c21115f27`; #633=`5ab61de0174b3391e0b007a68bc1d5af8ed99351`. Round 8 está publicado solo en la capa #633 (`a9faa7c` y `5ab61de`). En esas cabezas, CI de #632 está verde y fallan SonarCloud/Codecov patch/Semgrep; #633 falla en macOS/Windows tests y en SonarCloud/Semgrep. Los cambios de esta remediación aún son locales; ambas PRs siguen draft.
 - Round 1 double-blind confirmó en ambos jueces: symlink padre MCP puede escapar del repo, un error parcial de WalkDir no marcaba `nested-glob` incompleto y fallo de `create_mcp_parent` podía salir con éxito. Los tres están corregidos localmente. Round 2 confirmó RPI-023b/RPI-026b; ambos se implementaron y pasaron RED/GREEN.
 - Round 3 después del segundo ciclo encontró issues confirmados que requieren un nuevo ciclo autorizado: copy de backup file puede fallar dejando destino parcial y `.bak` (R1); fallo al mutar un MCP record aborta restores independientes posteriores (R3); y el mapeo Z-Code debe admitir también fuente plain `foo.md` tras desaparecer el source.
 - Nuevo ciclo autorizado completado: RPI-023b acepta identidad Z-Code directa y `.agent.md`; RPI-026d publica archivos desde staging privado con `renamore::rename_exclusive`; RPI-020d cuenta errores por record y continúa. `cargo test --all-features`, fmt, Clippy y `git diff --check` pasan antes de esta revisión fresca.
@@ -160,4 +160,4 @@ Fuera de alcance aquí (rama follow-up): remoción de MCP gestionados
 ## Siguiente paso
 
 - El ciclo RPI-023b/RPI-026d/RPI-020d, los RPI Round 4 autorizados y RPI-026h pasan sus gates locales.
-- RPI-020i/025b/027d/026i implementados; cross-check Windows GNU pasó, runtime ACL pendiente. El usuario autorizó el ciclo Round 7 aplicable, plan en `plan/tasks/revert-round7-remediation.md` y `tmp/plans/2026-10-05-revert-round7-remediation.md`. El exit-code de `handle_clean` se excluyó por ser preexistente en `origin/main`. PRs siguen draft y sin push; el GitHub CI rojo no contiene los cambios locales.
+- RPI-020i/025b/027d/026i implementados; cross-check Windows GNU pasó, runtime ACL pendiente. RPI-029..035 están implementados y publicados en la capa #633; RPI-036..046 registran la remediación local de las revisiones actuales. `handle_clean` exit-code sigue excluido por ser preexistente en `origin/main`. Las PRs siguen draft; no se han respondido/resuelto hilos de GitHub ni publicado la remediación actual.

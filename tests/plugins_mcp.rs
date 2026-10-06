@@ -70,16 +70,20 @@ plugin = "engineering"
         plugin: "engineering".to_string(),
     });
     let plugin_result = plugin_result.unwrap();
-    let previous_data_home = std::env::var_os("XDG_DATA_HOME");
+    let previous_data_root = std::env::var_os("AGENTSYNC_DATA_DIR");
     let data_root = project.path().join("local-data");
     // Keep the process-level data override beside, not inside, the project.
-    unsafe { std::env::set_var("XDG_DATA_HOME", &data_root) };
+    unsafe { std::env::set_var("AGENTSYNC_DATA_DIR", &data_root) };
     let linker = Linker::new(config, config_path);
     let sync_result = linker
         .sync_mcp_with_servers(false, None, &plugin_result.mcp_servers)
         .unwrap();
     assert_eq!(sync_result.errors, 0);
     assert!(sync_result.created + sync_result.updated >= 4);
+    assert!(
+        data_root.join("agentsync/mcp-ownership").is_dir(),
+        "the ownership journal must use the isolated test data root"
+    );
 
     let expected_name = "plugin/internal/engineering/safe-fixture";
     let claude: serde_json::Value =
@@ -110,10 +114,10 @@ plugin = "engineering"
     assert!(!project_root.join(".gemini/settings.json").exists());
     assert!(!project_root.join("opencode.json").exists());
     unsafe {
-        if let Some(previous_data_home) = previous_data_home {
-            std::env::set_var("XDG_DATA_HOME", previous_data_home);
+        if let Some(previous_data_root) = previous_data_root {
+            std::env::set_var("AGENTSYNC_DATA_DIR", previous_data_root);
         } else {
-            std::env::remove_var("XDG_DATA_HOME");
+            std::env::remove_var("AGENTSYNC_DATA_DIR");
         }
     }
 }

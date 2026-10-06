@@ -7,7 +7,7 @@ use std::path::Path;
 
 use crate::config::SyncType;
 
-use super::{Linker, SyncOptions, SyncResult, enumerate, symlinks};
+use super::{Linker, SyncOptions, SyncResult, enumerate, quarantine};
 
 impl Linker {
     #[cfg(test)]
@@ -106,7 +106,23 @@ impl Linker {
     ) -> Result<()> {
         let dest = match self.resolve_destination(&target_config.destination) {
             Ok(d) => d,
-            Err(_) => return Ok(()),
+            Err(skipped) => {
+                result.skipped += 1;
+                if options.verbose {
+                    println!(
+                        "  {} Skipping unsafe destination {}: {}",
+                        "!".yellow(),
+                        skipped.dest,
+                        skipped.error
+                    );
+                }
+                tracing::warn!(
+                    destination = %skipped.dest,
+                    error = %skipped.error,
+                    "Skipping unsafe symlink destination during clean"
+                );
+                return Ok(());
+            }
         };
         let metadata = match self.clean_symlink_metadata(&dest) {
             Ok(metadata) => metadata,
@@ -117,14 +133,14 @@ impl Linker {
             }
         };
         if metadata.file_type().is_symlink() {
-            self.remove_managed_symlink(&dest, options.dry_run, result)?;
+            self.remove_managed_symlink_quarantined(&dest, options.dry_run, result)?;
         }
         Ok(())
     }
 
     /// Remove a single managed symlink, emitting a per-path span
     /// (`operation="remove"`, `path`, `outcome`) around the decision.
-    pub(super) fn remove_managed_symlink(
+    fn remove_managed_symlink_quarantined(
         &self,
         dest: &Path,
         dry_run: bool,
@@ -141,21 +157,76 @@ impl Linker {
             println!("  {} Would remove: {}", "→".cyan(), dest.display());
             span.record("outcome", "would_remove");
         } else {
-            if let Err(e) = self.revalidate_unlink_path(dest) {
-                span.record("outcome", "error");
+            let (Some(name), Some(parent_path)) = (dest.file_name(), dest.parent()) else {
                 result.errors += 1;
-                tracing::error!(error = %e, path = %dest.display(), "Failed to revalidate managed symlink removal");
+                span.record("outcome", "error");
+                tracing::error!(path = %dest.display(), "Managed symlink destination lacks a parent or final component");
+                return Ok(());
+            };
+            let parent = match self.open_project_relative_directory(parent_path) {
+                Ok(parent) => parent,
+                Err(error) => {
+                    result.skipped += 1;
+                    span.record("outcome", "skipped");
+                    tracing::warn!(error = %error, path = %dest.display(), "Skipping unsafe managed symlink parent");
+                    return Ok(());
+                }
+            };
+            let metadata = match parent.symlink_metadata(name) {
+                Ok(metadata) => metadata,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    result.skipped += 1;
+                    span.record("outcome", "skipped");
+                    return Ok(());
+                }
+                Err(error) => {
+                    result.errors += 1;
+                    span.record("outcome", "error");
+                    tracing::error!(error = %error, path = %dest.display(), "Failed to inspect managed symlink before quarantine");
+                    return Ok(());
+                }
+            };
+            if !metadata.file_type().is_symlink() {
+                span.record("outcome", "unchanged");
                 return Ok(());
             }
-            if let Err(e) = symlinks::remove_symlink(dest) {
-                span.record("outcome", "error");
-                result.errors += 1;
-                tracing::error!(error = %e, path = %dest.display(), "Failed to remove managed symlink");
-                return Ok(());
+            let identity = quarantine::EntryIdentity::capture(&metadata);
+            match quarantine::remove_symlink_if_unchanged(
+                &parent,
+                name,
+                identity,
+                dest,
+                || {
+                    #[cfg(test)]
+                    if let Some(hook) = self.quarantine_before_move_hook.borrow_mut().take() {
+                        hook(dest);
+                    }
+                },
+                |_path| {
+                    #[cfg(test)]
+                    if let Some(hook) = self.quarantine_after_move_hook.borrow_mut().take() {
+                        hook(_path);
+                    }
+                },
+            ) {
+                Ok(quarantine::RemoveOutcome::Removed) => {
+                    self.invalidate_path(dest);
+                    println!("  {} Removed: {}", "✔".green(), dest.display());
+                    span.record("outcome", "removed");
+                }
+                Ok(quarantine::RemoveOutcome::Changed) => {
+                    result.skipped += 1;
+                    span.record("outcome", "skipped");
+                    tracing::warn!(path = %dest.display(), "Managed symlink changed before quarantine; preserving it");
+                    return Ok(());
+                }
+                Err(error) => {
+                    result.errors += 1;
+                    span.record("outcome", "error");
+                    tracing::error!(error = %error, path = %dest.display(), "Failed to quarantine managed symlink");
+                    return Ok(());
+                }
             }
-            self.invalidate_path(dest);
-            println!("  {} Removed: {}", "✔".green(), dest.display());
-            span.record("outcome", "removed");
         }
         result.removed += 1;
         Ok(())
@@ -171,7 +242,23 @@ impl Linker {
     ) -> Result<()> {
         let dest = match self.resolve_destination(&target_config.destination) {
             Ok(d) => d,
-            Err(_) => return Ok(()),
+            Err(skipped) => {
+                result.skipped += 1;
+                if options.verbose {
+                    println!(
+                        "  {} Skipping unsafe destination {}: {}",
+                        "!".yellow(),
+                        skipped.dest,
+                        skipped.error
+                    );
+                }
+                tracing::warn!(
+                    destination = %skipped.dest,
+                    error = %skipped.error,
+                    "Skipping unsafe symlink-contents destination during clean"
+                );
+                return Ok(());
+            }
         };
         let metadata = match self.clean_symlink_metadata(&dest) {
             Ok(metadata) => metadata,
@@ -226,14 +313,73 @@ impl Linker {
             };
             if metadata.file_type().is_symlink()
                 && !enumerate::zcode_contents_child_filtered(agent_name, target_config, &entry.path)
-                && self.contents_child_matches_pattern(agent_name, target_config, &entry.path)
             {
-                self.remove_managed_contents_symlink(&contents, &entry, options.dry_run, result);
+                match self.contents_child_matches_pattern(agent_name, target_config, &entry.path) {
+                    Ok(true) => self.remove_managed_contents_symlink(
+                        &contents,
+                        &entry,
+                        quarantine::EntryIdentity::capture(&metadata),
+                        options.dry_run,
+                        result,
+                    ),
+                    Ok(false) => {}
+                    Err(error) => {
+                        result.skipped += 1;
+                        if options.verbose {
+                            println!(
+                                "  {} Skipping child whose source pattern could not be checked: {} ({})",
+                                "!".yellow(),
+                                entry.path.display(),
+                                error
+                            );
+                        }
+                        tracing::warn!(
+                            error = %error,
+                            path = %entry.path.display(),
+                            "Skipping symlink-contents child with unknown source-pattern eligibility"
+                        );
+                    }
+                }
             }
         }
         // Try to remove the directory if empty
         if !options.dry_run {
-            let _ = contents.remove_empty_directory();
+            match contents.remove_empty_directory(
+                || {
+                    #[cfg(test)]
+                    if let Some(hook) = self
+                        .quarantine_before_container_move_hook
+                        .borrow_mut()
+                        .take()
+                    {
+                        hook(&dest);
+                    }
+                },
+                |_path| {
+                    #[cfg(test)]
+                    if let Some(hook) = self.quarantine_after_move_hook.borrow_mut().take() {
+                        hook(_path);
+                    }
+                },
+            ) {
+                Ok(quarantine::RemoveDirectoryOutcome::Removed)
+                | Ok(quarantine::RemoveDirectoryOutcome::NotEmpty) => {}
+                Ok(quarantine::RemoveDirectoryOutcome::Changed) => {
+                    result.skipped += 1;
+                    if options.verbose {
+                        println!(
+                            "  {} Preserving destination directory changed during cleanup: {}",
+                            "!".yellow(),
+                            dest.display()
+                        );
+                    }
+                    tracing::warn!(path = %dest.display(), "Destination directory changed before quarantine; preserving it");
+                }
+                Err(error) => {
+                    result.errors += 1;
+                    tracing::error!(error = %error, path = %dest.display(), "Failed to quarantine empty symlink-contents destination directory");
+                }
+            }
         }
         Ok(())
     }
@@ -258,6 +404,7 @@ impl Linker {
         &self,
         contents: &enumerate::ContentsDirectory,
         entry: &enumerate::ContentsEntry,
+        identity: quarantine::EntryIdentity,
         dry_run: bool,
         result: &mut SyncResult,
     ) {
@@ -272,15 +419,41 @@ impl Linker {
             println!("  {} Would remove: {}", "→".cyan(), entry.path.display());
             span.record("outcome", "would_remove");
         } else {
-            if let Err(error) = contents.remove_file_or_symlink(&entry.name) {
-                span.record("outcome", "error");
-                result.errors += 1;
-                tracing::error!(error = %error, path = %entry.path.display(), "Failed to remove managed symlink relative to opened destination directory");
-                return;
+            match contents.remove_symlink_if_unchanged(
+                &entry.name,
+                identity,
+                &entry.path,
+                || {
+                    #[cfg(test)]
+                    if let Some(hook) = self.quarantine_before_move_hook.borrow_mut().take() {
+                        hook(&entry.path);
+                    }
+                },
+                |_path| {
+                    #[cfg(test)]
+                    if let Some(hook) = self.quarantine_after_move_hook.borrow_mut().take() {
+                        hook(_path);
+                    }
+                },
+            ) {
+                Ok(quarantine::RemoveOutcome::Removed) => {
+                    self.invalidate_path(&entry.path);
+                    println!("  {} Removed: {}", "✔".green(), entry.path.display());
+                    span.record("outcome", "removed");
+                }
+                Ok(quarantine::RemoveOutcome::Changed) => {
+                    result.skipped += 1;
+                    span.record("outcome", "skipped");
+                    tracing::warn!(path = %entry.path.display(), "Managed child changed before quarantine; preserving it");
+                    return;
+                }
+                Err(error) => {
+                    span.record("outcome", "error");
+                    result.errors += 1;
+                    tracing::error!(error = %error, path = %entry.path.display(), "Failed to quarantine managed symlink child");
+                    return;
+                }
             }
-            self.invalidate_path(&entry.path);
-            println!("  {} Removed: {}", "✔".green(), entry.path.display());
-            span.record("outcome", "removed");
         }
         result.removed += 1;
     }
@@ -293,15 +466,36 @@ impl Linker {
         result: &mut SyncResult,
     ) -> Result<()> {
         let enumeration = self.enumerate_nested_glob(target_config, options)?;
-        if enumeration.template.is_err() {
+        if let Err(skipped) = enumeration.template {
+            result.skipped += 1;
+            if options.verbose {
+                println!(
+                    "  {} Skipping unsafe nested-glob destination {}: {}",
+                    "!".yellow(),
+                    skipped.dest,
+                    skipped.error
+                );
+            }
+            tracing::warn!(
+                destination = %skipped.dest,
+                error = %skipped.error,
+                "Skipping unsafe nested-glob destination during clean"
+            );
             return Ok(());
         }
-        if let enumerate::NestedGlobDiscoveryStatus::Incomplete {
-            search_root,
-            reason,
-        } = &enumeration.discovery
-            && reason.contains("WalkDir traversal encountered")
-        {
+        let incomplete_discovery = match &enumeration.discovery {
+            enumerate::NestedGlobDiscoveryStatus::Incomplete {
+                search_root,
+                reason,
+            } => Some((search_root, reason.as_str())),
+            enumerate::NestedGlobDiscoveryStatus::IncompleteWalk { search_root } => Some((
+                search_root,
+                "WalkDir traversal encountered one or more entry errors",
+            )),
+            enumerate::NestedGlobDiscoveryStatus::NotAttempted
+            | enumerate::NestedGlobDiscoveryStatus::Complete => None,
+        };
+        if let Some((search_root, reason)) = incomplete_discovery {
             result.skipped += 1;
             if options.verbose {
                 println!(
@@ -321,7 +515,23 @@ impl Linker {
         for item in enumeration.entries {
             let dest = match item.dest {
                 Ok(dest) => dest,
-                Err(_) => continue,
+                Err(skipped) => {
+                    result.skipped += 1;
+                    if options.verbose {
+                        println!(
+                            "  {} Skipping unsafe nested-glob destination {}: {}",
+                            "!".yellow(),
+                            skipped.dest,
+                            skipped.error
+                        );
+                    }
+                    tracing::warn!(
+                        destination = %skipped.dest,
+                        error = %skipped.error,
+                        "Skipping unsafe expanded nested-glob destination during clean"
+                    );
+                    continue;
+                }
             };
             let metadata = match self.clean_symlink_metadata(&dest) {
                 Ok(metadata) => metadata,
@@ -332,7 +542,7 @@ impl Linker {
                 }
             };
             if metadata.file_type().is_symlink() {
-                self.remove_managed_symlink(&dest, options.dry_run, result)?;
+                self.remove_managed_symlink_quarantined(&dest, options.dry_run, result)?;
             }
         }
         Ok(())
@@ -350,9 +560,16 @@ impl Linker {
             let dest = match item.dest {
                 Ok(d) => d,
                 Err(e) => {
+                    result.skipped += 1;
                     if options.verbose {
                         println!("  {} Skipping mapping {}: {}", "!".yellow(), item.source, e);
                     }
+                    tracing::warn!(
+                        mapping = %item.source,
+                        destination = %item.dest_str,
+                        error = %e,
+                        "Skipping unsafe module-map destination during clean"
+                    );
                     continue;
                 }
             };
@@ -366,7 +583,7 @@ impl Linker {
                 }
             };
             if metadata.file_type().is_symlink() {
-                self.remove_managed_symlink(&dest, options.dry_run, result)?;
+                self.remove_managed_symlink_quarantined(&dest, options.dry_run, result)?;
             }
         }
         Ok(())
@@ -411,14 +628,15 @@ mod tests {
         let project_root = temp.path();
         fs::create_dir_all(project_root.join(".agents")).unwrap();
 
-        // An absolute destination fails `ensure_safe_destination`; clean must skip
-        // it silently rather than propagating an error.
+        // An absolute destination fails `ensure_safe_destination`; clean must
+        // count the incomplete target without propagating an error.
         let target = make_target("source.md", "/etc/passwd", SyncType::Symlink);
         let linker = make_linker(project_root, true, target);
 
         let result = linker.clean(&SyncOptions::default()).unwrap();
 
         assert_eq!(result.removed, 0);
+        assert_eq!(result.skipped, 1);
     }
 
     #[test]
@@ -507,6 +725,23 @@ mod tests {
 
         let result = linker.clean(&SyncOptions::default()).unwrap();
 
+        assert_eq!(result.removed, 0);
+    }
+
+    #[test]
+    fn clean_counts_unresolvable_symlink_contents_destination() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+        fs::create_dir_all(project_root.join(".agents")).unwrap();
+        let linker = make_linker(
+            project_root,
+            true,
+            make_target("source-dir", "/outside", SyncType::SymlinkContents),
+        );
+
+        let result = linker.clean(&SyncOptions::default()).unwrap();
+
+        assert_eq!(result.skipped, 1);
         assert_eq!(result.removed, 0);
     }
 
@@ -783,6 +1018,207 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
+    fn clean_does_not_follow_replaced_project_root_after_capability_open() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path().join("project");
+        let moved_project = temp.path().join("project-before-replacement");
+        let outside_root = temp.path().join("outside");
+        fs::create_dir_all(project_root.join(".agents")).unwrap();
+        fs::create_dir_all(project_root.join("dest")).unwrap();
+        fs::create_dir_all(outside_root.join("dest")).unwrap();
+        let outside_source = outside_root.join("attacker-source.md");
+        fs::write(&outside_source, "outside source").unwrap();
+        let outside_link = outside_root.join("dest/attacker.md");
+        symlink(&outside_source, &outside_link).unwrap();
+
+        let linker = make_linker(
+            &project_root,
+            true,
+            make_target("source-dir", "dest", SyncType::SymlinkContents),
+        );
+        let hook_project = project_root.clone();
+        let hook_moved = moved_project.clone();
+        let hook_outside = outside_root.clone();
+        *linker.project_root_before_open_hook.borrow_mut() =
+            Some(Box::new(move |canonical_root| {
+                assert_eq!(canonical_root, hook_project);
+                fs::rename(&hook_project, &hook_moved).unwrap();
+                symlink(&hook_outside, &hook_project).unwrap();
+            }));
+
+        let result = linker.clean(&SyncOptions::default()).unwrap();
+
+        assert_eq!(result.removed, 0);
+        assert_eq!(result.skipped, 1);
+        assert!(
+            outside_link.is_symlink(),
+            "replacement root must not be traversed"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn clean_rejects_replaced_project_root_directory_after_identity_snapshot() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path().join("project");
+        let moved_project = temp.path().join("project-before-replacement");
+        let outside_root = temp.path().join("outside");
+        fs::create_dir_all(project_root.join(".agents")).unwrap();
+        fs::create_dir_all(project_root.join("dest")).unwrap();
+        fs::create_dir_all(outside_root.join("dest")).unwrap();
+        let outside_source = outside_root.join("attacker-source.md");
+        fs::write(&outside_source, "outside source").unwrap();
+        let outside_link = outside_root.join("dest/attacker.md");
+        symlink(&outside_source, &outside_link).unwrap();
+
+        let linker = make_linker(
+            &project_root,
+            true,
+            make_target("source-dir", "dest", SyncType::SymlinkContents),
+        );
+        let hook_project = project_root.clone();
+        let hook_moved = moved_project.clone();
+        let hook_outside = outside_root.clone();
+        *linker.project_root_before_open_hook.borrow_mut() =
+            Some(Box::new(move |canonical_root| {
+                assert_eq!(canonical_root, hook_project);
+                fs::rename(&hook_project, &hook_moved).unwrap();
+                fs::rename(&hook_outside, &hook_project).unwrap();
+            }));
+
+        let result = linker.clean(&SyncOptions::default()).unwrap();
+
+        assert_eq!(result.removed, 0);
+        assert_eq!(result.skipped, 1);
+        assert!(
+            project_root.join("dest/attacker.md").is_symlink(),
+            "a different real directory must not be accepted as the opened project root"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn clean_preserves_regular_file_replacing_managed_symlink_before_quarantine() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+        fs::create_dir_all(project_root.join(".agents")).unwrap();
+        let source = project_root.join(".agents/source.md");
+        fs::write(&source, "managed source").unwrap();
+        let destination_dir = project_root.join("dest");
+        fs::create_dir(&destination_dir).unwrap();
+        let destination = destination_dir.join("source.md");
+        symlink(&source, &destination).unwrap();
+        let linker = make_linker(
+            project_root,
+            true,
+            make_target("source-dir", "dest", SyncType::SymlinkContents),
+        );
+        *linker.quarantine_before_move_hook.borrow_mut() = Some(std::rc::Rc::new(move |path| {
+            fs::remove_file(path).unwrap();
+            fs::write(path, "keep-user-data").unwrap();
+        }));
+
+        let result = linker.clean(&SyncOptions::default()).unwrap();
+
+        assert_eq!(result.removed, 0);
+        assert_eq!(result.skipped, 1);
+        assert_eq!(fs::read_to_string(&destination).unwrap(), "keep-user-data");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn clean_preserves_quarantine_when_original_name_is_reoccupied() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+        fs::create_dir_all(project_root.join(".agents")).unwrap();
+        let source = project_root.join(".agents/source.md");
+        fs::write(&source, "managed source").unwrap();
+        let destination_dir = project_root.join("dest");
+        fs::create_dir(&destination_dir).unwrap();
+        let destination = destination_dir.join("source.md");
+        symlink(&source, &destination).unwrap();
+        let linker = make_linker(
+            project_root,
+            true,
+            make_target("source-dir", "dest", SyncType::SymlinkContents),
+        );
+        *linker.quarantine_before_move_hook.borrow_mut() = Some(std::rc::Rc::new(move |path| {
+            fs::remove_file(path).unwrap();
+            fs::write(path, "quarantined-user-data").unwrap();
+        }));
+        let destination_for_hook = destination.clone();
+        *linker.quarantine_after_move_hook.borrow_mut() = Some(std::rc::Rc::new(move |_| {
+            fs::write(&destination_for_hook, "new-name-occupant").unwrap();
+        }));
+
+        let result = linker.clean(&SyncOptions::default()).unwrap();
+
+        assert_eq!(result.removed, 0);
+        assert_eq!(result.errors, 1);
+        assert_eq!(
+            fs::read_to_string(&destination).unwrap(),
+            "new-name-occupant"
+        );
+        let quarantined = fs::read_dir(&destination_dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .find(|path| {
+                path.file_name().is_some_and(|name| {
+                    name.to_string_lossy().starts_with(".agentsync-quarantine-")
+                })
+            })
+            .expect("failed restoration should preserve the quarantined entry");
+        assert_eq!(
+            fs::read_to_string(quarantined).unwrap(),
+            "quarantined-user-data"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn clean_preserves_replaced_empty_container_before_quarantine() {
+        use std::rc::Rc;
+
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path().join("project");
+        let moved_container = temp.path().join("opened-container");
+        fs::create_dir_all(project_root.join(".agents/source-dir")).unwrap();
+        let destination = project_root.join("dest");
+        fs::create_dir(&destination).unwrap();
+
+        let linker = make_linker(
+            &project_root,
+            true,
+            make_target("source-dir", "dest", SyncType::SymlinkContents),
+        );
+        let destination_for_hook = destination.clone();
+        let moved_for_hook = moved_container.clone();
+        *linker.quarantine_before_container_move_hook.borrow_mut() = Some(Rc::new(move |opened| {
+            assert_eq!(opened, destination_for_hook);
+            fs::rename(&destination_for_hook, &moved_for_hook).unwrap();
+            fs::create_dir(&destination_for_hook).unwrap();
+        }));
+
+        let result = linker.clean(&SyncOptions::default()).unwrap();
+
+        assert!(
+            destination.is_dir(),
+            "replacement container must be preserved"
+        );
+        assert_eq!(result.skipped, 1);
+        assert_eq!(result.errors, 0);
+    }
+
+    #[test]
+    #[cfg(unix)]
     fn clean_rejects_internal_symlink_replacement_before_reading_children() {
         use std::os::unix::fs::symlink;
         use std::{cell::Cell, rc::Rc};
@@ -967,11 +1403,12 @@ mod tests {
         let result = linker.clean(&SyncOptions::default()).unwrap();
 
         assert_eq!(result.removed, 0, "unknown source scope must fail closed");
+        assert_eq!(result.skipped, 1, "unknown source scope must be visible");
         assert!(unrelated_child.is_symlink());
     }
 
     #[test]
-    fn clean_nested_glob_silently_skips_missing_search_root() {
+    fn clean_nested_glob_reports_missing_search_root_as_skipped() {
         let temp = TempDir::new().unwrap();
         let target = make_target(
             "missing-source",
@@ -983,7 +1420,7 @@ mod tests {
         let result = linker.clean(&SyncOptions::default()).unwrap();
 
         assert_eq!(result.removed, 0);
-        assert_eq!(result.skipped, 0);
+        assert_eq!(result.skipped, 1);
         assert_eq!(result.errors, 0);
     }
 

@@ -232,6 +232,25 @@ pub(crate) fn preserve_native_owner_group(source: &Path, destination: &Path) -> 
             source.display()
         );
     }
+    let staged = fs::symlink_metadata(destination).with_context(|| {
+        format!(
+            "Failed to inspect staged .gitignore ownership: {}",
+            destination.display()
+        )
+    })?;
+    if !staged.file_type().is_file() {
+        anyhow::bail!(
+            "Refusing to preserve ownership onto non-regular staged .gitignore: {}",
+            destination.display()
+        );
+    }
+    if !owner_group_change_needed(metadata.uid(), metadata.gid(), staged.uid(), staged.gid()) {
+        return Ok(());
+    }
+
+    // If ownership differs and the process cannot preserve it, fail closed.
+    // An in-place fallback would give up atomic replacement and mutate every
+    // hard link to the original file.
     std::os::unix::fs::chown(destination, Some(metadata.uid()), Some(metadata.gid()))
         .with_context(|| {
             format!(
@@ -253,7 +272,28 @@ pub(crate) fn preserve_native_owner_group(source: &Path, destination: &Path) -> 
     Ok(())
 }
 
-#[cfg(not(unix))]
+#[cfg(unix)]
+fn owner_group_change_needed(
+    source_uid: u32,
+    source_gid: u32,
+    destination_uid: u32,
+    destination_gid: u32,
+) -> bool {
+    source_uid != destination_uid || source_gid != destination_gid
+}
+
+#[cfg(windows)]
+pub(crate) fn preserve_native_owner_group(source: &Path, destination: &Path) -> Result<()> {
+    crate::mcp::preserve_windows_file_owner_sid(source, destination).with_context(|| {
+        format!(
+            "Failed to preserve .gitignore owner SID from {} onto {}",
+            source.display(),
+            destination.display()
+        )
+    })
+}
+
+#[cfg(not(any(unix, windows)))]
 pub(crate) fn preserve_native_owner_group(_source: &Path, _destination: &Path) -> Result<()> {
     Ok(())
 }
@@ -262,8 +302,15 @@ pub(crate) fn preserve_native_owner_group(_source: &Path, _destination: &Path) -
 pub(crate) fn preserve_native_acl(source: &Path, destination: &Path) -> Result<()> {
     const POSIX_ACCESS_ACL: &str = "system.posix_acl_access";
 
-    let expected_acl = xattr::get(source, POSIX_ACCESS_ACL)
-        .with_context(|| format!("Failed to read .gitignore POSIX ACL: {}", source.display()))?;
+    let expected_acl = match xattr::get(source, POSIX_ACCESS_ACL) {
+        Ok(acl) => acl,
+        Err(error) if is_posix_acl_capability_error(&error) => return Ok(()),
+        Err(error) => {
+            return Err(error).with_context(|| {
+                format!("Failed to read .gitignore POSIX ACL: {}", source.display())
+            });
+        }
+    };
     match &expected_acl {
         Some(acl) => xattr::set(destination, POSIX_ACCESS_ACL, acl).with_context(|| {
             format!(
@@ -274,6 +321,7 @@ pub(crate) fn preserve_native_acl(source: &Path, destination: &Path) -> Result<(
         None => match xattr::remove(destination, POSIX_ACCESS_ACL) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) if is_posix_acl_capability_error(&error) => return Ok(()),
             Err(error) => {
                 return Err(error).with_context(|| {
                     format!(
@@ -284,18 +332,35 @@ pub(crate) fn preserve_native_acl(source: &Path, destination: &Path) -> Result<(
             }
         },
     }
-    let actual_acl = xattr::get(destination, POSIX_ACCESS_ACL).with_context(|| {
-        format!(
-            "Failed to verify staged .gitignore POSIX ACL: {}",
-            destination.display()
-        )
-    })?;
+    let actual_acl = match xattr::get(destination, POSIX_ACCESS_ACL) {
+        Ok(acl) => acl,
+        Err(error) if expected_acl.is_none() && is_posix_acl_capability_error(&error) => {
+            return Ok(());
+        }
+        Err(error) => {
+            return Err(error).with_context(|| {
+                format!(
+                    "Failed to verify staged .gitignore POSIX ACL: {}",
+                    destination.display()
+                )
+            });
+        }
+    };
     anyhow::ensure!(
         actual_acl == expected_acl,
         "Staged .gitignore POSIX ACL does not match the original: {}",
         destination.display()
     );
     Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn is_posix_acl_capability_error(error: &std::io::Error) -> bool {
+    error.kind() == std::io::ErrorKind::Unsupported
+        || error.raw_os_error().is_some_and(|code| {
+            code == rustix::io::Errno::NOTSUP.raw_os_error()
+                || code == rustix::io::Errno::OPNOTSUPP.raw_os_error()
+        })
 }
 
 #[cfg(any(target_os = "macos", target_os = "freebsd"))]
@@ -368,6 +433,25 @@ fn remove_managed_section(content: &str, start_marker: &str, end_marker: &str) -
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    #[test]
+    #[cfg(unix)]
+    fn owner_group_change_is_skipped_when_staged_metadata_matches() {
+        assert!(!owner_group_change_needed(1000, 100, 1000, 100));
+        assert!(owner_group_change_needed(1000, 100, 1001, 100));
+        assert!(owner_group_change_needed(1000, 100, 1000, 101));
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn posix_acl_capability_errors_are_distinguished_from_other_errors() {
+        let unsupported =
+            std::io::Error::from_raw_os_error(rustix::io::Errno::NOTSUP.raw_os_error());
+        let invalid = std::io::Error::from_raw_os_error(22);
+
+        assert!(is_posix_acl_capability_error(&unsupported));
+        assert!(!is_posix_acl_capability_error(&invalid));
+    }
 
     // ==========================================================================
     // REMOVE MANAGED SECTION TESTS
@@ -529,7 +613,8 @@ after
             if matches!(
                 error.kind(),
                 std::io::ErrorKind::Unsupported | std::io::ErrorKind::InvalidInput
-            ) {
+            ) || is_posix_acl_capability_error(&error)
+            {
                 eprintln!("Skipping POSIX ACL test: filesystem does not support ACLs");
                 return;
             }

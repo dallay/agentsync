@@ -182,6 +182,9 @@ enum Commands {
         /// Do not use the network. Missing Git plugin snapshots fail instead of restoring.
         #[arg(long)]
         offline: bool,
+        /// Explicitly rebase MCP journal hashes after a user edit; later revert restores the original snapshot.
+        #[arg(long)]
+        rebase_mcp_journal: bool,
     },
     /// Remove all symlinks created by agentsync
     Clean {
@@ -281,6 +284,7 @@ fn run() -> Result<()> {
             agents,
             no_gitignore,
             offline,
+            rebase_mcp_journal,
         } => run_in_root_span("apply", || {
             handle_apply(ApplyArgs {
                 path,
@@ -291,6 +295,7 @@ fn run() -> Result<()> {
                 agents,
                 no_gitignore,
                 offline,
+                rebase_mcp_journal,
             })?;
             Ok(())
         }),
@@ -396,6 +401,7 @@ struct ApplyArgs {
     agents: Option<Vec<String>>,
     no_gitignore: bool,
     offline: bool,
+    rebase_mcp_journal: bool,
 }
 
 fn handle_apply(args: ApplyArgs) -> Result<()> {
@@ -466,6 +472,7 @@ fn handle_apply(args: ApplyArgs) -> Result<()> {
             use_color,
             options.agents.as_ref(),
             &plugin_result.mcp_servers,
+            args.rebase_mcp_journal,
             &mut result,
         )?;
     }
@@ -515,11 +522,17 @@ fn handle_apply_mcp(
     use_color: bool,
     agents: Option<&Vec<String>>,
     plugin_servers: &std::collections::BTreeMap<String, agentsync::config::McpServerConfig>,
+    rebase_mcp_journal: bool,
     result: &mut SyncResult,
 ) -> Result<()> {
     println!();
     print_lines(&render_mcp_phase(dry_run, use_color));
-    match linker.sync_mcp_with_servers(dry_run, agents, plugin_servers) {
+    match linker.sync_mcp_with_servers_with_rebase(
+        dry_run,
+        agents,
+        plugin_servers,
+        rebase_mcp_journal,
+    ) {
         Ok(mcp_result) => {
             if mcp_result.created > 0
                 || mcp_result.updated > 0
@@ -633,6 +646,8 @@ fn handle_revert(
         ..Default::default()
     };
     let mut result = linker.revert(&options)?;
+    let cleanup_gitignore =
+        revert_should_cleanup_gitignore(linker.config(), &options.agents, &result);
     println!();
     print_lines(&render_mcp_phase(dry_run, use_color));
     match linker.restore_mcp_ownership(dry_run, options.agents.as_ref()) {
@@ -659,7 +674,7 @@ fn handle_revert(
     }
     // Clean up only after a complete, unfiltered revert: with --agents (or a
     // narrowing default_agents), other agents may still need their entries.
-    if revert_should_cleanup_gitignore(linker.config(), &options.agents, &result) {
+    if cleanup_gitignore {
         println!();
         print_lines(&render_gitignore_phase_with_color(
             false, dry_run, use_color,
@@ -863,6 +878,25 @@ mod tests {
     }
 
     #[test]
+    fn test_render_clean_summary_does_not_call_skipped_work_complete() {
+        assert_eq!(
+            render_clean_summary(
+                false,
+                &SyncResult {
+                    skipped: 1,
+                    ..Default::default()
+                },
+            ),
+            vec![
+                "! Clean incomplete: skipped targets remain".to_string(),
+                "  Removed: 0".to_string(),
+                "  Skipped: 1".to_string(),
+                "  Errors: 0".to_string()
+            ]
+        );
+    }
+
+    #[test]
     fn test_render_revert_phase_and_summary_make_dry_run_clear() {
         assert_eq!(
             render_revert_phase(true),
@@ -902,6 +936,26 @@ mod tests {
                 "  Would remove: 3".to_string(),
                 "  Would restore: 2".to_string(),
                 "  Errors: 1".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_render_revert_summary_does_not_call_skipped_work_complete() {
+        assert_eq!(
+            render_revert_summary(
+                false,
+                &SyncResult {
+                    skipped: 1,
+                    ..Default::default()
+                },
+            ),
+            vec![
+                "! Revert incomplete: skipped items remain".to_string(),
+                "  Removed: 0".to_string(),
+                "  Restored: 0".to_string(),
+                "  Skipped: 1".to_string(),
+                "  Errors: 0".to_string()
             ]
         );
     }
