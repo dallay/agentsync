@@ -1741,7 +1741,8 @@ fn copy_backup_file_capability_windows(
     destination_path: &Path,
     expected: quarantine::EntryIdentity,
 ) -> anyhow::Result<()> {
-    use cap_std::fs::{DirExt, OpenOptions, OpenOptionsExt};
+    use cap_fs_ext::DirExt;
+    use cap_std::fs::{OpenOptions, OpenOptionsExt};
     use windows_sys::Win32::Storage::FileSystem::{
         DELETE, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES,
         FILE_READ_DATA, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_WRITE_DATA,

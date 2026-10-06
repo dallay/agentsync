@@ -655,7 +655,9 @@ where
                     SetFileInformationByHandle(
                         file.as_raw_handle() as HANDLE,
                         FileDispositionInfoEx,
-                        (&disposition as *const _).cast(),
+                        (&disposition
+                            as *const windows_sys::Win32::Storage::FileSystem::FILE_DISPOSITION_INFO_EX)
+                            .cast::<std::ffi::c_void>(),
                         std::mem::size_of_val(&disposition) as u32,
                     )
                 };
@@ -888,7 +890,7 @@ fn delete_open_handle(file: &cap_std::fs::File) -> io::Result<()> {
         SetFileInformationByHandle(
             file.as_raw_handle() as HANDLE,
             FileDispositionInfoEx,
-            (&disposition as *const _).cast(),
+            (&disposition as *const FILE_DISPOSITION_INFO_EX).cast::<std::ffi::c_void>(),
             std::mem::size_of_val(&disposition) as u32,
         )
     };

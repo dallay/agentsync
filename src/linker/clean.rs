@@ -1041,9 +1041,10 @@ mod tests {
         let hook_project = project_root.clone();
         let hook_moved = moved_project.clone();
         let hook_outside = outside_root.clone();
+        let expected_canonical_root = project_root.canonicalize().unwrap();
         *linker.project_root_before_open_hook.borrow_mut() =
             Some(Box::new(move |canonical_root| {
-                assert_eq!(canonical_root, hook_project);
+                assert_eq!(canonical_root, expected_canonical_root);
                 fs::rename(&hook_project, &hook_moved).unwrap();
                 symlink(&hook_outside, &hook_project).unwrap();
             }));
@@ -1083,9 +1084,10 @@ mod tests {
         let hook_project = project_root.clone();
         let hook_moved = moved_project.clone();
         let hook_outside = outside_root.clone();
+        let expected_canonical_root = project_root.canonicalize().unwrap();
         *linker.project_root_before_open_hook.borrow_mut() =
             Some(Box::new(move |canonical_root| {
-                assert_eq!(canonical_root, hook_project);
+                assert_eq!(canonical_root, expected_canonical_root);
                 fs::rename(&hook_project, &hook_moved).unwrap();
                 fs::rename(&hook_outside, &hook_project).unwrap();
             }));
