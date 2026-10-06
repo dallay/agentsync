@@ -2628,8 +2628,8 @@ mod tests {
         use std::os::windows::io::{AsRawHandle, FromRawHandle};
         use windows_sys::Win32::Foundation::{HANDLE, INVALID_HANDLE_VALUE};
         use windows_sys::Win32::Storage::FileSystem::{
-            FILE_FLAG_BACKUP_SEMANTICS, FILE_READ_ATTRIBUTES, FILE_SHARE_READ, FILE_SHARE_WRITE,
-            FILE_TRAVERSE, ReOpenFile, SYNCHRONIZE,
+            FILE_FLAG_BACKUP_SEMANTICS, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_READ,
+            FILE_SHARE_WRITE, FILE_TRAVERSE, ReOpenFile, SYNCHRONIZE,
         };
 
         let capability_directory = linker
@@ -2694,6 +2694,24 @@ mod tests {
             );
             if zero_access_reopen != INVALID_HANDLE_VALUE {
                 drop(unsafe { std::fs::File::from_raw_handle(zero_access_reopen as _) });
+            }
+
+            let delete_share_reopen = unsafe {
+                ReOpenFile(
+                    handle as HANDLE,
+                    0,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                    FILE_FLAG_BACKUP_SEMANTICS,
+                )
+            };
+            let delete_share_error =
+                (delete_share_reopen == INVALID_HANDLE_VALUE).then(std::io::Error::last_os_error);
+            eprintln!(
+                "[ZCODE-REOPEN-RPI062] {label} zero-access + FILE_SHARE_DELETE valid={} error={delete_share_error:?}",
+                delete_share_error.is_none()
+            );
+            if delete_share_reopen != INVALID_HANDLE_VALUE {
+                drop(unsafe { std::fs::File::from_raw_handle(delete_share_reopen as _) });
             }
         }
     }
