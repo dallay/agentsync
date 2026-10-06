@@ -999,7 +999,7 @@ pub(super) fn rename_open_handle(
     use std::os::windows::io::AsRawHandle;
     use windows_sys::Win32::Foundation::HANDLE;
     use windows_sys::Win32::Storage::FileSystem::{
-        FILE_RENAME_INFO, FileRenameInfoEx, SetFileInformationByHandle,
+        FILE_RENAME_INFO, FileRenameInfo, SetFileInformationByHandle,
     };
 
     let wide_name = name.encode_wide().collect::<Vec<_>>();
@@ -1014,9 +1014,11 @@ pub(super) fn rename_open_handle(
     // fixed header plus the UTF-16 filename tail; the API consumes it before
     // this stack-owned buffer is dropped. Flags=0 means do not replace an
     // existing destination, and RootDirectory makes FileName relative to the
-    // already-open parent directory handle.
+    // already-open parent directory handle. Use FileRenameInfo rather than
+    // FileRenameInfoEx: on Windows the extended class rejects this sibling
+    // rename with ERROR_INVALID_PARAMETER when RootDirectory is supplied.
     unsafe {
-        (*info).Anonymous.Flags = 0;
+        (*info).Anonymous.ReplaceIfExists = false;
         (*info).RootDirectory = parent.as_raw_handle() as HANDLE;
         (*info).FileNameLength = file_name_length;
         std::ptr::copy_nonoverlapping(
@@ -1026,7 +1028,7 @@ pub(super) fn rename_open_handle(
         );
         let renamed = SetFileInformationByHandle(
             file.as_raw_handle() as HANDLE,
-            FileRenameInfoEx,
+            FileRenameInfo,
             info.cast(),
             buffer_length as u32,
         );
