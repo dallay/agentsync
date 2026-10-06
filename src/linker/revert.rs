@@ -2623,6 +2623,63 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
+    #[cfg(windows)]
+    fn diagnose_reopenfile_handle_origin(linker: &Linker, directory: &Path) {
+        use std::os::windows::io::{AsRawHandle, FromRawHandle};
+        use windows_sys::Win32::Foundation::{HANDLE, INVALID_HANDLE_VALUE};
+        use windows_sys::Win32::Storage::FileSystem::{
+            FILE_FLAG_BACKUP_SEMANTICS, FILE_READ_ATTRIBUTES, FILE_SHARE_READ, FILE_SHARE_WRITE,
+            FILE_TRAVERSE, ReOpenFile, SYNCHRONIZE,
+        };
+
+        let capability_directory = linker
+            .open_project_relative_directory(directory)
+            .expect("open directory by capability path");
+        let createfile_directory =
+            cap_std::fs::Dir::open_ambient_dir(directory, cap_std::ambient_authority())
+                .expect("open same directory through ambient CreateFile path");
+        let capability_metadata = capability_directory
+            .metadata(".")
+            .expect("read capability directory metadata");
+        let createfile_metadata = createfile_directory
+            .metadata(".")
+            .expect("read CreateFile directory metadata");
+        let same_identity =
+            quarantine::EntryIdentity::capture(&capability_metadata).matches(&createfile_metadata);
+        eprintln!(
+            "[ZCODE-REOPEN-RPI061] capability and CreateFile handles identify same directory: {same_identity}"
+        );
+        assert!(
+            same_identity,
+            "capability and CreateFile diagnostic handles must refer to the same directory"
+        );
+
+        for (label, handle) in [
+            (
+                "capability/NtCreateFile",
+                capability_directory.as_raw_handle(),
+            ),
+            ("ambient/CreateFile", createfile_directory.as_raw_handle()),
+        ] {
+            let reopened = unsafe {
+                ReOpenFile(
+                    handle as HANDLE,
+                    FILE_TRAVERSE | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE,
+                    FILE_FLAG_BACKUP_SEMANTICS,
+                )
+            };
+            let error = (reopened == INVALID_HANDLE_VALUE).then(std::io::Error::last_os_error);
+            eprintln!(
+                "[ZCODE-REOPEN-RPI061] {label} reopen valid={} error={error:?}",
+                error.is_none()
+            );
+            if reopened != INVALID_HANDLE_VALUE {
+                drop(unsafe { std::fs::File::from_raw_handle(reopened as _) });
+            }
+        }
+    }
+
     fn make_linker_for_agent(
         project_root: &Path,
         agent_name: &str,
@@ -3635,6 +3692,9 @@ mod tests {
             plugins: Default::default(),
         };
         let linker = Linker::new(config, project_root.join("agentsync.toml"));
+
+        #[cfg(windows)]
+        diagnose_reopenfile_handle_origin(&linker, &dest_dir);
 
         let subscriber = tracing_subscriber::fmt()
             .with_test_writer()
