@@ -43,3 +43,9 @@ tool that are known to contain user-provided credentials or sensitive environmen
 **Vulnerability:** A malicious repository or catalog could define a skill with a `file://` URL source pointing to arbitrary local files (e.g. `file:///etc/passwd`). When suggesting or installing such a skill, AgentSync would fetch and unpack it, copying sensitive local file contents into the project directory under `.agents/skills/`.
 **Learning:** Checking for `file://` or path traversal requires dynamic resolution of the project root during installation to establish a safe boundary. Unit tests can be affected by root boundaries if they write temporary files to system `/tmp` directories.
 **Prevention:** Canonicalize the target local path and ensure it is strictly nested within the project root directory when fetching local/file-based skill data.
+
+## 2025-05-21 - Cross-Platform Backslash Traversal in Destination Validation
+
+**Vulnerability:** Destination paths containing Windows-style backslash traversal (e.g. `..\escaped`) or drive letters (e.g. `C:\...`) bypassed `Path::components()` traversal checks when running on Unix platforms.
+**Learning:** Rust's `std::path::Path` on Unix treats `\` as a normal filename character rather than a path separator. Thus, `Path::new("..\\file").components()` yields a single `Component::Normal` on Unix, failing to detect `Component::ParentDir` or `Component::Prefix` unless backslashes are normalized to slashes first.
+**Prevention:** Normalize backslashes (`path.replace('\\', "/")`) and explicitly check for Windows drive prefixes (`c.len() >= 2 && c.as_bytes()[1] == b':'`) before component inspection when validating untrusted path inputs cross-platform.
