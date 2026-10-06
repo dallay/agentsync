@@ -1000,6 +1000,11 @@ pub(super) fn rename_open_handle(
     // on RootDirectory. A cap-std Dir is opened for directory listing, so
     // reopen the same handle with the required access instead of resolving its
     // path again.
+    #[cfg(test)]
+    eprintln!(
+        "[ZCODE-RENAME-RPI060] before ReOpenFile for {}",
+        name.to_string_lossy()
+    );
     let rename_root = unsafe {
         ReOpenFile(
             parent.as_raw_handle() as HANDLE,
@@ -1008,6 +1013,11 @@ pub(super) fn rename_open_handle(
             FILE_FLAG_BACKUP_SEMANTICS,
         )
     };
+    #[cfg(test)]
+    eprintln!(
+        "[ZCODE-RENAME-RPI060] ReOpenFile returned valid={}",
+        rename_root != INVALID_HANDLE_VALUE
+    );
     if rename_root == INVALID_HANDLE_VALUE {
         return Err(io::Error::last_os_error());
     }
@@ -1027,7 +1037,7 @@ pub(super) fn rename_open_handle(
     // it before this stack-owned buffer is dropped. ReplaceIfExists=false
     // preserves no-replace behavior, and RootDirectory makes FileName relative
     // to the reopened parent handle with traverse/read-attributes access.
-    unsafe {
+    let renamed = unsafe {
         (*info).Anonymous.ReplaceIfExists = false;
         (*info).RootDirectory = rename_root.as_raw_handle() as HANDLE;
         (*info).FileNameLength = file_name_length;
@@ -1037,15 +1047,19 @@ pub(super) fn rename_open_handle(
             wide_name.len(),
         );
         *(*info).FileName.as_mut_ptr().add(wide_name.len()) = 0;
-        let renamed = SetFileInformationByHandle(
+        SetFileInformationByHandle(
             file.as_raw_handle() as HANDLE,
             FileRenameInfo,
             info.cast(),
             buffer_length as u32,
-        );
-        if renamed == 0 {
-            return Err(io::Error::last_os_error());
-        }
+        )
+    };
+    #[cfg(test)]
+    eprintln!(
+        "[ZCODE-RENAME-RPI060] SetFileInformationByHandle(FileRenameInfo) returned {renamed}"
+    );
+    if renamed == 0 {
+        return Err(io::Error::last_os_error());
     }
     Ok(())
 }
