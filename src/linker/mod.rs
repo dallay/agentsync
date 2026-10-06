@@ -409,8 +409,9 @@ pub fn revert_agent_selected(
     true
 }
 /// Shared agent selection: CLI --agents > default_agents > all enabled agents.
-// `pub` so the `revert` CLI gate in `main.rs` reuses the exact same filter
-// semantics as apply/revert instead of reimplementing them.
+// `pub` so callers outside the linker (e.g. CLI gates in `main.rs`) reuse the
+// apply filter semantics. Revert uses `revert_agent_selected`, which does not
+// exclude disabled agents.
 pub fn agent_selected(
     config: &crate::config::Config,
     agent_name: &str,
