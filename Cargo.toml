@@ -72,9 +72,22 @@ urlencoding = "2.1"
 url = "2.5"
 ratatui = { version = "0.30.0", default-features = false, features = ["crossterm"] }
 crossterm = "0.29.0"
+cap-std = "=3.4.4"
+cap-fs-ext = "=3.4.4"
+rand = "0.10"
+
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+rustix = { version = "1.1.4", features = ["fs"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+] }
 
 [dev-dependencies]
-rand = "0.10"
 
 [profile.release]
 lto = true

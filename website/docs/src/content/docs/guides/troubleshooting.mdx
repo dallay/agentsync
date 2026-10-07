@@ -184,6 +184,35 @@ agentsync status
 
 Use `clean` only when you intend to remove managed links before recreating them.
 
+## I applied and want to go back
+
+`apply` backs up any regular file or directory it replaces into a `.bak` sibling (e.g., `CLAUDE.md` → `CLAUDE.md.bak`). `revert` removes the managed symlinks and moves those backups back into place:
+
+```bash
+agentsync revert --dry-run
+agentsync revert
+agentsync status
+```
+
+Scope it to one agent, or keep the backups for inspection:
+
+```bash
+agentsync revert --agents claude
+agentsync revert --keep-backups
+```
+
+`--keep-backups` is supported on Unix only. On Windows it is rejected before `revert` changes managed links or backup files; run normal `agentsync revert` to move the original `.bak` and preserve its inherited permissions.
+
+Know the limits:
+
+- Destinations that did not exist before `apply` are simply unlinked (there is nothing to restore).
+- A backup is never restored over a real file that appeared after the backup was taken.
+- For `symlink-contents`, `revert` removes managed child links but may leave the destination directory empty because it cannot infer whether the container existed before `apply`.
+- `clean` does not restore backups — it only deletes managed links. Use `revert` when you want your originals back.
+- On a complete, unfiltered run, `revert` also removes the AgentSync-managed `.gitignore` block; with `--agents`, a narrowing `default_agents`, or any revert error/skip, the block is left alone because managed destinations may remain. Re-run `apply` to reconcile it.
+
+See the <BaseLink href="/reference/cli/">CLI Reference</BaseLink> for all `revert` flags.
+
 ## Quick checklist before opening an issue
 
 Collect this output and paste it into the report:

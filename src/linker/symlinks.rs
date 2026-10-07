@@ -307,7 +307,7 @@ impl Linker {
 /// Directory iteration order from the OS is unspecified (often hash/creation
 /// order on APFS), so sorting by file name makes `symlink-contents` link
 /// creation and printed output reproducible across runs and platforms.
-fn sorted_dir_entries(dir: &Path) -> anyhow::Result<Vec<fs::DirEntry>> {
+pub(super) fn sorted_dir_entries(dir: &Path) -> anyhow::Result<Vec<fs::DirEntry>> {
     let mut entries: Vec<fs::DirEntry> = fs::read_dir(dir)
         .with_context(|| format!("Failed to read source directory: {}", dir.display()))?
         .collect::<Result<_, _>>()
@@ -316,7 +316,7 @@ fn sorted_dir_entries(dir: &Path) -> anyhow::Result<Vec<fs::DirEntry>> {
     Ok(entries)
 }
 
-fn backup_path_for_destination(dest: &Path) -> PathBuf {
+pub(super) fn backup_path_for_destination(dest: &Path) -> PathBuf {
     // Performance: Use OsString::push to avoid string formatting and UTF-8 validation overhead.
     let mut os_string = dest.as_os_str().to_os_string();
     os_string.push(".bak");

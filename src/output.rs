@@ -328,6 +328,111 @@ pub(crate) fn render_clean_summary_with_color(
     ]
 }
 
+pub(crate) fn render_revert_phase_with_color(dry_run: bool, use_color: bool) -> Vec<String> {
+    render_phase(
+        "Revert",
+        if dry_run {
+            "Previewing managed symlink restores"
+        } else {
+            "Restoring pre-apply state"
+        },
+        use_color,
+    )
+}
+
+#[allow(dead_code)] // Used by the MCP-aware follow-up layer in the stacked PR.
+pub(crate) fn render_revert_summary_with_color(
+    dry_run: bool,
+    result: &agentsync::SyncResult,
+    use_color: bool,
+) -> Vec<String> {
+    render_revert_summary_with_scope(dry_run, result, use_color, "Revert")
+}
+
+pub(crate) fn render_symlink_revert_summary_with_color(
+    dry_run: bool,
+    result: &agentsync::SyncResult,
+    use_color: bool,
+) -> Vec<String> {
+    render_revert_summary_with_scope(dry_run, result, use_color, "Symlink revert")
+}
+
+fn render_revert_summary_with_scope(
+    dry_run: bool,
+    result: &agentsync::SyncResult,
+    use_color: bool,
+    scope: &str,
+) -> Vec<String> {
+    let formatter = HumanFormatter::new(use_color);
+    let has_errors = result.errors > 0;
+    let has_skips = result.skipped > 0;
+    let (symbol, title, kind) = if has_errors {
+        (
+            "✗",
+            if dry_run {
+                format!("{scope} dry run completed with errors")
+            } else {
+                format!("{scope} completed with errors")
+            },
+            LabelKind::Failure,
+        )
+    } else if has_skips {
+        (
+            "!",
+            if dry_run {
+                format!("{scope} dry run found skipped items")
+            } else {
+                format!("{scope} incomplete: skipped items remain")
+            },
+            LabelKind::Warning,
+        )
+    } else {
+        (
+            "✔",
+            if dry_run {
+                format!("{scope} dry run complete")
+            } else {
+                format!("{scope} complete")
+            },
+            LabelKind::Success,
+        )
+    };
+    let mut lines = vec![
+        formatter.format_label(symbol, &title, kind),
+        render_count(
+            if dry_run { "Would remove" } else { "Removed" },
+            result.removed,
+            LabelKind::Success,
+            use_color,
+        ),
+        render_count(
+            if dry_run { "Would restore" } else { "Restored" },
+            result.restored,
+            LabelKind::Success,
+            use_color,
+        ),
+    ];
+    if has_skips {
+        lines.push(render_count(
+            "Skipped",
+            result.skipped,
+            LabelKind::Warning,
+            use_color,
+        ));
+    }
+    lines.push(render_count(
+        "Errors",
+        result.errors,
+        if has_errors {
+            LabelKind::Failure
+        } else {
+            LabelKind::Muted
+        },
+        use_color,
+    ));
+    lines
+}
+
 pub(crate) fn render_gitignore_phase_with_color(
     enabled: bool,
     dry_run: bool,
@@ -395,6 +500,7 @@ mod tests {
                     updated: 1,
                     skipped: 3,
                     removed: 0,
+                    restored: 0,
                     errors: 1
                 }
             ),

@@ -1611,8 +1611,8 @@ mod tests {
     #[tokio::test]
     async fn fetch_remote_data_follows_redirects_without_authentication() {
         let address = spawn_http_server(vec![
-            b"HTTP/1.1 302 Found\r\nLocation: /archive.zip\r\nContent-Length: 0\r\n\r\n",
-            b"HTTP/1.1 200 OK\r\nContent-Length: 7\r\n\r\narchive",
+            b"HTTP/1.1 302 Found\r\nLocation: /archive.zip\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
+            b"HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: 7\r\n\r\narchive",
         ])
         .await;
         let temp = tempfile::tempdir().unwrap();

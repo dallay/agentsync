@@ -23,7 +23,10 @@ pub use timing::TimingSink;
 mod apply;
 mod clean;
 mod discovery;
+mod enumerate;
 mod paths;
+mod quarantine;
+mod revert;
 mod symlinks;
 pub mod timing;
 
@@ -39,6 +42,15 @@ enum ExistingSymlinkAction {
 
 type NestedGlobKey = (PathBuf, String, Vec<String>);
 type NestedGlobMatches = Rc<Vec<(PathBuf, PathBuf)>>;
+type NestedGlobCacheEntry = (NestedGlobMatches, bool);
+#[cfg(test)]
+type ReadContentsAfterOpenHook = Rc<dyn Fn(&Path)>;
+#[cfg(test)]
+type ProjectRootBeforeOpenHook = Box<dyn FnOnce(&Path)>;
+#[cfg(test)]
+type QuarantineBeforeMoveHook = Rc<dyn Fn(&Path)>;
+#[cfg(test)]
+type QuarantineAfterMoveHook = Rc<dyn Fn(&Path)>;
 
 /// Options for the sync operation
 #[derive(Debug, Default)]
@@ -51,6 +63,8 @@ pub struct SyncOptions {
     pub verbose: bool,
     /// Filter to specific agents
     pub agents: Option<Vec<String>>,
+    /// Keep .bak backups after a revert restore instead of consuming them
+    pub keep_backups: bool,
 }
 
 /// Result of a sync operation
@@ -60,6 +74,7 @@ pub struct SyncResult {
     pub updated: usize,
     pub skipped: usize,
     pub removed: usize,
+    pub restored: usize,
     pub errors: usize,
 }
 
@@ -88,15 +103,29 @@ pub struct Linker {
     /// of scanning the whole map per mutation.
     path_cache: RefCell<BTreeMap<PathBuf, Rc<PathBuf>>>,
     compression_cache: RefCell<HashMap<PathBuf, Rc<str>>>,
-    /// Cache for NestedGlob discovery results: (search_root, pattern, excludes) -> [(full_path, rel_path)]
-    glob_cache: RefCell<HashMap<NestedGlobKey, NestedGlobMatches>>,
+    /// Cache for NestedGlob discovery results and traversal completion:
+    /// (search_root, pattern, excludes) -> (matches, complete).
+    glob_cache: RefCell<HashMap<NestedGlobKey, NestedGlobCacheEntry>>,
     ensured_dirs: RefCell<HashSet<PathBuf>>,
     ensured_compressed: RefCell<HashSet<PathBuf>>,
     canonical_project_root: RefCell<Option<Rc<PathBuf>>>,
+    project_root_capability: RefCell<Option<cap_std::fs::Dir>>,
     /// Timing sink for the developer-only benchmark harness. `None` in normal
     /// runs, where the guarded spans short-circuit without any `Instant::now`
     /// cost.
     timing: RefCell<Option<Rc<RefCell<TimingSink>>>>,
+    #[cfg(test)]
+    read_contents_after_open_hook: RefCell<Option<ReadContentsAfterOpenHook>>,
+    #[cfg(test)]
+    project_root_before_open_hook: RefCell<Option<ProjectRootBeforeOpenHook>>,
+    #[cfg(test)]
+    quarantine_before_move_hook: RefCell<Option<QuarantineBeforeMoveHook>>,
+    #[cfg(test)]
+    quarantine_before_container_move_hook: RefCell<Option<QuarantineBeforeMoveHook>>,
+    #[cfg(test)]
+    quarantine_after_move_hook: RefCell<Option<QuarantineAfterMoveHook>>,
+    #[cfg(test)]
+    nested_glob_walk_override: RefCell<Option<Box<dyn discovery::NestedGlobWalkIterator>>>,
 }
 
 impl Linker {
@@ -116,7 +145,20 @@ impl Linker {
             ensured_dirs: RefCell::new(HashSet::new()),
             ensured_compressed: RefCell::new(HashSet::new()),
             canonical_project_root: RefCell::new(None),
+            project_root_capability: RefCell::new(None),
             timing: RefCell::new(None),
+            #[cfg(test)]
+            read_contents_after_open_hook: RefCell::new(None),
+            #[cfg(test)]
+            project_root_before_open_hook: RefCell::new(None),
+            #[cfg(test)]
+            quarantine_before_move_hook: RefCell::new(None),
+            #[cfg(test)]
+            quarantine_before_container_move_hook: RefCell::new(None),
+            #[cfg(test)]
+            quarantine_after_move_hook: RefCell::new(None),
+            #[cfg(test)]
+            nested_glob_walk_override: RefCell::new(None),
         }
     }
 
@@ -341,6 +383,112 @@ impl Linker {
 /// while preserving legacy substring matching for unknown/custom filters.
 fn mcp_agent_matches_filter(agent: crate::mcp::McpAgent, filter: &str) -> bool {
     crate::agent_ids::mcp_filter_matches(agent.id(), filter)
+}
+
+/// Revert-only agent selection: CLI `--agents` / `default_agents` filters
+/// still apply, but `enabled = false` does NOT exclude the agent. Revert must
+/// process disabled agents so stale links and `.bak` backups left behind when
+/// an agent was disabled after `apply` are still cleaned up. Apply and clean
+/// keep using `agent_selected` and are untouched.
+pub fn revert_agent_selected(
+    config: &crate::config::Config,
+    agent_name: &str,
+    options: &SyncOptions,
+) -> bool {
+    if let Some(ref filter) = options.agents {
+        return filter
+            .iter()
+            .any(|f| crate::agent_ids::sync_filter_matches(agent_name, f));
+    }
+    if !config.default_agents.is_empty() {
+        return config
+            .default_agents
+            .iter()
+            .any(|f| crate::agent_ids::sync_filter_matches(agent_name, f));
+    }
+    true
+}
+/// Shared agent selection: CLI --agents > default_agents > all enabled agents.
+// `pub` so callers outside the linker (e.g. CLI gates in `main.rs`) reuse the
+// apply filter semantics. Revert uses `revert_agent_selected`, which does not
+// exclude disabled agents.
+pub fn agent_selected(
+    config: &crate::config::Config,
+    agent_name: &str,
+    enabled: bool,
+    options: &SyncOptions,
+) -> bool {
+    if !enabled {
+        return false;
+    }
+    if let Some(ref filter) = options.agents {
+        return filter
+            .iter()
+            .any(|f| crate::agent_ids::sync_filter_matches(agent_name, f));
+    }
+    if !config.default_agents.is_empty() {
+        return config
+            .default_agents
+            .iter()
+            .any(|f| crate::agent_ids::sync_filter_matches(agent_name, f));
+    }
+    true
+}
+
+/// Shared unit-test fixtures for the linker sibling modules (`clean`,
+/// `revert`): a single `make_target`/`make_linker` pair instead of one copy
+/// per file.
+#[cfg(test)]
+pub(crate) mod test_support {
+    use super::*;
+    use crate::config::{AgentConfig, SyncType};
+
+    pub(crate) fn make_target(
+        source: &str,
+        destination: &str,
+        sync_type: SyncType,
+    ) -> TargetConfig {
+        TargetConfig {
+            source: source.to_string(),
+            destination: destination.to_string(),
+            sync_type,
+            pattern: None,
+            exclude: vec![],
+            mappings: vec![],
+        }
+    }
+
+    pub(crate) fn make_linker(
+        project_root: &Path,
+        agent_enabled: bool,
+        target: TargetConfig,
+    ) -> Linker {
+        let mut targets = BTreeMap::new();
+        targets.insert("target".to_string(), target);
+
+        let agent_config = AgentConfig {
+            enabled: agent_enabled,
+            description: String::new(),
+            targets,
+        };
+
+        let mut agents = BTreeMap::new();
+        agents.insert("test".to_string(), agent_config);
+
+        let config = Config {
+            source_dir: ".agents".to_string(),
+            compress_agents_md: false,
+            default_agents: vec![],
+            agents,
+            gitignore: Default::default(),
+            mcp: Default::default(),
+            mcp_servers: Default::default(),
+            plugins: Default::default(),
+        };
+
+        let config_path = project_root.join("agentsync.toml");
+        Linker::new(config, config_path)
+    }
 }
 
 #[cfg(test)]
@@ -2586,6 +2734,7 @@ mod tests {
         let result = linker.clean(&SyncOptions::default()).unwrap();
 
         assert_eq!(result.removed, 0);
+        assert_eq!(result.skipped, 1);
     }
 
     #[test]
@@ -3166,6 +3315,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.removed, 0);
+        assert_eq!(result.skipped, 1);
         assert!(
             !temp_dir
                 .path()

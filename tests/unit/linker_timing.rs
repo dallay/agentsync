@@ -71,6 +71,7 @@ fn sync_without_timing_sink_succeeds_and_records_nothing() {
         dry_run: false,
         verbose: false,
         agents: Some(vec!["test".to_string()]),
+        keep_backups: false,
     });
 
     assert!(result.is_ok());

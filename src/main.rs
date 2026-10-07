@@ -25,7 +25,8 @@ use output::{
     human_use_color, init_next_steps_lines, print_header, print_lines,
     render_apply_summary_with_color, render_clean_phase_with_color,
     render_clean_summary_with_color, render_dry_run_notice, render_gitignore_phase_with_color,
-    render_mcp_phase, render_mcp_summary_with_color, render_sync_phase_with_color,
+    render_mcp_phase, render_mcp_summary_with_color, render_revert_phase_with_color,
+    render_symlink_revert_summary_with_color, render_sync_phase_with_color,
 };
 
 fn should_spawn_update_check(command: &Commands) -> bool {
@@ -46,6 +47,7 @@ fn merge_clean_result_into_apply_result(result: &mut SyncResult, clean_result: &
     result.updated += clean_result.updated;
     result.skipped += clean_result.skipped;
     result.removed += clean_result.removed;
+    result.restored += clean_result.restored;
     result.errors += clean_result.errors;
 }
 
@@ -192,6 +194,21 @@ enum Commands {
         #[arg(short, long)]
         verbose: bool,
     },
+    /// Restore pre-apply state: remove managed symlinks and restore .bak backups
+    Revert {
+        #[arg(short, long, alias = "project-root")]
+        path: Option<PathBuf>,
+        #[arg(short, long)]
+        config: Option<PathBuf>,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(short, long)]
+        verbose: bool,
+        #[arg(short, long, value_delimiter = ',')]
+        agents: Option<Vec<String>>,
+        #[arg(long)]
+        keep_backups: bool,
+    },
     /// Developer-only: install a sample skill (dev)
     #[command(hide = true)]
     DevInstall {
@@ -284,6 +301,17 @@ fn run() -> Result<()> {
             verbose,
         } => run_in_root_span("clean", || {
             handle_clean(path, config, dry_run, verbose)?;
+            Ok(())
+        }),
+        Commands::Revert {
+            path,
+            config,
+            dry_run,
+            verbose,
+            agents,
+            keep_backups,
+        } => run_in_root_span("revert", || {
+            handle_revert(path, config, dry_run, verbose, agents, keep_backups)?;
             Ok(())
         }),
         Commands::DevInstall { skill_id, json } => run_in_root_span("skill", || {
@@ -419,6 +447,7 @@ fn handle_apply(args: ApplyArgs) -> Result<()> {
         dry_run: args.dry_run,
         verbose: args.verbose,
         agents: args.agents,
+        keep_backups: false,
     };
     let mut result = linker.sync(&options)?;
     merge_plugin_result_into_apply_result(&mut result, &plugin_result);
@@ -545,13 +574,107 @@ fn handle_clean(
     Ok(())
 }
 
+/// Revert drops the managed gitignore block only on unfiltered runs: it is
+/// filtered whenever `--agents` is passed OR `default_agents` is non-empty
+/// and does not cover every configured agent (revert processes disabled agents
+/// too, so their entries may still be needed).
+fn revert_should_cleanup_gitignore(
+    config: &Config,
+    agents: &Option<Vec<String>>,
+    result: &SyncResult,
+) -> bool {
+    if result.errors > 0 || result.skipped > 0 {
+        return false;
+    }
+    if agents.is_some() {
+        return false;
+    }
+    if config.default_agents.is_empty() {
+        return true;
+    }
+    // Revert includes disabled agents, unlike apply; use its selector so this
+    // gate accounts for every agent that the revert loop will process.
+    let defaults_as_filter = SyncOptions {
+        agents: Some(config.default_agents.clone()),
+        ..Default::default()
+    };
+    config.agents.iter().all(|(name, _)| {
+        agentsync::linker::revert_agent_selected(config, name, &defaults_as_filter)
+    })
+}
+
+fn handle_revert(
+    path: Option<PathBuf>,
+    config: Option<PathBuf>,
+    dry_run: bool,
+    verbose: bool,
+    agents: Option<Vec<String>>,
+    keep_backups: bool,
+) -> Result<()> {
+    let start_dir = current_project_root(path, || env::current_dir().map_err(Into::into))?;
+    print_header();
+    let config_path = match config {
+        Some(p) => p,
+        None => Config::find_config(&start_dir)?,
+    };
+    let config = Config::load(&config_path)?;
+    let linker = Linker::new(config, config_path);
+    let use_color = human_use_color();
+    if dry_run {
+        print_lines(&render_dry_run_notice(use_color));
+        println!();
+    }
+    print_lines(&render_revert_phase_with_color(dry_run, use_color));
+    let options = SyncOptions {
+        dry_run,
+        verbose,
+        agents,
+        keep_backups,
+        ..Default::default()
+    };
+    let result = linker.revert(&options)?;
+    // Clean up only after a complete, unfiltered revert: with --agents (or a
+    // narrowing default_agents), other agents may still need their entries.
+    if revert_should_cleanup_gitignore(linker.config(), &options.agents, &result) {
+        println!();
+        print_lines(&render_gitignore_phase_with_color(
+            false, dry_run, use_color,
+        ));
+        gitignore::cleanup_gitignore(
+            linker.project_root(),
+            &linker.config().gitignore.marker,
+            dry_run,
+        )?;
+    }
+    println!(
+        "  {} MCP config files are not inspected or restored by this core-only revert; the full pre-apply state may remain",
+        "!".yellow()
+    );
+    tracing::warn!(
+        "Core-only revert restored symlink state only; MCP config files were not inspected or restored"
+    );
+    println!();
+    print_lines(&render_symlink_revert_summary_with_color(
+        dry_run, &result, use_color,
+    ));
+    if result.errors > 0 {
+        return Err(anyhow::anyhow!(
+            "revert completed with {} error(s)",
+            result.errors
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{Cli, Commands, LogFormat, current_project_root, should_spawn_update_check};
     use crate::output::{
         init_next_steps_lines, render_apply_summary_with_color, render_clean_phase_with_color,
         render_clean_summary_with_color, render_gitignore_phase_with_color,
-        render_mcp_summary_with_color, render_sync_phase_with_color,
+        render_mcp_summary_with_color, render_revert_phase_with_color,
+        render_revert_summary_with_color, render_symlink_revert_summary_with_color,
+        render_sync_phase_with_color,
     };
     use agentsync::{SyncResult, mcp::McpSyncResult};
     use clap::Parser;
@@ -562,6 +685,15 @@ mod tests {
     }
     fn render_clean_phase(dry_run: bool) -> Vec<String> {
         render_clean_phase_with_color(dry_run, false)
+    }
+    fn render_revert_phase(dry_run: bool) -> Vec<String> {
+        render_revert_phase_with_color(dry_run, false)
+    }
+    fn render_revert_summary(dry_run: bool, result: &SyncResult) -> Vec<String> {
+        render_revert_summary_with_color(dry_run, result, false)
+    }
+    fn render_symlink_revert_summary(dry_run: bool, result: &SyncResult) -> Vec<String> {
+        render_symlink_revert_summary_with_color(dry_run, result, false)
     }
     fn render_clean_summary(dry_run: bool, result: &SyncResult) -> Vec<String> {
         render_clean_summary_with_color(dry_run, result, false)
@@ -659,6 +791,7 @@ mod tests {
                 updated: 1,
                 skipped: 3,
                 removed: 0,
+                restored: 0,
                 errors: 1,
             },
         );
@@ -717,6 +850,63 @@ mod tests {
     }
 
     #[test]
+    fn test_render_revert_phase_and_summary_make_dry_run_clear() {
+        assert_eq!(
+            render_revert_phase(true),
+            vec![
+                "➤ Revert".to_string(),
+                "  Previewing managed symlink restores".to_string()
+            ]
+        );
+        assert_eq!(
+            render_revert_summary(
+                false,
+                &SyncResult {
+                    removed: 3,
+                    restored: 2,
+                    ..Default::default()
+                },
+            ),
+            vec![
+                "✔ Revert complete".to_string(),
+                "  Removed: 3".to_string(),
+                "  Restored: 2".to_string(),
+                "  Errors: 0".to_string()
+            ]
+        );
+        assert_eq!(
+            render_revert_summary(
+                true,
+                &SyncResult {
+                    removed: 3,
+                    restored: 2,
+                    errors: 1,
+                    ..Default::default()
+                },
+            ),
+            vec![
+                "✗ Revert dry run completed with errors".to_string(),
+                "  Would remove: 3".to_string(),
+                "  Would restore: 2".to_string(),
+                "  Errors: 1".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_render_core_revert_summary_names_the_restored_scope() {
+        assert_eq!(
+            render_symlink_revert_summary(false, &SyncResult::default()),
+            vec![
+                "✔ Symlink revert complete".to_string(),
+                "  Removed: 0".to_string(),
+                "  Restored: 0".to_string(),
+                "  Errors: 0".to_string()
+            ]
+        );
+    }
+
+    #[test]
     fn test_render_mcp_summary_reports_all_counts() {
         let summary = render_mcp_summary(&McpSyncResult {
             created: 1,
@@ -743,23 +933,26 @@ mod tests {
             updated: 5,
             skipped: 7,
             removed: 11,
-            errors: 13,
+            restored: 13,
+            errors: 17,
         };
         let clean_result = SyncResult {
-            created: 17,
-            updated: 19,
-            skipped: 23,
-            removed: 29,
-            errors: 31,
+            created: 19,
+            updated: 23,
+            skipped: 29,
+            removed: 31,
+            restored: 37,
+            errors: 41,
         };
 
         super::merge_clean_result_into_apply_result(&mut result, &clean_result);
 
         assert_eq!(result.created, 3);
-        assert_eq!(result.updated, 24);
-        assert_eq!(result.skipped, 30);
-        assert_eq!(result.removed, 40);
-        assert_eq!(result.errors, 44);
+        assert_eq!(result.updated, 28);
+        assert_eq!(result.skipped, 36);
+        assert_eq!(result.removed, 42);
+        assert_eq!(result.restored, 50);
+        assert_eq!(result.errors, 58);
     }
 
     #[test]
@@ -769,7 +962,8 @@ mod tests {
             updated: 5,
             skipped: 7,
             removed: 11,
-            errors: 13,
+            restored: 13,
+            errors: 17,
         };
         let plugin_result = agentsync::plugins::PluginApplyResult {
             created: 17,
@@ -786,7 +980,9 @@ mod tests {
         assert_eq!(result.updated, 24);
         assert_eq!(result.skipped, 30);
         assert_eq!(result.removed, 40);
-        assert_eq!(result.errors, 44);
+        // Plugin results carry no restores: the apply-side value is preserved.
+        assert_eq!(result.restored, 13);
+        assert_eq!(result.errors, 48);
     }
 
     #[test]
@@ -872,5 +1068,117 @@ mod tests {
         let dry_run = Cli::try_parse_from(["agentsync", "apply", "--dry-run"])
             .expect("apply --dry-run should parse");
         assert!(should_spawn_update_check(&dry_run.command));
+    }
+
+    fn make_revert_gate_config(
+        default_agents: Vec<&str>,
+        agents: Vec<(&str, bool)>,
+    ) -> agentsync::config::Config {
+        use agentsync::config::{AgentConfig, Config};
+        use std::collections::BTreeMap;
+        let mut map = BTreeMap::new();
+        for (name, enabled) in agents {
+            map.insert(
+                name.to_string(),
+                AgentConfig {
+                    enabled,
+                    description: String::new(),
+                    targets: BTreeMap::new(),
+                },
+            );
+        }
+        Config {
+            source_dir: ".".to_string(),
+            compress_agents_md: false,
+            default_agents: default_agents.into_iter().map(str::to_string).collect(),
+            agents: map,
+            gitignore: Default::default(),
+            mcp: Default::default(),
+            mcp_servers: Default::default(),
+            plugins: Default::default(),
+        }
+    }
+
+    #[test]
+    fn revert_gitignore_cleanup_runs_when_unfiltered() {
+        let config = make_revert_gate_config(vec![], vec![("claude", true), ("copilot", true)]);
+        assert!(super::revert_should_cleanup_gitignore(
+            &config,
+            &None,
+            &SyncResult::default()
+        ));
+    }
+
+    #[test]
+    fn revert_gitignore_cleanup_skips_with_agents_filter() {
+        let config = make_revert_gate_config(vec![], vec![("claude", true), ("copilot", true)]);
+        assert!(!super::revert_should_cleanup_gitignore(
+            &config,
+            &Some(vec!["claude".to_string()]),
+            &SyncResult::default()
+        ));
+    }
+
+    #[test]
+    fn revert_gitignore_cleanup_skips_with_narrowing_default_agents() {
+        let config =
+            make_revert_gate_config(vec!["claude"], vec![("claude", true), ("copilot", true)]);
+        assert!(!super::revert_should_cleanup_gitignore(
+            &config,
+            &None,
+            &SyncResult::default()
+        ));
+    }
+
+    #[test]
+    fn revert_gitignore_cleanup_runs_when_default_agents_cover_all_configured_agents() {
+        let config = make_revert_gate_config(
+            vec!["claude", "copilot"],
+            vec![("claude", true), ("copilot", true)],
+        );
+        assert!(super::revert_should_cleanup_gitignore(
+            &config,
+            &None,
+            &SyncResult::default()
+        ));
+    }
+
+    #[test]
+    fn revert_gitignore_cleanup_respects_disabled_agent_selection() {
+        // Revert still processes disabled `copilot`, so selecting only
+        // `claude` narrows the actual revert scope and must keep gitignore.
+        let config =
+            make_revert_gate_config(vec!["claude"], vec![("claude", true), ("copilot", false)]);
+        assert!(!super::revert_should_cleanup_gitignore(
+            &config,
+            &None,
+            &SyncResult::default()
+        ));
+    }
+
+    #[test]
+    fn revert_gitignore_cleanup_skips_when_revert_has_errors() {
+        let config = make_revert_gate_config(vec![], vec![("claude", true)]);
+        let result = SyncResult {
+            errors: 1,
+            ..Default::default()
+        };
+
+        assert!(!super::revert_should_cleanup_gitignore(
+            &config, &None, &result
+        ));
+    }
+
+    #[test]
+    fn revert_gitignore_cleanup_skips_when_revert_has_skips() {
+        let config = make_revert_gate_config(vec![], vec![("claude", true)]);
+        let result = SyncResult {
+            skipped: 1,
+            ..Default::default()
+        };
+
+        assert!(!super::revert_should_cleanup_gitignore(
+            &config, &None, &result
+        ));
     }
 }
