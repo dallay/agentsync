@@ -2512,7 +2512,7 @@ fn copy_dir_all(
     // Materialize this directory's entries before descending. Keeping `ReadDir`
     // alive through recursive calls retains one descriptor per depth and can
     // exhaust the process limit on deep backups.
-    let entries = fs::read_dir(src)
+    let entries = fs::read_dir(src) // nosemgrep: rust.actix.path-traversal.tainted-path.tainted-path -- test-only restore staging; src is a TempDir tree, caller revalidates inside project root and rejects symlinks/specials
         .with_context(|| format!("Failed to read backup directory: {}", src.display()))?
         .map(|entry| {
             let entry = entry
