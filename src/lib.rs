@@ -11,6 +11,8 @@ pub mod init;
 pub mod linker;
 pub mod logging;
 pub mod mcp;
+#[allow(dead_code)] // Consumed by the following MCP apply/revert integration tasks.
+pub(crate) mod mcp_ownership;
 pub mod plugins;
 pub mod skills;
 pub mod skills_layout;

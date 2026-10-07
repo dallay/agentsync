@@ -268,6 +268,11 @@ impl Linker {
             }
 
             let source_path = entry.path();
+            if super::enumerate::zcode_contents_child_filtered(agent_name, target, &source_path) {
+                result.skipped += 1;
+                continue;
+            }
+
             let destination_name = if crate::agent_ids::canonical_any_agent_id(agent_name)
                 == Some("zcode")
                 && target.destination.ends_with(".zcode/commands")

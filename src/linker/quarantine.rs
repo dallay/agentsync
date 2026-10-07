@@ -492,6 +492,7 @@ pub(super) fn rename_between_no_replace(
     from: &OsStr,
     destination_parent: &CapabilityDir,
     to: &OsStr,
+    _destination_parent_path: &Path,
 ) -> io::Result<()> {
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     {
@@ -519,12 +520,18 @@ pub(super) fn rename_between_no_replace(
             .access_mode(DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE)
             .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE);
         let file = source_parent.open_with(from, &options)?;
-        return rename_open_handle(&file, destination_parent, to);
+        return rename_open_handle(&file, destination_parent, to, _destination_parent_path);
     }
 
     #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
     {
-        let _ = (source_parent, from, destination_parent, to);
+        let _ = (
+            source_parent,
+            from,
+            destination_parent,
+            to,
+            _destination_parent_path,
+        );
         Err(io::Error::new(
             io::ErrorKind::Unsupported,
             "handle-relative no-replace rename is unsupported on this platform",
@@ -597,7 +604,7 @@ fn quarantine_path(display_path: &Path, quarantine_name: &OsStr) -> std::path::P
 
 #[cfg(all(test, windows))]
 mod windows_tests {
-    use super::{EntryIdentity, RemoveOutcome, remove_symlink_if_unchanged};
+    use super::{EntryIdentity, RemoveOutcome, remove_symlink_if_unchanged, rename_open_handle};
     use cap_std::ambient_authority;
     use cap_std::fs::{Dir, OpenOptions, OpenOptionsExt};
     use std::ffi::OsStr;
@@ -607,6 +614,87 @@ mod windows_tests {
         DELETE, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES,
         FILE_SHARE_READ, FILE_SHARE_WRITE, SYNCHRONIZE,
     };
+
+    #[test]
+    fn rename_open_handle_moves_backup_relative_to_verified_parent() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let source_path = temp.path().join("backup.bak");
+        let destination_path = temp.path().join("restored.md");
+        fs::write(&source_path, b"original backup").unwrap();
+
+        let parent = Dir::open_ambient_dir(temp.path(), ambient_authority()).unwrap();
+        let mut options = OpenOptions::new();
+        options
+            .read(true)
+            .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS)
+            .access_mode(DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE)
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE);
+        let source = parent
+            .open_with(OsStr::new("backup.bak"), &options)
+            .unwrap();
+
+        rename_open_handle(&source, &parent, OsStr::new("restored.md"), temp.path()).unwrap();
+
+        drop(source);
+        assert!(!source_path.exists());
+        assert_eq!(fs::read(destination_path).unwrap(), b"original backup");
+
+        let source = temp.path().join("second-backup.bak");
+        let occupied = temp.path().join("occupied.md");
+        fs::write(&source, b"second backup").unwrap();
+        fs::write(&occupied, b"user data").unwrap();
+        let source_handle = parent
+            .open_with(OsStr::new("second-backup.bak"), &options)
+            .unwrap();
+
+        assert!(
+            rename_open_handle(
+                &source_handle,
+                &parent,
+                OsStr::new("occupied.md"),
+                temp.path()
+            )
+            .is_err()
+        );
+        drop(source_handle);
+        assert_eq!(fs::read(source).unwrap(), b"second backup");
+        assert_eq!(fs::read(occupied).unwrap(), b"user data");
+    }
+
+    #[test]
+    fn rename_open_handle_rejects_parent_path_with_different_identity() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let original_parent = temp.path().join("original-parent");
+        let replacement_parent = temp.path().join("replacement-parent");
+        fs::create_dir(&original_parent).unwrap();
+        fs::create_dir(&replacement_parent).unwrap();
+        let source_path = original_parent.join("backup.bak");
+        let destination_path = replacement_parent.join("restored.md");
+        fs::write(&source_path, b"original backup").unwrap();
+
+        let parent = Dir::open_ambient_dir(&original_parent, ambient_authority()).unwrap();
+        let mut options = OpenOptions::new();
+        options
+            .read(true)
+            .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS)
+            .access_mode(DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE)
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE);
+        let source = parent
+            .open_with(OsStr::new("backup.bak"), &options)
+            .unwrap();
+
+        let error = rename_open_handle(
+            &source,
+            &parent,
+            OsStr::new("restored.md"),
+            &replacement_parent,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+        assert_eq!(fs::read(&source_path).unwrap(), b"original backup");
+        assert!(!destination_path.exists());
+    }
 
     #[test]
     fn open_reparse_handle_matches_symlink_metadata_identity_and_is_removed() {
@@ -754,10 +842,11 @@ where
     }
     before_move();
     let directory = CapabilityDir::reopen_dir(&file)?;
+    let display_parent = display_path.parent().unwrap_or_else(|| Path::new("."));
 
     for _ in 0..16 {
         let quarantine_name = random_quarantine_name();
-        match rename_open_handle(&file, parent, &quarantine_name) {
+        match rename_open_handle(&file, parent, &quarantine_name, display_parent) {
             Ok(()) => {
                 after_move(display_path);
                 let mut entries = match directory.entries() {
@@ -777,7 +866,7 @@ where
                     None => {}
                     Some(Ok(_)) => {
                         drop(entries);
-                        rename_open_handle(&file, parent, name).map_err(|error| {
+                        rename_open_handle(&file, parent, name, display_parent).map_err(|error| {
                             anyhow::anyhow!(
                                 "could not restore non-empty container for {}: {}; recovery entry remains at {}",
                                 display_path.display(),
@@ -844,6 +933,7 @@ where
     let destination_name = destination.name;
     let source_path = source.path;
     let destination_path = destination.path;
+    let display_parent = source_path.parent().unwrap_or_else(|| Path::new("."));
     use cap_std::fs::{OpenOptions, OpenOptionsExt};
     use windows_sys::Win32::Storage::FileSystem::{
         DELETE, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES,
@@ -874,10 +964,12 @@ where
 
     for _ in 0..16 {
         let quarantine_name = random_quarantine_name();
-        match rename_open_handle(&file, parent, &quarantine_name) {
+        match rename_open_handle(&file, parent, &quarantine_name, display_parent) {
             Ok(()) => {
                 after_quarantine(source_path);
-                if let Err(error) = rename_open_handle(&file, parent, destination_name) {
+                if let Err(error) =
+                    rename_open_handle(&file, parent, destination_name, display_parent)
+                {
                     return Err(restore_windows_or_report(
                         &file,
                         parent,
@@ -944,7 +1036,8 @@ fn restore_windows_or_report(
     quarantine_name: &OsStr,
     cause: io::Error,
 ) -> anyhow::Error {
-    match rename_open_handle(file, parent, original_name) {
+    let display_parent = display_path.parent().unwrap_or_else(|| Path::new("."));
+    match rename_open_handle(file, parent, original_name, display_parent) {
         Ok(()) => anyhow::Error::from(cause).context(format!(
             "operation failed for quarantined entry at {} (the entry was restored)",
             display_path.display()
@@ -959,51 +1052,96 @@ fn restore_windows_or_report(
 }
 
 #[cfg(windows)]
-pub(super) fn rename_open_handle(
-    file: &cap_std::fs::File,
-    parent: &CapabilityDir,
-    name: &OsStr,
-) -> io::Result<()> {
+fn open_rename_root(parent: &CapabilityDir, display_parent: &Path) -> io::Result<CapabilityDir> {
     use std::os::windows::ffi::OsStrExt;
-    use std::os::windows::io::{AsRawHandle, FromRawHandle};
-    use windows_sys::Win32::Foundation::{HANDLE, INVALID_HANDLE_VALUE};
+    use std::os::windows::io::FromRawHandle;
+    use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
     use windows_sys::Win32::Storage::FileSystem::{
-        FILE_FLAG_BACKUP_SEMANTICS, FILE_READ_ATTRIBUTES, FILE_RENAME_INFO, FILE_SHARE_READ,
-        FILE_SHARE_WRITE, FILE_TRAVERSE, FileRenameInfo, ReOpenFile, SYNCHRONIZE,
-        SetFileInformationByHandle,
+        CreateFileW, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
+        FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TRAVERSE,
+        OPEN_EXISTING, SYNCHRONIZE,
     };
 
-    // The relative rename lookup needs FILE_TRAVERSE and FILE_READ_ATTRIBUTES
-    // on RootDirectory. A cap-std Dir is opened for directory listing, so
-    // reopen the same handle with the required access instead of resolving its
-    // path again.
+    let mut wide_path: Vec<u16> = display_parent.as_os_str().encode_wide().collect();
+    if wide_path.contains(&0) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "rename parent path contains an interior NUL",
+        ));
+    }
+    wide_path.push(0);
+    // Win32 does not reopen the capability handle with the required access on
+    // supported runners. Open the display path with reparse-point semantics,
+    // then require the new handle to identify the same directory before using
+    // it as RootDirectory. The rename itself remains handle-relative.
+    // SAFETY: `wide_path` is NUL-terminated and remains live for the call;
+    // the optional security-attributes and template-handle arguments are null.
     let rename_root = unsafe {
-        ReOpenFile(
-            parent.as_raw_handle() as HANDLE,
+        CreateFileW(
+            wide_path.as_ptr(),
             FILE_TRAVERSE | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
-            FILE_SHARE_READ | FILE_SHARE_WRITE,
-            FILE_FLAG_BACKUP_SEMANTICS,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            std::ptr::null(),
+            OPEN_EXISTING,
+            FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+            std::ptr::null_mut(),
         )
     };
     if rename_root == INVALID_HANDLE_VALUE {
         return Err(io::Error::last_os_error());
     }
-    let rename_root = unsafe { std::fs::File::from_raw_handle(rename_root as _) };
+    // SAFETY: `CreateFileW` returned a valid owned handle, now transferred to
+    // exactly one `File` and then one capability directory.
+    let rename_root =
+        CapabilityDir::from_std_file(unsafe { std::fs::File::from_raw_handle(rename_root as _) });
+    let expected = EntryIdentity::capture(&parent.metadata(".")?);
+    let opened = rename_root.metadata(".")?;
+    if opened.file_type().is_symlink() || !opened.is_dir() || !expected.matches(&opened) {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "rename parent path no longer matches the opened capability",
+        ));
+    }
+    Ok(rename_root)
+}
+
+#[cfg(windows)]
+pub(super) fn rename_open_handle(
+    file: &cap_std::fs::File,
+    parent: &CapabilityDir,
+    name: &OsStr,
+    display_parent: &Path,
+) -> io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Wdk::Storage::FileSystem::{
+        FILE_RENAME_INFORMATION, FileRenameInformation, NtSetInformationFile,
+    };
+    use windows_sys::Win32::Foundation::{HANDLE, RtlNtStatusToDosError};
+    use windows_sys::Win32::System::IO::IO_STATUS_BLOCK;
+
+    let rename_root = open_rename_root(parent, display_parent)?;
 
     let wide_name = name.encode_wide().collect::<Vec<_>>();
-    let file_name_length = u32::try_from(wide_name.len() * std::mem::size_of::<u16>())
+    let name_bytes = wide_name
+        .len()
+        .checked_mul(std::mem::size_of::<u16>())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "rename name too long"))?;
+    let file_name_length = u32::try_from(name_bytes)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "quarantine name too long"))?;
-    let file_name_offset = std::mem::offset_of!(FILE_RENAME_INFO, FileName);
-    let buffer_length = (file_name_offset + (wide_name.len() + 1) * std::mem::size_of::<u16>())
-        .max(std::mem::size_of::<FILE_RENAME_INFO>());
+    let file_name_offset = std::mem::offset_of!(FILE_RENAME_INFORMATION, FileName);
+    let buffer_length = file_name_offset
+        .checked_add(name_bytes)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "rename name too long"))?
+        .max(std::mem::size_of::<FILE_RENAME_INFORMATION>());
+    let buffer_length_u32 = u32::try_from(buffer_length)
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "rename name too long"))?;
     let word_count = buffer_length.div_ceil(std::mem::size_of::<u64>());
     let mut buffer = vec![0u64; word_count];
-    let info = buffer.as_mut_ptr().cast::<FILE_RENAME_INFO>();
-    // SAFETY: `buffer` is suitably aligned and sized for FILE_RENAME_INFO's
-    // fixed header plus a NUL-terminated UTF-16 filename tail; the API consumes
-    // it before this stack-owned buffer is dropped. ReplaceIfExists=false
-    // preserves no-replace behavior, and RootDirectory makes FileName relative
-    // to the reopened parent handle with traverse/read-attributes access.
+    let info = buffer.as_mut_ptr().cast::<FILE_RENAME_INFORMATION>();
+    // SAFETY: `buffer` is suitably aligned and sized for FILE_RENAME_INFORMATION's
+    // fixed header plus its counted UTF-16 filename. The native rename call
+    // consumes it before the stack-owned buffer is dropped.
     unsafe {
         (*info).Anonymous.ReplaceIfExists = false;
         (*info).RootDirectory = rename_root.as_raw_handle() as HANDLE;
@@ -1013,16 +1151,26 @@ pub(super) fn rename_open_handle(
             (*info).FileName.as_mut_ptr(),
             wide_name.len(),
         );
-        *(*info).FileName.as_mut_ptr().add(wide_name.len()) = 0;
-        let renamed = SetFileInformationByHandle(
+    }
+
+    let mut io_status = IO_STATUS_BLOCK::default();
+    // NtSetInformationFile accepts the handle-relative RootDirectory rename
+    // form that SetFileInformationByHandle rejects on supported Windows runs.
+    // SAFETY: both handles and the aligned rename buffer remain live for the
+    // native call, and `io_status` is writable for the duration of the call.
+    let status = unsafe {
+        NtSetInformationFile(
             file.as_raw_handle() as HANDLE,
-            FileRenameInfo,
+            &mut io_status,
             info.cast(),
-            buffer_length as u32,
-        );
-        if renamed == 0 {
-            return Err(io::Error::last_os_error());
-        }
+            buffer_length_u32,
+            FileRenameInformation,
+        )
+    };
+    if status < 0 {
+        // SAFETY: `status` is the NTSTATUS returned by NtSetInformationFile.
+        let error = unsafe { RtlNtStatusToDosError(status) };
+        return Err(io::Error::from_raw_os_error(error as i32));
     }
     Ok(())
 }

@@ -134,6 +134,7 @@ agentsync apply [OPTIONS]
 - `-a, --agents <AGENTS>`: Filter by agent (comma-separated list, e.g., `claude,copilot`). **Overrides** `default_agents` in config.
 - `--no-gitignore`: Strictly opt out of `.gitignore` reconciliation for that invocation. AgentSync will not write, update, or remove its managed `.gitignore` block, even if config would otherwise do so.
 - `--offline`: Zero network for the invocation, including the update checker. Missing Git plugin snapshots fail; run `agentsync plugin restore` first. `--dry-run` never restores snapshots either, but may still run the update checker.
+- `--rebase-mcp-journal`: Explicitly allow an apply to continue when a project MCP config differs from its ownership journal. AgentSync keeps the original pre-first-apply snapshot and owner set, applies the configured MCP merge strategy to the current file, and refreshes the recorded hashes. A later `revert` restores the original snapshot and can discard edits made after the first apply; back up and inspect the MCP config before using this option.
 
 **Agent Selection Priority**:
 When running `agentsync apply`, agents are selected in this order:
@@ -208,15 +209,16 @@ agentsync revert [FLAGS]
 - `-c, --config <PATH>`: Path to a custom configuration file.
 - `--dry-run`: Shows what would be removed and restored without changing anything on disk.
 - `-v, --verbose`: Enable verbose logging.
-- `-a, --agents <AGENTS>`: Revert only the listed agents (comma-separated, e.g., `claude,copilot`). Same selection priority as `apply`: `--agents` flag, then `default_agents` in config, then all enabled agents.
+- `-a, --agents <AGENTS>`: Revert only the listed agents (comma-separated, e.g., `claude,copilot`). Selection follows `--agents`, then `default_agents`, then all configured agents, including disabled agents. MCP restoration uses recorded owner IDs even if an agent or `[mcp]` is now disabled; the selected set must still include every recorded owner of a shared MCP destination.
 - `--keep-backups`: On Unix, copy `.bak` backups back instead of moving them, so they remain available for inspection. This option is not supported on Windows; `revert` rejects it before changing managed destinations or backup files. Use normal Windows `revert` to move the original backup and preserve its inherited permissions.
 
 Behavior:
 
 - Files that never had a backup (nothing existed before `apply`) are simply unlinked.
 - Regular user files that are not managed symlinks are never touched; a backup is only restored into an absent destination or over a managed symlink — never over a real file that appeared later.
-- On complete, unfiltered runs, the AgentSync-managed `.gitignore` block is removed. With `--agents`, a narrowing `default_agents`, or any revert error/skip, the block is left alone because some managed destinations may remain (re-run `apply` to reconcile it).
+- On complete, unfiltered symlink-revert runs, the AgentSync-managed `.gitignore` block is removed. With `--agents`, a narrowing `default_agents`, or a symlink-revert error/skip, the block is left alone because some managed destinations may remain (re-run `apply` to reconcile it). An MCP snapshot skip does not prevent this cleanup because the block tracks symlink destinations, not MCP config files.
 - For `symlink-contents` targets, `revert` removes managed child links but may leave the destination directory empty. It cannot infer whether the container existed before `apply`, so it does not delete it.
+- MCP configs are restored from the complete apply-time snapshot when the file still matches the state recorded by `apply`. If no file existed before, the generated regular file is removed only when it is unchanged. Later edits, symlinks, invalid journal state, or a partial owner selection preserve the file and journal and report a skip or error; there is no three-way merge. A missing journal from an older AgentSync version means the original state cannot be reconstructed, so the MCP file is left as-is rather than removing servers by name or value. See the [MCP journal and restore guide](/guides/mcp/#reverting-mcp-configurations) for journal location, retention, and recovery details.
 
 Examples:
 

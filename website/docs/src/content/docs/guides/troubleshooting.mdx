@@ -184,6 +184,12 @@ agentsync status
 
 Use `clean` only when you intend to remove managed links before recreating them.
 
+## `.gitignore` replacement cannot preserve filesystem metadata
+
+Updates to an existing `.gitignore` use an atomic replacement. On Unix, AgentSync preserves owner/group and mode; Linux POSIX ACLs and macOS/FreeBSD ACLs are handled explicitly. On Windows, AgentSync preserves and verifies both the original owner SID and DACL. If Windows does not allow the original owner to be assigned to the staged file, or the resulting owner SID/DACL cannot be verified, AgentSync refuses the replacement and leaves the original `.gitignore` intact. On another Unix target, an update that would replace an existing `.gitignore` fails closed rather than publishing a file with unverified ACLs; create or update it on a supported target, or manage the block manually.
+
+On Unix, if the process cannot preserve the original owner/group, AgentSync refuses the atomic replacement. It does not fall back to truncating the existing file in place, because that would lose atomicity and change behavior for hard-linked files. A file created by the current process with matching ownership does not need an ownership change.
+
 ## I applied and want to go back
 
 `apply` backs up any regular file or directory it replaces into a `.bak` sibling (e.g., `CLAUDE.md` → `CLAUDE.md.bak`). `revert` removes the managed symlinks and moves those backups back into place:
@@ -208,10 +214,25 @@ Know the limits:
 - Destinations that did not exist before `apply` are simply unlinked (there is nothing to restore).
 - A backup is never restored over a real file that appeared after the backup was taken.
 - For `symlink-contents`, `revert` removes managed child links but may leave the destination directory empty because it cannot infer whether the container existed before `apply`.
+- For `nested-glob`, `revert` must rediscover current source matches to verify each destination. If the configured source root is missing or unsafe, it reports an incomplete revert, leaves destinations it cannot identify untouched, and keeps the managed `.gitignore` block. Restore the source root and retry, then inspect any remaining links manually.
 - `clean` does not restore backups — it only deletes managed links. Use `revert` when you want your originals back.
-- On a complete, unfiltered run, `revert` also removes the AgentSync-managed `.gitignore` block; with `--agents`, a narrowing `default_agents`, or any revert error/skip, the block is left alone because managed destinations may remain. Re-run `apply` to reconcile it.
+- On a complete, unfiltered symlink-revert run, `revert` also removes the AgentSync-managed `.gitignore` block; with `--agents`, a narrowing `default_agents`, or a symlink-revert error/skip, the block is left alone because managed destinations may remain. An MCP snapshot skip does not prevent this cleanup. Re-run `apply` to reconcile it.
 
 See the <BaseLink href="/reference/cli/">CLI Reference</BaseLink> for all `revert` flags.
+
+## MCP revert skips a config or retains its journal
+
+MCP restore is conditional to protect changes made after `apply`. If the config changed, became a symlink, fails journal validation, or a shared destination is only partly selected, `revert` preserves the MCP file and journal and reports a skip or error. It does not perform a three-way merge.
+
+- Back up or safely resolve later edits before retrying. Do not delete the journal to force a restore.
+- If the later edit is intentional and another `apply` must proceed, back up the MCP config and use `agentsync apply --rebase-mcp-journal`. This explicit opt-in keeps the original pre-first-apply snapshot and owner set, but applies the configured MCP merge strategy to the current file. A later `revert` still restores the original snapshot and may discard edits made after the first apply; inspect the resulting MCP config before relying on it.
+- For the shared `.vscode/mcp.json` destination, include every owner recorded for that file (often Copilot and VS Code). Check both `--agents` and `default_agents`; a recorded agent can be restored even if it is now disabled, but the selection must include it.
+- If the MCP config is a symlink, inspect and resolve it safely before retrying. AgentSync refuses to follow or replace symlinked MCP configs.
+- If no journal exists from an earlier AgentSync version, the pre-apply content cannot be reconstructed. The config is left as-is; AgentSync does not delete servers by name or value.
+- `--dry-run` does not create or change MCP files or journal state.
+- For a project rooted exactly at `$HOME`, the OS default local data directory is allowed there. If that home is a Git repository, ensure the platform's default data directory is ignored so the private journal is not staged. An explicit `AGENTSYNC_DATA_DIR` must be an absolute path outside the project root, including a home-directory project; for a narrower repository, set it to another external location.
+
+The journal is outside the repository and snapshots the whole original MCP config, which may include credentials. It has no automatic expiry and remains until successful restore; `clean` does not remove it. See the <BaseLink href="/guides/mcp/#reverting-mcp-configurations">MCP journal and restore guide</BaseLink> for its location, retention, and full restore rules.
 
 ## Quick checklist before opening an issue
 

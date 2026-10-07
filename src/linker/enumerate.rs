@@ -42,12 +42,17 @@ pub(super) struct NestedGlobEnumeration {
     pub entries: Vec<NestedGlobEntry>,
 }
 
+/// Whether nested-glob source discovery was attempted and completed.
+/// An available directory with no matches is still a complete discovery.
 pub(super) enum NestedGlobDiscoveryStatus {
     NotAttempted,
     Complete,
     Incomplete {
         search_root: PathBuf,
         reason: String,
+    },
+    IncompleteWalk {
+        search_root: PathBuf,
     },
 }
 
@@ -58,8 +63,9 @@ pub(super) struct ModuleMapEntry {
     pub dest: Result<PathBuf, String>,
 }
 
-/// An opened `symlink-contents` container and its parent, retained so child
-/// operations stay relative to the directories validated at open time.
+/// A symlink-contents directory opened component-by-component without following
+/// symlinks. Enumeration and child removal stay relative to these open handles
+/// even if an attacker replaces a path component after it was opened.
 pub(super) struct ContentsDirectory {
     parent: CapabilityDir,
     directory: CapabilityDir,
@@ -102,16 +108,16 @@ impl ContentsDirectory {
     pub fn remove_symlink_if_unchanged<F, G>(
         &self,
         name: &OsStr,
-        expected: super::quarantine::EntryIdentity,
+        expected: quarantine::EntryIdentity,
         display_path: &Path,
         before_move: F,
         after_move: G,
-    ) -> anyhow::Result<super::quarantine::RemoveOutcome>
+    ) -> anyhow::Result<quarantine::RemoveOutcome>
     where
         F: FnOnce(),
         G: FnOnce(&Path),
     {
-        super::quarantine::remove_symlink_if_unchanged(
+        quarantine::remove_symlink_if_unchanged(
             &self.directory,
             name,
             expected,
@@ -165,8 +171,10 @@ impl Linker {
             .map(|entries| entries.into_iter().map(|entry| entry.path).collect())
     }
 
-    /// Open a `symlink-contents` destination by walking every component from
-    /// an open project-root capability without following symlinks.
+    /// Open a `symlink-contents` destination by walking one component at a time
+    /// from an already-open project root. `open_dir_nofollow` rejects symlink
+    /// or reparse-point components, and the returned handles remain anchored
+    /// if the path is renamed or replaced later.
     pub(super) fn open_contents_directory(&self, dir: &Path) -> Result<ContentsDirectory> {
         let name = dir
             .file_name()
@@ -188,13 +196,15 @@ impl Linker {
         };
 
         #[cfg(test)]
-        if let Some(hook) = self.read_contents_after_open_hook.borrow().as_ref() {
+        if let Some(hook) = self.read_contents_after_metadata_hook.borrow().as_ref() {
             hook(dir);
         }
 
         Ok(opened)
     }
 
+    /// Open a project-relative directory by traversing each component from a
+    /// capability rooted at the canonical project directory.
     pub(super) fn open_project_relative_directory(&self, dir: &Path) -> Result<CapabilityDir> {
         let relative = dir
             .strip_prefix(&self.project_root)
@@ -329,8 +339,8 @@ impl Linker {
 
     /// Discover nested-glob destinations: validate the search root, expand the
     /// template per match, and resolve each expansion. Empty expansions are
-    /// dropped silently (both callers agree); the search-root checks fail
-    /// silently to an empty listing (both callers agree).
+    /// dropped silently (both callers agree). Missing or unsafe search roots
+    /// are marked incomplete, and both callers report the skipped target.
     pub(super) fn enumerate_nested_glob(
         &self,
         target: &TargetConfig,
@@ -359,7 +369,7 @@ impl Linker {
                 template,
                 discovery: NestedGlobDiscoveryStatus::Incomplete {
                     search_root,
-                    reason: error.to_string(),
+                    reason: format!("Unsafe search root: {error}"),
                 },
                 entries: Vec::new(),
             });
@@ -369,7 +379,7 @@ impl Linker {
                 template,
                 discovery: NestedGlobDiscoveryStatus::Incomplete {
                     search_root,
-                    reason: "nested-glob search root is missing or not a directory".to_string(),
+                    reason: "Search root does not exist or is not a directory".to_string(),
                 },
                 entries: Vec::new(),
             });
@@ -401,11 +411,7 @@ impl Linker {
             discovery: if discovery_complete {
                 NestedGlobDiscoveryStatus::Complete
             } else {
-                NestedGlobDiscoveryStatus::Incomplete {
-                    search_root,
-                    reason: "one or more entries could not be read during nested-glob discovery"
-                        .to_string(),
-                }
+                NestedGlobDiscoveryStatus::IncompleteWalk { search_root }
             },
             entries,
         })
@@ -434,10 +440,10 @@ impl Linker {
             .collect()
     }
 
-    /// Return whether a destination child matches the configured source-name
-    /// pattern. Z-Code renames `<name>.agent.md` to `<name>.md`, so inspect
-    /// source entries when available and use the reversible mapping when the
-    /// source has disappeared.
+    /// Return whether a symlink-contents child is within the source-name
+    /// pattern that apply uses. Z-Code can rename `<name>.agent.md` to
+    /// `<name>.md`, so inspect source entries when available and use the
+    /// reversible filename convention when the source has disappeared.
     pub(super) fn contents_child_matches_pattern(
         &self,
         agent_name: &str,
@@ -480,8 +486,8 @@ impl Linker {
                     .downcast_ref::<std::io::Error>()
                     .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound) =>
             {
-                // The source may have been removed after apply; reconstruct its
-                // canonical filename from the Z-Code destination below.
+                // The source may have been removed after apply. Reconstruct the
+                // canonical `.agent.md` mapping from the destination name below.
             }
             Err(error) => {
                 return Err(error).with_context(|| {
@@ -507,8 +513,9 @@ pub(super) fn contents_child_is_managed(
     agent_name: &str,
     target: &TargetConfig,
     entry_path: &Path,
+    is_symlink: bool,
 ) -> bool {
-    if !entry_path.is_symlink() {
+    if !is_symlink {
         return false;
     }
     !zcode_contents_child_filtered(agent_name, target, entry_path)
@@ -599,149 +606,6 @@ mod tests {
     }
 
     #[test]
-    fn nested_glob_enumeration_marks_walk_entry_error_incomplete() {
-        let project = TempDir::new().unwrap();
-        let search_root = project.path().join("source");
-        let good_file = search_root.join("good/AGENTS.md");
-        let unreadable_dir = search_root.join("unreadable");
-        std::fs::create_dir_all(good_file.parent().unwrap()).unwrap();
-        std::fs::write(&good_file, "valid match").unwrap();
-        std::fs::create_dir_all(&unreadable_dir).unwrap();
-        std::fs::write(unreadable_dir.join("AGENTS.md"), "omitted subtree").unwrap();
-
-        let mut target = make_target(
-            "source",
-            "dest/{relative_path}/{file_name}",
-            SyncType::NestedGlob,
-        );
-        target.pattern = Some("**/AGENTS.md".to_string());
-        let linker = make_linker(project.path(), true, target.clone());
-        linker.set_nested_glob_walk_override_for_tests(Box::new(walk_entries_with_error(
-            &search_root,
-            &unreadable_dir,
-        )));
-
-        let enumeration = linker
-            .enumerate_nested_glob(&target, &super::super::SyncOptions::default())
-            .unwrap();
-
-        assert_eq!(
-            enumeration.entries.len(),
-            1,
-            "the valid sibling is still found"
-        );
-        assert!(matches!(
-            &enumeration.discovery,
-            NestedGlobDiscoveryStatus::Incomplete { search_root: root, .. } if root == &search_root
-        ));
-
-        let cached_enumeration = linker
-            .enumerate_nested_glob(&target, &super::super::SyncOptions::default())
-            .unwrap();
-        assert!(matches!(
-            &cached_enumeration.discovery,
-            NestedGlobDiscoveryStatus::Incomplete { search_root: root, .. } if root == &search_root
-        ));
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn clean_counts_incomplete_nested_glob_discovery_as_skipped() {
-        use std::os::unix::fs::symlink;
-
-        let project = TempDir::new().unwrap();
-        let search_root = project.path().join("source");
-        let good_file = search_root.join("good/AGENTS.md");
-        let unreadable_dir = search_root.join("unreadable");
-        let unknown_file = unreadable_dir.join("AGENTS.md");
-        std::fs::create_dir_all(good_file.parent().unwrap()).unwrap();
-        std::fs::write(&good_file, "valid match").unwrap();
-        std::fs::create_dir_all(&unreadable_dir).unwrap();
-        std::fs::write(&unknown_file, "omitted subtree").unwrap();
-
-        let mut target = make_target(
-            "source",
-            "dest/{relative_path}/{file_name}",
-            SyncType::NestedGlob,
-        );
-        target.pattern = Some("**/AGENTS.md".to_string());
-        let linker = make_linker(project.path(), true, target);
-        let known_dest = project.path().join("dest/good/AGENTS.md");
-        let unknown_dest = project.path().join("dest/unreadable/AGENTS.md");
-        std::fs::create_dir_all(known_dest.parent().unwrap()).unwrap();
-        std::fs::create_dir_all(unknown_dest.parent().unwrap()).unwrap();
-        symlink(&good_file, &known_dest).unwrap();
-        symlink(&unknown_file, &unknown_dest).unwrap();
-        linker.set_nested_glob_walk_override_for_tests(Box::new(walk_entries_with_error(
-            &search_root,
-            &unreadable_dir,
-        )));
-
-        let result = linker.clean(&super::super::SyncOptions::default()).unwrap();
-
-        assert_eq!(result.skipped, 1, "the incomplete target is reported");
-        assert_eq!(result.removed, 1, "the known match retains clean behavior");
-        assert!(!known_dest.exists());
-        assert!(
-            unknown_dest.is_symlink(),
-            "undiscovered links are not inferred"
-        );
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn revert_skips_incomplete_nested_glob_without_touching_candidates() {
-        use std::os::unix::fs::symlink;
-
-        let project = TempDir::new().unwrap();
-        let search_root = project.path().join("source");
-        let good_file = search_root.join("good/AGENTS.md");
-        let unreadable_dir = search_root.join("unreadable");
-        let unknown_file = unreadable_dir.join("AGENTS.md");
-        std::fs::create_dir_all(good_file.parent().unwrap()).unwrap();
-        std::fs::write(&good_file, "valid match").unwrap();
-        std::fs::create_dir_all(&unreadable_dir).unwrap();
-        std::fs::write(&unknown_file, "omitted subtree").unwrap();
-
-        let mut target = make_target(
-            "source",
-            "dest/{relative_path}/{file_name}",
-            SyncType::NestedGlob,
-        );
-        target.pattern = Some("**/AGENTS.md".to_string());
-        let linker = make_linker(project.path(), true, target);
-        let known_dest = project.path().join("dest/good/AGENTS.md");
-        let unknown_dest = project.path().join("dest/unreadable/AGENTS.md");
-        for (destination, source) in [(&known_dest, &good_file), (&unknown_dest, &unknown_file)] {
-            std::fs::create_dir_all(destination.parent().unwrap()).unwrap();
-            let link_target = linker.relative_path(destination, source, false).unwrap();
-            symlink(link_target, destination).unwrap();
-        }
-        linker.set_nested_glob_walk_override_for_tests(Box::new(walk_entries_with_error(
-            &search_root,
-            &unreadable_dir,
-        )));
-
-        let result = linker
-            .revert(&super::super::SyncOptions::default())
-            .unwrap();
-
-        assert_eq!(result.skipped, 1, "the incomplete target is reported");
-        assert_eq!(
-            result.removed, 0,
-            "no candidate is reverted after partial discovery"
-        );
-        assert!(
-            known_dest.is_symlink(),
-            "even discovered candidates are preserved"
-        );
-        assert!(
-            unknown_dest.is_symlink(),
-            "unknown candidates are preserved"
-        );
-    }
-
-    #[test]
     #[cfg(unix)]
     fn read_contents_entries_stays_anchored_when_container_is_replaced() {
         use std::cell::Cell;
@@ -768,7 +632,7 @@ mod tests {
         let hook_dest = dest.clone();
         let hook_outside = outside.clone();
         let moved_destination = project_root.join("moved-destination");
-        *linker.read_contents_after_open_hook.borrow_mut() = Some(Rc::new(move |path| {
+        *linker.read_contents_after_metadata_hook.borrow_mut() = Some(Rc::new(move |path| {
             assert_eq!(path, hook_dest);
             std::fs::rename(path, &moved_destination).unwrap();
             symlink(&hook_outside, path).unwrap();
@@ -790,5 +654,224 @@ mod tests {
         );
         assert!(outside.join("attacker.txt").exists());
         assert!(dest.is_symlink());
+    }
+
+    #[test]
+    fn contents_child_matches_zcode_orphan_pattern_against_source_and_recreated_name() {
+        let project = TempDir::new().unwrap();
+        let source_dir = project.path().join(".agents/commands");
+        std::fs::create_dir_all(&source_dir).unwrap();
+        let source = source_dir.join("foo.agent.md");
+        std::fs::write(&source, "command source").unwrap();
+        let mut target = make_target("commands", ".zcode/commands", SyncType::SymlinkContents);
+        target.pattern = Some("*.agent.md".to_string());
+        let mut linker = make_linker(project.path(), true, target.clone());
+        let test_agent = linker.config.agents.remove("test").unwrap();
+        linker.config.agents.insert("zcode".to_string(), test_agent);
+        let orphan_destination = project.path().join(".zcode/commands/foo.md");
+
+        assert!(
+            linker
+                .contents_child_matches_pattern("zcode", &target, &orphan_destination)
+                .unwrap()
+        );
+
+        std::fs::remove_file(source).unwrap();
+        std::fs::remove_dir(&source_dir).unwrap();
+        assert!(
+            linker
+                .contents_child_matches_pattern("zcode", &target, &orphan_destination)
+                .unwrap()
+        );
+        assert!(
+            !linker
+                .contents_child_matches_pattern(
+                    "zcode",
+                    &target,
+                    &project.path().join(".zcode/commands/notes.txt")
+                )
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn nested_glob_enumeration_marks_existing_empty_root_complete() {
+        let project = TempDir::new().unwrap();
+        std::fs::create_dir_all(project.path().join("source")).unwrap();
+        let target = make_target(
+            "source",
+            "dest/{relative_path}/{file_name}",
+            SyncType::NestedGlob,
+        );
+        let linker = make_linker(project.path(), true, target.clone());
+
+        let enumeration = linker
+            .enumerate_nested_glob(&target, &super::super::SyncOptions::default())
+            .unwrap();
+
+        assert!(matches!(
+            enumeration.discovery,
+            NestedGlobDiscoveryStatus::Complete
+        ));
+        assert!(enumeration.entries.is_empty());
+    }
+
+    #[test]
+    fn nested_glob_enumeration_marks_walk_entry_error_incomplete() {
+        let project = TempDir::new().unwrap();
+        let search_root = project.path().join("source");
+        let good_file = search_root.join("good/AGENTS.md");
+        let unreadable_dir = search_root.join("unreadable");
+        std::fs::create_dir_all(good_file.parent().unwrap()).unwrap();
+        std::fs::write(&good_file, "valid match").unwrap();
+        std::fs::create_dir_all(&unreadable_dir).unwrap();
+        std::fs::write(unreadable_dir.join("AGENTS.md"), "omitted subtree").unwrap();
+
+        let target = make_target(
+            "source",
+            "dest/{relative_path}/{file_name}",
+            SyncType::NestedGlob,
+        );
+        let linker = make_linker(project.path(), true, target.clone());
+        linker.set_nested_glob_walk_override_for_tests(Box::new(walk_entries_with_error(
+            &search_root,
+            &unreadable_dir,
+        )));
+
+        let enumeration = linker
+            .enumerate_nested_glob(&target, &super::super::SyncOptions::default())
+            .unwrap();
+
+        assert_eq!(
+            enumeration.entries.len(),
+            1,
+            "the valid sibling match was found"
+        );
+        assert!(matches!(
+            enumeration.discovery,
+            NestedGlobDiscoveryStatus::IncompleteWalk { search_root: root }
+                if root == search_root
+        ));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn nested_glob_revert_skips_partial_discovery_without_removing_links() {
+        use std::os::unix::fs::symlink;
+
+        let project = TempDir::new().unwrap();
+        let search_root = project.path().join("source");
+        let good_file = search_root.join("good/AGENTS.md");
+        let unreadable_dir = search_root.join("unreadable");
+        std::fs::create_dir_all(good_file.parent().unwrap()).unwrap();
+        std::fs::write(&good_file, "valid match").unwrap();
+        std::fs::create_dir_all(&unreadable_dir).unwrap();
+        std::fs::write(unreadable_dir.join("AGENTS.md"), "omitted subtree").unwrap();
+
+        let mut target = make_target(
+            "source",
+            "dest/{relative_path}/{file_name}",
+            SyncType::NestedGlob,
+        );
+        target.pattern = Some("**/AGENTS.md".to_string());
+        let linker = make_linker(project.path(), true, target);
+        let good_dest = project.path().join("dest/good/AGENTS.md");
+        let unknown_dest = project.path().join("dest/unreadable/AGENTS.md");
+        std::fs::create_dir_all(good_dest.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(unknown_dest.parent().unwrap()).unwrap();
+        symlink(
+            linker.relative_path(&good_dest, &good_file, false).unwrap(),
+            &good_dest,
+        )
+        .unwrap();
+        symlink(
+            linker
+                .relative_path(&unknown_dest, &unreadable_dir.join("AGENTS.md"), false)
+                .unwrap(),
+            &unknown_dest,
+        )
+        .unwrap();
+        linker.set_nested_glob_walk_override_for_tests(Box::new(walk_entries_with_error(
+            &search_root,
+            &unreadable_dir,
+        )));
+
+        let result = linker
+            .revert(&super::super::SyncOptions::default())
+            .unwrap();
+
+        assert_eq!(result.skipped, 1);
+        assert_eq!(result.errors, 0);
+        assert!(
+            good_dest.is_symlink(),
+            "partial matches must not be reverted"
+        );
+        assert!(
+            unknown_dest.is_symlink(),
+            "unknown orphan paths must not be inferred"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn clean_reports_partial_nested_glob_discovery_and_continues_other_targets() {
+        use std::os::unix::fs::symlink;
+
+        let project = TempDir::new().unwrap();
+        let search_root = project.path().join("source");
+        let good_file = search_root.join("good/AGENTS.md");
+        let unreadable_dir = search_root.join("unreadable");
+        std::fs::create_dir_all(good_file.parent().unwrap()).unwrap();
+        std::fs::write(&good_file, "valid match").unwrap();
+        std::fs::create_dir_all(&unreadable_dir).unwrap();
+        std::fs::write(unreadable_dir.join("AGENTS.md"), "omitted subtree").unwrap();
+        std::fs::create_dir_all(project.path().join("empty-source")).unwrap();
+        let independent_source = project.path().join(".agents/independent.md");
+        std::fs::create_dir_all(independent_source.parent().unwrap()).unwrap();
+        std::fs::write(&independent_source, "independent").unwrap();
+
+        let mut partial_target = make_target(
+            "source",
+            "dest/{relative_path}/{file_name}",
+            SyncType::NestedGlob,
+        );
+        partial_target.pattern = Some("**/AGENTS.md".to_string());
+        let mut linker = make_linker(project.path(), true, partial_target.clone());
+        let targets = &mut linker.config.agents.get_mut("test").unwrap().targets;
+        targets.clear();
+        targets.insert("a-partial".to_string(), partial_target);
+        targets.insert(
+            "b-empty".to_string(),
+            make_target(
+                "empty-source",
+                "empty-dest/{relative_path}/{file_name}",
+                SyncType::NestedGlob,
+            ),
+        );
+        targets.insert(
+            "z-independent".to_string(),
+            make_target("independent.md", "independent.md", SyncType::Symlink),
+        );
+
+        let known_destination = project.path().join("dest/good/AGENTS.md");
+        std::fs::create_dir_all(known_destination.parent().unwrap()).unwrap();
+        symlink(&good_file, &known_destination).unwrap();
+        let independent_destination = project.path().join("independent.md");
+        symlink(&independent_source, &independent_destination).unwrap();
+        linker.set_nested_glob_walk_override_for_tests(Box::new(walk_entries_with_error(
+            &search_root,
+            &unreadable_dir,
+        )));
+
+        let result = linker.clean(&super::super::SyncOptions::default()).unwrap();
+
+        assert_eq!(result.removed, 2, "known and independent links are cleaned");
+        assert_eq!(
+            result.skipped, 1,
+            "the incomplete walk is reported; the valid empty root adds no skip"
+        );
+        assert_eq!(result.errors, 0);
+        assert!(!known_destination.exists());
+        assert!(!independent_destination.exists());
     }
 }

@@ -26,7 +26,7 @@ use output::{
     render_apply_summary_with_color, render_clean_phase_with_color,
     render_clean_summary_with_color, render_dry_run_notice, render_gitignore_phase_with_color,
     render_mcp_phase, render_mcp_summary_with_color, render_revert_phase_with_color,
-    render_symlink_revert_summary_with_color, render_sync_phase_with_color,
+    render_revert_summary_with_color, render_sync_phase_with_color,
 };
 
 fn should_spawn_update_check(command: &Commands) -> bool {
@@ -182,6 +182,9 @@ enum Commands {
         /// Do not use the network. Missing Git plugin snapshots fail instead of restoring.
         #[arg(long)]
         offline: bool,
+        /// Explicitly rebase MCP journal hashes after a user edit; later revert restores the original snapshot.
+        #[arg(long)]
+        rebase_mcp_journal: bool,
     },
     /// Remove all symlinks created by agentsync
     Clean {
@@ -281,6 +284,7 @@ fn run() -> Result<()> {
             agents,
             no_gitignore,
             offline,
+            rebase_mcp_journal,
         } => run_in_root_span("apply", || {
             handle_apply(ApplyArgs {
                 path,
@@ -291,6 +295,7 @@ fn run() -> Result<()> {
                 agents,
                 no_gitignore,
                 offline,
+                rebase_mcp_journal,
             })?;
             Ok(())
         }),
@@ -396,6 +401,7 @@ struct ApplyArgs {
     agents: Option<Vec<String>>,
     no_gitignore: bool,
     offline: bool,
+    rebase_mcp_journal: bool,
 }
 
 fn handle_apply(args: ApplyArgs) -> Result<()> {
@@ -466,6 +472,7 @@ fn handle_apply(args: ApplyArgs) -> Result<()> {
             use_color,
             options.agents.as_ref(),
             &plugin_result.mcp_servers,
+            args.rebase_mcp_journal,
             &mut result,
         )?;
     }
@@ -515,11 +522,17 @@ fn handle_apply_mcp(
     use_color: bool,
     agents: Option<&Vec<String>>,
     plugin_servers: &std::collections::BTreeMap<String, agentsync::config::McpServerConfig>,
+    rebase_mcp_journal: bool,
     result: &mut SyncResult,
 ) -> Result<()> {
     println!();
     print_lines(&render_mcp_phase(dry_run, use_color));
-    match linker.sync_mcp_with_servers(dry_run, agents, plugin_servers) {
+    match linker.sync_mcp_with_servers_with_rebase(
+        dry_run,
+        agents,
+        plugin_servers,
+        rebase_mcp_journal,
+    ) {
         Ok(mcp_result) => {
             if mcp_result.created > 0
                 || mcp_result.updated > 0
@@ -632,10 +645,36 @@ fn handle_revert(
         keep_backups,
         ..Default::default()
     };
-    let result = linker.revert(&options)?;
+    let mut result = linker.revert(&options)?;
+    let cleanup_gitignore =
+        revert_should_cleanup_gitignore(linker.config(), &options.agents, &result);
+    println!();
+    print_lines(&render_mcp_phase(dry_run, use_color));
+    match linker.restore_mcp_ownership(dry_run, options.agents.as_ref()) {
+        Ok(mcp_result) => {
+            if mcp_result.updated > 0 || mcp_result.skipped > 0 || mcp_result.errors > 0 {
+                print_lines(&render_mcp_summary_with_color(&mcp_result, use_color));
+            }
+            result.updated += mcp_result.updated;
+            result.skipped += mcp_result.skipped;
+            result.errors += mcp_result.errors;
+        }
+        Err(e) => {
+            tracing::error!(
+                config_path = %linker.config_path().display(),
+                error = %e,
+                "Error reverting MCP configs"
+            );
+            println!(
+                "  {} Warning: failed to revert MCP configs: {e}",
+                "!".yellow()
+            );
+            result.errors += 1;
+        }
+    }
     // Clean up only after a complete, unfiltered revert: with --agents (or a
     // narrowing default_agents), other agents may still need their entries.
-    if revert_should_cleanup_gitignore(linker.config(), &options.agents, &result) {
+    if cleanup_gitignore {
         println!();
         print_lines(&render_gitignore_phase_with_color(
             false, dry_run, use_color,
@@ -646,15 +685,8 @@ fn handle_revert(
             dry_run,
         )?;
     }
-    println!(
-        "  {} MCP config files are not inspected or restored by this core-only revert; the full pre-apply state may remain",
-        "!".yellow()
-    );
-    tracing::warn!(
-        "Core-only revert restored symlink state only; MCP config files were not inspected or restored"
-    );
     println!();
-    print_lines(&render_symlink_revert_summary_with_color(
+    print_lines(&render_revert_summary_with_color(
         dry_run, &result, use_color,
     ));
     if result.errors > 0 {
@@ -673,8 +705,7 @@ mod tests {
         init_next_steps_lines, render_apply_summary_with_color, render_clean_phase_with_color,
         render_clean_summary_with_color, render_gitignore_phase_with_color,
         render_mcp_summary_with_color, render_revert_phase_with_color,
-        render_revert_summary_with_color, render_symlink_revert_summary_with_color,
-        render_sync_phase_with_color,
+        render_revert_summary_with_color, render_sync_phase_with_color,
     };
     use agentsync::{SyncResult, mcp::McpSyncResult};
     use clap::Parser;
@@ -691,9 +722,6 @@ mod tests {
     }
     fn render_revert_summary(dry_run: bool, result: &SyncResult) -> Vec<String> {
         render_revert_summary_with_color(dry_run, result, false)
-    }
-    fn render_symlink_revert_summary(dry_run: bool, result: &SyncResult) -> Vec<String> {
-        render_symlink_revert_summary_with_color(dry_run, result, false)
     }
     fn render_clean_summary(dry_run: bool, result: &SyncResult) -> Vec<String> {
         render_clean_summary_with_color(dry_run, result, false)
@@ -850,6 +878,25 @@ mod tests {
     }
 
     #[test]
+    fn test_render_clean_summary_does_not_call_skipped_work_complete() {
+        assert_eq!(
+            render_clean_summary(
+                false,
+                &SyncResult {
+                    skipped: 1,
+                    ..Default::default()
+                },
+            ),
+            vec![
+                "! Clean incomplete: skipped targets remain".to_string(),
+                "  Removed: 0".to_string(),
+                "  Skipped: 1".to_string(),
+                "  Errors: 0".to_string()
+            ]
+        );
+    }
+
+    #[test]
     fn test_render_revert_phase_and_summary_make_dry_run_clear() {
         assert_eq!(
             render_revert_phase(true),
@@ -894,13 +941,20 @@ mod tests {
     }
 
     #[test]
-    fn test_render_core_revert_summary_names_the_restored_scope() {
+    fn test_render_revert_summary_does_not_call_skipped_work_complete() {
         assert_eq!(
-            render_symlink_revert_summary(false, &SyncResult::default()),
+            render_revert_summary(
+                false,
+                &SyncResult {
+                    skipped: 1,
+                    ..Default::default()
+                },
+            ),
             vec![
-                "✔ Symlink revert complete".to_string(),
+                "! Revert incomplete: skipped items remain".to_string(),
                 "  Removed: 0".to_string(),
                 "  Restored: 0".to_string(),
+                "  Skipped: 1".to_string(),
                 "  Errors: 0".to_string()
             ]
         );

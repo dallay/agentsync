@@ -2,7 +2,6 @@
 
 use anyhow::Result;
 use colored::Colorize;
-#[cfg(test)]
 use std::fs;
 use std::path::Path;
 
@@ -11,6 +10,53 @@ use crate::config::SyncType;
 use super::{Linker, SyncOptions, SyncResult, enumerate, quarantine};
 
 impl Linker {
+    #[cfg(test)]
+    fn set_clean_metadata_error_path_for_tests(&self, path: &Path) {
+        *self.clean_metadata_error_path.borrow_mut() = Some(path.to_path_buf());
+    }
+
+    fn clean_symlink_metadata(&self, path: &Path) -> std::io::Result<fs::Metadata> {
+        #[cfg(test)]
+        if self.clean_metadata_error_path.borrow().as_deref() == Some(path) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "injected metadata inspection failure",
+            ));
+        }
+
+        fs::symlink_metadata(path)
+    }
+
+    fn report_clean_metadata_error(
+        path: &Path,
+        error: &std::io::Error,
+        options: &SyncOptions,
+        result: &mut SyncResult,
+    ) {
+        result.skipped += 1;
+        if options.verbose {
+            println!(
+                "  {} Skipping destination that could not be inspected: {} ({})",
+                "!".yellow(),
+                path.display(),
+                error
+            );
+        }
+        tracing::warn!(
+            error = %error,
+            path = %path.display(),
+            "Skipping clean destination: failed to inspect metadata"
+        );
+    }
+
+    #[cfg(test)]
+    fn set_clean_before_read_contents_hook_for_tests<F>(&self, hook: F)
+    where
+        F: Fn(&Path) + 'static,
+    {
+        *self.clean_before_read_contents_hook.borrow_mut() = Some(std::rc::Rc::new(hook));
+    }
+
     /// Clean all symlinks managed by this configuration.
     pub fn clean(&self, options: &SyncOptions) -> Result<SyncResult> {
         let mut result = SyncResult::default();
@@ -78,15 +124,23 @@ impl Linker {
                 return Ok(());
             }
         };
-        if dest.is_symlink() {
-            self.remove_managed_symlink(&dest, options.dry_run, result)?;
+        let metadata = match self.clean_symlink_metadata(&dest) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => {
+                Self::report_clean_metadata_error(&dest, &error, options, result);
+                return Ok(());
+            }
+        };
+        if metadata.file_type().is_symlink() {
+            self.remove_managed_symlink_quarantined(&dest, options.dry_run, result)?;
         }
         Ok(())
     }
 
     /// Remove a single managed symlink, emitting a per-path span
     /// (`operation="remove"`, `path`, `outcome`) around the decision.
-    pub(super) fn remove_managed_symlink(
+    fn remove_managed_symlink_quarantined(
         &self,
         dest: &Path,
         dry_run: bool,
@@ -103,16 +157,10 @@ impl Linker {
             println!("  {} Would remove: {}", "→".cyan(), dest.display());
             span.record("outcome", "would_remove");
         } else {
-            let Some(name) = dest.file_name() else {
+            let (Some(name), Some(parent_path)) = (dest.file_name(), dest.parent()) else {
                 result.errors += 1;
                 span.record("outcome", "error");
-                tracing::error!(path = %dest.display(), "Managed symlink destination has no final component");
-                return Ok(());
-            };
-            let Some(parent_path) = dest.parent() else {
-                result.errors += 1;
-                span.record("outcome", "error");
-                tracing::error!(path = %dest.display(), "Managed symlink destination has no parent");
+                tracing::error!(path = %dest.display(), "Managed symlink destination lacks a parent or final component");
                 return Ok(());
             };
             let parent = match self.open_project_relative_directory(parent_path) {
@@ -212,26 +260,37 @@ impl Linker {
                 return Ok(());
             }
         };
-        if !dest.is_dir() {
+        let metadata = match self.clean_symlink_metadata(&dest) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => {
+                Self::report_clean_metadata_error(&dest, &error, options, result);
+                return Ok(());
+            }
+        };
+        if metadata.file_type().is_symlink() {
+            if options.verbose {
+                println!(
+                    "  {} Skipping symlink-contents destination that is a symlink: {}",
+                    "!".yellow(),
+                    dest.display()
+                );
+            }
+            result.skipped += 1;
             return Ok(());
+        }
+        if !metadata.is_dir() {
+            return Ok(());
+        }
+        #[cfg(test)]
+        if let Some(hook) = self.clean_before_read_contents_hook.borrow().as_ref() {
+            hook(&dest);
         }
         let contents = match self.open_contents_directory(&dest) {
             Ok(contents) => contents,
             Err(error) => {
                 result.skipped += 1;
-                if options.verbose {
-                    println!(
-                        "  {} Skipping unsafe or unreadable destination directory {}: {}",
-                        "!".yellow(),
-                        dest.display(),
-                        error
-                    );
-                }
-                tracing::warn!(
-                    error = %error,
-                    path = %dest.display(),
-                    "Skipping unsafe or unreadable symlink-contents destination during clean"
-                );
+                tracing::warn!(error = %error, path = %dest.display(), "Skipping clean target: failed to open destination directory without following links");
                 return Ok(());
             }
         };
@@ -239,41 +298,16 @@ impl Linker {
             Ok(entries) => entries,
             Err(error) => {
                 result.skipped += 1;
-                if options.verbose {
-                    println!(
-                        "  {} Skipping unsafe or unreadable destination directory {}: {}",
-                        "!".yellow(),
-                        dest.display(),
-                        error
-                    );
-                }
-                tracing::warn!(
-                    error = %error,
-                    path = %dest.display(),
-                    "Skipping unsafe or unreadable symlink-contents destination during clean"
-                );
+                tracing::warn!(error = %error, path = %dest.display(), "Skipping clean target: failed to read destination directory");
                 return Ok(());
             }
         };
         for entry in entries {
-            let metadata = match contents.symlink_metadata(&entry.name) {
+            let metadata = match self.clean_contents_symlink_metadata(&contents, &entry) {
                 Ok(metadata) => metadata,
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
                 Err(error) => {
-                    result.skipped += 1;
-                    if options.verbose {
-                        println!(
-                            "  {} Skipping destination child that could not be inspected: {} ({})",
-                            "!".yellow(),
-                            entry.path.display(),
-                            error
-                        );
-                    }
-                    tracing::warn!(
-                        error = %error,
-                        path = %entry.path.display(),
-                        "Skipping symlink-contents child that could not be inspected during clean"
-                    );
+                    Self::report_clean_metadata_error(&entry.path, &error, options, result);
                     continue;
                 }
             };
@@ -281,16 +315,13 @@ impl Linker {
                 && !enumerate::zcode_contents_child_filtered(agent_name, target_config, &entry.path)
             {
                 match self.contents_child_matches_pattern(agent_name, target_config, &entry.path) {
-                    Ok(true) => {
-                        let identity = quarantine::EntryIdentity::capture(&metadata);
-                        self.remove_managed_contents_symlink(
-                            &contents,
-                            &entry,
-                            identity,
-                            options.dry_run,
-                            result,
-                        );
-                    }
+                    Ok(true) => self.remove_managed_contents_symlink(
+                        &contents,
+                        &entry,
+                        quarantine::EntryIdentity::capture(&metadata),
+                        options.dry_run,
+                        result,
+                    ),
                     Ok(false) => {}
                     Err(error) => {
                         result.skipped += 1;
@@ -372,6 +403,22 @@ impl Linker {
             }
         }
         Ok(())
+    }
+
+    fn clean_contents_symlink_metadata(
+        &self,
+        contents: &enumerate::ContentsDirectory,
+        entry: &enumerate::ContentsEntry,
+    ) -> std::io::Result<cap_std::fs::Metadata> {
+        #[cfg(test)]
+        if self.clean_metadata_error_path.borrow().as_deref() == Some(entry.path.as_path()) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "injected metadata inspection failure",
+            ));
+        }
+
+        contents.symlink_metadata(&entry.name)
     }
 
     fn remove_managed_contents_symlink(
@@ -457,12 +504,19 @@ impl Linker {
             );
             return Ok(());
         }
-
-        if let enumerate::NestedGlobDiscoveryStatus::Incomplete {
-            search_root,
-            reason,
-        } = &enumeration.discovery
-        {
+        let incomplete_discovery = match &enumeration.discovery {
+            enumerate::NestedGlobDiscoveryStatus::Incomplete {
+                search_root,
+                reason,
+            } => Some((search_root, reason.as_str())),
+            enumerate::NestedGlobDiscoveryStatus::IncompleteWalk { search_root } => Some((
+                search_root,
+                "WalkDir traversal encountered one or more entry errors",
+            )),
+            enumerate::NestedGlobDiscoveryStatus::NotAttempted
+            | enumerate::NestedGlobDiscoveryStatus::Complete => None,
+        };
+        if let Some((search_root, reason)) = incomplete_discovery {
             result.skipped += 1;
             if options.verbose {
                 println!(
@@ -500,8 +554,16 @@ impl Linker {
                     continue;
                 }
             };
-            if dest.is_symlink() {
-                self.remove_managed_symlink(&dest, options.dry_run, result)?;
+            let metadata = match self.clean_symlink_metadata(&dest) {
+                Ok(metadata) => metadata,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => {
+                    Self::report_clean_metadata_error(&dest, &error, options, result);
+                    continue;
+                }
+            };
+            if metadata.file_type().is_symlink() {
+                self.remove_managed_symlink_quarantined(&dest, options.dry_run, result)?;
             }
         }
         Ok(())
@@ -533,8 +595,16 @@ impl Linker {
                 }
             };
 
-            if dest.is_symlink() {
-                self.remove_managed_symlink(&dest, options.dry_run, result)?;
+            let metadata = match self.clean_symlink_metadata(&dest) {
+                Ok(metadata) => metadata,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => {
+                    Self::report_clean_metadata_error(&dest, &error, options, result);
+                    continue;
+                }
+            };
+            if metadata.file_type().is_symlink() {
+                self.remove_managed_symlink_quarantined(&dest, options.dry_run, result)?;
             }
         }
         Ok(())
@@ -591,34 +661,55 @@ mod tests {
     }
 
     #[test]
-    fn clean_symlink_contents_target_counts_invalid_destination() {
+    #[cfg(unix)]
+    fn clean_counts_symlink_target_metadata_error_and_continues() {
+        use std::os::unix::fs::symlink;
+
         let temp = TempDir::new().unwrap();
         let project_root = temp.path();
         fs::create_dir_all(project_root.join(".agents")).unwrap();
-        let target = make_target("source-dir", "/outside", SyncType::SymlinkContents);
-        let linker = make_linker(project_root, true, target);
+        let bad_source = project_root.join(".agents/bad.md");
+        let good_source = project_root.join(".agents/good.md");
+        fs::write(&bad_source, "uninspectable source").unwrap();
+        fs::write(&good_source, "managed source").unwrap();
+        let bad_destination = project_root.join("bad.md");
+        let good_destination = project_root.join("good.md");
+        symlink(&bad_source, &bad_destination).unwrap();
+        symlink(&good_source, &good_destination).unwrap();
 
-        let result = linker.clean(&SyncOptions::default()).unwrap();
-
-        assert_eq!(result.removed, 0);
-        assert_eq!(result.skipped, 1);
-    }
-
-    #[test]
-    fn clean_reports_missing_nested_glob_root_as_skipped() {
-        let temp = TempDir::new().unwrap();
-        let target = make_target(
-            "missing-source",
-            "dest/{relative_path}/{file_name}",
-            SyncType::NestedGlob,
+        let mut linker = make_linker(
+            project_root,
+            true,
+            make_target("bad.md", "bad.md", SyncType::Symlink),
         );
-        let linker = make_linker(temp.path(), true, target);
+        let targets = &mut linker.config.agents.get_mut("test").unwrap().targets;
+        targets.clear();
+        targets.insert(
+            "a-uninspectable".to_string(),
+            make_target("bad.md", "bad.md", SyncType::Symlink),
+        );
+        targets.insert(
+            "b-good".to_string(),
+            make_target("good.md", "good.md", SyncType::Symlink),
+        );
+        linker.set_clean_metadata_error_path_for_tests(&bad_destination);
 
         let result = linker.clean(&SyncOptions::default()).unwrap();
 
-        assert_eq!(result.removed, 0);
-        assert_eq!(result.skipped, 1);
-        assert_eq!(result.errors, 0);
+        assert_eq!(
+            result.skipped, 1,
+            "the metadata failure is one skipped target"
+        );
+        assert_eq!(
+            result.errors, 0,
+            "inspection failures remain conservative skips"
+        );
+        assert_eq!(result.removed, 1, "the independent managed link is cleaned");
+        assert!(
+            bad_destination.is_symlink(),
+            "the uninspected link is preserved"
+        );
+        assert!(!good_destination.exists());
     }
 
     #[test]
@@ -641,35 +732,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
-    fn clean_symlink_contents_preserves_children_excluded_by_pattern() {
-        use std::os::unix::fs::symlink;
-
-        let temp = TempDir::new().unwrap();
-        let project_root = temp.path();
-        fs::create_dir_all(project_root.join(".agents")).unwrap();
-        let source_dir = project_root.join(".agents/source");
-        fs::create_dir(&source_dir).unwrap();
-        fs::write(source_dir.join("managed.md"), "managed").unwrap();
-        fs::write(source_dir.join("user.txt"), "user").unwrap();
-
-        let dest = project_root.join("dest");
-        fs::create_dir(&dest).unwrap();
-        symlink(source_dir.join("managed.md"), dest.join("managed.md")).unwrap();
-        symlink(source_dir.join("user.txt"), dest.join("user.txt")).unwrap();
-
-        let mut target = make_target("source", "dest", SyncType::SymlinkContents);
-        target.pattern = Some("*.md".to_string());
-        let linker = make_linker(project_root, true, target);
-
-        let result = linker.clean(&SyncOptions::default()).unwrap();
-
-        assert_eq!(result.removed, 1);
-        assert!(!dest.join("managed.md").exists());
-        assert!(dest.join("user.txt").is_symlink());
-    }
-
-    #[test]
     fn clean_symlink_contents_target_is_noop_for_missing_destination() {
         let temp = TempDir::new().unwrap();
         let project_root = temp.path();
@@ -688,76 +750,291 @@ mod tests {
     }
 
     #[test]
+    fn clean_counts_unresolvable_symlink_contents_destination() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+        fs::create_dir_all(project_root.join(".agents")).unwrap();
+        let linker = make_linker(
+            project_root,
+            true,
+            make_target("source-dir", "/outside", SyncType::SymlinkContents),
+        );
+
+        let result = linker.clean(&SyncOptions::default()).unwrap();
+
+        assert_eq!(result.skipped, 1);
+        assert_eq!(result.removed, 0);
+    }
+
+    #[test]
     #[cfg(unix)]
-    fn clean_does_not_remove_children_from_container_replaced_after_open() {
-        use std::{cell::Cell, os::unix::fs::symlink, rc::Rc};
+    fn clean_counts_symlink_contents_metadata_error_and_continues() {
+        use std::os::unix::fs::symlink;
 
-        fn run_case(replacement_is_external: bool) {
-            let temp = TempDir::new().unwrap();
-            let project_root = temp.path().join("project");
-            fs::create_dir_all(project_root.join(".agents")).unwrap();
-            let source = project_root.join(".agents/managed.md");
-            fs::write(&source, "managed source").unwrap();
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+        fs::create_dir_all(project_root.join(".agents")).unwrap();
+        let good_source = project_root.join(".agents/good.md");
+        fs::write(&good_source, "managed source").unwrap();
+        let uninspectable = project_root.join("uninspectable-container");
+        fs::create_dir(&uninspectable).unwrap();
+        let good_destination = project_root.join("good.md");
+        symlink(&good_source, &good_destination).unwrap();
 
-            let container = project_root.join("managed-container");
-            fs::create_dir(&container).unwrap();
-            let replacement = if replacement_is_external {
-                temp.path().join("replacement")
-            } else {
-                project_root.join("replacement")
-            };
-            fs::create_dir(&replacement).unwrap();
-            let replacement_child = replacement.join("managed.md");
-            symlink(&source, &replacement_child).unwrap();
+        let mut linker = make_linker(
+            project_root,
+            true,
+            make_target(
+                "source-dir",
+                "uninspectable-container",
+                SyncType::SymlinkContents,
+            ),
+        );
+        let targets = &mut linker.config.agents.get_mut("test").unwrap().targets;
+        targets.clear();
+        targets.insert(
+            "a-uninspectable".to_string(),
+            make_target(
+                "source-dir",
+                "uninspectable-container",
+                SyncType::SymlinkContents,
+            ),
+        );
+        targets.insert(
+            "b-good".to_string(),
+            make_target("good.md", "good.md", SyncType::Symlink),
+        );
+        linker.set_clean_metadata_error_path_for_tests(&uninspectable);
 
-            let valid_destination = project_root.join("valid.md");
-            symlink(&source, &valid_destination).unwrap();
-            let mut linker = make_linker(
-                &project_root,
-                true,
-                make_target("source-dir", "managed-container", SyncType::SymlinkContents),
-            );
-            linker
-                .config
-                .agents
-                .get_mut("test")
-                .unwrap()
-                .targets
-                .insert(
-                    "valid".to_string(),
-                    make_target("managed.md", "valid.md", SyncType::Symlink),
-                );
+        let result = linker.clean(&SyncOptions::default()).unwrap();
 
-            let hook_called = Rc::new(Cell::new(false));
-            let hook_called_in_hook = Rc::clone(&hook_called);
-            let hook_container = container.clone();
-            let hook_replacement = replacement.clone();
-            let moved_container = project_root.join("moved-container");
-            *linker.read_contents_after_open_hook.borrow_mut() = Some(Rc::new(move |path| {
-                assert_eq!(path, hook_container);
-                fs::rename(path, &moved_container).unwrap();
-                symlink(&hook_replacement, path).unwrap();
+        assert_eq!(
+            result.skipped, 1,
+            "the metadata failure is one skipped target"
+        );
+        assert_eq!(
+            result.errors, 0,
+            "inspection failures remain conservative skips"
+        );
+        assert_eq!(result.removed, 1, "the independent managed link is cleaned");
+        assert!(
+            uninspectable.is_dir(),
+            "the uninspected container is preserved"
+        );
+        assert!(!good_destination.exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn clean_counts_symlink_contents_child_metadata_error_and_continues() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+        fs::create_dir_all(project_root.join(".agents")).unwrap();
+        let bad_source = project_root.join(".agents/bad.md");
+        let good_source = project_root.join(".agents/good.md");
+        fs::write(&bad_source, "uninspectable source").unwrap();
+        fs::write(&good_source, "managed source").unwrap();
+        let container = project_root.join("managed-contents");
+        fs::create_dir(&container).unwrap();
+        let bad_child = container.join("bad.md");
+        symlink(&bad_source, &bad_child).unwrap();
+        let good_destination = project_root.join("good.md");
+        symlink(&good_source, &good_destination).unwrap();
+
+        let mut linker = make_linker(
+            project_root,
+            true,
+            make_target("source-dir", "managed-contents", SyncType::SymlinkContents),
+        );
+        let targets = &mut linker.config.agents.get_mut("test").unwrap().targets;
+        targets.clear();
+        targets.insert(
+            "a-contents".to_string(),
+            make_target("source-dir", "managed-contents", SyncType::SymlinkContents),
+        );
+        targets.insert(
+            "b-good".to_string(),
+            make_target("good.md", "good.md", SyncType::Symlink),
+        );
+        linker.set_clean_metadata_error_path_for_tests(&bad_child);
+
+        let result = linker.clean(&SyncOptions::default()).unwrap();
+
+        assert_eq!(
+            result.skipped, 1,
+            "the metadata failure is one skipped child"
+        );
+        assert_eq!(
+            result.errors, 0,
+            "inspection failures remain conservative skips"
+        );
+        assert_eq!(result.removed, 1, "the independent managed link is cleaned");
+        assert!(
+            bad_child.is_symlink(),
+            "the uninspected child link is preserved"
+        );
+        assert!(!good_destination.exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn clean_counts_nested_glob_child_metadata_error_and_continues() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+        let bad_source = project_root.join("source/bad/AGENTS.md");
+        fs::create_dir_all(bad_source.parent().unwrap()).unwrap();
+        fs::write(&bad_source, "nested source").unwrap();
+        fs::create_dir_all(project_root.join(".agents")).unwrap();
+        let good_source = project_root.join(".agents/good.md");
+        fs::write(&good_source, "managed source").unwrap();
+
+        let bad_destination = project_root.join("dest/bad/AGENTS.md");
+        fs::create_dir_all(bad_destination.parent().unwrap()).unwrap();
+        symlink(&bad_source, &bad_destination).unwrap();
+        let good_destination = project_root.join("good.md");
+        symlink(&good_source, &good_destination).unwrap();
+
+        let mut nested_target = make_target(
+            "source",
+            "dest/{relative_path}/{file_name}",
+            SyncType::NestedGlob,
+        );
+        nested_target.pattern = Some("**/AGENTS.md".to_string());
+        let mut linker = make_linker(project_root, true, nested_target.clone());
+        let targets = &mut linker.config.agents.get_mut("test").unwrap().targets;
+        targets.clear();
+        targets.insert("a-nested".to_string(), nested_target);
+        targets.insert(
+            "b-good".to_string(),
+            make_target("good.md", "good.md", SyncType::Symlink),
+        );
+        linker.set_clean_metadata_error_path_for_tests(&bad_destination);
+
+        let result = linker.clean(&SyncOptions::default()).unwrap();
+
+        assert_eq!(
+            result.skipped, 1,
+            "the child metadata failure is one skipped target"
+        );
+        assert_eq!(
+            result.errors, 0,
+            "inspection failures remain conservative skips"
+        );
+        assert_eq!(result.removed, 1, "the independent managed link is cleaned");
+        assert!(
+            bad_destination.is_symlink(),
+            "the uninspected link is preserved"
+        );
+        assert!(!good_destination.exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn clean_symlink_contents_skips_symlink_destination_container() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+        fs::create_dir_all(project_root.join(".agents")).unwrap();
+        let other_dir = project_root.join("other");
+        fs::create_dir_all(&other_dir).unwrap();
+        let unrelated_source = project_root.join(".agents/unrelated.md");
+        fs::write(&unrelated_source, "unrelated source").unwrap();
+        let unrelated_child = other_dir.join("unrelated.md");
+        symlink(&unrelated_source, &unrelated_child).unwrap();
+        let container = project_root.join("managed-container");
+        symlink(&other_dir, &container).unwrap();
+
+        let target = make_target("source-dir", "managed-container", SyncType::SymlinkContents);
+        let linker = make_linker(project_root, true, target);
+
+        let result = linker.clean(&SyncOptions::default()).unwrap();
+
+        assert_eq!(result.removed, 0);
+        assert_eq!(result.skipped, 1);
+        assert!(
+            container.is_symlink(),
+            "the destination symlink is preserved"
+        );
+        assert!(
+            unrelated_child.is_symlink(),
+            "the unrelated child inside its target directory is preserved"
+        );
+        assert_eq!(
+            fs::read_to_string(&unrelated_source).unwrap(),
+            "unrelated source"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn clean_continues_after_read_failure_for_replaced_symlink_contents_container() {
+        use std::os::unix::fs::symlink;
+        use std::{cell::Cell, rc::Rc};
+
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path().join("project");
+        let outside = temp.path().join("outside");
+        fs::create_dir_all(project_root.join(".agents")).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("keep.md"), "outside file").unwrap();
+        fs::write(project_root.join(".agents/good.md"), "managed source").unwrap();
+
+        let mut linker = make_linker(
+            &project_root,
+            true,
+            make_target("source-dir", "unsafe-container", SyncType::SymlinkContents),
+        );
+        let targets = &mut linker.config.agents.get_mut("test").unwrap().targets;
+        targets.clear();
+        targets.insert(
+            "a-unsafe-container".to_string(),
+            make_target("source-dir", "unsafe-container", SyncType::SymlinkContents),
+        );
+        targets.insert(
+            "b-good-link".to_string(),
+            make_target("good.md", "good.md", SyncType::Symlink),
+        );
+
+        let unsafe_container = project_root.join("unsafe-container");
+        fs::create_dir(&unsafe_container).unwrap();
+        symlink(
+            project_root.join(".agents/good.md"),
+            project_root.join("good.md"),
+        )
+        .unwrap();
+
+        let hook_called = Rc::new(Cell::new(false));
+        let hook_called_in_hook = Rc::clone(&hook_called);
+        let outside_for_hook = outside.clone();
+        let unsafe_container_for_hook = unsafe_container.clone();
+        linker.set_clean_before_read_contents_hook_for_tests(move |dir| {
+            if dir == unsafe_container_for_hook {
+                fs::remove_dir(dir).unwrap();
+                symlink(&outside_for_hook, dir).unwrap();
                 hook_called_in_hook.set(true);
-            }));
+            }
+        });
 
-            let result = linker.clean(&SyncOptions::default()).unwrap();
+        let result = linker.clean(&SyncOptions::default()).unwrap();
 
-            assert!(hook_called.get(), "container replacement hook must run");
-            assert_eq!(result.errors, 0);
-            assert_eq!(result.removed, 1, "only the independent target is cleaned");
-            assert!(
-                replacement_child.is_symlink(),
-                "replacement child is preserved"
-            );
-            assert!(container.is_symlink(), "replacement container is preserved");
-            assert!(
-                !valid_destination.exists(),
-                "the valid target is still cleaned"
-            );
-        }
-
-        run_case(false);
-        run_case(true);
+        assert!(
+            hook_called.get(),
+            "container should be replaced after resolution"
+        );
+        assert_eq!(result.removed, 1);
+        assert_eq!(result.skipped, 1);
+        assert_eq!(result.errors, 0);
+        assert!(!project_root.join("good.md").exists());
+        assert!(unsafe_container.is_symlink());
+        assert_eq!(
+            fs::read_to_string(outside.join("keep.md")).unwrap(),
+            "outside file"
+        );
     }
 
     #[test]
@@ -780,7 +1057,7 @@ mod tests {
         let linker = make_linker(
             &project_root,
             true,
-            make_target("source", "dest", SyncType::SymlinkContents),
+            make_target("source-dir", "dest", SyncType::SymlinkContents),
         );
         let hook_project = project_root.clone();
         let hook_moved = moved_project.clone();
@@ -805,36 +1082,45 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
-    fn clean_symlink_contents_preserves_zcode_source_pattern_filter() {
+    fn clean_rejects_replaced_project_root_directory_after_identity_snapshot() {
         use std::os::unix::fs::symlink;
 
         let temp = TempDir::new().unwrap();
-        let project_root = temp.path();
-        let source_dir = project_root.join(".agents/commands");
-        let destination_dir = project_root.join(".zcode/commands");
-        fs::create_dir_all(&source_dir).unwrap();
-        fs::create_dir_all(&destination_dir).unwrap();
+        let project_root = temp.path().join("project");
+        let moved_project = temp.path().join("project-before-replacement");
+        let outside_root = temp.path().join("outside");
+        fs::create_dir_all(project_root.join(".agents")).unwrap();
+        fs::create_dir_all(project_root.join("dest")).unwrap();
+        fs::create_dir_all(outside_root.join("dest")).unwrap();
+        let outside_source = outside_root.join("attacker-source.md");
+        fs::write(&outside_source, "outside source").unwrap();
+        let outside_link = outside_root.join("dest/attacker.md");
+        symlink(&outside_source, &outside_link).unwrap();
 
-        let selected_source = source_dir.join("selected.agent.md");
-        let excluded_source = source_dir.join("excluded.md");
-        fs::write(&selected_source, "selected command").unwrap();
-        fs::write(&excluded_source, "excluded command").unwrap();
-        let selected_destination = destination_dir.join("selected.md");
-        let excluded_destination = destination_dir.join("excluded.md");
-        symlink(&selected_source, &selected_destination).unwrap();
-        symlink(&excluded_source, &excluded_destination).unwrap();
-
-        let mut target = make_target("commands", ".zcode/commands", SyncType::SymlinkContents);
-        target.pattern = Some("*.agent.md".to_string());
-        let mut linker = make_linker(project_root, true, target);
-        let test_agent = linker.config.agents.remove("test").unwrap();
-        linker.config.agents.insert("zcode".to_string(), test_agent);
+        let linker = make_linker(
+            &project_root,
+            true,
+            make_target("source-dir", "dest", SyncType::SymlinkContents),
+        );
+        let hook_project = project_root.clone();
+        let hook_moved = moved_project.clone();
+        let hook_outside = outside_root.clone();
+        let expected_canonical_root = project_root.canonicalize().unwrap();
+        *linker.project_root_before_open_hook.borrow_mut() =
+            Some(Box::new(move |canonical_root| {
+                assert_eq!(canonical_root, expected_canonical_root);
+                fs::rename(&hook_project, &hook_moved).unwrap();
+                fs::rename(&hook_outside, &hook_project).unwrap();
+            }));
 
         let result = linker.clean(&SyncOptions::default()).unwrap();
 
-        assert_eq!(result.removed, 1);
-        assert!(!selected_destination.exists());
-        assert!(excluded_destination.is_symlink());
+        assert_eq!(result.removed, 0);
+        assert_eq!(result.skipped, 1);
+        assert!(
+            project_root.join("dest/attacker.md").is_symlink(),
+            "a different real directory must not be accepted as the opened project root"
+        );
     }
 
     #[test]
@@ -921,50 +1207,9 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
-    fn clean_rejects_replaced_project_root_directory_after_identity_snapshot() {
-        use std::os::unix::fs::symlink;
-
-        let temp = TempDir::new().unwrap();
-        let project_root = temp.path().join("project");
-        let moved_project = temp.path().join("project-before-replacement");
-        let outside_root = temp.path().join("outside");
-        fs::create_dir_all(project_root.join(".agents")).unwrap();
-        fs::create_dir_all(project_root.join("dest")).unwrap();
-        fs::create_dir_all(outside_root.join("dest")).unwrap();
-        let outside_source = outside_root.join("attacker-source.md");
-        fs::write(&outside_source, "outside source").unwrap();
-        let outside_link = outside_root.join("dest/attacker.md");
-        symlink(&outside_source, &outside_link).unwrap();
-
-        let linker = make_linker(
-            &project_root,
-            true,
-            make_target("source-dir", "dest", SyncType::SymlinkContents),
-        );
-        let hook_project = project_root.clone();
-        let hook_moved = moved_project.clone();
-        let hook_outside = outside_root.clone();
-        let expected_canonical_root = project_root.canonicalize().unwrap();
-        *linker.project_root_before_open_hook.borrow_mut() =
-            Some(Box::new(move |canonical_root| {
-                assert_eq!(canonical_root, expected_canonical_root);
-                fs::rename(&hook_project, &hook_moved).unwrap();
-                fs::rename(&hook_outside, &hook_project).unwrap();
-            }));
-
-        let result = linker.clean(&SyncOptions::default()).unwrap();
-
-        assert_eq!(result.removed, 0);
-        assert_eq!(result.skipped, 1);
-        assert!(
-            project_root.join("dest/attacker.md").is_symlink(),
-            "a different real directory must not be accepted as the opened project root"
-        );
-    }
-
-    #[test]
-    #[cfg(unix)]
     fn clean_preserves_replaced_empty_container_before_quarantine() {
+        use std::rc::Rc;
+
         let temp = TempDir::new().unwrap();
         let project_root = temp.path().join("project");
         let moved_container = temp.path().join("opened-container");
@@ -979,12 +1224,11 @@ mod tests {
         );
         let destination_for_hook = destination.clone();
         let moved_for_hook = moved_container.clone();
-        *linker.quarantine_before_container_move_hook.borrow_mut() =
-            Some(std::rc::Rc::new(move |opened| {
-                assert_eq!(opened, destination_for_hook);
-                fs::rename(&destination_for_hook, &moved_for_hook).unwrap();
-                fs::create_dir(&destination_for_hook).unwrap();
-            }));
+        *linker.quarantine_before_container_move_hook.borrow_mut() = Some(Rc::new(move |opened| {
+            assert_eq!(opened, destination_for_hook);
+            fs::rename(&destination_for_hook, &moved_for_hook).unwrap();
+            fs::create_dir(&destination_for_hook).unwrap();
+        }));
 
         let result = linker.clean(&SyncOptions::default()).unwrap();
 
@@ -994,6 +1238,79 @@ mod tests {
         );
         assert_eq!(result.skipped, 1);
         assert_eq!(result.errors, 0);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn clean_rejects_internal_symlink_replacement_before_reading_children() {
+        use std::os::unix::fs::symlink;
+        use std::{cell::Cell, rc::Rc};
+
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path().join("project");
+        let unrelated_dir = project_root.join("unrelated");
+        fs::create_dir_all(project_root.join(".agents")).unwrap();
+        fs::create_dir_all(&unrelated_dir).unwrap();
+        let managed_source = project_root.join(".agents/managed.md");
+        fs::write(&managed_source, "managed source").unwrap();
+        let unrelated_child = unrelated_dir.join("managed.md");
+        symlink(&managed_source, &unrelated_child).unwrap();
+
+        let mut linker = make_linker(
+            &project_root,
+            true,
+            make_target("source-dir", "managed-container", SyncType::SymlinkContents),
+        );
+        let targets = &mut linker.config.agents.get_mut("test").unwrap().targets;
+        targets.clear();
+        targets.insert(
+            "a-container".to_string(),
+            make_target("source-dir", "managed-container", SyncType::SymlinkContents),
+        );
+        targets.insert(
+            "b-good-link".to_string(),
+            make_target("managed.md", "good.md", SyncType::Symlink),
+        );
+
+        let container = project_root.join("managed-container");
+        fs::create_dir(&container).unwrap();
+        let good_destination = project_root.join("good.md");
+        symlink(&managed_source, &good_destination).unwrap();
+
+        let hook_called = Rc::new(Cell::new(false));
+        let hook_called_in_hook = Rc::clone(&hook_called);
+        let unrelated_dir_for_hook = unrelated_dir.clone();
+        let container_for_hook = container.clone();
+        linker.set_clean_before_read_contents_hook_for_tests(move |dir| {
+            if dir == container_for_hook {
+                fs::remove_dir(dir).unwrap();
+                symlink(&unrelated_dir_for_hook, dir).unwrap();
+                hook_called_in_hook.set(true);
+            }
+        });
+
+        let result = linker.clean(&SyncOptions::default()).unwrap();
+
+        assert!(
+            hook_called.get(),
+            "the checked container is replaced by the seam"
+        );
+        assert_eq!(result.skipped, 1, "the replaced container is skipped");
+        assert_eq!(result.errors, 0);
+        assert_eq!(result.removed, 1, "the independent valid target is cleaned");
+        assert!(
+            unrelated_child.is_symlink(),
+            "the unrelated child is preserved"
+        );
+        assert!(
+            container.is_symlink(),
+            "the replacement symlink is preserved"
+        );
+        assert_eq!(
+            fs::read_to_string(&managed_source).unwrap(),
+            "managed source"
+        );
+        assert!(!good_destination.exists());
     }
 
     #[test]
@@ -1038,30 +1355,136 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
-    fn clean_reports_unknown_zcode_source_pattern_as_skipped() {
+    fn clean_does_not_unlink_children_from_directory_replaced_after_metadata() {
+        use std::{cell::Cell, os::unix::fs::symlink, rc::Rc};
+
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path().join("project");
+        let unrelated_dir = project_root.join("unrelated");
+        fs::create_dir_all(project_root.join(".agents")).unwrap();
+        fs::create_dir_all(&unrelated_dir).unwrap();
+
+        let managed_source = project_root.join(".agents/managed.md");
+        fs::write(&managed_source, "managed source").unwrap();
+        let unrelated_child = unrelated_dir.join("managed.md");
+        symlink(&managed_source, &unrelated_child).unwrap();
+
+        let target = make_target("source-dir", "managed-container", SyncType::SymlinkContents);
+        let linker = make_linker(&project_root, true, target);
+        let container = project_root.join("managed-container");
+        fs::create_dir(&container).unwrap();
+
+        let hook_called = Rc::new(Cell::new(false));
+        let hook_called_in_hook = Rc::clone(&hook_called);
+        let unrelated_dir_for_hook = unrelated_dir.clone();
+        let container_for_hook = container.clone();
+        *linker.read_contents_after_metadata_hook.borrow_mut() = Some(Rc::new(move |dir| {
+            if dir == container_for_hook {
+                fs::remove_dir(dir).unwrap();
+                symlink(&unrelated_dir_for_hook, dir).unwrap();
+                hook_called_in_hook.set(true);
+            }
+        }));
+
+        let result = linker.clean(&SyncOptions::default()).unwrap();
+
+        assert!(
+            hook_called.get(),
+            "the container should be replaced after metadata"
+        );
+        assert_eq!(result.errors, 0);
+        assert!(
+            unrelated_child.is_symlink(),
+            "the unrelated child must be preserved"
+        );
+        assert!(
+            container.is_symlink(),
+            "the replacement symlink must be preserved"
+        );
+        assert_eq!(
+            fs::read_to_string(&managed_source).unwrap(),
+            "managed source"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn clean_symlink_contents_respects_target_pattern() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+        let source_dir = project_root.join(".agents/source");
+        let destination_dir = project_root.join("managed-contents");
+        fs::create_dir_all(&source_dir).unwrap();
+        fs::create_dir(&destination_dir).unwrap();
+        let selected_source = source_dir.join("selected.txt");
+        let excluded_source = source_dir.join("excluded.md");
+        fs::write(&selected_source, "selected").unwrap();
+        fs::write(&excluded_source, "excluded").unwrap();
+        let selected_destination = destination_dir.join("selected.txt");
+        let excluded_destination = destination_dir.join("excluded.md");
+        symlink(&selected_source, &selected_destination).unwrap();
+        symlink(&excluded_source, &excluded_destination).unwrap();
+
+        let mut target = make_target("source", "managed-contents", SyncType::SymlinkContents);
+        target.pattern = Some("*.txt".to_string());
+        let linker = make_linker(project_root, true, target);
+
+        let result = linker.clean(&SyncOptions::default()).unwrap();
+
+        assert_eq!(result.removed, 1, "only the matching source is managed");
+        assert!(!selected_destination.is_symlink());
+        assert!(
+            excluded_destination.is_symlink(),
+            "pattern-excluded child must remain"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn clean_zcode_pattern_does_not_infer_sources_after_source_read_error() {
         use std::os::unix::fs::symlink;
 
         let temp = TempDir::new().unwrap();
         let project_root = temp.path();
         fs::create_dir_all(project_root.join(".agents")).unwrap();
         fs::write(project_root.join(".agents/commands"), "not a directory").unwrap();
-        let source = project_root.join(".agents/source.agent.md");
-        fs::write(&source, "managed source").unwrap();
-        let destination = project_root.join(".zcode/commands");
-        fs::create_dir_all(&destination).unwrap();
-        symlink(&source, destination.join("source.md")).unwrap();
+        let managed_source = project_root.join(".agents/managed.md");
+        fs::write(&managed_source, "managed source").unwrap();
+        let destination_dir = project_root.join(".zcode/commands");
+        fs::create_dir_all(&destination_dir).unwrap();
+        let unrelated_child = destination_dir.join("cmd.md");
+        symlink(&managed_source, &unrelated_child).unwrap();
 
         let mut target = make_target("commands", ".zcode/commands", SyncType::SymlinkContents);
-        target.pattern = Some("*.agent.md".to_string());
+        target.pattern = Some("cmd.agent.md".to_string());
         let mut linker = make_linker(project_root, true, target);
-        let test_agent = linker.config.agents.remove("test").unwrap();
-        linker.config.agents.insert("zcode".to_string(), test_agent);
+        let agent = linker.config.agents.remove("test").unwrap();
+        linker.config.agents.insert("zcode".to_string(), agent);
+
+        let result = linker.clean(&SyncOptions::default()).unwrap();
+
+        assert_eq!(result.removed, 0, "unknown source scope must fail closed");
+        assert_eq!(result.skipped, 1, "unknown source scope must be visible");
+        assert!(unrelated_child.is_symlink());
+    }
+
+    #[test]
+    fn clean_nested_glob_reports_missing_search_root_as_skipped() {
+        let temp = TempDir::new().unwrap();
+        let target = make_target(
+            "missing-source",
+            "dest/{relative_path}/{file_name}",
+            SyncType::NestedGlob,
+        );
+        let linker = make_linker(temp.path(), true, target);
 
         let result = linker.clean(&SyncOptions::default()).unwrap();
 
         assert_eq!(result.removed, 0);
         assert_eq!(result.skipped, 1);
-        assert!(destination.join("source.md").is_symlink());
+        assert_eq!(result.errors, 0);
     }
 
     #[test]
@@ -1081,5 +1504,57 @@ mod tests {
         let result = linker.clean(&SyncOptions::default()).unwrap();
 
         assert_eq!(result.removed, 0);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn clean_counts_module_map_metadata_error_and_continues() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+        fs::create_dir_all(project_root.join(".agents")).unwrap();
+        let bad_source = project_root.join(".agents/bad.md");
+        let good_source = project_root.join(".agents/good.md");
+        fs::write(&bad_source, "uninspectable source").unwrap();
+        fs::write(&good_source, "managed source").unwrap();
+        let bad_destination = project_root.join("modules/bad.md");
+        fs::create_dir_all(bad_destination.parent().unwrap()).unwrap();
+        symlink(&bad_source, &bad_destination).unwrap();
+        let good_destination = project_root.join("good.md");
+        symlink(&good_source, &good_destination).unwrap();
+
+        let mut module_target = make_target("unused", "unused", SyncType::ModuleMap);
+        module_target.mappings = vec![crate::config::ModuleMapping {
+            source: "bad.md".to_string(),
+            destination: "modules".to_string(),
+            filename_override: Some("bad.md".to_string()),
+        }];
+        let mut linker = make_linker(project_root, true, module_target.clone());
+        let targets = &mut linker.config.agents.get_mut("test").unwrap().targets;
+        targets.clear();
+        targets.insert("a-module-map".to_string(), module_target);
+        targets.insert(
+            "b-good".to_string(),
+            make_target("good.md", "good.md", SyncType::Symlink),
+        );
+        linker.set_clean_metadata_error_path_for_tests(&bad_destination);
+
+        let result = linker.clean(&SyncOptions::default()).unwrap();
+
+        assert_eq!(
+            result.skipped, 1,
+            "the metadata failure is one skipped mapping"
+        );
+        assert_eq!(
+            result.errors, 0,
+            "inspection failures remain conservative skips"
+        );
+        assert_eq!(result.removed, 1, "the independent managed link is cleaned");
+        assert!(
+            bad_destination.is_symlink(),
+            "the uninspected link is preserved"
+        );
+        assert!(!good_destination.exists());
     }
 }

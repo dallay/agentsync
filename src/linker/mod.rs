@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use crate::config::{Config, TargetConfig};
+use crate::mcp_ownership::{LockedOwnership, McpOwnershipStore, OwnershipRecord, sha256_bytes};
 
 #[cfg(test)]
 use discovery::matches_path_glob;
@@ -42,9 +43,11 @@ enum ExistingSymlinkAction {
 
 type NestedGlobKey = (PathBuf, String, Vec<String>);
 type NestedGlobMatches = Rc<Vec<(PathBuf, PathBuf)>>;
-type NestedGlobCacheEntry = (NestedGlobMatches, bool);
+type NestedGlobCacheValue = (NestedGlobMatches, bool);
 #[cfg(test)]
-type ReadContentsAfterOpenHook = Rc<dyn Fn(&Path)>;
+type CleanBeforeReadContentsHook = Rc<dyn Fn(&Path)>;
+#[cfg(test)]
+type ReadContentsAfterMetadataHook = Rc<dyn Fn(&Path)>;
 #[cfg(test)]
 type ProjectRootBeforeOpenHook = Box<dyn FnOnce(&Path)>;
 #[cfg(test)]
@@ -103,9 +106,8 @@ pub struct Linker {
     /// of scanning the whole map per mutation.
     path_cache: RefCell<BTreeMap<PathBuf, Rc<PathBuf>>>,
     compression_cache: RefCell<HashMap<PathBuf, Rc<str>>>,
-    /// Cache for NestedGlob discovery results and traversal completion:
-    /// (search_root, pattern, excludes) -> (matches, complete).
-    glob_cache: RefCell<HashMap<NestedGlobKey, NestedGlobCacheEntry>>,
+    /// Cache for NestedGlob discovery results: (search_root, pattern, excludes) -> [(full_path, rel_path)]
+    glob_cache: RefCell<HashMap<NestedGlobKey, NestedGlobCacheValue>>,
     ensured_dirs: RefCell<HashSet<PathBuf>>,
     ensured_compressed: RefCell<HashSet<PathBuf>>,
     canonical_project_root: RefCell<Option<Rc<PathBuf>>>,
@@ -115,7 +117,11 @@ pub struct Linker {
     /// cost.
     timing: RefCell<Option<Rc<RefCell<TimingSink>>>>,
     #[cfg(test)]
-    read_contents_after_open_hook: RefCell<Option<ReadContentsAfterOpenHook>>,
+    mcp_ownership_data_root: Option<PathBuf>,
+    #[cfg(test)]
+    clean_before_read_contents_hook: RefCell<Option<CleanBeforeReadContentsHook>>,
+    #[cfg(test)]
+    read_contents_after_metadata_hook: RefCell<Option<ReadContentsAfterMetadataHook>>,
     #[cfg(test)]
     project_root_before_open_hook: RefCell<Option<ProjectRootBeforeOpenHook>>,
     #[cfg(test)]
@@ -125,7 +131,13 @@ pub struct Linker {
     #[cfg(test)]
     quarantine_after_move_hook: RefCell<Option<QuarantineAfterMoveHook>>,
     #[cfg(test)]
+    clean_metadata_error_path: RefCell<Option<PathBuf>>,
+    #[cfg(test)]
+    revert_metadata_error_path: RefCell<Option<PathBuf>>,
+    #[cfg(test)]
     nested_glob_walk_override: RefCell<Option<Box<dyn discovery::NestedGlobWalkIterator>>>,
+    #[cfg(test)]
+    symlink_contents_source_entries_override: RefCell<Option<Vec<PathBuf>>>,
 }
 
 impl Linker {
@@ -133,6 +145,11 @@ impl Linker {
     pub fn new(config: Config, config_path: PathBuf) -> Self {
         let project_root = Config::project_root(&config_path);
         let source_dir = config.source_dir(&config_path);
+        #[cfg(test)]
+        let mcp_ownership_data_root = {
+            let parent = project_root.parent().unwrap_or(&project_root);
+            Some(parent.join(".agentsync-test-local-data"))
+        };
 
         Self {
             config,
@@ -148,7 +165,11 @@ impl Linker {
             project_root_capability: RefCell::new(None),
             timing: RefCell::new(None),
             #[cfg(test)]
-            read_contents_after_open_hook: RefCell::new(None),
+            mcp_ownership_data_root,
+            #[cfg(test)]
+            clean_before_read_contents_hook: RefCell::new(None),
+            #[cfg(test)]
+            read_contents_after_metadata_hook: RefCell::new(None),
             #[cfg(test)]
             project_root_before_open_hook: RefCell::new(None),
             #[cfg(test)]
@@ -158,8 +179,21 @@ impl Linker {
             #[cfg(test)]
             quarantine_after_move_hook: RefCell::new(None),
             #[cfg(test)]
+            clean_metadata_error_path: RefCell::new(None),
+            #[cfg(test)]
+            revert_metadata_error_path: RefCell::new(None),
+            #[cfg(test)]
             nested_glob_walk_override: RefCell::new(None),
+            #[cfg(test)]
+            symlink_contents_source_entries_override: RefCell::new(None),
         }
+    }
+
+    /// Inject an isolated local-data root for unit tests.
+    #[cfg(test)]
+    pub(crate) fn with_mcp_ownership_data_root_for_tests(mut self, data_root: PathBuf) -> Self {
+        self.mcp_ownership_data_root = Some(data_root);
+        self
     }
 
     /// Install (or remove) the wall-clock timing sink used by the developer
@@ -317,6 +351,18 @@ impl Linker {
         agents_filter: Option<&Vec<String>>,
         plugin_servers: &BTreeMap<String, crate::config::McpServerConfig>,
     ) -> Result<crate::mcp::McpSyncResult> {
+        self.sync_mcp_with_servers_with_rebase(dry_run, agents_filter, plugin_servers, false)
+    }
+
+    /// Sync MCP configs, optionally allowing an explicit ownership-journal rebase
+    /// after the user has edited a config since the previous apply.
+    pub fn sync_mcp_with_servers_with_rebase(
+        &self,
+        dry_run: bool,
+        agents_filter: Option<&Vec<String>>,
+        plugin_servers: &BTreeMap<String, crate::config::McpServerConfig>,
+        rebase_mcp_journal: bool,
+    ) -> Result<crate::mcp::McpSyncResult> {
         use crate::mcp::McpGenerator;
 
         if !self.config.mcp.enabled {
@@ -337,25 +383,7 @@ impl Linker {
         }
 
         // Apply agent filtering (from CLI --agents or default_agents config)
-        let filtered_agents: Vec<_> = if let Some(filter) = agents_filter {
-            enabled_agents
-                .into_iter()
-                .filter(|agent| filter.iter().any(|f| mcp_agent_matches_filter(*agent, f)))
-                .collect()
-        } else if !self.config.default_agents.is_empty() {
-            // Apply default_agents filtering
-            enabled_agents
-                .into_iter()
-                .filter(|agent| {
-                    self.config
-                        .default_agents
-                        .iter()
-                        .any(|f| mcp_agent_matches_filter(*agent, f))
-                })
-                .collect()
-        } else {
-            enabled_agents
-        };
+        let filtered_agents = self.filtered_mcp_agents(enabled_agents, agents_filter);
 
         if filtered_agents.is_empty() {
             return Ok(crate::mcp::McpSyncResult::default());
@@ -374,8 +402,553 @@ impl Linker {
         }
 
         let generator = McpGenerator::new(servers, self.config.mcp.merge_strategy);
-        generator.generate_all(&self.project_root, &filtered_agents, dry_run)
+        let configured_agents: Vec<_> = self
+            .config
+            .agents
+            .keys()
+            .filter_map(|name| crate::mcp::McpAgent::from_id(name))
+            .collect();
+        #[cfg(test)]
+        let ownership_data_root = self.mcp_ownership_data_root.as_deref();
+        #[cfg(not(test))]
+        let ownership_data_root: Option<&Path> = None;
+        generator.generate_all_with_ownership(
+            &self.project_root,
+            &filtered_agents,
+            &configured_agents,
+            dry_run,
+            ownership_data_root,
+            rebase_mcp_journal,
+        )
     }
+
+    /// Agents selected for an MCP operation, honoring CLI --agents then
+    /// default_agents. Shared by sync and revert.
+    fn filtered_mcp_agents(
+        &self,
+        enabled_agents: Vec<crate::mcp::McpAgent>,
+        agents_filter: Option<&Vec<String>>,
+    ) -> Vec<crate::mcp::McpAgent> {
+        if let Some(filter) = agents_filter {
+            enabled_agents
+                .into_iter()
+                .filter(|agent| filter.iter().any(|f| mcp_agent_matches_filter(*agent, f)))
+                .collect()
+        } else if !self.config.default_agents.is_empty() {
+            // Apply default_agents filtering
+            enabled_agents
+                .into_iter()
+                .filter(|agent| {
+                    self.config
+                        .default_agents
+                        .iter()
+                        .any(|f| mcp_agent_matches_filter(*agent, f))
+                })
+                .collect()
+        } else {
+            enabled_agents
+        }
+    }
+
+    /// Restore MCP files from the apply-time ownership journal.
+    ///
+    /// Unlike apply, this uses the recorded agent IDs and does not require those
+    /// agents or their server definitions to remain enabled in the current config.
+    pub fn restore_mcp_ownership(
+        &self,
+        dry_run: bool,
+        agents_filter: Option<&Vec<String>>,
+    ) -> Result<crate::mcp::McpSyncResult> {
+        let store = self.open_mcp_ownership_store()?;
+        let mut result = crate::mcp::McpSyncResult::default();
+        if dry_run {
+            let Some(manifest) = store.read_existing_read_only()? else {
+                self.warn_if_legacy_mcp_is_unowned(&mut result, agents_filter);
+                return Ok(result);
+            };
+            restore_ownership_records(
+                &manifest.configs,
+                OwnershipRestoreContext {
+                    store: &store,
+                    project_root: &self.project_root,
+                    filters: agents_filter.or_else(|| {
+                        (!self.config.default_agents.is_empty())
+                            .then_some(&self.config.default_agents)
+                    }),
+                    dry_run: true,
+                    locked: None,
+                    result: &mut result,
+                },
+            )?;
+            return Ok(result);
+        }
+
+        if store.read_existing()?.is_none() {
+            self.warn_if_legacy_mcp_is_unowned(&mut result, agents_filter);
+            return Ok(result);
+        }
+        let mut locked = store.lock()?;
+        let records = locked.manifest().configs.clone();
+        restore_ownership_records(
+            &records,
+            OwnershipRestoreContext {
+                store: &store,
+                project_root: &self.project_root,
+                filters: agents_filter.or_else(|| {
+                    (!self.config.default_agents.is_empty()).then_some(&self.config.default_agents)
+                }),
+                dry_run: false,
+                locked: Some(&mut locked),
+                result: &mut result,
+            },
+        )?;
+        locked.persist_or_remove_empty()?;
+        Ok(result)
+    }
+
+    fn warn_if_legacy_mcp_is_unowned(
+        &self,
+        result: &mut crate::mcp::McpSyncResult,
+        agents_filter: Option<&Vec<String>>,
+    ) {
+        let filters = agents_filter.or_else(|| {
+            (!self.config.default_agents.is_empty()).then_some(&self.config.default_agents)
+        });
+        let has_existing_selected_mcp_destination = self
+            .config
+            .agents
+            .keys()
+            .filter_map(|name| crate::mcp::McpAgent::from_id(name))
+            .any(|agent| {
+                let selected = filters.is_none_or(|filters| {
+                    filters
+                        .iter()
+                        .any(|filter| mcp_agent_matches_filter(agent, filter))
+                });
+                selected
+                    && agent
+                        .resolved_config_path(&self.project_root)
+                        .is_some_and(|path| fs::symlink_metadata(path).is_ok())
+            });
+        let has_configured_servers = self
+            .config
+            .mcp_servers
+            .values()
+            .any(|server| !server.disabled)
+            || (self.config.plugins.enabled
+                && !self.config.plugins.selections.is_empty()
+                && !self.config.plugins.allowed_mcp.is_empty());
+        if self.config.mcp.enabled
+            && has_configured_servers
+            && has_existing_selected_mcp_destination
+        {
+            println!(
+                "  {} No MCP ownership journal found; leaving existing MCP configs unchanged",
+                "!".yellow()
+            );
+            tracing::warn!(
+                "No MCP ownership journal found; legacy MCP configs were left unchanged"
+            );
+            result.skipped += 1;
+        }
+    }
+
+    fn open_mcp_ownership_store(&self) -> Result<McpOwnershipStore> {
+        #[cfg(test)]
+        if let Some(data_root) = self.mcp_ownership_data_root.as_deref() {
+            return McpOwnershipStore::open_at(&self.project_root, data_root);
+        }
+        McpOwnershipStore::open(&self.project_root)
+    }
+}
+
+struct OwnershipRestoreContext<'a> {
+    store: &'a McpOwnershipStore,
+    project_root: &'a Path,
+    filters: Option<&'a Vec<String>>,
+    dry_run: bool,
+    locked: Option<&'a mut LockedOwnership>,
+    result: &'a mut crate::mcp::McpSyncResult,
+}
+
+fn restore_ownership_records(
+    records: &BTreeMap<String, OwnershipRecord>,
+    context: OwnershipRestoreContext<'_>,
+) -> Result<()> {
+    let OwnershipRestoreContext {
+        store,
+        project_root,
+        filters,
+        dry_run,
+        mut locked,
+        result,
+    } = context;
+    for (config_id, record) in records {
+        let selected = record.agent_ids.iter().all(|agent_id| {
+            filters.is_none_or(|filters| {
+                filters
+                    .iter()
+                    .any(|filter| crate::agent_ids::mcp_filter_matches(agent_id, filter))
+            })
+        });
+        if !selected {
+            println!(
+                "  {} Skipping MCP restore for shared config: not all recorded agents are selected",
+                "!".yellow()
+            );
+            result.skipped += 1;
+            continue;
+        }
+
+        let (agent, path) =
+            match resolve_ownership_record_path(store, project_root, config_id, record) {
+                Ok(resolved) => resolved,
+                Err(error) => {
+                    println!(
+                        "  {} Cannot safely restore MCP config: {error}",
+                        "!".yellow()
+                    );
+                    tracing::error!(config_id, error = %error, "Invalid MCP ownership record");
+                    result.errors += 1;
+                    continue;
+                }
+            };
+
+        // Non-dry-run restore already holds this project's journal lock. Keep the
+        // acquisition order journal -> destination, and never take another journal
+        // lock while this per-record destination guard is held.
+        let _destination_lock = if dry_run {
+            None
+        } else {
+            let lock = match crate::mcp::validate_mcp_config_path(agent, project_root, &path)
+                .and_then(|()| store.lock_config_path(&path))
+            {
+                Ok(lock) => lock,
+                Err(error) => {
+                    println!(
+                        "  {} Cannot lock MCP config for restore; retaining ownership record: {}",
+                        "!".yellow(),
+                        path.display()
+                    );
+                    tracing::warn!(
+                        config_path = %path.display(),
+                        error = %error,
+                        "Could not lock MCP config destination for restore"
+                    );
+                    result.errors += 1;
+                    continue;
+                }
+            };
+            Some(lock)
+        };
+
+        let current = match read_mcp_config_bytes_if_regular(agent, project_root, &path) {
+            Ok(current) => current,
+            Err(error) => {
+                println!(
+                    "  {} Cannot safely restore MCP config: {error}",
+                    "!".yellow()
+                );
+                tracing::warn!(config_path = %path.display(), error = %error, "MCP restore rejected config path");
+                result.errors += 1;
+                continue;
+            }
+        };
+        let current_hash = current.as_deref().map(sha256_bytes);
+        let original_hash = record
+            .original_content
+            .as_deref()
+            .map(|content| sha256_bytes(content.as_bytes()));
+        if current_hash == original_hash {
+            if !dry_run && let Some(locked) = locked.as_deref_mut() {
+                locked.remove_record(project_root, &path);
+            }
+            result.updated += 1;
+            continue;
+        }
+
+        let matches_recorded_state = current_hash.as_deref()
+            == Some(record.applied_sha256.as_str())
+            || record
+                .pre_write_sha256
+                .as_deref()
+                .is_some_and(|pre_write_hash| current_hash.as_deref() == Some(pre_write_hash));
+        if !matches_recorded_state {
+            println!(
+                "  {} Skipping MCP restore; config changed since apply: {}",
+                "!".yellow(),
+                path.display()
+            );
+            tracing::warn!(config_path = %path.display(), "MCP config no longer matches its ownership journal");
+            result.skipped += 1;
+            continue;
+        }
+
+        if dry_run {
+            println!(
+                "  {} Would restore MCP config: {}",
+                "→".cyan(),
+                path.display()
+            );
+            result.updated += 1;
+            continue;
+        }
+
+        // Re-check immediately before mutation. This also refuses a symlink
+        // swapped in after the initial metadata inspection.
+        let latest = match read_mcp_config_bytes_if_regular(agent, project_root, &path) {
+            Ok(latest) => latest,
+            Err(error) => {
+                println!(
+                    "  {} Cannot safely restore MCP config: {error}",
+                    "!".yellow()
+                );
+                result.errors += 1;
+                continue;
+            }
+        };
+        if latest != current {
+            println!(
+                "  {} Skipping MCP restore; config changed during revert: {}",
+                "!".yellow(),
+                path.display()
+            );
+            result.skipped += 1;
+            continue;
+        }
+
+        let restore_result = crate::mcp::validate_mcp_config_path(agent, project_root, &path)
+            .and_then(|()| match record.original_content.as_deref() {
+                Some(original) => restore_mcp_config_bytes(
+                    agent,
+                    project_root,
+                    &path,
+                    original.as_bytes(),
+                    current.as_deref(),
+                )
+                .map_err(|error| match error {
+                    RestoreMcpConfigError::Validation(error)
+                    | RestoreMcpConfigError::Mutation(error) => error,
+                }),
+                None => remove_generated_mcp_config_with_hook(
+                    agent,
+                    project_root,
+                    &path,
+                    current.as_deref(),
+                    || Ok(()),
+                ),
+            });
+        match restore_result {
+            Ok(RestoreMcpConfigOutcome::Changed) => {
+                println!(
+                    "  {} Skipping MCP restore; config changed during staging: {}",
+                    "!".yellow(),
+                    path.display()
+                );
+                tracing::warn!(config_path = %path.display(), "MCP config changed during restore staging");
+                result.skipped += 1;
+                continue;
+            }
+            Err(error) => {
+                println!(
+                    "  {} Failed to restore MCP config; retaining ownership record: {}",
+                    "!".yellow(),
+                    path.display()
+                );
+                tracing::warn!(
+                    config_path = %path.display(),
+                    error = %error,
+                    "Failed to restore MCP config; retaining ownership record"
+                );
+                result.errors += 1;
+                continue;
+            }
+            Ok(RestoreMcpConfigOutcome::Restored) => {}
+        }
+        if let Some(locked) = locked.as_deref_mut() {
+            locked.remove_record(project_root, &path);
+        }
+        println!("  {} Restored MCP config: {}", "✔".green(), path.display());
+        result.updated += 1;
+    }
+    Ok(())
+}
+
+fn resolve_ownership_record_path(
+    store: &McpOwnershipStore,
+    project_root: &Path,
+    config_id: &str,
+    record: &OwnershipRecord,
+) -> Result<(crate::mcp::McpAgent, PathBuf)> {
+    anyhow::ensure!(
+        !record.agent_ids.is_empty(),
+        "ownership record has no agent IDs"
+    );
+    let mut candidate: Option<(crate::mcp::McpAgent, PathBuf)> = None;
+    for agent_id in &record.agent_ids {
+        let agent = crate::mcp::McpAgent::from_id(agent_id)
+            .ok_or_else(|| anyhow::anyhow!("unknown MCP owner ID {agent_id:?}"))?;
+        anyhow::ensure!(
+            agent.id() == agent_id,
+            "non-canonical MCP owner ID {agent_id:?}"
+        );
+        let path = agent.resolved_config_path(project_root).ok_or_else(|| {
+            anyhow::anyhow!("MCP owner {agent_id:?} has no resolvable config path")
+        })?;
+        let path_id = store.config_path_id(project_root, &path);
+        anyhow::ensure!(
+            path_id == config_id,
+            "ownership record path hash does not match its owner IDs"
+        );
+        if let Some((_, first_path)) = &candidate {
+            anyhow::ensure!(
+                store.config_path_id(project_root, first_path) == path_id,
+                "MCP owner IDs resolve to different config paths"
+            );
+        } else {
+            candidate = Some((agent, path));
+        }
+    }
+    candidate.ok_or_else(|| anyhow::anyhow!("ownership record has no resolvable config path"))
+}
+
+fn read_mcp_config_bytes_if_regular(
+    agent: crate::mcp::McpAgent,
+    project_root: &Path,
+    path: &Path,
+) -> Result<Option<Vec<u8>>> {
+    crate::mcp::validate_mcp_config_path(agent, project_root, path)?;
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("Failed to inspect MCP config: {}", path.display()));
+        }
+    };
+    if metadata.file_type().is_symlink() {
+        anyhow::bail!("refusing symlinked MCP config: {}", path.display());
+    }
+    if !metadata.is_file() {
+        anyhow::bail!("MCP config is not a regular file: {}", path.display());
+    }
+    fs::read(path)
+        .with_context(|| format!("Failed to read MCP config: {}", path.display()))
+        .map(Some)
+}
+
+#[derive(Debug)]
+enum RestoreMcpConfigError {
+    Validation(anyhow::Error),
+    Mutation(anyhow::Error),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum RestoreMcpConfigOutcome {
+    Restored,
+    Changed,
+}
+
+fn remove_generated_mcp_config_with_hook<F>(
+    agent: crate::mcp::McpAgent,
+    project_root: &Path,
+    path: &Path,
+    expected_current: Option<&[u8]>,
+    before_final_check: F,
+) -> Result<RestoreMcpConfigOutcome>
+where
+    F: FnOnce() -> Result<()>,
+{
+    before_final_check()?;
+    let latest = read_mcp_config_bytes_if_regular(agent, project_root, path)?;
+    if latest.as_deref() != expected_current {
+        return Ok(RestoreMcpConfigOutcome::Changed);
+    }
+    fs::remove_file(path)
+        .with_context(|| format!("Failed to remove generated MCP config: {}", path.display()))?;
+    Ok(RestoreMcpConfigOutcome::Restored)
+}
+
+impl From<anyhow::Error> for RestoreMcpConfigError {
+    fn from(error: anyhow::Error) -> Self {
+        Self::Mutation(error)
+    }
+}
+
+fn write_staged_mcp_restore_file<F>(
+    temp_file: &mut tempfile::NamedTempFile,
+    content: &[u8],
+    restrict_before_write: F,
+) -> Result<()>
+where
+    F: FnOnce(&Path) -> Result<()>,
+{
+    restrict_before_write(temp_file.path())?;
+    use std::io::Write;
+    temp_file
+        .write_all(content)
+        .context("Failed to write restored MCP config")
+}
+
+fn restore_mcp_config_bytes(
+    agent: crate::mcp::McpAgent,
+    project_root: &Path,
+    path: &Path,
+    content: &[u8],
+    expected_current: Option<&[u8]>,
+) -> std::result::Result<RestoreMcpConfigOutcome, RestoreMcpConfigError> {
+    restore_mcp_config_bytes_with_hook(agent, project_root, path, content, expected_current, || {
+        Ok(())
+    })
+}
+
+fn restore_mcp_config_bytes_with_hook<F>(
+    agent: crate::mcp::McpAgent,
+    project_root: &Path,
+    path: &Path,
+    content: &[u8],
+    expected_current: Option<&[u8]>,
+    after_staging: F,
+) -> std::result::Result<RestoreMcpConfigOutcome, RestoreMcpConfigError>
+where
+    F: FnOnce() -> Result<()>,
+{
+    crate::mcp::validate_mcp_config_path(agent, project_root, path)
+        .map_err(RestoreMcpConfigError::Validation)?;
+    let parent = path.parent().ok_or_else(|| {
+        RestoreMcpConfigError::Validation(anyhow::anyhow!("Invalid MCP config path"))
+    })?;
+    let mut temp_file = tempfile::NamedTempFile::new_in(parent).with_context(|| {
+        format!(
+            "Failed to create MCP restore temp file in {}",
+            parent.display()
+        )
+    })?;
+    write_staged_mcp_restore_file(
+        &mut temp_file,
+        content,
+        crate::mcp::set_restricted_mcp_staging_permissions,
+    )?;
+    temp_file
+        .as_file()
+        .sync_all()
+        .context("Failed to sync restored MCP config")?;
+    after_staging()?;
+    let current = read_mcp_config_bytes_if_regular(agent, project_root, path)
+        .map_err(RestoreMcpConfigError::Validation)?;
+    if current.as_deref() != expected_current {
+        return Ok(RestoreMcpConfigOutcome::Changed);
+    }
+    temp_file
+        .persist(path)
+        .map_err(|error| error.error)
+        .with_context(|| {
+            format!(
+                "Failed to atomically restore MCP config: {}",
+                path.display()
+            )
+        })?;
+    Ok(RestoreMcpConfigOutcome::Restored)
 }
 
 /// Match MCP agents against CLI/default filter values.
@@ -494,9 +1067,241 @@ pub(crate) mod test_support {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeSet;
     #[cfg(unix)]
     use std::os::unix::fs::symlink;
     use tempfile::TempDir;
+
+    #[test]
+    fn legacy_mcp_warning_requires_an_active_configured_destination() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut linker = test_support::make_linker(
+            temp_dir.path(),
+            true,
+            test_support::make_target("source", "destination", crate::config::SyncType::Symlink),
+        );
+        linker.config.mcp_servers.insert(
+            "filesystem".to_string(),
+            crate::config::McpServerConfig {
+                command: Some("fixture-server".to_string()),
+                args: Vec::new(),
+                env: BTreeMap::new(),
+                url: None,
+                headers: BTreeMap::new(),
+                transport_type: None,
+                disabled: false,
+            },
+        );
+
+        let mut result = crate::mcp::McpSyncResult::default();
+        linker.warn_if_legacy_mcp_is_unowned(&mut result, None);
+        assert_eq!(
+            result.skipped, 0,
+            "an unsupported agent has no MCP destination"
+        );
+
+        let test_agent = linker.config.agents.remove("test").unwrap();
+        linker
+            .config
+            .agents
+            .insert("claude".to_string(), test_agent);
+        linker.config.mcp.enabled = false;
+        linker.warn_if_legacy_mcp_is_unowned(&mut result, None);
+        assert_eq!(
+            result.skipped, 0,
+            "disabled MCP does not need an ownership journal"
+        );
+
+        linker.config.mcp.enabled = true;
+        linker
+            .config
+            .mcp_servers
+            .get_mut("filesystem")
+            .unwrap()
+            .disabled = true;
+        linker.warn_if_legacy_mcp_is_unowned(&mut result, None);
+        assert_eq!(
+            result.skipped, 0,
+            "disabled servers have no MCP destination"
+        );
+
+        linker
+            .config
+            .mcp_servers
+            .get_mut("filesystem")
+            .unwrap()
+            .disabled = false;
+        linker.warn_if_legacy_mcp_is_unowned(&mut result, None);
+        assert_eq!(
+            result.skipped, 0,
+            "an active MCP server without an existing config entry is not a skipped restore"
+        );
+
+        fs::write(temp_dir.path().join(".mcp.json"), "{}")
+            .expect("create the existing Claude MCP destination");
+        linker.warn_if_legacy_mcp_is_unowned(&mut result, None);
+        assert_eq!(
+            result.skipped, 1,
+            "active MCP destinations without a journal are skipped"
+        );
+    }
+
+    #[test]
+    fn revert_reconciles_write_ahead_record_before_second_apply_write() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_root_path = temp_dir.path().join("project");
+        fs::create_dir_all(&project_root_path).unwrap();
+        let project_root = project_root_path.as_path();
+        let config_path = project_root.join("agentsync.toml");
+        fs::write(&config_path, "").unwrap();
+        let data_root = temp_dir.path().join("local-data");
+        let linker = test_support::make_linker(
+            project_root,
+            true,
+            test_support::make_target("source", "destination", crate::config::SyncType::Symlink),
+        )
+        .with_mcp_ownership_data_root_for_tests(data_root.clone());
+        let store = McpOwnershipStore::open_at(project_root, &data_root).unwrap();
+        let config_path = project_root.join(".mcp.json");
+        let mut locked = store.lock().unwrap();
+        locked
+            .record_before_write(
+                project_root,
+                &config_path,
+                BTreeSet::from(["claude".to_string()]),
+                Some("first baseline"),
+                "first applied",
+            )
+            .unwrap();
+        locked
+            .record_before_write(
+                project_root,
+                &config_path,
+                BTreeSet::from(["claude".to_string()]),
+                Some("first applied"),
+                "second applied",
+            )
+            .unwrap();
+        locked.persist().unwrap();
+        drop(locked);
+        fs::write(&config_path, "first applied").unwrap();
+
+        let result = linker.restore_mcp_ownership(false, None).unwrap();
+
+        assert_eq!(fs::read_to_string(&config_path).unwrap(), "first baseline");
+        assert_eq!(result.updated, 1);
+        assert!(store.read_existing().unwrap().is_none());
+    }
+
+    #[test]
+    fn restore_rejects_unregistered_serialized_owner_id() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_root_path = temp_dir.path().join("project");
+        fs::create_dir_all(&project_root_path).unwrap();
+        let project_root = project_root_path.as_path();
+        let config_path = project_root.join("agentsync.toml");
+        fs::write(&config_path, "").unwrap();
+        let data_root = temp_dir.path().join("local-data");
+        let linker = test_support::make_linker(
+            project_root,
+            true,
+            test_support::make_target("source", "destination", crate::config::SyncType::Symlink),
+        )
+        .with_mcp_ownership_data_root_for_tests(data_root.clone());
+        let store = McpOwnershipStore::open_at(project_root, &data_root).unwrap();
+        let config_path = project_root.join(".mcp.json");
+        fs::write(&config_path, "applied config").unwrap();
+        let mut locked = store.lock().unwrap();
+        locked
+            .record_before_write(
+                project_root,
+                &config_path,
+                BTreeSet::from(["claude".to_string()]),
+                Some("original config"),
+                "applied config",
+            )
+            .unwrap();
+        let config_id = store.config_path_id(project_root, &config_path);
+        locked
+            .manifest_mut()
+            .configs
+            .get_mut(&config_id)
+            .unwrap()
+            .agent_ids = BTreeSet::from(["unknown-agent".to_string()]);
+        locked.persist().unwrap();
+        drop(locked);
+
+        let result = linker.restore_mcp_ownership(false, None).unwrap();
+
+        assert_eq!(result.errors, 1);
+        assert_eq!(fs::read_to_string(&config_path).unwrap(), "applied config");
+        assert!(store.read_existing().unwrap().is_some());
+    }
+
+    #[test]
+    fn staged_mcp_restore_preserves_edit_that_arrives_before_publish() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path();
+        let config_path = project_root.join(".mcp.json");
+        let applied = b"applied config";
+        let original = b"original config";
+        let external_edit = b"external edit";
+        fs::write(&config_path, applied).unwrap();
+
+        let result = restore_mcp_config_bytes_with_hook(
+            crate::mcp::McpAgent::ClaudeCode,
+            project_root,
+            &config_path,
+            original,
+            Some(applied),
+            || fs::write(&config_path, external_edit).map_err(Into::into),
+        )
+        .unwrap();
+
+        assert_eq!(result, RestoreMcpConfigOutcome::Changed);
+        assert_eq!(fs::read(&config_path).unwrap(), external_edit);
+    }
+
+    #[test]
+    fn staged_mcp_restore_restricts_permissions_before_writing_snapshot_bytes() {
+        let temp_dir = TempDir::new().unwrap();
+        let content = b"snapshot credentials";
+        let mut temp_file = tempfile::NamedTempFile::new_in(temp_dir.path()).unwrap();
+        let mut restriction_checked = false;
+
+        write_staged_mcp_restore_file(&mut temp_file, content, |staging_path| {
+            restriction_checked = true;
+            assert!(staging_path.exists());
+            assert_eq!(fs::metadata(staging_path)?.len(), 0);
+            Ok(())
+        })
+        .unwrap();
+
+        assert!(restriction_checked);
+        assert_eq!(fs::read(temp_file.path()).unwrap(), content);
+    }
+
+    #[test]
+    fn generated_mcp_remove_preserves_edit_detected_by_final_check() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path();
+        let config_path = project_root.join(".mcp.json");
+        let applied = b"generated config";
+        let external_edit = b"external edit";
+        fs::write(&config_path, applied).unwrap();
+
+        let result = remove_generated_mcp_config_with_hook(
+            crate::mcp::McpAgent::ClaudeCode,
+            project_root,
+            &config_path,
+            Some(applied),
+            || fs::write(&config_path, external_edit).map_err(Into::into),
+        )
+        .unwrap();
+
+        assert_eq!(result, RestoreMcpConfigOutcome::Changed);
+        assert_eq!(fs::read(&config_path).unwrap(), external_edit);
+    }
 
     // ==========================================================================
     // PATTERN MATCHING TESTS
@@ -887,6 +1692,123 @@ mod tests {
         let compressed_content = fs::read_to_string(agents_dir.join("AGENTS.compact.md")).unwrap();
         assert!(compressed_content.contains("Some text with spacing."));
         assert!(compressed_content.contains("fn  main() {}"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn sync_refuses_existing_and_dangling_symlink_compressed_outputs() {
+        use std::os::unix::fs::symlink;
+
+        for dangling in [false, true] {
+            let temp_dir = TempDir::new().unwrap();
+            let project_root = temp_dir.path();
+            let agents_dir = project_root.join(".agents");
+            fs::create_dir_all(&agents_dir).unwrap();
+            fs::write(agents_dir.join("AGENTS.md"), "# current instructions\n").unwrap();
+
+            let victim = project_root.join(if dangling {
+                "dangling-target.md"
+            } else {
+                "existing-target.md"
+            });
+            if !dangling {
+                fs::write(&victim, "do not overwrite this file\n").unwrap();
+            }
+            symlink(&victim, agents_dir.join("AGENTS.compact.md")).unwrap();
+
+            let config_path = agents_dir.join("agentsync.toml");
+            fs::write(
+                &config_path,
+                r#"
+                    source_dir = "."
+                    compress_agents_md = true
+
+                    [agents.test]
+                    enabled = true
+
+                    [agents.test.targets.main]
+                    source = "AGENTS.md"
+                    destination = "TEST.md"
+                    type = "symlink"
+                "#,
+            )
+            .unwrap();
+            let config = Config::load(&config_path).unwrap();
+            let linker = Linker::new(config, config_path);
+
+            let result = linker.sync(&SyncOptions::default()).unwrap();
+
+            if dangling {
+                assert!(!victim.exists(), "a dangling target must not be created");
+            } else {
+                assert_eq!(
+                    fs::read_to_string(&victim).unwrap(),
+                    "do not overwrite this file\n"
+                );
+            }
+            assert_eq!(
+                result.errors, 1,
+                "compressed output symlinks must be refused"
+            );
+            assert!(
+                agents_dir.join("AGENTS.compact.md").is_symlink(),
+                "the attacker-controlled link must remain untouched"
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn sync_does_not_modify_other_hardlinks_to_compressed_output() {
+        use std::os::unix::fs::MetadataExt;
+
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path();
+        let agents_dir = project_root.join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+        fs::write(agents_dir.join("AGENTS.md"), "# current instructions\n").unwrap();
+        let other_link = project_root.join("important-user-file.md");
+        let compressed_output = agents_dir.join("AGENTS.compact.md");
+        fs::write(&other_link, "do not modify the shared inode\n").unwrap();
+        fs::hard_link(&other_link, &compressed_output).unwrap();
+
+        let config_path = agents_dir.join("agentsync.toml");
+        fs::write(
+            &config_path,
+            r#"
+                source_dir = "."
+                compress_agents_md = true
+
+                [agents.test]
+                enabled = true
+
+                [agents.test.targets.main]
+                source = "AGENTS.md"
+                destination = "TEST.md"
+                type = "symlink"
+            "#,
+        )
+        .unwrap();
+        let config = Config::load(&config_path).unwrap();
+        let linker = Linker::new(config, config_path);
+
+        let result = linker.sync(&SyncOptions::default()).unwrap();
+
+        assert_eq!(result.errors, 0);
+        assert_eq!(
+            fs::read_to_string(&other_link).unwrap(),
+            "do not modify the shared inode\n",
+            "regenerating compressed output must not overwrite another hard link"
+        );
+        assert_eq!(
+            fs::read_to_string(&compressed_output).unwrap(),
+            "# current instructions\n"
+        );
+        assert_ne!(
+            fs::metadata(&other_link).unwrap().ino(),
+            fs::metadata(&compressed_output).unwrap().ino(),
+            "the generated output should no longer share the user's inode"
+        );
     }
 
     #[test]
