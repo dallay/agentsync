@@ -664,106 +664,6 @@ impl Linker {
         result.restored += 1;
         Ok(())
     }
-
-    /// Move (or, with keep_backups, copy) a `.bak` backup back to `dest`.
-    #[cfg(test)]
-    fn restore_backup(
-        &self,
-        dest: &Path,
-        backup: &Path,
-        options: &SyncOptions,
-        result: &mut SyncResult,
-    ) -> Result<()> {
-        let span = tracing::info_span!(
-            "agentsync",
-            operation = "restore",
-            path = %dest.display(),
-            outcome = tracing::field::Empty
-        );
-        let _enter = span.enter();
-        if options.dry_run {
-            println!("  {} Would restore: {}", "→".cyan(), dest.display());
-            span.record("outcome", "would_restore");
-            result.restored += 1;
-            return Ok(());
-        }
-        match fs::symlink_metadata(dest) {
-            Ok(metadata) if metadata.file_type().is_symlink() => {
-                result.errors += 1;
-                span.record("outcome", "error");
-                println!(
-                    "  {} Refusing to restore through symlink destination: {}",
-                    "!".yellow(),
-                    dest.display()
-                );
-                tracing::warn!(path = %dest.display(), "Refusing to restore backup through existing symlink destination");
-                return Ok(());
-            }
-            Ok(_) => {}
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => {
-                result.errors += 1;
-                span.record("outcome", "error");
-                tracing::error!(error = %e, path = %dest.display(), "Failed to inspect revert destination");
-                return Ok(());
-            }
-        }
-        if let Err(e) = self.revalidate_unlink_path(dest) {
-            result.errors += 1;
-            span.record("outcome", "error");
-            tracing::error!(error = %e, path = %dest.display(), "Failed to revalidate revert destination");
-            return Ok(());
-        }
-        if let Err(e) = self.revalidate_path(backup) {
-            result.errors += 1;
-            span.record("outcome", "error");
-            tracing::error!(error = %e, path = %backup.display(), "Failed to revalidate revert backup");
-            return Ok(());
-        }
-        let op: Result<usize> = if options.keep_backups {
-            copy_backup_contents(backup, dest)
-        } else {
-            fs::rename(backup, dest)
-                .with_context(|| {
-                    format!(
-                        "Failed to restore backup {} to {}",
-                        backup.display(),
-                        dest.display()
-                    )
-                })
-                .map(|()| 0)
-        };
-        let skipped_copies = match op {
-            Ok(skipped) => skipped,
-            Err(e) => {
-                result.errors += 1;
-                span.record("outcome", "error");
-                tracing::error!(error = %e, path = %dest.display(), "Failed to restore backup");
-                return Ok(());
-            }
-        };
-        // A partial copy (special entries skipped) must not be reported as a
-        // restore: warn loudly and count the error instead.
-        if skipped_copies > 0 {
-            result.errors += 1;
-            span.record("outcome", "error");
-            println!(
-                "  {} Restored with {} skipped special entries (see warnings): {}",
-                "!".yellow(),
-                skipped_copies,
-                dest.display()
-            );
-            tracing::warn!(path = %dest.display(), skipped = skipped_copies, "Backup restore skipped special entries; not counted as restored");
-            return Ok(());
-        }
-        self.invalidate_path(dest);
-        self.invalidate_path(backup);
-        self.invalidate_glob_cache();
-        println!("  {} Restored: {}", "✔".green(), dest.display());
-        span.record("outcome", "restored");
-        result.restored += 1;
-        Ok(())
-    }
 }
 
 fn copy_backup_contents_capability(
@@ -1660,81 +1560,6 @@ fn restore_staging_path(destination: &Path, staging_name: &std::ffi::OsStr) -> s
         .join(staging_name)
 }
 
-/// Copy a backup over `dest` without consuming it (for `--keep-backups`).
-/// Returns the number of special entries skipped along the way, so the caller
-/// can refuse to report a partial copy as a successful restore.
-#[cfg(test)]
-fn copy_backup_contents(backup: &Path, dest: &Path) -> anyhow::Result<usize> {
-    let metadata = fs::symlink_metadata(backup)
-        .with_context(|| format!("Failed to stat backup for restore: {}", backup.display()))?;
-    if metadata.is_dir() {
-        copy_dir_all(backup, dest)
-    } else if metadata.is_file() {
-        fs::copy(backup, dest)
-            .with_context(|| {
-                format!(
-                    "Failed to copy backup {} to {}",
-                    backup.display(),
-                    dest.display()
-                )
-            })
-            .map(|_| 0)
-    } else {
-        // Never materialize symlinks, fifos, sockets, or other special files
-        // from a backup into the project tree.
-        println!(
-            "  {} Skipping special backup file (not a regular file or directory): {}",
-            "!".yellow(),
-            backup.display()
-        );
-        tracing::warn!(path = %backup.display(), "Skipping backup restore: not a regular file or directory");
-        Ok(1)
-    }
-}
-
-/// Recursive directory copy (std has none). Skips non-regular entries and
-/// returns how many were skipped; caller guarantees both paths are inside
-/// the project root via revalidation.
-#[cfg(test)]
-fn copy_dir_all(src: &Path, dst: &Path) -> anyhow::Result<usize> {
-    fs::create_dir_all(dst)
-        .with_context(|| format!("Failed to create restore directory: {}", dst.display()))?;
-    let mut skipped = 0usize;
-    for entry in fs::read_dir(src)
-        .with_context(|| format!("Failed to read backup directory: {}", src.display()))?
-    {
-        let entry =
-            entry.with_context(|| format!("Failed to read entry in backup: {}", src.display()))?;
-        let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
-        let file_type = entry
-            .file_type()
-            .with_context(|| format!("Failed to stat backup entry: {}", src_path.display()))?;
-        if file_type.is_dir() {
-            skipped += copy_dir_all(&src_path, &dst_path)?;
-        } else if file_type.is_file() {
-            fs::copy(&src_path, &dst_path).with_context(|| {
-                format!(
-                    "Failed to copy backup entry {} to {}",
-                    src_path.display(),
-                    dst_path.display()
-                )
-            })?;
-        } else {
-            // Never materialize symlinks, fifos, sockets, or other special
-            // files from a backup into the project tree.
-            println!(
-                "  {} Skipping special backup entry: {}",
-                "!".yellow(),
-                src_path.display()
-            );
-            tracing::warn!(path = %src_path.display(), "Skipping backup entry: not a regular file or directory");
-            skipped += 1;
-        }
-    }
-    Ok(skipped)
-}
-
 #[cfg(test)]
 mod tests {
     use super::super::test_support::{make_linker, make_target};
@@ -2139,8 +1964,19 @@ mod tests {
         };
         let mut result = SyncResult::default();
 
+        let parent = linker
+            .open_project_relative_directory(dest.parent().unwrap())
+            .unwrap();
         linker
-            .restore_backup(&dest, &backup, &options, &mut result)
+            .restore_backup_with_parent(
+                &parent,
+                dest.file_name().unwrap(),
+                backup.file_name().unwrap(),
+                &dest,
+                &backup,
+                &options,
+                &mut result,
+            )
             .unwrap();
 
         assert!(dest.is_symlink());
