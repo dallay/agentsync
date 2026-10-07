@@ -1,24 +1,16 @@
 # Specification: MCP Configuration Generation
 
 <!-- agentsync:mcp:start -->
-
-- **Claude Code** — `../../../../.mcp.json` (agent id: `claude`) — JSON; Standard format
-- **Claude Desktop** — `Global OS-dependent config` (agent id: `claude-desktop`) — JSON; Global;
-  disabled by default
-- **GitHub Copilot** — `../../../../.vscode/mcp.json` (agent id: `copilot`) — JSON; Shared with VS
-  Code
-- **OpenAI Codex CLI** — `../../../../.codex/config.toml` (agent id: `codex`) — TOML; Maps headers
-  to http_headers
-- **Gemini CLI** — `../../../../.gemini/settings.json` (agent id: `gemini`) — JSON; Adds trust: true
-- **VS Code** — `../../../../.vscode/mcp.json` (agent id: `vscode`) — JSON; Shared with GitHub
-  Copilot
+- **Claude Code** — `.mcp.json` (agent id: `claude`) — JSON; Standard format
+- **Claude Desktop** — `Global OS-dependent config` (agent id: `claude-desktop`) — JSON; Global; disabled by default
+- **GitHub Copilot** — `.vscode/mcp.json` (agent id: `copilot`) — JSON; Shared with VS Code
+- **OpenAI Codex CLI** — `.codex/config.toml` (agent id: `codex`) — TOML; Maps headers to http_headers
+- **Gemini CLI** — `.gemini/settings.json` (agent id: `gemini`) — JSON; Adds trust: true
+- **VS Code** — `.vscode/mcp.json` (agent id: `vscode`) — JSON; Shared with GitHub Copilot
 - **Cursor** — `.cursor/mcp.json` (agent id: `cursor`) — JSON; Standard format
-- **OpenCode** — `../../../../opencode.json` (agent id: `opencode`) — JSON; Standard format
-- **Z-Code** — `.zcode/config.json` (agent id: `zcode`) — JSON; Uses the mcp.servers object and
-  preserves other Z-Code settings
-- **MiniMax Code** — `../../../../.mcp.json` (agent id: `minimax`) — JSON; Project-level standard
-  format
-
+- **OpenCode** — `opencode.json` (agent id: `opencode`) — JSON; Standard format
+- **Z-Code** — `.zcode/config.json` (agent id: `zcode`) — JSON; Uses the mcp.servers object and preserves other Z-Code settings
+- **MiniMax Code** — `.mcp.json` (agent id: `minimax`) — JSON; Project-level standard format
 <!-- agentsync:mcp:end -->
 
 ## Requirement: Canonical Typed Native MCP Metadata
