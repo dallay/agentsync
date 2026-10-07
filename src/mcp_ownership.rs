@@ -133,7 +133,22 @@ impl McpOwnershipStore {
     }
 
     pub(crate) fn read_existing(&self) -> Result<Option<OwnershipManifest>> {
-        if existing_state_directory(&self.data_root, &self.project_id)?.is_none() {
+        self.read_existing_with_permission_hardening(true)
+    }
+
+    /// Read the ownership journal without changing filesystem permissions.
+    /// Used by dry-run commands, which must not mutate state while inspecting it.
+    pub(crate) fn read_existing_read_only(&self) -> Result<Option<OwnershipManifest>> {
+        self.read_existing_with_permission_hardening(false)
+    }
+
+    fn read_existing_with_permission_hardening(
+        &self,
+        harden_permissions: bool,
+    ) -> Result<Option<OwnershipManifest>> {
+        if existing_state_directory(&self.data_root, &self.project_id, harden_permissions)?
+            .is_none()
+        {
             return Ok(None);
         }
         let Some(metadata) = existing_non_symlink(&self.state_path)? else {
@@ -142,7 +157,9 @@ impl McpOwnershipStore {
         if !metadata.is_file() {
             bail!("MCP ownership manifest is not a regular file");
         }
-        set_private_file_permissions(&self.state_path)?;
+        if harden_permissions {
+            set_private_file_permissions(&self.state_path)?;
+        }
         let contents =
             fs::read(&self.state_path).context("failed to read MCP ownership manifest")?;
         parse_manifest(&contents, &self.project_id).map(Some)
@@ -674,7 +691,11 @@ fn canonical_data_root_with_home(
     Ok(resolved_data_root)
 }
 
-fn existing_state_directory(data_root: &Path, project_id: &str) -> Result<Option<PathBuf>> {
+fn existing_state_directory(
+    data_root: &Path,
+    project_id: &str,
+    harden_permissions: bool,
+) -> Result<Option<PathBuf>> {
     let Some(metadata) = existing_non_symlink(data_root)? else {
         return Ok(None);
     };
@@ -691,7 +712,9 @@ fn existing_state_directory(data_root: &Path, project_id: &str) -> Result<Option
         if !metadata.is_dir() {
             bail!("MCP ownership state path is not a directory");
         }
-        set_private_directory_permissions(&state_dir)?;
+        if harden_permissions {
+            set_private_directory_permissions(&state_dir)?;
+        }
     }
     Ok(Some(state_dir))
 }

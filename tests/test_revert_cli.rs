@@ -774,6 +774,55 @@ fn test_apply_and_revert_dry_run_leave_mcp_and_journal_unchanged() {
 
 #[test]
 #[cfg(unix)]
+fn test_revert_dry_run_preserves_mcp_ownership_permissions() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp_dir = TempDir::new().unwrap();
+    let project_root = &temp_dir.path().join("project");
+    fs::create_dir_all(project_root).unwrap();
+    write_mcp_fixture(project_root);
+
+    let apply = run_agentsync(project_root, &["apply"]);
+    assert!(
+        apply.status.success(),
+        "{}",
+        String::from_utf8_lossy(&apply.stderr)
+    );
+
+    let manifest = ownership_manifest(project_root);
+    let project_state_dir = manifest.parent().unwrap();
+    let ownership_dir = project_state_dir.parent().unwrap();
+    let agentsync_dir = ownership_dir.parent().unwrap();
+    for directory in [agentsync_dir, ownership_dir, project_state_dir] {
+        fs::set_permissions(directory, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    fs::set_permissions(&manifest, fs::Permissions::from_mode(0o644)).unwrap();
+
+    let dry_revert = run_agentsync(project_root, &["revert", "--dry-run"]);
+    assert!(
+        dry_revert.status.success(),
+        "dry-run failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&dry_revert.stdout),
+        String::from_utf8_lossy(&dry_revert.stderr)
+    );
+
+    for directory in [agentsync_dir, ownership_dir, project_state_dir] {
+        assert_eq!(
+            fs::metadata(directory).unwrap().permissions().mode() & 0o777,
+            0o755,
+            "dry-run changed permissions on {}",
+            directory.display()
+        );
+    }
+    assert_eq!(
+        fs::metadata(&manifest).unwrap().permissions().mode() & 0o777,
+        0o644,
+        "dry-run changed ownership manifest permissions"
+    );
+}
+
+#[test]
+#[cfg(unix)]
 fn test_apply_rejects_mcp_config_symlink_without_touching_target() {
     use std::os::unix::fs::symlink;
 

@@ -462,7 +462,7 @@ impl Linker {
         let store = self.open_mcp_ownership_store()?;
         let mut result = crate::mcp::McpSyncResult::default();
         if dry_run {
-            let Some(manifest) = store.read_existing()? else {
+            let Some(manifest) = store.read_existing_read_only()? else {
                 self.warn_if_legacy_mcp_is_unowned(&mut result, agents_filter);
                 return Ok(result);
             };
