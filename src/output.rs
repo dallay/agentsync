@@ -368,10 +368,29 @@ pub(crate) fn render_revert_phase_with_color(dry_run: bool, use_color: bool) -> 
     )
 }
 
+#[allow(dead_code)] // Used by the MCP-aware follow-up layer in the stacked PR.
 pub(crate) fn render_revert_summary_with_color(
     dry_run: bool,
     result: &agentsync::SyncResult,
     use_color: bool,
+) -> Vec<String> {
+    render_revert_summary_with_scope(dry_run, result, use_color, "Revert")
+}
+
+#[allow(dead_code)] // Forward-looking scope variant for follow-up revert layers.
+pub(crate) fn render_symlink_revert_summary_with_color(
+    dry_run: bool,
+    result: &agentsync::SyncResult,
+    use_color: bool,
+) -> Vec<String> {
+    render_revert_summary_with_scope(dry_run, result, use_color, "Symlink revert")
+}
+
+fn render_revert_summary_with_scope(
+    dry_run: bool,
+    result: &agentsync::SyncResult,
+    use_color: bool,
+    scope: &str,
 ) -> Vec<String> {
     let formatter = HumanFormatter::new(use_color);
     let has_errors = result.errors > 0;
@@ -380,9 +399,9 @@ pub(crate) fn render_revert_summary_with_color(
         (
             "✗",
             if dry_run {
-                "Revert dry run completed with errors"
+                format!("{scope} dry run completed with errors")
             } else {
-                "Revert completed with errors"
+                format!("{scope} completed with errors")
             },
             LabelKind::Failure,
         )
@@ -390,9 +409,9 @@ pub(crate) fn render_revert_summary_with_color(
         (
             "!",
             if dry_run {
-                "Revert dry run found skipped items"
+                format!("{scope} dry run found skipped items")
             } else {
-                "Revert incomplete: skipped items remain"
+                format!("{scope} incomplete: skipped items remain")
             },
             LabelKind::Warning,
         )
@@ -400,15 +419,15 @@ pub(crate) fn render_revert_summary_with_color(
         (
             "✔",
             if dry_run {
-                "Revert dry run complete"
+                format!("{scope} dry run complete")
             } else {
-                "Revert complete"
+                format!("{scope} complete")
             },
             LabelKind::Success,
         )
     };
     let mut lines = vec![
-        formatter.format_label(symbol, title, kind),
+        formatter.format_label(symbol, &title, kind),
         render_count(
             if dry_run { "Would remove" } else { "Removed" },
             result.removed,
