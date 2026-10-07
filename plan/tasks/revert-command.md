@@ -3,7 +3,7 @@
 Issue: https://github.com/dallay/agentsync/issues/630
 Spec temporal: `tmp/plans/2026-10-04-revert-command-design.md`
 Plan táctico: `tmp/plans/2026-10-04-revert-command-implementation.md`
-Current publication status (2026-10-06): PR #632 remote head is `9b2b871`; PR #633 remote head is `775b873`. Both are open, `CHANGES_REQUESTED`, and not drafts. Latest check snapshot after the push: #632 has 42 passing and 3 failing checks; #633 has 2 passing and 36 pending checks, including both Windows jobs. The stack is not ready for review.
+Current publication status (2026-10-07): PR #632 remote head is `9b2b871`; PR #633 remote head is `e1d1437`, based directly on #632. Both are open, `CHANGES_REQUESTED`, and not drafts. #632 build/test/lint checks pass; SonarCloud, Codecov patch, and Semgrep fail externally. #633 has two failing Windows Z-Code orphan restore tests and external SonarCloud/Semgrep failures; its other build/test/lint checks pass. The stack is not ready for review.
 
 Alcance de ESTA rama (Part 1 solamente):
 
