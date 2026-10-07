@@ -1860,7 +1860,13 @@ fn copy_backup_file_capability_windows(
     copy_open_handle_dacl(&source, &destination, backup_path, destination_path)?;
     let staged_identity = quarantine::EntryIdentity::capture(&destination.metadata()?);
 
-    quarantine::rename_open_handle(&destination, parent, destination_name).with_context(|| {
+    quarantine::rename_open_handle(
+        &destination,
+        parent,
+        destination_name,
+        destination_path.parent().unwrap_or_else(|| Path::new(".")),
+    )
+    .with_context(|| {
         format!(
             "Failed to publish copied backup without replacement; staging recovery directory remains at {}",
             restore_staging_path(destination_path, &staging_name).display()

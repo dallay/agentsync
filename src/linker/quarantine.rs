@@ -1129,16 +1129,16 @@ pub(super) fn rename_open_handle(
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "rename name too long"))?;
     let file_name_length = u32::try_from(name_bytes)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "quarantine name too long"))?;
-    let file_name_offset = std::mem::offset_of!(FILE_RENAME_INFO, FileName);
+    let file_name_offset = std::mem::offset_of!(FILE_RENAME_INFORMATION, FileName);
     let buffer_length = file_name_offset
         .checked_add(name_bytes)
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "rename name too long"))?
-        .max(std::mem::size_of::<FILE_RENAME_INFO>());
+        .max(std::mem::size_of::<FILE_RENAME_INFORMATION>());
     let buffer_length_u32 = u32::try_from(buffer_length)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "rename name too long"))?;
     let word_count = buffer_length.div_ceil(std::mem::size_of::<u64>());
     let mut buffer = vec![0u64; word_count];
-    let info = buffer.as_mut_ptr().cast::<FILE_RENAME_INFO>();
+    let info = buffer.as_mut_ptr().cast::<FILE_RENAME_INFORMATION>();
     // SAFETY: `buffer` is suitably aligned and sized for FILE_RENAME_INFORMATION's
     // fixed header plus its counted UTF-16 filename. The native rename call
     // consumes it before the stack-owned buffer is dropped.
