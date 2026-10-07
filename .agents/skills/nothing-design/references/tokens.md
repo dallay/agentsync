@@ -87,8 +87,8 @@ Labels stay `--text-secondary`. Trend arrows inherit value color.
 **Identical across modes:** Accent red, status colors, ALL CAPS labels, fonts, type scale, spacing,
 component shapes.
 
-**Dark feel:** Instrument panel in a dark room. OLED black, white data glowing.
-**Light feel:** Printed technical manual. Off-white paper (#F5F5F5), black ink. Cards = `#FFFFFF` on
+**Dark feel:** Instrument panel in a dark room. OLED black, white data glowing. **Light feel:**
+Printed technical manual. Off-white paper (#F5F5F5), black ink. Cards = `#FFFFFF` on
 off-white page = subtle elevation without shadows.
 
 ---

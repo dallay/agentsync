@@ -1,0 +1,524 @@
+# Revert command — #630 (Part 1: core revert)
+
+Issue: https://github.com/dallay/agentsync/issues/630
+Spec temporal: `tmp/plans/2026-10-04-revert-command-design.md`
+Plan táctico: `tmp/plans/2026-10-04-revert-command-implementation.md`
+Current publication status (2026-10-07): PR #632 remote head is `9b2b871`; PR #633 remote head is
+`e1d1437`, based directly on #632. Both are open, `CHANGES_REQUESTED`, and not drafts. #632
+build/test/lint checks pass; SonarCloud, Codecov patch, and Semgrep fail externally. #633 has two
+failing Windows Z-Code orphan restore tests and external SonarCloud/Semgrep failures; its other
+build/test/lint checks pass. The stack is not ready for review.
+
+Alcance de ESTA rama (Part 1 solamente):
+
+- `Commands::Revert` + `handle_revert` en `../../../../src/main.rs` (sin fase MCP)
+- `Linker::revert()` 4 tipos + restore `.bak` + `agent_selected` compartido
+- `cleanup_gitignore` en revert (solo runs sin filtro) + renders
+- Flags `--dry-run --agents --keep-backups --verbose`
+
+Fuera de alcance aquí (rama follow-up): remoción de MCP gestionados (`remove_servers`, fase MCP en
+handler, docs `guides/mcp.mdx` Part 2).
+
+## Tareas
+
+- [x] RPI-001 Test de regresión tracer bullet (tests/test_revert_cli.rs) — RED visto
+  (`unrecognized subcommand`), GREEN
+- [x] RPI-002 `Commands::Revert` + `handle_revert` en `../../../../src/main.rs` (+ renders, merge
+  fn, literales)
+- [x] RPI-003 `Linker::revert()` 4 tipos + restore `.bak` + `agent_selected` compartido con apply
+- [ ] RPI-004 Remoción de MCP gestionados — MOVIDO a la rama follow-up (no implementado en este
+  diff)
+- [x] RPI-005 `cleanup_gitignore` en revert (solo runs sin filtro) + renders
+- [x] RPI-006 Flags `--dry-run --agents --keep-backups --verbose` + locks CLI (5 tests)
+- [x] RPI-007a Documentar Part 1: `reference/cli.mdx`, `troubleshooting.mdx`,
+  `../../../../README.md`, doc comments, `--help` — docs build OK
+- [ ] RPI-007b Documentar Part 2 (`guides/mcp.mdx`) — MOVIDO a la rama follow-up
+- [x] RPI-008 Verificación final: fmt OK, clippy `-D warnings` OK, suite verde para el alcance Part
+  1
+- [x] RPI-009 Evitar que `--keep-backups` copie a través de un symlink que no pudo eliminarse;
+  regresión TDD del rechazo en `restore_backup` y conflictos en dry-run/ejecución real
+- [x] RPI-010 Verificar destinos `symlink-contents` usando el mismo `pattern` de `apply`; conservar
+  enlaces excluidos como ajenos
+- [x] RPI-011 Rechazar `../../../../.gitignore` symlink antes de leer/escribir en update y cleanup;
+  prueba que protege el archivo externo
+- [x] RPI-012 No limpiar el bloque `../../../../.gitignore` si revert deja errores/destinos
+  gestionados sin revertir; incluye agentes deshabilitados seleccionados por `default_agents`
+- [x] RPI-013 No borrar directorios vacíos que `apply` no puede probar que creó; documentar el
+  contenedor vacío conservado
+- [x] RPI-014 No reemplazar archivos MCP configurados como symlink durante persistencia de revert;
+  saltar con error visible y preservar enlace/target
+- [x] RPI-015 Documentar límites de ownership MCP: valores divergentes y agentes deshabilitados se
+  conservan; ownership persistente sigue en follow-up #635
+- [ ] RPI-016 Ejecutar suite local integrada; revisar/responder todos los hilos; esperar workflows
+  GitHub de ambas PRs
+- [x] RPI-023 No restaurar orphan `.bak` de `symlink-contents` si su twin queda excluido por
+  `pattern` o el filtro Z-Code
+- [x] RPI-023b Completar elegibilidad de orphan Z-Code para fuente `foo.agent.md` y fuente `foo.md`;
+  no inferir solo `.agent.md` cuando la fuente original desapareció.
+- [x] RPI-023c Resolver colisión Z-Code cuando `foo.agent.md` y `foo.md` mapean ambos a `foo.md`;
+  revert debe verificar el mismo source final que apply.
+- [x] RPI-024 Marcar `nested-glob` incompleto cuando fuentes ya no permiten re-descubrir destinos;
+  preservar `../../../../.gitignore` y documentar que el scan de orphans sigue en #635
+- [x] RPI-024b Marcar discovery `nested-glob` incompleto cuando WalkDir omite errores en subárboles;
+  revert no debe limpiar `../../../../.gitignore` con un scan parcial
+- [x] RPI-025 Escribir `../../../../.gitignore` mediante reemplazo atómico para que una sustitución
+  concurrente por symlink nunca reciba los bytes
+- [x] RPI-025a Asegurar que el writer atómico de `../../../../.gitignore` compile en targets
+  no-Unix; usar permisos portables/default de tempfile sin constructor `Permissions` inexistente.
+- [x] RPI-026 Restaurar archivos/directorios con operación no-replace y copias no-follow, ante
+  entrada creada concurrentemente
+- [x] RPI-026a Preservar permisos Unix del archivo restaurado al sustituir `rename` por copia
+  exclusiva no-clobber.
+- [x] RPI-026b Restaurar directorios mediante staging completo y publicación atómica no-replace;
+  conservar backup y evitar dejar destino parcial tras error.
+- [x] RPI-026c Evitar `File::open` de directorios en Windows al preservar modos Unix del staging;
+  compilar/verificar la ruta Windows.
+- [x] RPI-026d Restaurar backup de archivo desde staging privado y publicar con no-replace; fallos
+  de copy/permisos no deben dejar destino parcial y bloquear retry.
+- [x] RPI-020d Continuar restauración de otros MCP records si uno falla; retener solo el record
+  afectado.
+- [x] RPI-026f Mantener publicación Linux no-replace con glibc <2.28 sin fallback que reemplace
+  destinos; unsupported retiene `.bak`.
+- [ ] RPI-026g Preservar DACL/ACL Windows al restaurar o fallar seguro antes de publicar
+  (implementación añadida; compilación/runtime Windows pendiente de CI).
+- [x] RPI-026h En restore normal mover el `.bak` original con rename atómico no-replace para
+  conservar metadata y restaurar archivos que no se pueden leer; `--keep-backups` mantiene la copia
+  staged.
+- [x] RPI-025b Aplicar permisos existentes de `../../../../.gitignore` después de crear el temporal
+  para que umask restrictivo no altere el modo al reemplazarlo (autorizado Round 6).
+- [x] RPI-026i En `--keep-backups`, rechazar backup con DACL heredada/no protegida antes de
+  publicar; conservar `.bak` y dejar destino ausente. Para DACL protegida, conservarla al copiar.
+- [x] RPI-027d Contar como skip/error la falla al leer un destino `symlink-contents` durante
+  `clean`, sin abortar otros targets (autorizado Round 6).
+- [x] RPI-023d Usar la misma elegibilidad Markdown de Z-Code en `apply`, `clean` y `revert`, aunque
+  `pattern` falte o incluya todos los archivos.
+- [x] RPI-026j Documentar que Windows `--keep-backups` conserva `.bak` y falla cerrado si encuentra
+  DACL heredada; recomendar revert normal por move.
+- [x] RPI-026k Hacer que revert espere `AGENTS.compact.md` cuando `apply` la enlazó, aunque ese
+  generado haya desaparecido.
+- [x] RPI-027e Contar y advertir errores de inspección del destino en `clean` como skip, excepto
+  `NotFound`.
+- [x] RPI-027f Rechazar symlink en el componente final justo antes de enumerar `symlink-contents`,
+  también si el target está dentro del proyecto.
+- [x] RPI-027 Evitar que `clean` aborte todos los targets si `read_contents_entries` falla en un
+  symlink-contents inseguro
+- [x] RPI-027b Rechazar un contenedor `symlink-contents` que sea symlink a otro directorio interno
+  del proyecto antes de recorrer o borrar sus children.
+- [x] RPI-027c Reportar discovery `nested-glob` incompleto en `clean` si WalkDir omite errores
+  parciales.
+- [x] RPI-028 Documentar que `revert` incluye agentes deshabilitados salvo que `--agents`/
+  `default_agents` los filtren
+- [x] RPI-023e Respetar `target.pattern` al limpiar children Z-Code para no quitar links que `apply`
+  no habría creado (Round 8; implementado como RPI-030 en PR #633).
+- [x] RPI-025c Preservar DACL Windows/POSIX extended ACL en el reemplazo atómico de
+  `../../../../.gitignore`, o fallar sin reemplazar si no puede preservarse (RPI-035 en PR #633; el
+  filesystem local no permite comprobar ACL POSIX).
+- [x] RPI-026l Rechazar NULL DACL (`present=true`, ACL pointer null) al copiar backups Windows con
+  `--keep-backups` (RPI-033 en PR #633; runtime Windows pendiente).
+- [x] RPI-026m Rechazar symlink final/dangling de `AGENTS.compact.md` antes de leer/escribir el
+  output comprimido (RPI-032 en PR #633).
+- [x] RPI-027h Reportar errores de inspección de destinos/backup en `revert` en lugar de tratarlos
+  como path ausente (RPI-031 en PR #633).
+
+## Criterios de aceptación (de #630, alcance Part 1)
+
+- apply → revert restaura originales byte-idénticos, sin symlinks, sin `.bak` (salvo
+  `--keep-backups`)
+- apply → revert en proyecto limpio borra todo lo generado
+- `--dry-run` no escribe; `--agents claude` solo toca claude
+- Regulares no gestionados jamás se tocan
+- Tests por los 4 tipos + gitignore (MCP: follow-up)
+
+## Evidencia (Part 1 solamente)
+
+- RED tracer: `error: unrecognized subcommand 'revert'` (test_revert_cli, pre-implementación)
+- GREEN Part 1: `cargo test --test test_revert_cli`, `--lib revert_*`, `--bin agentsync` verdes
+- `cargo check --all-targets` limpio; clippy `-D warnings` limpio
+- Docs Part 1: `astro build` OK
+- TDD honesty note: flags `--dry-run/--agents/--keep-backups` se cablearon en Task 2 y se blindaron
+  con tests de caracterización en Task 5; la lógica de filtro (`agent_selected`) es compartida con
+  apply y quedó cubierta por los tests existentes de apply.
+- RED/GREEN RPI-009: la prueba directa de `restore_backup` primero observó que el contenido del
+  backup sobrescribía el archivo externo por el symlink; después el helper lo rechazó y preservó
+  ambos archivos. El conflicto con destino regular falló en dry-run (reportaba restore) y luego dio
+  `errors=1`, `restored=0` en ambos modos sin alterar destino ni `.bak`.
+- RED/GREEN RPI-010: el enlace excluido por `pattern` primero se eliminó; tras aplicar el filtro
+  espejo de `apply`, quedó conservado y contado como skip.
+- RED/GREEN RPI-011: update y cleanup tienen pruebas separadas; cada una mostró RED contra el
+  symlink y GREEN devolviendo error sin cambiar bytes externos.
+- RED/GREEN RPI-012: las pruebas CLI mostraron la limpieza indebida de `../../../../.gitignore` tras
+  error/skip; las pruebas unitarias cubren además `default_agents` que no selecciona un agente
+  deshabilitado, errores y skips.
+- RED/GREEN RPI-013: la prueba del contenedor vacío mostró que se borraba antes del cambio y que
+  ahora permanece.
+- RED/GREEN RPI-014: prueba con `../../../../.mcp.json` symlink primero mostró que `persist`
+  reemplazaba el enlace; ahora `remove_all` lo rechaza antes de leer/escribir y conserva destino y
+  target.
+- RPI-015: `guides/mcp.mdx` documenta comparación nombre+valor, posible igualdad indistinguible,
+  config cambiada desde `apply`, agentes deshabilitados y plugin servers; seguimiento en #635.
+- RED/GREEN RPI-023: `revert_symlink_contents_orphan_respects_pattern` primero reprodujo que se
+  restauraba `ignored.md.bak` como `ignored.md` fuera de `*.txt`; la prueba Z-Code también reprodujo
+  restauración de `ignored.txt.bak` fuera del filtro `.md`. Revert ahora deja ambos backups intactos
+  y cuenta cada uno como `skipped=1`; ambos tests pasan. `cargo test -p agentsync --lib revert_` (15
+  OK), `cargo fmt --all -- --check` y clippy `-D warnings` pasan.
+- RED/GREEN RPI-023b: `revert_zcode_orphan_matches_plain_source_name_after_source_removed` falló
+  primero porque se excluía `foo.md.bak` bajo `pattern="foo.md"` tras borrar
+  `.agents/commands/foo.md`; GREEN acepta el nombre de destino directo y la transformación
+  `.agent.md` al inferir el nombre fuente ausente. Se conserva el filtro Z-Code `.md` del destino y
+  la lógica `visited`. También pasan `revert_symlink_contents_orphan_respects_pattern` y
+  `revert_symlink_contents_orphan_respects_zcode_command_filter`;
+  `cargo test -p agentsync --lib revert_` pasa (19 tests).
+- RED/GREEN RPI-023c: `revert_zcode_collision_uses_the_same_sorted_winner_as_apply` primero falló en
+  la aserción de que se quitaba el symlink gestionado: apply terminó apuntando a
+  `.agents/commands/foo.md`, pero revert tomó primero `foo.agent.md` del orden de enumeración
+  inyectado y lo saltó como destino ajeno; la prueba controla explícitamente ese orden y comprueba
+  que el backup se crea/restaura byte-exacto. GREEN: revert usa las entradas ordenadas compartidas
+  con apply y selecciona el último source que mapea al destino. El test enfocado pasa (1),
+  `cargo test -p agentsync --lib revert_symlink_contents` pasa (4),
+  `cargo test -p agentsync --lib revert_zcode` pasa (4), `cargo fmt --all -- --check`, Clippy
+  `-D warnings` y `git diff --check` pasan.
+- RED/GREEN RPI-024:
+  `PATH="$HOME/.cargo/bin:$PATH" cargo test --test test_revert_cli test_revert_with_missing_nested_glob_source_reports_incomplete_and_keeps_gitignore`
+  primero falló (0 passed, 1 failed) porque desaparecía el bloque `../../../../.gitignore`; tras
+  marcar raíces ausentes/inseguras como discovery incompleto, avisa y cuenta `skipped=1` sin
+  inferir/borrar enlaces huérfanos, y pasa (1 passed). Raíz existente sin coincidencias sigue siendo
+  completa; `clean` conserva el skip silencioso ante fuente ausente. Troubleshooting documenta el
+  límite y la recuperación manual. Verificación:
+  `PATH="$HOME/.cargo/bin:$PATH" cargo test -p agentsync --lib revert_` (15 passed),
+  `PATH="$HOME/.cargo/bin:$PATH" cargo test -p agentsync --lib nested_glob` (16 passed),
+  `PATH="$HOME/.cargo/bin:$PATH" cargo fmt --all -- --check` OK,
+  `PATH="$HOME/.cargo/bin:$PATH" cargo clippy --all-targets --all-features -- -D warnings` OK.
+- RED/GREEN RPI-024b: `nested_glob_enumeration_marks_walk_entry_error_incomplete` usa un iterador
+  inyectado construido con entradas reales de WalkDir y sustituye determinísticamente la entrada de
+  un subárbol por un error; RED observó `Complete` en una raíz válida (no era el caso de raíz
+  ausente), GREEN lo marca `Incomplete`.
+  `nested_glob_revert_skips_partial_discovery_without_removing_links` verifica `skipped=1`,
+  `errors=0` y conserva tanto el enlace conocido parcial como el enlace en la zona no descubierta;
+  `revert_gitignore_cleanup_skips_when_revert_has_skips` confirma que el gate no limpia
+  `../../../../.gitignore`. Verificación: `cargo test -p agentsync --lib nested_glob` (18 passed),
+  `cargo test -p agentsync --lib revert_` (16 passed),
+  `cargo test -p agentsync --bin agentsync revert_gitignore_cleanup_skips_when_revert_has_skips` (1
+  passed), fmt y Clippy `-D warnings` OK.
+- RED/GREEN RPI-025: RED observado con
+  `PATH="$HOME/.cargo/bin:$PATH" cargo test -p agentsync --lib gitignore`: E0425, no existía
+  `write_gitignore_atomically_with_hook` en la prueba de reemplazo; fue el compile RED permitido
+  porque no hay un seam público determinista para inyectar el symlink en el límite de persistencia.
+  GREEN: la prueba instala el symlink después de escribir/sync y justo antes de
+  `NamedTempFile::persist`; el target externo conserva sus bytes y `../../../../.gitignore` termina
+  con el contenido previsto. También se verifican los permisos regulares existentes en update y
+  cleanup. Verificación final: `cargo test -p agentsync --lib gitignore` (50 passed, 622 filtered
+  out), `cargo fmt --all -- --check` OK y `cargo clippy --all-targets --all-features -- -D warnings`
+  OK.
+- RED/GREEN RPI-026: las tres pruebas directas de `copy_backup_contents` fallaron antes del cambio:
+  `fs::copy` seguía el symlink de destino y sobrescribía destinos regulares, mientras
+  `create_dir_all` copiaba a través del symlink de directorio. El test de carrera primero dio RED de
+  compilación por el seam pendiente; con `restore_backup_with_hook`, inyecta un archivo en el límite
+  posterior a las comprobaciones y verifica que el contenido y `.bak` quedan intactos y `errors=1`.
+  GREEN: archivos usan `OpenOptions::create_new(true)` y copia desde handle; directorios usan
+  staging hermano y `renamore::rename_exclusive` para publicación atómica no-replace, descartando
+  staging incompleto. Verificación Round 2: `cargo test -p agentsync --lib copy_backup_contents_` (3
+  passed), prueba de límite de carrera (1 passed), `cargo test -p agentsync --lib revert_` (18
+  passed), `cargo test --test test_revert_cli` (28 passed), fmt check y Clippy pasan.
+- RED/GREEN RPI-026a: `move_backup_contents_preserves_file_permissions` falló antes del cambio (modo
+  esperado `0640`, restaurado `0644`); `copy_file_exclusive` ahora aplica los permisos obtenidos del
+  handle fuente al handle de destino después de copiar. La prueba específica y los tres tests de
+  no-clobber copy pasan.
+- RED/GREEN RPI-026b: `restore_backup_discards_partial_directory_copy_with_special_entry` falló
+  primero porque publicaba un directorio parcial al omitir un symlink; ahora copia el árbol completo
+  en staging hermano y, ante omisión/error, lo descarta sin tocar destino ni backup.
+  `restore_backup_preserves_directory_modes_and_keeps_backup` primero observó que el modo raíz era
+  `0755` en vez de `0700`; ahora los modos de cada directorio se aplican mediante handles abiertos
+  del árbol privado. La publicación usa `renamore` 0.3.2 `rename_exclusive` (Linux
+  `renameat2(RENAME_NOREPLACE)`, macOS `renamex_np(RENAME_EXCL)`, Windows `MoveFileExW` sin
+  replace); si la primitiva no está disponible, falla de forma segura. Las dos pruebas enfocadas
+  pasan.
+- RPI-026c: `StagedDirectoryPermissions` conserva colección de handles y permisos solo con
+  `#[cfg(unix)]`; Windows no intenta `File::open` en directorios. Verificación Linux y cross-check
+  actual `x86_64-pc-windows-gnu --all-targets --all-features` pasan; runtime Windows sigue
+  pendiente.
+- RED/GREEN RPI-026d: `move_backup_contents_discards_staged_file_when_publish_fails` comenzó con RED
+  de compilación (`E0425`) hasta agregar la seam determinista de publicación; GREEN inyecta un
+  destino concurrente después de escribir/sync los bytes staged y verifica que `rename_exclusive`
+  falla sin tocar el contenido concurrente ni `.bak`, y que el `TempDir` privado no deja staging
+  residual. Los backups regulares ahora se copian a un `TempDir` hermano privado con tempfile
+  privado, se sincronizan y reciben los permisos originales antes de publicación no-replace; el
+  flujo de staging/permisos de directorios RPI-026b permanece sin cambios. La prueba RED/GREEN,
+  preservación de permisos de archivo y `copy_backup_contents_` pasan. Verificación:
+  `cargo test -p agentsync --lib revert_` (19 passed), `cargo test --test test_revert_cli` (28
+  passed), `cargo fmt --all -- --check`, Clippy `-D warnings` y `git diff --check` OK.
+- RED/GREEN RPI-026f: `restore_staged_publication_uses_no_replace_for_files_and_directories`,
+  ejecutada como usuario no-root con el repo montado read-only en
+  `quay.io/pypa/manylinux2014_x86_64:latest` (glibc 2.17), primero falló al publicar el archivo
+  staged con `unsupported` de `renamore` (RED); tras seleccionar Rustix en Linux, pasó publicación
+  staged de archivo y directorio y rechazó destinos existentes sin alterar sus bytes ni `.bak`
+  (GREEN). Rustix usa backend `linux_raw` (features no incluyen `use-libc`), con
+  `renameat_with(CWD, ..., RenameFlags::NOREPLACE)`; no hay check-then-rename ni fallback, y los
+  errores de publicación siguen saliendo antes de consumir `.bak`. Host: la prueba nueva (1),
+  `restore_backup_` (4), `copy_backup_contents_` (3), `move_backup_contents_` (2) y `revert_` (20)
+  pasan; fmt, Clippy `--all-targets --all-features -- -D warnings` y `git diff --check` pasan.
+  Comandos Cargo en ambos entornos usaron `--offline --locked` donde aplica y `CARGO_TARGET_DIR`
+  bajo `/tmp/opencode`.
+- RED/GREEN RPI-025a: full `cargo check --target x86_64-pc-windows-gnu --all-targets --all-features`
+  first failed at `Permissions::from_readonly(false)` (no such constructor on Windows). Removed the
+  non-Unix builder call; existing file permissions are still applied when present, and new non-Unix
+  temp files use tempfile/parent defaults. Linux `cargo test -p agentsync --lib gitignore` (50
+  passed); full Windows cross-target check now passes.
+- RPI-026g remains pending runtime proof. A Windows-target harness first found `E0308`
+  (`NamedDacl.acl` expected `*mut ACL`, got `Option<Vec<u8>>`); after retaining the raw ACL pointer
+  and storing bytes separately, the isolated Windows helper/test harness cross-check passes. Full
+  project `cargo check --target x86_64-pc-windows-gnu --all-targets --all-features` now passes,
+  compiling Windows-gated tests, but Windows ACL runtime tests were not executed because no
+  Windows/Wine runtime is available; keep task unchecked pending CI/runtime evidence.
+- RED/GREEN RPI-026h (Round 6): `restore_backup_consumes_unreadable_file_preserving_mode_and_mtime`
+  primero falló con `Permission denied` al abrir el `.bak` `mode 000`; GREEN restaura con
+  `mode 000`, conserva el mtime, consume el backup y permite verificar los bytes tras chmod
+  temporal. `restore_backup_consumes_directory_preserving_metadata_and_symlinks` primero observó el
+  symlink interno omitido (`left: 1`, `right: 0`); GREEN conserva metadata mode/mtime raíz y
+  anidada, restaura el child como symlink sin cambiar el target externo y consume `.bak`. El move
+  usa `symlink_metadata` para aceptar solo archivos/directorios y `rename_exclusive` directo; el
+  seam de publicación demuestra que un destino concurrente no se reemplaza y ambos objetos
+  permanecen. `restore_backup_discards_partial_directory_copy_with_special_entry` usa explícitamente
+  `keep_backups=true` para seguir cubriendo el rechazo de copias parciales. Verificación:
+  `cargo test -p agentsync --lib move_backup_contents_` (2 passed),
+  `cargo test -p agentsync --lib restore_backup_` (6 passed), fmt, Clippy `-D warnings` y
+  `git diff --check` OK.
+- RPI-026i — Microsoft Learn confirma que `UNPROTECTED_DACL_SECURITY_INFORMATION` hereda del padre
+  actual, que durante staging es el directorio privado, y que un rename en el mismo volumen no
+  vuelve a calcular por sí solo la herencia desde el padre final. Con la decisión fail-closed del
+  usuario, el restore `--keep-backups` rechaza DACL no protegidas antes de copiar bytes de archivos
+  y vuelve a validarla al aplicar DACL; los árboles también se descartan antes de publicar si algún
+  miembro no cumple la política. DACL protegidas siguen copiándose/verificándose; el restore normal
+  sigue moviendo el `.bak` original.
+- RED/GREEN RPI-026i: el test de política primero falló al compilar porque
+  `validate_keep_backup_dacl` no existía (E0425); tras agregar el helper mínimo, el test pasó y
+  confirma aceptación de DACL protegida y rechazo accionable de heredada, recomendando el restore
+  normal sin `--keep-backups`. Se añadieron regresiones Windows para archivo (rechazo antes de
+  `CopyFileExW`) y directorio (fallo en aplicación staged); ambas comprueban error contabilizado,
+  destino ausente y backup/ACL intactos. La ruta de error imprime el mensaje de restore al usuario.
+- Verificación RPI-026i:
+  `cargo test -p agentsync --lib restore_backup_dacl_policy_accepts_protected_and_rejects_inherited`
+  (1 passed); `cargo test -p agentsync --lib restore_backup_` (7 passed); `cargo fmt --all`,
+  `cargo fmt --all -- --check`, Clippy `-D warnings` y `git diff --check` OK. El cross-check
+  completo Windows GNU posterior pasó y compiló AgentSync/tests; Windows ACL runtime no se ejecutó.
+- Verificación integrada Round 6 post-RPI-026i: `cargo test --all-features` pasó (705 library; bin
+  198 passed/1 ignored; `all_tests` 124 passed/2 ignored; demás targets sin fallos),
+  `cargo fmt --all -- --check`, Clippy `-D warnings` y `git diff --check` pasan. Cross-check Windows
+  GNU compila todos los targets/tests con warnings; runtime Windows no disponible.
+- Triage Round 6: mirror confirma que `Builder::permissions(existing_permissions)` fija el modo al
+  crear el tempfile y Unix lo filtra con `umask`; por ejemplo, modo original 0644 bajo umask 077
+  puede acabar en 0600. El writer atómico pretende preservar el modo, así que RPI-025b requiere
+  RED/GREEN.
+- RED/GREEN RPI-025b: el subprocesso Unix aislado configuró `umask(077)` y ejercitó
+  `update_gitignore` con un `../../../../.gitignore` existente modo `0644`. RED observó `0600`
+  (`left: 384`, esperado `0644` / `420`); GREEN aplica los permisos capturados después de escribir
+  el temporal privado y antes de sync/persist, preservando exactamente `0644`. El mismo subprocesso
+  verifica que un archivo nuevo conserva su modo predeterminado filtrado por umask
+  (`0666 & !077 = 0600`). Verificación: regresión enfocada pasó,
+  `cargo test -p agentsync --lib gitignore` (51 passed), `cargo fmt --all -- --check`,
+  `cargo clippy --all-targets --all-features -- -D warnings` y `git diff --check` pasaron.
+- RED/GREEN RPI-027d (Round 6): la regresión existente primero falló en `result.skipped` (`left: 0`,
+  esperado `1`) al inyectar un symlink externo en el límite previo a `read_contents_entries`; el
+  target independiente siguió limpiándose (`removed=1`). GREEN incrementa `skipped` una vez y emite
+  `tracing::warn!` en la falla de lectura, sin incrementar `errors` ni abortar los demás targets.
+  Verificación: prueba enfocada (1 passed), `cargo test -p agentsync --lib clean_` (18 passed),
+  `cargo fmt --all -- --check`, Clippy `--all-targets --all-features -- -D warnings` y
+  `git diff --check` OK.
+- RED/GREEN RPI-027e: cinco pruebas usan el seam privado `clean_metadata_error_path` para inyectar
+  `PermissionDenied` en el contenedor `symlink-contents`, un child `nested-glob`, un target
+  `symlink`, un destino `module-map` y un child `symlink-contents`. Cada prueba primero mostró
+  `skipped=0` y eliminó el enlace afectado además del target válido. GREEN usa `symlink_metadata`
+  explícito: cada caso resulta en `skipped=1`, `errors=0`, conserva el destino no inspeccionable y
+  limpia el symlink independiente. `NotFound` sigue siendo ausencia inocua; rutas regulares
+  no-symlink conservan su comportamiento sin skip. El seam no cambia permisos del sistema ni
+  pretende simular cada clase de error del filesystem.
+- RED/GREEN RPI-027f: `clean_rejects_internal_symlink_replacement_before_reading_children` reemplaza
+  el contenedor después del guard inicial por un symlink a otro directorio interno que contiene un
+  symlink al mismo source gestionado. RED eliminó ese child (`removed=2`, `skipped=0`); GREEN
+  rechaza el leaf symlink justo antes de `read_dir`, conserva child, target y contenedor, cuenta
+  `skipped=1`, y limpia el target independiente (`removed=1`). La validación sigue siendo
+  path-based: no afirma atomicidad frente a una carrera entre el `symlink_metadata` final y
+  `read_dir`.
+- Verificación RPI-027e/f: `cargo test -p agentsync --lib clean_` (25 passed),
+  `cargo test -p agentsync --lib nested_glob` (20 passed), `cargo fmt --all -- --check`,
+  `cargo clippy --all-targets --all-features -- -D warnings` y `git diff --check` pasan.
+- Verificación integrada Round 6: `cargo test --all-features` pasó tras RPI-026i (705 library; bin
+  198 passed/1 ignored; `all_tests` 124 passed/2 ignored; restantes targets sin fallos), fmt, Clippy
+  y diff-check pasan. El cross-check Windows GNU completo compila proyecto/tests; la revisión final
+  doble ciega está en curso y el runtime ACL sigue pendiente.
+- Historical GitHub snapshot, now superseded: `gh pr list` showed six open PRs and the listed
+  failures on heads that predated the current stack updates. Do not treat this line as the current
+  check state; see the publication status above.
+- Triage: el marcador `../../../../.gitignore` START sin END también fue reportado;
+  `remove_managed_section` coincide con `origin/main` y este comportamiento es preexistente, fuera
+  del diff funcional de esta ronda. Se difiere, sin cambio automático.
+- Revisión doble ciega final Round 7: lens reportó dos huecos en `clean`: fallos al inspeccionar el
+  destino con `symlink_metadata`/`is_dir` se silencian antes del contador añadido por RPI-027d; y el
+  leaf puede cambiar a symlink interno después del guard inicial, pasar containment en
+  `read_contents_entries` y hacer que se limpien links del directorio interno. El segundo se
+  clasifica como carrera teórica, pero plausible. Lens también reportó que CLI reference no
+  documenta que Windows `--keep-backups` falla cerrado ante DACL heredada; el texto actual solo dice
+  que se copia el backup. Mirror identificó fallback Windows `USERNAME` → `Users:F`, verificado en
+  `origin/main` y usado por el helper owner-only actual.
+- Triage Round 7: estos findings no se implementaron automáticamente. Confirmar alcance con el
+  usuario antes de un nuevo ciclo. RPI-026i ya cross-compila, pero el runtime Windows sigue sin
+  ejecutar.
+- Triage adicional Round 7: mirror señala dos desajustes nuevos del diff: el revert de
+  `compress_agents_md` usa `expected_source_path`, que cae de `AGENTS.compact.md` a
+  `../../../../AGENTS.md` cuando falta el compacto, aunque apply enlazó el primero; Z-Code apply
+  enlaza todas las entradas cuando no hay patrón mientras clean/revert filtran hijos no-`.md`.
+  Verificado en los callers/helpers; ambos requieren una regresión/decisión. Lens además señala que
+  `handle_clean` devuelve éxito aunque `SyncResult.errors > 0`; `handle_clean` coincide con
+  `origin/main`, por lo que se clasifica preexistente. Los errores iniciales de metadata y la
+  carrera de symlink interno de clean sí tocan el guard nuevo de esta rama.
+- Estado Round 7: no se modificó código después de la revisión. Findings doblemente reportados:
+  ventana ACL del tempfile MCP Windows durante apply. Findings individuales adicionales: fallback
+  ACL `USERNAME`, limpieza silenciada/TOCTOU interno, compact-path esperado, Z-Code eligibility y
+  docs de `--keep-backups`.
+- Verificación Round 8 de mirror/lens: RPI-020j/k (SID token y staged apply ACL), RPI-023d,
+  RPI-026j/k y metadata inspection de `clean` RPI-027e ya están corregidos en el worktree actual;
+  algunos reportes reflejaban el snapshot anterior. Nuevo RPI-026l: `copy_path_dacl` sólo rechaza
+  DACL ausente (`present=false`), no DACL NULL (`present=true`, `acl=None`); Microsoft Learn
+  confirma que NULL DACL concede full access. Nuevo RPI-025c/RPI-020l: Windows journal
+  dirs/manifests y `../../../../.gitignore` atomic temp no preservan/establecen ACL nativa. El race
+  path-based de clean sigue siendo el residual de RPI-027f; ambos jueces lo mencionan y cerrarlo por
+  completo requiere traversal/unlink handle-relative.
+- RPI-026l/025c/020l y un posible rediseño RPI-027g se registran como findings posteriores a Round
+  7, todavía sin autorización. El exit-code de `handle_clean` sigue preexistente en `origin/main` y
+  fuera del alcance.
+- Triage R8 adicional: mirror señala que `clean_symlink_contents_target` elimina child symlinks sin
+  cotejar `target.pattern`, por lo que puede borrar destinos que `apply` no habría creado.
+  Lens/Mirror señalan también que `revert_symlink_contents_target` colapsa errores de
+  `symlink_metadata`/`is_dir`, lo que puede permitir que `../../../../.gitignore` se limpie pese a
+  quedar links; requiere RED/GREEN.
+- Mirror R8 señala path traversal al escribir `AGENTS.compact.md`: `revalidate_path` acepta un final
+  symlink que resuelve dentro del proyecto y, con symlink colgante, `exists()` puede validar solo el
+  parent antes de que `fs::write` siga la symlink. `write_compressed_agents_md` coincide con
+  `origin/main` (preexistente), pero podría sobrescribir otro archivo del proyecto; RPI-026m está
+  pendiente de autorización.
+- Verificación final Round 2: `cargo test -p agentsync --lib revert_` (18 passed),
+  `cargo test -p agentsync --lib restore_backup_` (4 passed), `cargo test --test test_revert_cli`
+  (28 passed), `cargo fmt --all -- --check`,
+  `cargo clippy --all-targets --all-features -- -D warnings` y `git diff --check` OK.
+- RED/GREEN RPI-027: `clean_continues_after_read_failure_for_replaced_symlink_contents_container`
+  usó un seam de test determinista para reemplazar un contenedor ya resuelto por un symlink externo
+  justo antes de `read_contents_entries`. RED: el error `Unsafe destination directory` se propagó y
+  `clean()` abortó antes de limpiar el target válido. GREEN: el error de lectura ahora se registra
+  solo en debug y se omite ese target sin incrementar errores; el contenedor/external file
+  permanecen intactos y el symlink gestionado válido se elimina (`removed=1`, `errors=0`).
+  Verificación: test enfocado (1 passed), `cargo test -p agentsync --lib clean_` (16 passed),
+  `cargo fmt --all -- --check` OK y `cargo clippy --all-targets --all-features -- -D warnings` OK.
+- RED/GREEN RPI-027b: `clean_symlink_contents_skips_symlink_destination_container` falló primero
+  porque clean eliminó el child symlink ajeno dentro del directorio interno (`removed=1`). GREEN:
+  `symlink_metadata` rechaza el destino que sea symlink antes de `is_dir`/traversal, conserva el
+  contenedor y su target, y cuenta `skipped=1`; el mensaje detallado aparece en modo verbose. El
+  test enfocado pasó.
+- RED/GREEN RPI-027c: `clean_reports_partial_nested_glob_discovery_and_continues_other_targets`
+  falló primero con `skipped=0` pese a que el seam WalkDir inyectó un error tras encontrar una
+  coincidencia; RED confirmó que clean eliminó tanto el link conocido como un symlink target
+  independiente. GREEN consume `enumeration.discovery`, cuenta e informa el scan parcial
+  (`skipped=1`) y conserva la limpieza de ambos links; la raíz válida vacía no añade skip, y
+  `nested_glob_enumeration_marks_existing_empty_root_complete` sigue pasando. Verificación final:
+  `cargo test -p agentsync --lib clean_` (18 passed), `cargo test -p agentsync --lib nested_glob`
+  (19 passed), `cargo fmt --all -- --check`,
+  `cargo clippy --all-targets --all-features -- -D warnings` y `git diff --check` OK.
+- Verificación repetida localmente: `cargo test -p agentsync --lib` (647 OK),
+  `cargo test --test test_revert_cli` (7 OK), `cargo test --bin agentsync` (198 OK, 1 ignorado),
+  `cargo fmt --all -- --check`, clippy con `-D warnings` limpios. Una ejecución paralela inicial de
+  la suite lib tuvo un fallo transitorio de HTTP local; la repetición serial pasó 647/647.
+- Docs tras esta edición: `cd website/docs && ./node_modules/.bin/astro build` OK (con warnings
+  existentes de i18n/404); `pnpm run docs:build` no alcanzó el build porque su instalación
+  automática ejecutó `prepare` y faltó el binario workspace `agentsync`.
+- RED/GREEN RPI-023d: `zcode_apply_clean_and_revert_skip_non_markdown_contents_without_pattern`
+  primero confirmó RED: apply creó `cmd.md` y `notes.txt` (`created=2`, esperado `1`). GREEN aplica
+  antes de resolver el source la misma regla `zcode_contents_child_filtered` usada por clean/revert,
+  tras el filtro explícito de patrón, y cuenta el entry excluido en `skipped`. La regresión verifica
+  apply, clean y un segundo apply→revert: solo se crea/elimina el symlink `.md`, nunca queda
+  artifact para `notes.txt`.
+- RED/GREEN RPI-026k: los casos reales de `symlink` y `symlink-contents`, con
+  `../../../../AGENTS.md` original, backup preexistente y `AGENTS.compact.md` borrado después de
+  apply, fallaron primero porque revert comparó el enlace compacto con el fallback `AGENTS.md`
+  (`removed=0`). GREEN usa `expected_applied_source_path` en ambos recorridos: mantiene
+  `expected_source_path` sin cambios para status, espera la ruta compacta aunque falte y permite
+  calcular su ruta relativa ausente únicamente cuando aplica compresión. Conserva `None` si el
+  original desapareció. Ambos restores eliminan el enlace y restauran el backup byte-exacto.
+- RPI-026j: CLI reference documenta que Windows `--keep-backups` falla cerrado ante DACL heredada,
+  conserva `.bak` y recomienda revert normal por move; docs build aún no verificado por bloqueo
+  previo de pnpm/Astro.
+- Verificación integrada Round 7 tras los siete fixes: `cargo test --all-features` pasó (714
+  library; bin 198 passed/1 ignored; `all_tests` 124 passed/2 ignored; demás targets sin fallos),
+  `cargo fmt --all -- --check`, Clippy `-D warnings` y `git diff --check` pasan. Cross-check Windows
+  GNU y doble review de Round 7 siguen pendientes.
+- Verificación Round 7 autorizada: `cargo test -p agentsync --lib zcode` (6 passed),
+  `cargo test -p agentsync --lib revert_symlink_contents` (5 passed),
+  `cargo test -p agentsync --lib compressed_source_is_missing` (2 passed),
+  `cargo fmt --all -- --check`, `cargo clippy --all-targets --all-features -- -D warnings` y
+  `git diff --check` OK.
+
+## Progreso
+
+- 2026-10-04: issues #630/#631 creadas; alcance (completo con MCP) y semántica MCP (remover servers)
+  aprobados; spec temporal escrito y auto-revisado.
+- 2026-10-04: RPI-009..013 cerradas con RED/GREEN por comportamiento; pruebas de
+  enlace/gitignore/selección añadidas, documentación del contenedor vacío actualizada. Para RPI-009,
+  no se pudo inyectar de forma determinista un fallo de `unlink`; se cubrió directamente el rechazo
+  de `restore_backup` ante un destino symlink, más el guard de estado posterior a la eliminación.
+
+## Gate de tamaño de PR core — aprobado
+
+- Historical size-gate snapshot: when the review exception was approved, PR #632 was open as a draft
+  with 2,204 additions and 136 deletions (2,340 changed lines); the review budget was 400.
+- El usuario aprobó explícitamente una excepción para PR #632 con el tamaño publicado de 2,340
+  líneas; se conserva la cadena acordada #632 → #633. La excepción de #633 sigue aprobada por
+  separado.
+- Verificar el tamaño final de cada capa antes de actualizar los heads remotos; no fusionar commits
+  MCP dentro de #632.
+- Historical publication record: commit `a9faa7c` was pushed to #633 on 2026-10-05 (confirmed by the
+  local remote-tracking reflog); it is not an ancestor of current #633 remote head `775b873`.
+  Current remote heads and checks are recorded at the top of this file.
+- Round 1 double-blind confirmó en ambos jueces: symlink padre MCP puede escapar del repo, un error
+  parcial de WalkDir no marcaba `nested-glob` incompleto y fallo de `create_mcp_parent` podía salir
+  con éxito. Los tres están corregidos localmente. Round 2 confirmó RPI-023b/RPI-026b; ambos se
+  implementaron y pasaron RED/GREEN.
+- Round 3 después del segundo ciclo encontró issues confirmados que requieren un nuevo ciclo
+  autorizado: copy de backup file puede fallar dejando destino parcial y `.bak` (R1); fallo al mutar
+  un MCP record aborta restores independientes posteriores (R3); y el mapeo Z-Code debe admitir
+  también fuente plain `foo.md` tras desaparecer el source.
+- Nuevo ciclo autorizado completado: RPI-023b acepta identidad Z-Code directa y `.agent.md`;
+  RPI-026d publica archivos desde staging privado con `renamore::rename_exclusive`; RPI-020d cuenta
+  errores por record y continúa. `cargo test --all-features`, fmt, Clippy y `git diff --check` pasan
+  antes de esta revisión fresca.
+- Revisión fresca Round 4: lens detecta `renamore` sin `renameat2` en builds GNU con glibc anterior
+  a 2.28; el `build.rs` del crate confirma que si el símbolo no enlaza, no se compila backend Linux
+  y `rename_exclusive` retorna `Unsupported`. Lens también detecta que `std::fs::Permissions` no
+  preserva ACL Windows: la copia staged hereda ACL del padre y solo copia el bit readonly. Ambos
+  hechos están confirmados en las fuentes del crate/std; faltan decisiones de alcance.
+- Revisión fresca Round 4: mirror detecta colisión Z-Code: `apply` procesa `sorted_dir_entries` y el
+  source posterior gana el destino duplicado; `symlink_contents_expected_target` recorre
+  `fs::read_dir` sin ordenar y retorna el primer source coincidente, por lo que puede calcular el
+  target incorrecto y dejar el symlink gestionado intacto. Pendiente RED/GREEN RPI-023c.
+- Todos los findings Round 4 anteriores fueron autorizados por el usuario para remediación. TOCTOU
+  aceptado con límite: lock y compare final coordinan AgentSync, pero no pueden impedir una
+  escritura concurrente de un editor externo no cooperante.
+
+## Siguiente paso
+
+- El ciclo RPI-023b/RPI-026d/RPI-020d, los RPI Round 4 autorizados y RPI-026h pasan sus gates
+  locales.
+- Latest Windows diagnostic (2026-10-06, child #633 `775b873`): both Z-Code orphan tests fail with
+  `restored=0, skipped=0, errors=1`. ReOpenFile returns `ERROR_ACCESS_DENIED` (5), while direct
+  CreateFileW open succeeds. Legacy same-directory RootDirectory rename returns
+  `ERROR_INVALID_PARAMETER` (87); NULL-root absolute-path rename and rename-back succeed. The new
+  FileRenameInfoEx relative-root probe is pending Windows validation. No production change yet;
+  local Windows GNU cross-check is blocked because `x86_64-w64-mingw32-gcc` is unavailable.
+- RPI-020i/025b/027d/026i are implemented; the Windows GNU cross-check passed, while runtime ACL
+  coverage remains pending. RPI-029..035 were implemented and published in the #633 layer;
+  RPI-036..046 track the current review remediation. Both Windows jobs for parent #632 `9b2b871`
+  pass, including the DACL-pointer fix and early `--keep-backups` rejection. Child #633 `984f896`
+  showed both Z-Code orphan tests failing with `restored=0, skipped=0, errors=1`; tracing identified
+  access denied on the first quarantine rename. Markers in child `1e9de97` show source open and
+  metadata succeed; child `2f15fa3` shows `ReOpenFile` returns `INVALID_HANDLE_VALUE`, but its
+  displayed error 6 may be clobbered by diagnostic output. The earlier uninstrumented error was 5.
+  Child `431e24b` captures LastError immediately and probes reopening without `FILE_TRAVERSE`;
+  Windows evidence is pending. `handle_clean` exit-code remains excluded as pre-existing in
+  `origin/main`. Current remote heads/statuses are listed above; no review threads were replied to
+  or resolved, and no draft state changed.

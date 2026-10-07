@@ -9,8 +9,11 @@
 
 ## 2025-05-20 - CLI Flag Inaccuracies
 
-**Learning:** The `version` command was documented as a standalone subcommand in the CLI reference, but it is actually a root-level flag (`-V, --version`). Additionally, the `--experimental-tui` flag for `agentsync init` was missing from the documentation despite being implemented in the code.
-**Action:** Always verify command structure (subcommand vs flag) against `src/main.rs` and the output of `cargo run -- --help`. Ensure all flags for each command are documented.
+**Learning:** The `version` command was documented as a standalone subcommand in the CLI reference,
+but it is actually a root-level flag (`-V, --version`). Additionally, the `--experimental-tui` flag
+for `agentsync init` was missing from the documentation despite being implemented in the code.
+**Action:** Always verify command structure (subcommand vs flag) against `src/main.rs` and the
+output of `cargo run -- --help`. Ensure all flags for each command are documented.
 
 ## Planned Improvements
 
@@ -20,25 +23,45 @@
 
 ## 2026-05-02 - Skill Command Description Drift
 
-**Learning:** The CLI reference documented the `skill` command with implementation details ("from `dallay/agents-skills`, external GitHub repositories, or local sources, with `skills.sh` used as a fallback search mechanism") that don't appear in the actual Clap help text. The source of truth (`src/main.rs:291`) simply says "Manage installable AI agent skills from skills.sh/other providers".
-**Action:** CLI command descriptions must match the exact Clap `#[command(about = "...")]` or doc comment text. Implementation details belong in behavior sections, not the command summary. Always verify against `cargo run -- <command> --help` output.
+**Learning:** The CLI reference documented the `skill` command with implementation details ("from
+`dallay/agents-skills`, external GitHub repositories, or local sources, with `skills.sh` used as a
+fallback search mechanism") that don't appear in the actual Clap help text. The source of truth
+(`src/main.rs:291`) simply says "Manage installable AI agent skills from skills.sh/other providers".
+**Action:** CLI command descriptions must match the exact Clap `#[command(about = "...")]` or doc
+comment text. Implementation details belong in behavior sections, not the command summary. Always
+verify against `cargo run -- <command> --help` output.
 
 ## 2025-05-15 - Catalog-driven Skill Detection
 
-**Learning:** The `agentsync skill suggest` command's technology detection shifted from a small hard-coded set to a data-driven catalog (`src/skills/catalog.v1.toml`) now supporting 73+ technologies. The documentation had drifted significantly (claiming only 7 supported).
-**Action:** When documenting "supported" lists that are data-driven, use "N+" terminology and refer to the source-of-truth catalog file to ensure long-term accuracy.
+**Learning:** The `agentsync skill suggest` command's technology detection shifted from a small
+hard-coded set to a data-driven catalog (`src/skills/catalog.v1.toml`) now supporting 73+
+technologies. The documentation had drifted significantly (claiming only 7 supported). **Action:**
+When documenting "supported" lists that are data-driven, use "N+" terminology and refer to the
+source-of-truth catalog file to ensure long-term accuracy.
 
 ## 2026-05-20 - Implemented Combo Evaluation Documented as Deferred
 
-**Learning:** Both the CLI reference and the Skills guide claimed that active evaluation of multi-technology "combo" entries was deferred. However, Phase 2 of `recommend_skills` in `src/skills/suggest.rs` already implements this logic, providing specific recommendations for combinations like `react-hook-form` + `zod`.
-**Action:** Before claiming a feature is "deferred" or "planned," verify the relevant logic phases in the implementation (e.g., Phase 2 evaluation loops).
+**Learning:** Both the CLI reference and the Skills guide claimed that active evaluation of
+multi-technology "combo" entries was deferred. However, Phase 2 of `recommend_skills` in
+`src/skills/suggest.rs` already implements this logic, providing specific recommendations for
+combinations like `react-hook-form` + `zod`. **Action:** Before claiming a feature is "deferred" or
+"planned," verify the relevant logic phases in the implementation (e.g., Phase 2 evaluation loops).
 
 ## 2026-05-20 - Inaccurate Technology Detection Confidence Logic
 
-**Learning:** The documentation for `skill suggest` incorrectly stated that detection confidence was determined by file location (root-level vs nested) or directory type (test/example). In reality, the `CatalogDrivenDetector` in `src/skills/detect.rs` assigns confidence based on the detection mechanism: `High` for exact package matches and configuration file existence, and `Medium` for regex patterns, content matches, and file extensions.
-**Action:** Always verify the mapping between internal enums (like `DetectionConfidence`) and detection rules in `src/skills/detect.rs` rather than assuming location-based heuristics.
+**Learning:** The documentation for `skill suggest` incorrectly stated that detection confidence was
+determined by file location (root-level vs nested) or directory type (test/example). In reality, the
+`CatalogDrivenDetector` in `src/skills/detect.rs` assigns confidence based on the detection
+mechanism: `High` for exact package matches and configuration file existence, and `Medium` for regex
+patterns, content matches, and file extensions. **Action:** Always verify the mapping between
+internal enums (like `DetectionConfidence`) and detection rules in `src/skills/detect.rs` rather
+than assuming location-based heuristics.
 
 ## 2026-08-05 - Missing Skill Registry Subcommands in Reference
 
-**Learning:** The `agentsync skill registry` subcommand (with its `validate` and `sync` options) was completely missing from the CLI reference page. Additionally, an obsolete sidebar configuration format in Starlight for autogenerated directories was causing the Astro website build to fail during pre-commit checks.
-**Action:** Always verify subcommands against the implementation file (`src/commands/skill.rs`), and ensure all pre-commit builds compile cleanly in the target documentation theme environment (e.g., Starlight/Astro).
+**Learning:** The `agentsync skill registry` subcommand (with its `validate` and `sync` options) was
+completely missing from the CLI reference page. Additionally, an obsolete sidebar configuration
+format in Starlight for autogenerated directories was causing the Astro website build to fail during
+pre-commit checks. **Action:** Always verify subcommands against the implementation file
+(`src/commands/skill.rs`), and ensure all pre-commit builds compile cleanly in the target
+documentation theme environment (e.g., Starlight/Astro).

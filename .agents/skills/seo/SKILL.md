@@ -21,10 +21,10 @@ Search ranking factors (approximate influence):
 | Factor                            | Influence | This Skill                                         |
 |-----------------------------------|-----------|----------------------------------------------------|
 | Content quality & relevance       | ~40%      | Partial (structure)                                |
-| Backlinks & authority             | ~25%      | ✗                                                  |
-| Technical SEO                     | ~15%      | ✓                                                  |
+| Backlinks & authority             | ~25%      | ✗                                                 |
+| Technical SEO                     | ~15%      | ✓                                                 |
 | Page experience (Core Web Vitals) | ~10%      | See [Core Web Vitals](../core-web-vitals/SKILL.md) |
-| On-page SEO                       | ~10%      | ✓                                                  |
+| On-page SEO                       | ~10%      | ✓                                                 |
 
 ---
 

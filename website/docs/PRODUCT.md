@@ -59,7 +59,7 @@ Terminology: "agents" = AI coding assistants; "sync types" = the four linking st
 
 - Real, authored documentation in the content collection: Quick Start, Getting Started, Sync Types, MCP, Skills, Plugin materialization, Gitignore team workflows, Windows symlink setup, Git hook automation, Troubleshooting, CLI reference, Configuration reference, Status output contract, Contributing / Development / Workspaces, CLI and TUI compatibility contract.
 - Live codebase: `src/` (Rust CLI), `npm/agentsync/` (TypeScript wrapper), `website/docs/` (this site).
-- Accessibility commitment established as SDD capability `docs-site-a11y` (WCAG 2.2 AA) — see `openspec/specs/docs-site-a11y/spec.md`.
+- Accessibility commitment established as SDD capability `docs-site-a11y` (WCAG 2.2 AA) — see `../../.agents/sdd`.
 
 Absences that future work must not fabricate: no testimonials, no case studies, no usage benchmarks, no pricing, no licensing claims beyond what the repo states, no third-party affiliations beyond the documented integrations.
 

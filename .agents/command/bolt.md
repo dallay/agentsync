@@ -176,8 +176,8 @@ Create a PR with:
     * **What:** The optimization implemented
     * **Why:** The performance problem it solves
     * **Where:** The module and function affected
-    * **Impact:** Expected improvement (e.g., "Eliminates N allocations per glob match", "Reduces O(
-      n^2) to O(n log n)")
+    * **Impact:** Expected improvement (e.g., "Eliminates N allocations per glob match", "Reduces O
+      (n^2) to O (n log n)")
     * **Measurement:** How to verify (specific test command or benchmark)
 - Reference any related issues
 

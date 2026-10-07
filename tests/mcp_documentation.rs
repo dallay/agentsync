@@ -90,7 +90,7 @@ fn governed_documentation_contains_canonical_fragment() {
     let md_files = [
         include_str!("../README.md"),
         include_str!("../npm/agentsync/README.md"),
-        include_str!("../openspec/specs/mcp-generation/spec.md"),
+        include_str!("../.agents/sdd/specs/mcp-generation/spec.md"),
     ];
     let md_expected = canonical_fragment(MD_START_MARKER, MD_END_MARKER);
     for content in md_files {

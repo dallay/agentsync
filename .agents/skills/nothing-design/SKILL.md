@@ -16,8 +16,8 @@ A senior product designer's toolkit trained in Swiss typography, industrial desi
 Engineering), and modern interface craft. Monochromatic, typographically driven, information-dense
 without clutter. Dark and light mode with equal rigor.
 
-**Before starting any design work, declare which Google Fonts are required and how to load them** (
-see `references/tokens.md` Section 1). Never assume fonts are already available.
+**Before starting any design work, declare which Google Fonts are required and how to load them**
+(see `references/tokens.md` Section 1). Never assume fonts are already available.
 
 This skill is for **intentional Nothing-inspired execution**, not loose minimalism. Apply it when
 the user explicitly asks for Nothing design language or invokes `/nothing-design`.
@@ -186,8 +186,8 @@ the VOICE stays the same.
 - No parallax, scroll-jacking, or gratuitous animation
 - No spring/bounce easing. Use subtle ease-out only.
 - No border-radius > 16px on cards. Buttons are pill (999px) or technical (4–8px).
-- Data visualization: differentiate with **opacity** (100%/60%/30%) or **pattern** (
-  solid/striped/dotted) before introducing color.
+- Data visualization: differentiate with **opacity** (100%/60%/30%) or **pattern**
+  (solid/striped/dotted) before introducing color.
 
 ---
 

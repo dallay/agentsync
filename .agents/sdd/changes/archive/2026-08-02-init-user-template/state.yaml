@@ -1,0 +1,13 @@
+change: init-user-template
+current_phase: archive
+completed: [ explore, propose, spec, design, tasks, apply, verify, warning-fixes, archive ]
+next: none
+updated: 2026-08-02
+verify_verdict: PASS
+warnings_resolved:
+  - wizard+template integration test added (test_wizard_template_flow_end_to_end)
+  - documentation updated (cli.mdx, getting-started.mdx, configuration.mdx)
+verification:
+  - cargo test --all-features: all pass (403+ tests)
+  - cargo clippy: clean
+  - pnpm docs:build: clean (14 pages)

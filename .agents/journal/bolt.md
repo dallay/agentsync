@@ -32,8 +32,8 @@ processing thousands of items). For most CLI logic, favor idiomatic and maintain
 ## 2026-02-01 - Algorithmic Optimization of Gitignore Generation
 
 **Learning:** The `all_gitignore_entries` function was performing deduplication using
-`Vec::contains` inside a nested loop, resulting in $O(N^2)$ complexity. Switching to `BTreeSet`
-reduced this to $O(N \log N)$ and simplified the code by removing manual sort/dedup steps.
+`Vec::contains` inside a nested loop, resulting in $O (N^2)$ complexity. Switching to `BTreeSet`
+reduced this to $O (N \log N)$ and simplified the code by removing manual sort/dedup steps.
 
 **Action:** Use appropriate data structures like `HashSet` or `BTreeSet` for deduplication tasks to
 avoid accidental quadratic complexity in configuration processing.
@@ -51,7 +51,7 @@ instead of re-filtering it in every sub-component.
 
 ## 2026-02-08 - Zero-Allocation Markdown Compression
 
-**Learning:** The `compress_agents_md_content` function was performing $O(N)$ string allocations,
+**Learning:** The `compress_agents_md_content` function was performing $O (N)$ string allocations,
 where $N$ is the number of lines in `AGENTS.md`. By refactoring helper functions to use mutable
 buffer passing and switching code fence state to use string slices (`&str`), we eliminated almost
 all heap allocations in the compression loop.
@@ -108,9 +108,9 @@ integrated into automated hooks.
 ## 2026-04-15 - Single-Pass Metadata Collection for Tech Detection
 
 **Learning:** The technology detection system was performing redundant filesystem walks and
-existence checks for each of the 78+ technologies in the catalog, leading to $O(T \times N)$
+existence checks for each of the 78+ technologies in the catalog, leading to $O (T \times N)$
 complexity. By implementing a `RepoMetadata` struct that performs a single `WalkDir` (max depth 3)
-and caches paths, directory status, and file extensions, we reduced the complexity to $O(N)$.
+and caches paths, directory status, and file extensions, we reduced the complexity to $O (N)$.
 Caching the `FileType` during the initial walk is critical to eliminate subsequent `is_dir()`
 syscalls during rule evaluation.
 
@@ -132,32 +132,62 @@ reuse results within the same sync run.
 
 ## 2026-04-10 - Iterative Path Glob Matching and Allocation Reduction
 
-**Learning:** The recursive `path_glob_match` implementation was a potential performance bottleneck and stack risk. By switching to an iterative backtracking algorithm and pre-splitting glob patterns outside the file-walk loop, we eliminated redundant heap allocations and improved algorithmic efficiency from potential exponential to $O(N \cdot M)$.
+**Learning:** The recursive `path_glob_match` implementation was a potential performance bottleneck
+and stack risk. By switching to an iterative backtracking algorithm and pre-splitting glob patterns
+outside the file-walk loop, we eliminated redundant heap allocations and improved algorithmic
+efficiency from potential exponential to $O (N \cdot M)$.
 
-**Action:** Always pre-split static patterns or strings used for matching before entering a high-frequency loop (like directory traversal). Prefer iterative backtracking over recursion for glob-style pattern matching to ensure safety and predictable performance.
+**Action:** Always pre-split static patterns or strings used for matching before entering a
+high-frequency loop (like directory traversal). Prefer iterative backtracking over recursion for
+glob-style pattern matching to ensure safety and predictable performance.
 
 ## 2025-04-18 - Borrow Checker Limitations on Buffer Reuse
 
-**Learning:** Attempting to reuse a `Vec<&str>` buffer outside a loop to reduce allocations (e.g., in `for_each_nested_glob_match`) was blocked by the Rust borrow checker. Since the string slices (`&str`) pointed to strings created *inside* the loop (`rel_str`), they could not be stored in a collection that persists across loop iterations.
+**Learning:** Attempting to reuse a `Vec<&str>` buffer outside a loop to reduce allocations (e.g.,
+in `for_each_nested_glob_match`) was blocked by the Rust borrow checker. Since the string slices
+(`&str`) pointed to strings created *inside* the loop (`rel_str`), they could not be stored in a
+collection that persists across loop iterations.
 
-**Action:** When seeking to eliminate allocations in loops, be mindful of lifetimes. If the data being stored is owned by loop-local variables, buffer reuse requires either copying the data (which might defeat the purpose) or using `unsafe` code (which should be avoided). Focus on optimizations that don't involve cross-iteration storage of local references.
+**Action:** When seeking to eliminate allocations in loops, be mindful of lifetimes. If the data
+being stored is owned by loop-local variables, buffer reuse requires either copying the data (which
+might defeat the purpose) or using `unsafe` code (which should be avoided). Focus on optimizations
+that don't involve cross-iteration storage of local references.
 
 ## 2026-05-20 - Single-Pass Metadata and Rule Pre-Compilation for Tech Detection
 
-**Learning:** Technology detection was performing redundant filesystem existence checks and repetitive `PathBuf` allocations for each of the 111+ technologies in the catalog. Even with a 3-depth limit, the (T \times N)$ overhead was significant. By enhancing `RepoMetadata` with `HashSet` for (1)$ lookups, caching immediate `root_dirs`, and pre-compiling `config_files` markers into `PathBuf`s during rule compilation, we moved almost all detection logic from disk to memory.
-**Action:** Centralize repository metadata collection into optimized data structures and pre-compile static configuration markers to eliminate redundant I/O and heap allocations in large-scale rule evaluation loops.
+**Learning:** Technology detection was performing redundant filesystem existence checks and
+repetitive `PathBuf` allocations for each of the 111+ technologies in the catalog. Even with a
+3-depth limit, the (T \times N)$ overhead was significant. By enhancing `RepoMetadata` with
+`HashSet` for (1)$ lookups, caching immediate `root_dirs`, and pre-compiling `config_files` markers
+into `PathBuf`s during rule compilation, we moved almost all detection logic from disk to memory.
+**Action:** Centralize repository metadata collection into optimized data structures and pre-compile
+static configuration markers to eliminate redundant I/O and heap allocations in large-scale rule
+evaluation loops.
 
 ## 2026-05-22 - Unifying High-Level Discovery Phases in Tech Detection
 
-**Learning:** Even after optimizing individual detection rules with in-memory metadata, the overall detection process remained inefficient due to multiple high-level discovery phases. `discover_nested_projects`, `RepoMetadata::collect`, and `collect_package_names_with_nested` were each triggering independent, redundant WalkDir traversals or redundant metadata builds. Integrating nested project discovery directly into the primary metadata collection pass eliminated these redundant O(N) operations.
+**Learning:** Even after optimizing individual detection rules with in-memory metadata, the overall
+detection process remained inefficient due to multiple high-level discovery phases.
+`discover_nested_projects`, `RepoMetadata::collect`, and `collect_package_names_with_nested` were
+each triggering independent, redundant WalkDir traversals or redundant metadata builds. Integrating
+nested project discovery directly into the primary metadata collection pass eliminated these
+redundant O (N) operations.
 
-**Action:** Look for "layered" discovery logic where one phase finds sub-targets and subsequent phases re-scan them. Consolidate these into a single "collect once, use everywhere" pass at the highest possible level to maximize I/O efficiency.
+**Action:** Look for "layered" discovery logic where one phase finds sub-targets and subsequent
+phases re-scan them. Consolidate these into a single "collect once, use everywhere" pass at the
+highest possible level to maximize I/O efficiency.
 
 ## 2026-05-21 - Scoped In-Memory Content Caching for Technology Detection
 
-**Learning:** Technology detection was performing redundant disk I/O by reading the same configuration files (like `package.json`, `setup.py`, or `pyproject.toml`) multiple times across different detection rules and during nested project discovery. Projects with complex structures or many technologies were particularly affected by this O(N * T) I/O overhead.
+**Learning:** Technology detection was performing redundant disk I/O by reading the same
+configuration files (like `package.json`, `setup.py`, or `pyproject.toml`) multiple times across
+different detection rules and during nested project discovery. Projects with complex structures or
+many technologies were particularly affected by this O (N * T) I/O overhead.
 
-**Action:** Implement a scoped `HashMap<PathBuf, Rc<str>>` content cache passed through the detection and parsing logic. By ensuring each file is read exactly once per detection pass and shared via reference-counted pointers, we eliminate redundant syscalls and minimize heap allocations in high-frequency detection paths.
+**Action:** Implement a scoped `HashMap<PathBuf, Rc<str>>` content cache passed through the
+detection and parsing logic. By ensuring each file is read exactly once per detection pass and
+shared via reference-counted pointers, we eliminate redundant syscalls and minimize heap allocations
+in high-frequency detection paths.
 
 ## 2025-05-24 - Allocation-Free Path Glob Matching
 
@@ -166,23 +196,45 @@ visited to perform glob matching. In large projects with thousands of files, thi
 significant heap pressure. By refactoring the matching logic to use cloning iterators directly
 from the path string (`split('/')`), we eliminated this per-file allocation entirely.
 
-**Action:** Prefer iterator-based pattern matching over `Vec` collection when processing large numbers
+**Action:** Prefer iterator-based pattern matching over `Vec` collection when processing large
+numbers
 of items in a loop. Use `Clone` bounds on iterators to support backtracking without re-allocation.
 
 ## 2026-05-25 - Upfront Rule Filtering and Early Termination for Nested Projects
 
-**Learning:** Evaluating technology detection rules on many nested projects (workspaces) was performing redundant directory walking (`RepoMetadata::collect`) and parsing of files even when all candidate technologies had already been identified in previous discovery phases. By filtering rules to only undetected technologies upfront and checking if any remain undetected before proceeding, we can completely bypass expensive nested walks and terminate the scan early.
+**Learning:** Evaluating technology detection rules on many nested projects (workspaces) was
+performing redundant directory walking (`RepoMetadata::collect`) and parsing of files even when all
+candidate technologies had already been identified in previous discovery phases. By filtering rules
+to only undetected technologies upfront and checking if any remain undetected before proceeding, we
+can completely bypass expensive nested walks and terminate the scan early.
 
-**Action:** In discovery systems processing multiple hierarchical targets, always filter candidates to the undetected subset at each level, and break early when no targets remain to avoid redundant CPU and filesystem I/O.
+**Action:** In discovery systems processing multiple hierarchical targets, always filter candidates
+to the undetected subset at each level, and break early when no targets remain to avoid redundant
+CPU and filesystem I/O.
 
 ## 2026-05-26 - Memoized Embedded Skill Catalog and Binary Search Policy Lookups
 
-**Learning:** `EmbeddedSkillCatalog::default()` and `load_catalog(None)` were re-parsing `catalog.v1.toml` and validating policy rules against 199+ skill IDs on every invocation. Additionally, policy validation was performing an $O(N)$ linear scan over `APPROVED_EMBEDDED_EXTERNAL_SKILL_IDS`. Sorting and deduplicating `APPROVED_EMBEDDED_EXTERNAL_SKILL_IDS` allowed using $O(\log N)$ `binary_search`, while memoizing the parsed baseline using `std::sync::OnceLock` completely eliminated redundant TOML parsing and policy validation across CLI commands.
+**Learning:** `EmbeddedSkillCatalog::default()` and `load_catalog(None)` were re-parsing
+`catalog.v1.toml` and validating policy rules against 199+ skill IDs on every invocation.
+Additionally, policy validation was performing an $O (N)$ linear scan over
+`APPROVED_EMBEDDED_EXTERNAL_SKILL_IDS`. Sorting and deduplicating
+`APPROVED_EMBEDDED_EXTERNAL_SKILL_IDS` allowed using $O (\log N)$ `binary_search`, while memoizing
+the parsed baseline using `std::sync::OnceLock` completely eliminated redundant TOML parsing and
+policy validation across CLI commands.
 
-**Action:** Use `std::sync::OnceLock` to cache embedded static metadata structures parsed from compile-time assets (`include_str!`). Ensure static slice lookup tables are sorted alphabetically to leverage zero-allocation `binary_search`.
+**Action:** Use `std::sync::OnceLock` to cache embedded static metadata structures parsed from
+compile-time assets (`include_str!`). Ensure static slice lookup tables are sorted alphabetically to
+leverage zero-allocation `binary_search`.
 
 ## 2026-05-27 - Zero-Allocation Agent Identifier Normalization and Filtering
 
-**Learning:** `canonical_mcp_agent_id`, `canonical_configurable_agent_id`, `mcp_filter_matches`, and `sync_filter_matches` were calling `id.to_lowercase()`, unconditionally allocating a new `String` on the heap for every lookup and filter match. Since agent IDs in configurations are predominantly ASCII and under 64 characters, implementing a fast-path for lowercase ASCII strings (0 allocations) and a stack buffer `[u8; 64]` for uppercase ASCII (0 heap allocations) completely eliminated heap allocations during normalization and filtering.
+**Learning:** `canonical_mcp_agent_id`, `canonical_configurable_agent_id`, `mcp_filter_matches`, and
+`sync_filter_matches` were calling `id.to_lowercase()`, unconditionally allocating a new `String` on
+the heap for every lookup and filter match. Since agent IDs in configurations are predominantly
+ASCII and under 64 characters, implementing a fast-path for lowercase ASCII strings (0 allocations)
+and a stack buffer `[u8; 64]` for uppercase ASCII (0 heap allocations) completely eliminated heap
+allocations during normalization and filtering.
 
-**Action:** When normalizing or matching short ASCII identifiers or CLI tokens against static string sets, avoid unconditional `to_lowercase()` calls. Fast-path lowercased ASCII directly or use stack-allocated byte arrays for case conversion before falling back to heap-allocated `String`s.
+**Action:** When normalizing or matching short ASCII identifiers or CLI tokens against static string
+sets, avoid unconditional `to_lowercase()` calls. Fast-path lowercased ASCII directly or use
+stack-allocated byte arrays for case conversion before falling back to heap-allocated `String`s.
