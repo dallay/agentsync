@@ -6,7 +6,7 @@
 - **Autorización:** el usuario aprobó el diseño estricto: tests y cobertura medidos en Linux, macOS y Windows; cobertura global y los dos archivos prioritarios >80% por OS.
 - **Plataformas:** Linux, macOS, Windows. FreeBSD y ejecución runtime en todos los release triples quedan fuera de este alcance.
 - **TDD:** escribir cada test antes de tocar producción. Si el comportamiento ya es correcto, un PASS inicial que aumente cobertura es válido; si el test descubre un defecto, comprobar RED por la aserción esperada antes del cambio mínimo y GREEN después.
-- **Publicación:** el usuario autorizó la cadena oficial GitHub Stack, el rebase de descendientes y la actualización remota con `--force-with-lease`. No se hará merge; la actualización de estas correcciones queda pendiente.
+- **Publicación:** el usuario autorizó la cadena oficial GitHub Stack, el rebase de descendientes y la actualización remota con `--force-with-lease`; las ocho ramas actualizadas ya fueron aceptadas por `gh stack push`. No se hará merge.
 
 ## Capas de revisión aprobadas
 
@@ -24,7 +24,7 @@ Cadena lineal; cada PR depende de la inmediatamente anterior. Budget: 400 línea
 | 8/8 | `feat/cov-coverage-gates` | `feat/cov-doctor-cli` | `feat/cov-doctor-cli` | CI/Codecov/Sonar y tracker RPI. | 329 |
 
 - Issue: None. Linear URL: None.
-- El Stack local y remoto contiene ocho branches en el orden indicado; las PRs #645–#652 siguen draft. Las correcciones Layer 2/3 están committeadas localmente y el rebase descendiente terminó; falta actualizar las refs remotas.
+- El Stack local y remoto contiene ocho branches lineales; las PRs #645–#652 siguen draft y los heads coinciden tras el rebase/push. Las descripciones de PR ya reflejan los cambios y las métricas Linux.
 - `backup/cov-stack-before-repair` preserva la punta local anterior al arreglo del layer 3; no forma parte del Stack.
 
 ## Estado inicial
@@ -41,7 +41,7 @@ Cadena lineal; cada PR depende de la inmediatamente anterior. Budget: 400 línea
 - `UnixQuarantineOps` y `CapStdUnixQuarantineOps` están implementados solo en la ruta no-Windows; Windows conserva sus operaciones por handles. El Stack contiene 39 pruebas Unix y 6 Windows en `src/linker/quarantine_tests.rs`; los tests Unix se ejecutaron localmente.
 - LCOV Linux después del fix: `src/linker/quarantine.rs` 413/420 (98.33%), `src/commands/doctor.rs` 504/521 (96.74%) y unión de Rust bajo `src/` 28,543/31,212 (91.45%). La tabla textual informa `quarantine.rs` 69.88% en `Lines` y 66.73% en `Regions`; Doctor 96.62% y 96.06%; `cargo llvm-cov report` totaliza 89.77% en `Lines` y 89.81% en `Regions`. Codecov consume LCOV `DA`.
 - `cargo test --all-features`: 1,049 pasaron, 0 fallaron, 5 ignorados. La generación LCOV ejecutó el mismo conjunto; `cargo fmt --all -- --check` y Clippy estricto pasan. La sintaxis YAML pasó con `js-yaml`; el validador oficial de Codecov respondió `Valid!`.
-- El test fail-closed se validó en `/proc` (sin creation time) y en ext4/tmpfs. La closure Windows quedó tipada; todavía requiere runner Windows nativo. La ejecución remota de macOS/Windows y Codecov/Sonar para los heads corregidos queda pendiente del nuevo push.
+- El test fail-closed se validó en `/proc` (sin creation time) y ext4/tmpfs. En la CI de los heads rebasados, #646 ya pasó Test Windows y Test macOS; otros jobs y la cobertura multi-OS siguen en cola. Un run push anterior de #645 falló una prueba DACL de MCP; un run pull_request posterior del mismo head pasó Windows. Ninguna de esas ejecuciones sustituye los checks pendientes de los heads actuales.
 
 ## Aceptación
 

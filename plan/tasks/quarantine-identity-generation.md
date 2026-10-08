@@ -119,9 +119,9 @@ cargo test --all-features --lib linker::quarantine_tests::unix_tests::
 - [x] **Paso 2: con `feat/cov-quarantine-move` activo, ejecutar `gh stack rebase --upstack --no-trunk`**; rebasó Layers 3–8 sin mover `main`. Se resolvió un conflicto mecánico en `quarantine.rs` preservando fail-closed y la seam; otro conflicto de inserción conservó el test de identity y los FaultOps. Layer 5 quedó en 324 líneas.
 - [x] **Paso 3: comprobar el grafo.** `gh stack view --json` muestra la cadena lineal de ocho ramas, sus bases inmediatas y PRs abiertas.
 - [x] **Paso 4: medir los ocho deltas** contra sus padres: 295, 400, 392, 225, 324, 370, 380 y 329; todos ≤400.
-- [ ] **Paso 5: actualizar descripciones de PR #646–#652** con el propósito, tests y deltas nuevos, manteniendo la plantilla y Chain Context; conservar todos los drafts y no hacer merge.
+- [x] **Paso 5: actualizar descripciones de PR #646–#652** con el propósito, tests y deltas nuevos, manteniendo la plantilla y Chain Context; conservar todos los drafts y no hacer merge.
 - [x] **Paso 6: actualizar `plan/tasks/cross-platform-coverage-80.md`** con el fail-closed, la closure Windows, el resultado de coverage y los límites de evidencia por OS.
-- [ ] **Paso 7: ejecutar `gh stack push` una sola vez** para actualizar las ocho ramas publicadas mediante el mecanismo `--force-with-lease` de Stack. Si hay rechazo o fallo parcial, inspeccionar refs/PRs y no reintentar a ciegas.
+- [x] **Paso 7: ejecutar `gh stack push` una sola vez** para actualizar las ocho ramas publicadas mediante el mecanismo `--force-with-lease` de Stack. El push terminó correctamente y los ocho heads remotos coinciden con los locales.
 - [ ] **Paso 8: verificar CI en los tres sistemas**: tests y generación/subida LCOV Linux, macOS y Windows; cobertura >80% global y en `src/linker/quarantine.rs` y `src/commands/doctor.rs`; checks Codecov/Sonar, build y clippy. Las PRs quedan draft hasta decisión posterior.
 
 ## Evidencia de finalización
@@ -138,4 +138,4 @@ cargo test --all-features --lib linker::quarantine_tests::unix_tests::
 - **Autorización:** fail closed + rebase y actualización remota `--force-with-lease` aprobados explícitamente.
 - **TDD:** usar primero la regresión existente que falla en ext4; añadir el caso sin `created`; implementar después.
 - **No autorizado:** merge de PRs, cierre de PRs o cambio de objetivo del Stack.
-- **Estado actual:** Layers 2/3 corregidas y commiteadas; el rebase local terminó; RPI local actualizada. Faltan los cuerpos de PR, `gh stack push` y CI nativa.
+- **Estado actual:** Layers 2/3 corregidas, rebasadas y publicadas; cuerpos de PR actualizados. CI nativa está en curso; cualquier actualización final del tracker quedará en Layer 8.
