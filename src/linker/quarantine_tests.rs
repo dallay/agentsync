@@ -275,7 +275,7 @@ mod windows_tests {
 mod unix_tests {
     use crate::linker::quarantine::{
         CapStdUnixQuarantineOps, EntryIdentity, EntryLocation, MoveOutcome, RemoveDirectoryOutcome,
-        RemoveOutcome, UnixQuarantineOps, move_entry_no_replace,
+        RemoveOutcome, UnixQuarantineOps, move_entry_no_replace, move_unix_entry_no_replace,
         remove_empty_directory_if_unchanged, remove_symlink_if_unchanged, remove_unix,
         remove_unix_empty_directory,
     };
@@ -310,8 +310,10 @@ mod unix_tests {
 
     #[derive(Clone, Copy)]
     enum InjectedFailure {
+        MetadataAt(usize, std::io::ErrorKind),
         RenameAt(usize, std::io::ErrorKind),
         RenameAlways(std::io::ErrorKind),
+        ReplaceOnMetadataAt(usize),
         OpenDir(std::io::ErrorKind),
         DirectoryMetadata(std::io::ErrorKind),
         DirectoryEntries(std::io::ErrorKind),
@@ -320,14 +322,31 @@ mod unix_tests {
 
     struct FaultOps {
         failure: InjectedFailure,
+        metadata_calls: Cell<usize>,
         rename_calls: Cell<usize>,
+        replacement_paths: Option<(PathBuf, PathBuf)>,
     }
 
     impl FaultOps {
         fn new(failure: InjectedFailure) -> Self {
             Self {
                 failure,
+                metadata_calls: Cell::new(0),
                 rename_calls: Cell::new(0),
+                replacement_paths: None,
+            }
+        }
+
+        fn replace_on_metadata(
+            call: usize,
+            replacement_path: PathBuf,
+            destination_path: PathBuf,
+        ) -> Self {
+            Self {
+                failure: InjectedFailure::ReplaceOnMetadataAt(call),
+                metadata_calls: Cell::new(0),
+                rename_calls: Cell::new(0),
+                replacement_paths: Some((replacement_path, destination_path)),
             }
         }
 
@@ -337,6 +356,27 @@ mod unix_tests {
     }
 
     impl UnixQuarantineOps for FaultOps {
+        fn symlink_metadata(
+            &self,
+            parent: &Dir,
+            name: &OsStr,
+        ) -> std::io::Result<cap_std::fs::Metadata> {
+            let call = self.metadata_calls.get() + 1;
+            self.metadata_calls.set(call);
+            if let InjectedFailure::MetadataAt(fail_at, kind) = self.failure
+                && call == fail_at
+            {
+                return Err(Self::error(kind));
+            }
+            if let InjectedFailure::ReplaceOnMetadataAt(fail_at) = self.failure
+                && call == fail_at
+            {
+                let (replacement_path, destination_path) = self.replacement_paths.as_ref().unwrap();
+                fs::rename(replacement_path, destination_path)?;
+            }
+            CapStdUnixQuarantineOps.symlink_metadata(parent, name)
+        }
+
         fn rename_no_replace(&self, parent: &Dir, from: &OsStr, to: &OsStr) -> std::io::Result<()> {
             let call = self.rename_calls.get() + 1;
             self.rename_calls.set(call);
@@ -1255,5 +1295,333 @@ mod unix_tests {
                 .kind(),
             std::io::ErrorKind::InvalidInput
         );
+    }
+
+    #[test]
+    fn move_unix_restores_backup_after_quarantine_metadata_failure() {
+        let temp = TempDir::new().unwrap();
+        let source_path = temp.path().join("backup.bak");
+        let destination_path = temp.path().join("restored.md");
+        fs::write(&source_path, b"backup bytes").unwrap();
+
+        let parent = Dir::open_ambient_dir(temp.path(), ambient_authority()).unwrap();
+        let source_name = OsStr::new("backup.bak");
+        let expected = EntryIdentity::capture(&parent.symlink_metadata(source_name).unwrap());
+        let ops = FaultOps::new(InjectedFailure::MetadataAt(2, std::io::ErrorKind::NotFound));
+        let error = move_unix_entry_no_replace(
+            &ops,
+            EntryLocation {
+                parent: &parent,
+                name: source_name,
+                path: &source_path,
+            },
+            EntryLocation {
+                parent: &parent,
+                name: OsStr::new("restored.md"),
+                path: &destination_path,
+            },
+            expected,
+            || {},
+            |_| {},
+        )
+        .err()
+        .expect("quarantine metadata failure should restore the backup");
+
+        assert!(error.to_string().contains("the entry was restored"));
+        assert_eq!(fs::read(&source_path).unwrap(), b"backup bytes");
+        assert!(!destination_path.exists());
+    }
+
+    #[test]
+    fn move_unix_reports_published_backup_metadata_failure() {
+        let temp = TempDir::new().unwrap();
+        let source_path = temp.path().join("backup.bak");
+        let destination_path = temp.path().join("restored.md");
+        fs::write(&source_path, b"backup bytes").unwrap();
+
+        let parent = Dir::open_ambient_dir(temp.path(), ambient_authority()).unwrap();
+        let source_name = OsStr::new("backup.bak");
+        let expected = EntryIdentity::capture(&parent.symlink_metadata(source_name).unwrap());
+        let ops = FaultOps::new(InjectedFailure::MetadataAt(3, std::io::ErrorKind::NotFound));
+        let error = move_unix_entry_no_replace(
+            &ops,
+            EntryLocation {
+                parent: &parent,
+                name: source_name,
+                path: &source_path,
+            },
+            EntryLocation {
+                parent: &parent,
+                name: OsStr::new("restored.md"),
+                path: &destination_path,
+            },
+            expected,
+            || {},
+            |_| {},
+        )
+        .err()
+        .expect("published backup metadata failure should be reported");
+
+        assert!(
+            error
+                .to_string()
+                .contains("failed to verify restored backup")
+        );
+        assert!(!source_path.exists());
+        assert_eq!(fs::read(&destination_path).unwrap(), b"backup bytes");
+    }
+
+    #[test]
+    fn move_unix_preserves_replacement_at_published_destination() {
+        let temp = TempDir::new().unwrap();
+        let source_path = temp.path().join("backup.bak");
+        let destination_path = temp.path().join("restored.md");
+        let replacement_path = temp.path().join("replacement.tmp");
+        fs::write(&source_path, b"backup bytes").unwrap();
+        fs::write(&replacement_path, b"concurrent user data").unwrap();
+
+        let parent = Dir::open_ambient_dir(temp.path(), ambient_authority()).unwrap();
+        let source_name = OsStr::new("backup.bak");
+        let expected = EntryIdentity::capture(&parent.symlink_metadata(source_name).unwrap());
+        let ops = FaultOps::replace_on_metadata(3, replacement_path, destination_path.clone());
+        let outcome = move_unix_entry_no_replace(
+            &ops,
+            EntryLocation {
+                parent: &parent,
+                name: source_name,
+                path: &source_path,
+            },
+            EntryLocation {
+                parent: &parent,
+                name: OsStr::new("restored.md"),
+                path: &destination_path,
+            },
+            expected,
+            || {},
+            |_| {},
+        )
+        .unwrap();
+
+        assert!(matches!(outcome, MoveOutcome::Changed));
+        assert_eq!(fs::read(&source_path).unwrap(), b"concurrent user data");
+        assert!(!destination_path.exists());
+    }
+
+    #[test]
+    fn move_unix_stops_after_sixteen_name_collisions() {
+        let temp = TempDir::new().unwrap();
+        let source_path = temp.path().join("backup.bak");
+        let destination_path = temp.path().join("restored.md");
+        fs::write(&source_path, b"backup bytes").unwrap();
+
+        let parent = Dir::open_ambient_dir(temp.path(), ambient_authority()).unwrap();
+        let source_name = OsStr::new("backup.bak");
+        let expected = EntryIdentity::capture(&parent.symlink_metadata(source_name).unwrap());
+        let ops = FaultOps::new(InjectedFailure::RenameAlways(
+            std::io::ErrorKind::AlreadyExists,
+        ));
+        let error = move_unix_entry_no_replace(
+            &ops,
+            EntryLocation {
+                parent: &parent,
+                name: source_name,
+                path: &source_path,
+            },
+            EntryLocation {
+                parent: &parent,
+                name: OsStr::new("restored.md"),
+                path: &destination_path,
+            },
+            expected,
+            || {},
+            |_| {},
+        )
+        .err()
+        .expect("backup movement should stop after bounded retries");
+
+        assert!(
+            error
+                .to_string()
+                .contains("could not reserve a unique quarantine name")
+        );
+        assert_eq!(ops.rename_calls.get(), 16);
+        assert_eq!(fs::read(&source_path).unwrap(), b"backup bytes");
+    }
+
+    #[test]
+    fn remove_symlink_quarantine_disappearing_reports_restore_failure() {
+        let temp = TempDir::new().unwrap();
+        let target_path = temp.path().join("target.md");
+        let link_path = temp.path().join("managed.md");
+        fs::write(&target_path, b"target bytes").unwrap();
+        symlink(&target_path, &link_path).unwrap();
+
+        let parent = Dir::open_ambient_dir(temp.path(), ambient_authority()).unwrap();
+        let name = OsStr::new("managed.md");
+        let expected = EntryIdentity::capture(&parent.symlink_metadata(name).unwrap());
+        let after_move_root = temp.path().to_path_buf();
+        let link_for_callback = link_path.clone();
+        let after_move = move |_: &Path| {
+            let quarantined = fs::read_dir(&after_move_root)
+                .unwrap()
+                .map(|entry| entry.unwrap().path())
+                .find(|path| {
+                    path.file_name().is_some_and(|name| {
+                        name.to_string_lossy().starts_with(".agentsync-quarantine-")
+                    })
+                })
+                .unwrap();
+            fs::remove_file(quarantined).unwrap();
+            fs::write(&link_for_callback, b"replacement occupant").unwrap();
+        };
+
+        let error =
+            remove_symlink_if_unchanged(&parent, name, expected, &link_path, || {}, after_move)
+                .err()
+                .expect("missing quarantined symlink should be reported");
+
+        assert!(error.to_string().contains("recovery entry remains"));
+        assert_eq!(fs::read(&link_path).unwrap(), b"replacement occupant");
+        assert_eq!(fs::read(&target_path).unwrap(), b"target bytes");
+    }
+
+    #[test]
+    fn remove_empty_directory_quarantine_disappearing_reports_restore_failure() {
+        let temp = TempDir::new().unwrap();
+        let directory_path = temp.path().join("managed");
+        fs::create_dir(&directory_path).unwrap();
+
+        let parent = Dir::open_ambient_dir(temp.path(), ambient_authority()).unwrap();
+        let name = OsStr::new("managed");
+        let expected = EntryIdentity::capture(&parent.symlink_metadata(name).unwrap());
+        let after_move_root = temp.path().to_path_buf();
+        let path_for_callback = directory_path.clone();
+        let after_move = move |_: &Path| {
+            let quarantined = fs::read_dir(&after_move_root)
+                .unwrap()
+                .map(|entry| entry.unwrap().path())
+                .find(|path| {
+                    path.file_name().is_some_and(|name| {
+                        name.to_string_lossy().starts_with(".agentsync-quarantine-")
+                    })
+                })
+                .unwrap();
+            fs::remove_dir(quarantined).unwrap();
+            fs::write(&path_for_callback, b"replacement occupant").unwrap();
+        };
+
+        let error = remove_empty_directory_if_unchanged(
+            &parent,
+            name,
+            expected,
+            &directory_path,
+            || {},
+            after_move,
+        )
+        .err()
+        .expect("missing quarantined directory should be reported");
+
+        assert!(error.to_string().contains("recovery entry remains"));
+        assert_eq!(fs::read(&directory_path).unwrap(), b"replacement occupant");
+    }
+
+    #[test]
+    fn move_backup_quarantine_disappearing_reports_restore_failure() {
+        let temp = TempDir::new().unwrap();
+        let source_path = temp.path().join("backup.bak");
+        let destination_path = temp.path().join("restored.md");
+        fs::write(&source_path, b"backup bytes").unwrap();
+
+        let parent = Dir::open_ambient_dir(temp.path(), ambient_authority()).unwrap();
+        let source_name = OsStr::new("backup.bak");
+        let expected = EntryIdentity::capture(&parent.symlink_metadata(source_name).unwrap());
+        let after_quarantine_root = temp.path().to_path_buf();
+        let source_for_callback = source_path.clone();
+        let after_quarantine = move |_: &Path| {
+            let quarantined = fs::read_dir(&after_quarantine_root)
+                .unwrap()
+                .map(|entry| entry.unwrap().path())
+                .find(|path| {
+                    path.file_name().is_some_and(|name| {
+                        name.to_string_lossy().starts_with(".agentsync-quarantine-")
+                    })
+                })
+                .unwrap();
+            fs::remove_file(quarantined).unwrap();
+            fs::write(&source_for_callback, b"replacement occupant").unwrap();
+        };
+
+        let error = move_entry_no_replace(
+            EntryLocation {
+                parent: &parent,
+                name: source_name,
+                path: &source_path,
+            },
+            EntryLocation {
+                parent: &parent,
+                name: OsStr::new("restored.md"),
+                path: &destination_path,
+            },
+            expected,
+            || {},
+            after_quarantine,
+        )
+        .err()
+        .expect("missing quarantined backup should be reported");
+
+        assert!(error.to_string().contains("recovery entry remains"));
+        assert_eq!(fs::read(&source_path).unwrap(), b"replacement occupant");
+        assert!(!destination_path.exists());
+    }
+
+    #[test]
+    fn move_quarantined_symlink_backup_restores_changed_entry() {
+        let temp = TempDir::new().unwrap();
+        let target_path = temp.path().join("target.md");
+        let source_path = temp.path().join("backup.bak");
+        let destination_path = temp.path().join("restored.md");
+        fs::write(&target_path, b"target bytes").unwrap();
+        fs::write(&source_path, b"backup bytes").unwrap();
+
+        let parent = Dir::open_ambient_dir(temp.path(), ambient_authority()).unwrap();
+        let source_name = OsStr::new("backup.bak");
+        let expected = EntryIdentity::capture(&parent.symlink_metadata(source_name).unwrap());
+        let after_quarantine_root = temp.path().to_path_buf();
+        let target_for_callback = target_path.clone();
+        let after_quarantine = move |_: &Path| {
+            let quarantined = fs::read_dir(&after_quarantine_root)
+                .unwrap()
+                .map(|entry| entry.unwrap().path())
+                .find(|path| {
+                    path.file_name().is_some_and(|name| {
+                        name.to_string_lossy().starts_with(".agentsync-quarantine-")
+                    })
+                })
+                .unwrap();
+            fs::remove_file(&quarantined).unwrap();
+            symlink(&target_for_callback, quarantined).unwrap();
+        };
+
+        let outcome = move_entry_no_replace(
+            EntryLocation {
+                parent: &parent,
+                name: source_name,
+                path: &source_path,
+            },
+            EntryLocation {
+                parent: &parent,
+                name: OsStr::new("restored.md"),
+                path: &destination_path,
+            },
+            expected,
+            || {},
+            after_quarantine,
+        )
+        .unwrap();
+
+        assert!(matches!(outcome, MoveOutcome::Changed));
+        assert_eq!(fs::read_link(&source_path).unwrap(), target_path);
+        assert_eq!(fs::read(&target_path).unwrap(), b"target bytes");
+        assert!(!destination_path.exists());
     }
 }
