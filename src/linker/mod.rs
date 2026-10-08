@@ -27,6 +27,8 @@ mod discovery;
 mod enumerate;
 mod paths;
 mod quarantine;
+#[cfg(test)]
+mod quarantine_tests;
 mod revert;
 mod symlinks;
 pub mod timing;
