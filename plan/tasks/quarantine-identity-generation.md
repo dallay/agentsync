@@ -20,6 +20,8 @@
 - Rust documenta la fuente como `statx btime` en Linux, `birthtime` en otros Unix y `ftCreationTime` en Windows. Puede no existir en algunos filesystems; en ese caso la operación destructiva debe preservar la entrada y reportar/categorizar el resultado como cambiado/no verificable.
 - CI Windows falla durante la compilación de tests en `src/linker/quarantine_tests.rs:195`, antes de ejecutar la prueba enfocada de backup. El compilador identifica la closure declarada en la línea 182 y recomienda tipar su argumento como `&std::path::Path`.
 - En el CI Windows del head `a5cb45e`, los tests `remove_empty_directory_if_unchanged_removes_empty_directory` y `remove_nonempty_directory_if_unchanged_restores_contents` fallan con OS error 32 al ejecutar `CapabilityDir::reopen_dir(&file)`, antes de rename/delete. `reopen_dir` abre otra vez `.` con `FILE_SHARE_READ | FILE_SHARE_WRITE`; el handle exclusivo original tiene acceso `DELETE` y no comparte delete. El usuario autorizó corregir este fallo de producción, rebasar y actualizar remotos si Layer 3 permanece ≤400 líneas.
+- El CI del head final `8b6bb2d` pasó completo para #647 y #652, incluyendo `Test (windows-latest)` y Coverage/Codecov/SonarCloud. En #650, dos runs `pull_request` del mismo head `de814742` fallaron durante `cargo test --all-features` en tests distintos (`test_sync_mcp_creates_config_files` y `test_sync_mcp_only_creates_for_configured_agents`), ambos con `MCP file DACL is not protected from inheritance`; el run `push` del mismo head pasó Windows. El usuario autorizó investigar y corregir el DACL, manteniendo cada capa ≤400 líneas.
+- Hipótesis principal: `Linker::new` bajo `cfg(test)` asigna el mismo `.agentsync-test-local-data` al parent compartido de distintos `TempDir`; la suite paralela re-aplica DACL a los directorios comunes `agentsync/mcp-ownership`. Los diagnósticos Windows seriales pasaron y las fallas aparecen en la suite paralela. Hipótesis alternativas: carrera de set/readback de DACL de producción en una misma ruta; o comportamiento específico de ACL del runner Windows.
 - Estado inicial: worktree limpio en `feat/cov-coverage-gates`; ocho branches lineales y PRs #645–#652 draft dentro del Stack #653.
 
 ## Archivos y responsabilidades
@@ -129,13 +131,26 @@ cargo test --all-features --lib linker::quarantine_tests::unix_tests::
 - [x] **Paso 7: ejecutar `gh stack push` una sola vez** para actualizar las ocho ramas publicadas mediante el mecanismo `--force-with-lease` de Stack. El push terminó correctamente y los ocho heads remotos coinciden con los locales.
 - [x] **Paso 8: respaldar y rebasar localmente.** Se guardaron refs `backup/windows-dir-quarantine-before-rebase-layer-1` a `-layer-8` y se ejecutó `gh stack rebase --upstack --no-trunk` desde Layer 3. No hubo conflictos ni cambios a `main`; Layers 4–8 quedaron sobre el nuevo Layer 3. Los ocho deltas medidos son 295, 400, 400, 225, 324, 370 y 380 líneas para Layers 1–7, y 329 para Layer 8.
 - [x] **Paso 9: verificar el head rebasado local.** `cargo fmt --all -- --check`, `git diff --check`, `cargo clippy --all-targets --all-features -- -D warnings` y los tests de quarantine pasaron (39/39).
-- [ ] **Paso 10: publicar una sola vez con `gh stack push`**; actualización remota con `--force-with-lease` autorizada. Verificar heads/bases, plantilla de PR, drafts y que no hubo merge.
-- [ ] **Paso 11: verificar CI en los tres sistemas**: tests y generación/subida LCOV Linux, macOS y Windows; cobertura >80% global y en `src/linker/quarantine.rs` y `src/commands/doctor.rs`; checks Codecov/Sonar, build, clippy y demás jobs. Las PRs quedan draft hasta decisión posterior.
+- [x] **Paso 10: publicar con `gh stack push`.** Se actualizaron las ocho refs con `--force-with-lease`; todos los heads remotos coinciden con los locales, las bases conservan la cadena y las PR siguen draft.
+- [x] **Paso 11: verificar los heads publicados de #647 y #652.** CI completo, incluidos Windows, macOS, Linux y E2E, pasó en ambos; Coverage/Codecov/SonarCloud también pasó.
+- [ ] **Paso 12: resolver la falla DACL de #650 y repetir su validación Windows.** Mantener #650 draft; no hacer merge.
+
+## Tarea 4 — Aislar la DACL del fixture de linker (Layer 6)
+
+**Rama:** `feat/cov-quarantine-fault-move` (PR #650); base `feat/cov-quarantine-fault-removal`.
+
+**Archivos candidatos:** `src/linker/mod.rs` (solo fixture `cfg(test)` y regresión).
+
+- [ ] **Paso 1 — RED:** agregar una regresión que cree dos `Linker` desde proyectos `TempDir` hermanos y falle si sus `mcp_ownership_data_root` coinciden. El código actual usa `project_root.parent().join(".agentsync-test-local-data")`, por lo que el test debe demostrar la colisión.
+- [ ] **Paso 2 — GREEN mínimo:** dar a cada proyecto de test un data root hermano y exclusivo, derivado establemente de su root; no cambiar el comportamiento DACL de producción.
+- [ ] **Paso 3 — validar:** ejecutar la regresión en Linux y confirmar en Windows CI que la suite paralela deja de fallar; verificar además los dos tests MCP reportados.
+- [ ] **Paso 4 — presupuesto:** Layer 6 está en 370/400 líneas. Medir el delta contra Layer 5 después de test y fix; si supera 400, parar y pedir autorización, sin rebanar ni ampliar límites.
+- [ ] **Checkpoint Layer 6:** commit convencional solo si el delta permanece ≤400.
 
 ## Evidencia de finalización
 
 - Regresión Unix pasa en ext4; identidad ausente no ejecuta la operación destructiva.
-- Los dos tests Windows de directorio dieron RED en CI antes del fix; deben dar GREEN en CI nativo después del rebase/publicación. El chequeo cruzado local quedó bloqueado por falta de MinGW para `aws-lc-sys`.
+- Los dos tests Windows de directorio dieron RED antes del fix y GREEN en CI después. El DACL MCP es un incidente separado: dos tests distintos fallaron en el run PR de #650; el mismo head pasó en el run push. Su regresión de fixture aún debe comprobarse.
 - `cargo test --all-features`, formato y clippy pasan localmente.
 - Los ocho deltas siguen dentro de 400 líneas y el Stack remoto conserva sus ocho PRs draft, en la misma cadena.
 - Los resultados macOS/Windows se afirman solo con sus runners nativos; LCOV Linux se regenera tras el fix.
@@ -143,7 +158,7 @@ cargo test --all-features --lib linker::quarantine_tests::unix_tests::
 ## Estado
 
 - **Ruta:** Delegated direct; sin SDD.
-- **Autorización:** fail closed, fix de handle Windows, rebase y actualización remota `--force-with-lease` aprobados explícitamente.
-- **TDD:** las dos regresiones Windows existentes dieron RED en el runner nativo antes de cambiar producción; el fix está implementado y su GREEN nativo está pendiente.
+- **Autorización:** fail closed, fix de handle Windows, rebase/`--force-with-lease` y la investigación/corrección del DACL MCP en #650 aprobados explícitamente. No se autoriza exceder 400 líneas por layer ni hacer merge.
+- **TDD:** el error de share mode tuvo RED/GREEN en CI Windows. Para DACL, el RED observado en dos tests/run actual se usará para guiar una regresión local de aislamiento del fixture antes del cambio; el GREEN nativo sigue pendiente.
 - **No autorizado:** merge de PRs, cierre de PRs o cambio de objetivo del Stack.
-- **Estado actual:** fix Windows de directory quarantine implementado en Layer 3 como `d4f2f00`, delta exacto 400. Descendientes 4–8 ya fueron respaldados y rebasados localmente sin conflictos; los ocho deltas están dentro de presupuesto. Fmt, Clippy y los tests de quarantine rebasados (39/39) pasaron. El cross-check Windows local no llegó a compilar por falta de MinGW; falta publicar y obtener GREEN del CI nativo. Las PRs siguen draft y no se hará merge.
+- **Estado actual:** fix de directory quarantine `d4f2f00` publicado en Layer 3 (400 líneas). Las ocho capas se publicaron dentro de presupuesto. CI completo y Coverage/Codecov/SonarCloud pasaron en #647/#652; #650 conserva una falla DACL repetida en tests distintos bajo la suite paralela, mientras el run push del mismo head pasó. Investigación DACL autorizada; Layer 6 permanece en 370/400 y el worktree está limpio antes de añadir la regresión. Todas las PR siguen draft; no hacer merge.
