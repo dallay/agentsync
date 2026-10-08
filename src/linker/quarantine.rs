@@ -12,6 +12,7 @@ use cap_std::fs::Dir as CapabilityDir;
 pub(super) struct EntryIdentity {
     device: u64,
     file: u64,
+    created: Option<cap_std::time::SystemTime>,
 }
 
 pub(super) struct EntryLocation<'a> {
@@ -25,11 +26,15 @@ impl EntryIdentity {
         Self {
             device: metadata.dev(),
             file: metadata.ino(),
+            created: metadata.created().ok(),
         }
     }
 
     pub(super) fn matches(self, metadata: &cap_std::fs::Metadata) -> bool {
-        Self::capture(metadata) == self
+        self.device == metadata.dev()
+            && self.file == metadata.ino()
+            && self.created.is_some()
+            && self.created == metadata.created().ok()
     }
 }
 
@@ -308,8 +313,7 @@ where
                         ));
                     }
                 };
-                let directory_identity = EntryIdentity::capture(&directory_metadata);
-                if directory_identity != expected {
+                if !expected.matches(&directory_metadata) {
                     restore_quarantined(parent, &quarantine_name, name, display_path)?;
                     return Ok(RemoveDirectoryOutcome::Changed);
                 }

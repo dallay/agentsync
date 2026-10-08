@@ -161,6 +161,14 @@ mod unix_tests {
     use tempfile::TempDir;
 
     #[test]
+    #[cfg(target_os = "linux")]
+    fn identity_without_creation_time_is_not_considered_same_generation() {
+        let directory = Dir::open_ambient_dir("/proc/self", ambient_authority()).unwrap();
+        let metadata = directory.metadata(".").unwrap();
+        assert!(!EntryIdentity::capture(&metadata).matches(&metadata));
+    }
+
+    #[test]
     fn remove_matching_symlink_if_unchanged_removes_only_the_link() {
         let temp = TempDir::new().unwrap();
         let target_path = temp.path().join("target.md");

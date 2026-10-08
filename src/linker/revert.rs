@@ -2042,8 +2042,7 @@ fn copy_directory_contents_capability(
                 let child = source_directory.open_dir_nofollow(&name)?;
                 let child_metadata = child.metadata(".")?;
                 anyhow::ensure!(
-                    quarantine::EntryIdentity::capture(&child_metadata)
-                        == quarantine::EntryIdentity::capture(&metadata),
+                    quarantine::EntryIdentity::capture(&metadata).matches(&child_metadata),
                     "Backup directory changed while staging: {}",
                     source_path.display()
                 );
@@ -2061,8 +2060,8 @@ fn copy_directory_contents_capability(
                 let source_file_metadata = source_file.metadata()?;
                 anyhow::ensure!(
                     source_file_metadata.is_file()
-                        && quarantine::EntryIdentity::capture(&source_file_metadata)
-                            == quarantine::EntryIdentity::capture(&metadata),
+                        && quarantine::EntryIdentity::capture(&metadata)
+                            .matches(&source_file_metadata),
                     "Backup file changed while staging: {}",
                     source_path.display()
                 );
