@@ -112,9 +112,9 @@ cargo test --all-features --lib linker::quarantine_tests::unix_tests::
 - [x] **Paso 3: ejecutar `cargo fmt --all -- --check` y `git diff --check`; el delta de Layer 3 contra su base histórica es 392 líneas. La compilación nativa Windows queda para CI.
 - [x] **Checkpoint Layer 3 inicial:** commit `7ecdc3b` tipa el callback Windows; delta histórico 389 inserciones + 3 eliminaciones = 392 líneas.
 - [x] **Paso 4: preservar el RED de CI Windows.** Los dos tests de directorio anteriores fallan en el mismo `reopen_dir` con OS error 32. Este fallo remoto es el RED del cambio: ambos prueban la ruta pública de eliminación/restauración y llegan al punto afectado.
-- [ ] **Paso 5: corregir la apertura sin debilitar el bloqueo.** Añadir `FILE_LIST_DIRECTORY` al `access_mode` original y sustituir la reapertura por `CapabilityDir::from_std_file(file.try_clone()?.into_std())`. `try_clone` comparte el handle existente, evitando un nuevo chequeo de share mode; mantener `FILE_SHARE_READ | FILE_SHARE_WRITE` y no añadir `FILE_SHARE_DELETE`.
-- [ ] **Paso 6: verificar y respetar el presupuesto.** Ejecutar formato y `git diff --check`; medir Layer 3 contra Layer 2 después del cambio. El estimado es 396 líneas cambiadas (392 actuales + 4 del delta); detenerse antes de publicar si el conteo real supera 400. La verificación nativa de los dos tests y suite queda a cargo del runner Windows.
-- [ ] **Checkpoint Layer 3 actualizado:** commit convencional `fix: reuse exclusive Windows quarantine directory handle`.
+- [x] **Paso 5: corregir la apertura sin debilitar el bloqueo.** Añadir `FILE_LIST_DIRECTORY` al `access_mode` original y sustituir la reapertura por `CapabilityDir::from_std_file(file.try_clone()?.into_std())`. `try_clone` comparte el handle existente, evitando un nuevo chequeo de share mode; mantener `FILE_SHARE_READ | FILE_SHARE_WRITE` y no añadir `FILE_SHARE_DELETE`.
+- [x] **Paso 6: verificar localmente y respetar el presupuesto.** `cargo fmt --all -- --check`, `git diff --check` y los 22 tests Unix enfocados pasaron. El `cargo check --all-features --lib --target x86_64-pc-windows-gnu` no pudo completar porque falta `x86_64-w64-mingw32-gcc` para compilar `aws-lc-sys`; esto no verifica el código Windows. El delta real de Layer 3 contra Layer 2 es **exactamente 400 líneas** (393 inserciones + 7 eliminaciones); no añadir más cambios a esa capa. Los dos tests Windows y la suite nativa quedan pendientes de CI.
+- [x] **Checkpoint Layer 3 actualizado:** commit `d4f2f00` (`fix: reuse exclusive Windows quarantine directory handle`).
 
 ## Tarea 3 — Rebasar, publicar y verificar el Stack
 
@@ -133,7 +133,7 @@ cargo test --all-features --lib linker::quarantine_tests::unix_tests::
 ## Evidencia de finalización
 
 - Regresión Unix pasa en ext4; identidad ausente no ejecuta la operación destructiva.
-- Windows compila la suite; el callback del directorio no vacío y el resto de tests ejecutan.
+- Los dos tests Windows de directorio dieron RED en CI antes del fix; deben dar GREEN en CI nativo después del rebase/publicación. El chequeo cruzado local quedó bloqueado por falta de MinGW para `aws-lc-sys`.
 - `cargo test --all-features`, formato y clippy pasan localmente.
 - Los ocho deltas siguen dentro de 400 líneas y el Stack remoto conserva sus ocho PRs draft, en la misma cadena.
 - Los resultados macOS/Windows se afirman solo con sus runners nativos; LCOV Linux se regenera tras el fix.
@@ -142,6 +142,6 @@ cargo test --all-features --lib linker::quarantine_tests::unix_tests::
 
 - **Ruta:** Delegated direct; sin SDD.
 - **Autorización:** fail closed, fix de handle Windows, rebase y actualización remota `--force-with-lease` aprobados explícitamente.
-- **TDD:** usar primero la regresión existente que falla en ext4; añadir el caso sin `created`; implementar después.
+- **TDD:** las dos regresiones Windows existentes dieron RED en el runner nativo antes de cambiar producción; el fix está implementado y su GREEN nativo está pendiente.
 - **No autorizado:** merge de PRs, cierre de PRs o cambio de objetivo del Stack.
-- **Estado actual:** el fail-closed y el tipado Windows están publicados. El CI nativo detectó dos fallos de share mode en la ruta de directorios; su corrección fue autorizada, pero aún no se han modificado fuentes.
+- **Estado actual:** fix Windows de directory quarantine implementado en Layer 3 como `d4f2f00`, delta exacto 400; fmt, Clippy del pre-commit y los tests Unix enfocados pasaron. El cross-check Windows local no llegó a compilar por falta de MinGW; falta rebase/publicación autorizados y resultado del CI nativo. Las PRs siguen draft y no se hará merge.
