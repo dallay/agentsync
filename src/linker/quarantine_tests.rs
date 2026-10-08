@@ -274,18 +274,28 @@ mod windows_tests {
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 mod unix_tests {
     use crate::linker::quarantine::{
-        EntryIdentity, EntryLocation, MoveOutcome, RemoveDirectoryOutcome, RemoveOutcome,
-        UnixQuarantineOps, move_entry_no_replace, remove_empty_directory_if_unchanged,
-        remove_symlink_if_unchanged, remove_unix,
+        CapStdUnixQuarantineOps, EntryIdentity, EntryLocation, MoveOutcome, RemoveDirectoryOutcome,
+        RemoveOutcome, UnixQuarantineOps, move_entry_no_replace,
+        remove_empty_directory_if_unchanged, remove_symlink_if_unchanged, remove_unix,
+        remove_unix_empty_directory,
     };
     use cap_std::ambient_authority;
     use cap_std::fs::Dir;
+    use std::cell::Cell;
     use std::ffi::OsStr;
     use std::fs;
     use std::os::unix::ffi::OsStrExt;
     use std::os::unix::fs::symlink;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use tempfile::TempDir;
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn identity_without_creation_time_is_not_considered_same_generation() {
+        let directory = Dir::open_ambient_dir("/proc/self", ambient_authority()).unwrap();
+        let metadata = directory.metadata(".").unwrap();
+        assert!(!EntryIdentity::capture(&metadata).matches(&metadata));
+    }
 
     struct FailRemoveFileOps;
 
@@ -295,6 +305,87 @@ mod unix_tests {
                 std::io::ErrorKind::PermissionDenied,
                 "injected unlink failure",
             ))
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    enum InjectedFailure {
+        RenameAt(usize, std::io::ErrorKind),
+        RenameAlways(std::io::ErrorKind),
+        OpenDir(std::io::ErrorKind),
+        DirectoryMetadata(std::io::ErrorKind),
+        DirectoryEntries(std::io::ErrorKind),
+        RemoveDir(std::io::ErrorKind),
+    }
+
+    struct FaultOps {
+        failure: InjectedFailure,
+        rename_calls: Cell<usize>,
+    }
+
+    impl FaultOps {
+        fn new(failure: InjectedFailure) -> Self {
+            Self {
+                failure,
+                rename_calls: Cell::new(0),
+            }
+        }
+
+        fn error(kind: std::io::ErrorKind) -> std::io::Error {
+            std::io::Error::new(kind, "injected quarantine operation failure")
+        }
+    }
+
+    impl UnixQuarantineOps for FaultOps {
+        fn rename_no_replace(&self, parent: &Dir, from: &OsStr, to: &OsStr) -> std::io::Result<()> {
+            let call = self.rename_calls.get() + 1;
+            self.rename_calls.set(call);
+            match self.failure {
+                InjectedFailure::RenameAt(fail_at, kind) if call == fail_at => {
+                    return Err(Self::error(kind));
+                }
+                InjectedFailure::RenameAlways(kind) => return Err(Self::error(kind)),
+                _ => {}
+            }
+            CapStdUnixQuarantineOps.rename_no_replace(parent, from, to)
+        }
+
+        fn open_dir_nofollow(&self, parent: &Dir, name: &OsStr) -> std::io::Result<Dir> {
+            if let InjectedFailure::OpenDir(kind) = self.failure {
+                return Err(Self::error(kind));
+            }
+            CapStdUnixQuarantineOps.open_dir_nofollow(parent, name)
+        }
+
+        fn directory_metadata(&self, directory: &Dir) -> std::io::Result<cap_std::fs::Metadata> {
+            if let InjectedFailure::DirectoryMetadata(kind) = self.failure {
+                return Err(Self::error(kind));
+            }
+            CapStdUnixQuarantineOps.directory_metadata(directory)
+        }
+
+        fn directory_has_entries(&self, directory: &Dir) -> std::io::Result<bool> {
+            if let InjectedFailure::DirectoryEntries(kind) = self.failure {
+                return Err(Self::error(kind));
+            }
+            CapStdUnixQuarantineOps.directory_has_entries(directory)
+        }
+
+        fn remove_dir(&self, parent: &Dir, name: &OsStr) -> std::io::Result<()> {
+            if let InjectedFailure::RemoveDir(kind) = self.failure {
+                return Err(Self::error(kind));
+            }
+            CapStdUnixQuarantineOps.remove_dir(parent, name)
+        }
+    }
+
+    struct DifferentDirectoryIdentityOps {
+        replacement_path: PathBuf,
+    }
+
+    impl UnixQuarantineOps for DifferentDirectoryIdentityOps {
+        fn directory_metadata(&self, _directory: &Dir) -> std::io::Result<cap_std::fs::Metadata> {
+            Dir::open_ambient_dir(&self.replacement_path, ambient_authority())?.metadata(".")
         }
     }
 
@@ -327,11 +418,226 @@ mod unix_tests {
     }
 
     #[test]
-    #[cfg(target_os = "linux")]
-    fn identity_without_creation_time_is_not_considered_same_generation() {
-        let directory = Dir::open_ambient_dir("/proc/self", ambient_authority()).unwrap();
-        let metadata = directory.metadata(".").unwrap();
-        assert!(!EntryIdentity::capture(&metadata).matches(&metadata));
+    fn remove_unix_reports_rename_failure_without_losing_link() {
+        let temp = TempDir::new().unwrap();
+        let target_path = temp.path().join("target.md");
+        let link_path = temp.path().join("managed.md");
+        fs::write(&target_path, b"target bytes").unwrap();
+        symlink(&target_path, &link_path).unwrap();
+
+        let parent = Dir::open_ambient_dir(temp.path(), ambient_authority()).unwrap();
+        let name = OsStr::new("managed.md");
+        let expected = EntryIdentity::capture(&parent.symlink_metadata(name).unwrap());
+        let ops = FaultOps::new(InjectedFailure::RenameAt(
+            1,
+            std::io::ErrorKind::PermissionDenied,
+        ));
+        let error = remove_unix(&ops, &parent, name, expected, &link_path, || {}, |_| {})
+            .err()
+            .expect("rename failure should be reported");
+
+        assert!(error.to_string().contains("failed to quarantine"));
+        assert_eq!(fs::read_link(&link_path).unwrap(), target_path);
+    }
+
+    #[test]
+    fn remove_unix_stops_after_sixteen_name_collisions() {
+        let temp = TempDir::new().unwrap();
+        let target_path = temp.path().join("target.md");
+        let link_path = temp.path().join("managed.md");
+        fs::write(&target_path, b"target bytes").unwrap();
+        symlink(&target_path, &link_path).unwrap();
+
+        let parent = Dir::open_ambient_dir(temp.path(), ambient_authority()).unwrap();
+        let name = OsStr::new("managed.md");
+        let expected = EntryIdentity::capture(&parent.symlink_metadata(name).unwrap());
+        let ops = FaultOps::new(InjectedFailure::RenameAlways(
+            std::io::ErrorKind::AlreadyExists,
+        ));
+        let error = remove_unix(&ops, &parent, name, expected, &link_path, || {}, |_| {})
+            .err()
+            .expect("quarantine must stop after the bounded retry count");
+
+        assert!(
+            error
+                .to_string()
+                .contains("could not reserve a unique quarantine name")
+        );
+        assert_eq!(ops.rename_calls.get(), 16);
+        assert_eq!(fs::read_link(&link_path).unwrap(), target_path);
+    }
+
+    #[test]
+    fn remove_unix_empty_directory_restores_after_open_failure() {
+        let temp = TempDir::new().unwrap();
+        let directory_path = temp.path().join("managed");
+        fs::create_dir(&directory_path).unwrap();
+
+        let parent = Dir::open_ambient_dir(temp.path(), ambient_authority()).unwrap();
+        let name = OsStr::new("managed");
+        let expected = EntryIdentity::capture(&parent.symlink_metadata(name).unwrap());
+        let error = remove_unix_empty_directory(
+            &FaultOps::new(InjectedFailure::OpenDir(
+                std::io::ErrorKind::PermissionDenied,
+            )),
+            &parent,
+            name,
+            expected,
+            &directory_path,
+            || {},
+            |_| {},
+        )
+        .err()
+        .expect("open failure should be reported after restoring the directory");
+
+        assert!(error.to_string().contains("the entry was restored"));
+        assert!(directory_path.is_dir());
+        assert_eq!(fs::read_dir(&directory_path).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn remove_unix_empty_directory_restores_after_metadata_failure() {
+        let temp = TempDir::new().unwrap();
+        let directory_path = temp.path().join("managed");
+        fs::create_dir(&directory_path).unwrap();
+
+        let parent = Dir::open_ambient_dir(temp.path(), ambient_authority()).unwrap();
+        let name = OsStr::new("managed");
+        let expected = EntryIdentity::capture(&parent.symlink_metadata(name).unwrap());
+        let error = remove_unix_empty_directory(
+            &FaultOps::new(InjectedFailure::DirectoryMetadata(
+                std::io::ErrorKind::PermissionDenied,
+            )),
+            &parent,
+            name,
+            expected,
+            &directory_path,
+            || {},
+            |_| {},
+        )
+        .err()
+        .expect("directory metadata failure should restore the directory");
+
+        assert!(error.to_string().contains("the entry was restored"));
+        assert!(directory_path.is_dir());
+        assert_eq!(fs::read_dir(&directory_path).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn remove_unix_empty_directory_restores_when_opened_identity_changes() {
+        let temp = TempDir::new().unwrap();
+        let directory_path = temp.path().join("managed");
+        let replacement_path = temp.path().join("replacement");
+        fs::create_dir(&directory_path).unwrap();
+        fs::create_dir(&replacement_path).unwrap();
+
+        let parent = Dir::open_ambient_dir(temp.path(), ambient_authority()).unwrap();
+        let name = OsStr::new("managed");
+        let expected = EntryIdentity::capture(&parent.symlink_metadata(name).unwrap());
+        let ops = DifferentDirectoryIdentityOps { replacement_path };
+        let outcome = remove_unix_empty_directory(
+            &ops,
+            &parent,
+            name,
+            expected,
+            &directory_path,
+            || {},
+            |_| {},
+        )
+        .unwrap();
+
+        assert!(matches!(outcome, RemoveDirectoryOutcome::Changed));
+        assert!(directory_path.is_dir());
+        assert_eq!(fs::read_dir(&directory_path).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn remove_unix_empty_directory_restores_after_entries_failure() {
+        let temp = TempDir::new().unwrap();
+        let directory_path = temp.path().join("managed");
+        fs::create_dir(&directory_path).unwrap();
+
+        let parent = Dir::open_ambient_dir(temp.path(), ambient_authority()).unwrap();
+        let name = OsStr::new("managed");
+        let expected = EntryIdentity::capture(&parent.symlink_metadata(name).unwrap());
+        let error = remove_unix_empty_directory(
+            &FaultOps::new(InjectedFailure::DirectoryEntries(
+                std::io::ErrorKind::PermissionDenied,
+            )),
+            &parent,
+            name,
+            expected,
+            &directory_path,
+            || {},
+            |_| {},
+        )
+        .err()
+        .expect("directory enumeration failure should restore the directory");
+
+        assert!(error.to_string().contains("the entry was restored"));
+        assert!(directory_path.is_dir());
+        assert_eq!(fs::read_dir(&directory_path).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn remove_unix_empty_directory_restores_after_remove_failure() {
+        let temp = TempDir::new().unwrap();
+        let directory_path = temp.path().join("managed");
+        fs::create_dir(&directory_path).unwrap();
+
+        let parent = Dir::open_ambient_dir(temp.path(), ambient_authority()).unwrap();
+        let name = OsStr::new("managed");
+        let expected = EntryIdentity::capture(&parent.symlink_metadata(name).unwrap());
+        let error = remove_unix_empty_directory(
+            &FaultOps::new(InjectedFailure::RemoveDir(
+                std::io::ErrorKind::PermissionDenied,
+            )),
+            &parent,
+            name,
+            expected,
+            &directory_path,
+            || {},
+            |_| {},
+        )
+        .err()
+        .expect("directory removal failure should restore the directory");
+
+        assert!(error.to_string().contains("the entry was restored"));
+        assert!(directory_path.is_dir());
+        assert_eq!(fs::read_dir(&directory_path).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn remove_unix_empty_directory_stops_after_sixteen_name_collisions() {
+        let temp = TempDir::new().unwrap();
+        let directory_path = temp.path().join("managed");
+        fs::create_dir(&directory_path).unwrap();
+
+        let parent = Dir::open_ambient_dir(temp.path(), ambient_authority()).unwrap();
+        let name = OsStr::new("managed");
+        let expected = EntryIdentity::capture(&parent.symlink_metadata(name).unwrap());
+        let ops = FaultOps::new(InjectedFailure::RenameAlways(
+            std::io::ErrorKind::AlreadyExists,
+        ));
+        let error = remove_unix_empty_directory(
+            &ops,
+            &parent,
+            name,
+            expected,
+            &directory_path,
+            || {},
+            |_| {},
+        )
+        .err()
+        .expect("directory quarantine should stop after bounded retries");
+
+        assert!(
+            error
+                .to_string()
+                .contains("could not reserve a unique quarantine name")
+        );
+        assert_eq!(ops.rename_calls.get(), 16);
+        assert!(directory_path.is_dir());
     }
 
     #[test]
