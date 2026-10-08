@@ -38,7 +38,7 @@
 
 **Archivos:** `src/linker/quarantine.rs`, `src/linker/enumerate.rs`, `src/linker/revert.rs`, `src/linker/quarantine_tests.rs`.
 
-- [ ] **Paso 1: confirmar RED en el branch Layer 2.** Ejecutar el test existente en un directorio `TMPDIR` del filesystem ext4; se espera el fallo en la aserción que espera `RemoveOutcome::Changed`.
+- [x] **Paso 1: confirmar RED en el branch Layer 2.** Ejecutar el test existente en un directorio `TMPDIR` del filesystem ext4; se observó el fallo en la aserción que espera `RemoveOutcome::Changed`.
 
 ```bash
 probe=$(mktemp -d "$CARGO_TARGET_DIR/quarantine-red.XXXXXX")
@@ -53,7 +53,7 @@ TMPDIR="$test_tmp" CARGO_TARGET_DIR="$CARGO_TARGET_DIR" \
 
 Esperado: fallo de la aserción del outcome en ext4 por identidad `dev/ino` reutilizada. El test no debe fallar por compilación o fixture.
 
-- [ ] **Paso 2: escribir y ejecutar la prueba fail-closed antes del cambio.** Linux `/proc` no ofrece creation time. El test debe confirmar primero que la metadata no lo trae y luego fallar en la aserción de `matches` con el comportamiento actual:
+- [x] **Paso 2: escribir y ejecutar la prueba fail-closed antes del cambio.** En este runner Linux, `/proc/self` no ofrece creation time (`Metadata::created()` devuelve `Unsupported`); el test verifica que esa metadata no autoriza una coincidencia:
 
 ```rust
 #[test]
@@ -61,18 +61,15 @@ Esperado: fallo de la aserción del outcome en ext4 por identidad `dev/ino` reut
 fn identity_without_creation_time_is_not_considered_same_generation() {
     let directory = Dir::open_ambient_dir("/proc/self", ambient_authority()).unwrap();
     let metadata = directory.metadata(".").unwrap();
-    assert!(metadata.created().is_err());
-
-    let identity = EntryIdentity::capture(&metadata);
-    assert!(!identity.matches(&metadata));
+    assert!(!EntryIdentity::capture(&metadata).matches(&metadata));
 }
 ```
 
 Run: `cargo test --all-features --lib linker::quarantine_tests::unix_tests::identity_without_creation_time_is_not_considered_same_generation -- --exact --nocapture`.
 
-Esperado antes del fix: falla en la última aserción porque `matches` solo compara `device`/`file`. Si `/proc` ofrece creation time en un runner futuro, el primer assert debe detener el test con un mensaje claro, no validar el camino incorrecto.
+Esperado antes del fix: falla porque `matches` solo compara `device`/`file`. El fixture `/proc/self` fue confirmado localmente sin `created()`.
 
-- [ ] **Paso 3: implementar la comparación mínima.** La identidad debe conservar el timestamp cap-std copiable y comparable:
+- [x] **Paso 3: implementar la comparación mínima.** La identidad conserva el timestamp cap-std copiable y comparable:
 
 ```rust
 struct EntryIdentity {
@@ -82,18 +79,15 @@ struct EntryIdentity {
 }
 
 fn matches(self, metadata: &cap_std::fs::Metadata) -> bool {
-    let Some(expected_created) = self.created else { return false };
-    let Ok(actual_created) = metadata.created() else { return false };
-
-    self.device == metadata.dev()
-        && self.file == metadata.ino()
-        && expected_created == actual_created
+    self.device == metadata.dev() && self.file == metadata.ino()
+        && self.created.is_some()
+        && self.created == metadata.created().ok()
 }
 ```
 
-`capture` obtiene `metadata.created().ok()`. Auditar `==`/`!=` directos en `quarantine.rs`, `enumerate.rs` y `revert.rs`: reemplazar cualquier comparación que autorice borrar, mover, publicar, copiar o reutilizar una entrada por `EntryIdentity::capture(expected_metadata).matches(actual_metadata)`. Si la metadata capturada o actual no ofrece `created()`, devolver false: preservar la entrada y no completar la operación destructiva.
+`capture` obtiene `metadata.created().ok()`. Las comparaciones directas que autorizaban borrar, mover, publicar o copiar se reemplazaron por `EntryIdentity::matches` sobre la metadata actual. Si la metadata capturada o actual no ofrece `created()`, `matches` devuelve false: preservar la entrada y no completar la operación destructiva.
 
-- [ ] **Paso 4: verificar GREEN y el fail-closed.** Repetir la regresión de reemplazo en ext4 y la prueba Linux sobre `/proc`; ambas deben pasar. Ejecutar después los tests Unix de quarantine.
+- [x] **Paso 4: verificar GREEN y el fail-closed.** La regresión de reemplazo en ext4, el test Linux sobre `/proc`, los tests Unix de quarantine y la suite completa pasaron.
 
 ```bash
 test_tmp="$CARGO_TARGET_DIR"
@@ -103,8 +97,8 @@ AGENTSYNC_LOCAL_SKILLS_REPO="$AGENTSYNC_LOCAL_SKILLS_REPO" \
 cargo test --all-features --lib linker::quarantine_tests::unix_tests::
 ```
 
-- [ ] **Paso 5: validar formato, lint y presupuesto de Layer 2.** Ejecutar `cargo fmt --all -- --check`, `cargo clippy --all-targets --all-features -- -D warnings`, `git diff --check`; contar las líneas cambiadas contra `feat/cov-quarantine-windows` antes de commitear. Tope: 400.
-- [ ] **Checkpoint Layer 2:** un commit convencional que agrupe identidad, regresión y tests fail-closed; no incluir cambios de Layer 3.
+- [x] **Paso 5: validar formato, lint y presupuesto de Layer 2.** `cargo fmt --all -- --check`, Clippy estricto y `git diff --check` pasaron; delta final: 400 líneas.
+- [x] **Checkpoint Layer 2:** commit `9fab24d` agrupa identidad, regresión y tests fail-closed; no incluye cambios de Layer 3.
 
 ## Tarea 2 — Corregir compilación Windows en Layer 3
 
@@ -112,21 +106,21 @@ cargo test --all-features --lib linker::quarantine_tests::unix_tests::
 
 **Archivo:** `src/linker/quarantine_tests.rs`.
 
-- [ ] **Paso 1: conservar el diagnóstico RED de CI.** La compilación Windows da `implementation of FnOnce is not general enough` para `after_move`; confirma que la closure no está tipada y que la suite filtrada ni llega a ejecutar el test de backup.
-- [ ] **Paso 2: aplicar el cambio mínimo:** cambiar `move |_| { ... }` por `move |_: &std::path::Path| { ... }` en `remove_nonempty_directory_if_unchanged_restores_contents`.
-- [ ] **Paso 3: ejecutar `cargo fmt --all -- --check` y `git diff --check`; contar el delta de Layer 3 contra `feat/cov-quarantine-removal`, máximo 400 líneas. No modificar tests Unix ni código de producción en este branch.
-- [ ] **Checkpoint Layer 3:** commit convencional separado que solo tipa el callback Windows.
+- [x] **Paso 1: conservar el diagnóstico RED de CI.** Windows reportó `implementation of FnOnce is not general enough` para `after_move`; la suite filtrada no llegó a ejecutar el test de backup.
+- [x] **Paso 2: aplicar el cambio mínimo:** cambiar `move |_| { ... }` por `move |_: &std::path::Path| { ... }` en `remove_nonempty_directory_if_unchanged_restores_contents`.
+- [x] **Paso 3: ejecutar `cargo fmt --all -- --check` y `git diff --check`; el delta de Layer 3 contra su base histórica es 392 líneas. La compilación nativa Windows queda para CI.
+- [x] **Checkpoint Layer 3:** commit `7ecdc3b` tipa el callback Windows.
 
 ## Tarea 3 — Rebasar, publicar y verificar el Stack
 
 **Ramas descendientes:** `feat/cov-unix-ops-seam`, `feat/cov-quarantine-fault-removal`, `feat/cov-quarantine-fault-move`, `feat/cov-doctor-cli`, `feat/cov-coverage-gates`.
 
-- [ ] **Paso 1: guardar puntos de recuperación locales** de los ocho heads actuales y confirmar que no hay cambios ajenos ni actividad remota nueva en las PRs.
-- [ ] **Paso 2: con `feat/cov-quarantine-move` activo, ejecutar `gh stack rebase --upstack --no-trunk`**; así se rebasan Layer 3 y las capas superiores sin mover `main`. Si hay conflicto, detenerse en el archivo reportado y resolver solo la equivalencia del Stack; si la resolución no es mecánica, parar y pedir decisión.
-- [ ] **Paso 3: comprobar el grafo.** `gh stack view --json` debe mostrar el orden lineal exacto, cada PR con la base inmediata correcta y los ocho heads locales correspondientes a sus PRs abiertas.
-- [ ] **Paso 4: medir los ocho deltas** contra sus padres y confirmar cada uno ≤400 antes de cualquier push.
+- [x] **Paso 1: guardar puntos de recuperación locales** `backup/quarantine-identity-before-rebase-layer-1` a `-layer-8`; las refs remotas no habían cambiado.
+- [x] **Paso 2: con `feat/cov-quarantine-move` activo, ejecutar `gh stack rebase --upstack --no-trunk`**; rebasó Layers 3–8 sin mover `main`. Se resolvió un conflicto mecánico en `quarantine.rs` preservando fail-closed y la seam; otro conflicto de inserción conservó el test de identity y los FaultOps. Layer 5 quedó en 324 líneas.
+- [x] **Paso 3: comprobar el grafo.** `gh stack view --json` muestra la cadena lineal de ocho ramas, sus bases inmediatas y PRs abiertas.
+- [x] **Paso 4: medir los ocho deltas** contra sus padres: 295, 400, 392, 225, 324, 370, 380 y 329; todos ≤400.
 - [ ] **Paso 5: actualizar descripciones de PR #646–#652** con el propósito, tests y deltas nuevos, manteniendo la plantilla y Chain Context; conservar todos los drafts y no hacer merge.
-- [ ] **Paso 6: actualizar `plan/tasks/cross-platform-coverage-80.md`** con el fail-closed, la closure Windows, el resultado de coverage y los límites de evidencia por OS.
+- [x] **Paso 6: actualizar `plan/tasks/cross-platform-coverage-80.md`** con el fail-closed, la closure Windows, el resultado de coverage y los límites de evidencia por OS.
 - [ ] **Paso 7: ejecutar `gh stack push` una sola vez** para actualizar las ocho ramas publicadas mediante el mecanismo `--force-with-lease` de Stack. Si hay rechazo o fallo parcial, inspeccionar refs/PRs y no reintentar a ciegas.
 - [ ] **Paso 8: verificar CI en los tres sistemas**: tests y generación/subida LCOV Linux, macOS y Windows; cobertura >80% global y en `src/linker/quarantine.rs` y `src/commands/doctor.rs`; checks Codecov/Sonar, build y clippy. Las PRs quedan draft hasta decisión posterior.
 
@@ -144,4 +138,4 @@ cargo test --all-features --lib linker::quarantine_tests::unix_tests::
 - **Autorización:** fail closed + rebase y actualización remota `--force-with-lease` aprobados explícitamente.
 - **TDD:** usar primero la regresión existente que falla en ext4; añadir el caso sin `created`; implementar después.
 - **No autorizado:** merge de PRs, cierre de PRs o cambio de objetivo del Stack.
-- **Estado actual:** plan persistido; aún no se han editado fuentes.
+- **Estado actual:** Layers 2/3 corregidas y commiteadas; el rebase local terminó; RPI local actualizada. Faltan los cuerpos de PR, `gh stack push` y CI nativa.
