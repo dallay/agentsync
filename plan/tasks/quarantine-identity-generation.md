@@ -127,8 +127,10 @@ cargo test --all-features --lib linker::quarantine_tests::unix_tests::
 - [x] **Paso 5: actualizar descripciones de PR #646–#652** con el propósito, tests y deltas nuevos, manteniendo la plantilla y Chain Context; conservar todos los drafts y no hacer merge.
 - [x] **Paso 6: actualizar `plan/tasks/cross-platform-coverage-80.md`** con el fail-closed, la closure Windows, el resultado de coverage y los límites de evidencia por OS.
 - [x] **Paso 7: ejecutar `gh stack push` una sola vez** para actualizar las ocho ramas publicadas mediante el mecanismo `--force-with-lease` de Stack. El push terminó correctamente y los ocho heads remotos coinciden con los locales.
-- [ ] **Paso 8: tras el fix Windows, respaldar las puntas locales, rebasar Layers 4–8 y publicar con `gh stack push`** (mecanismo `--force-with-lease` autorizado). Revisar cada delta y detenerse si cualquiera supera 400 líneas.
-- [ ] **Paso 9: verificar CI en los tres sistemas**: tests y generación/subida LCOV Linux, macOS y Windows; cobertura >80% global y en `src/linker/quarantine.rs` y `src/commands/doctor.rs`; checks Codecov/Sonar, build y clippy. Las PRs quedan draft hasta decisión posterior.
+- [x] **Paso 8: respaldar y rebasar localmente.** Se guardaron refs `backup/windows-dir-quarantine-before-rebase-layer-1` a `-layer-8` y se ejecutó `gh stack rebase --upstack --no-trunk` desde Layer 3. No hubo conflictos ni cambios a `main`; Layers 4–8 quedaron sobre el nuevo Layer 3. Los ocho deltas medidos son 295, 400, 400, 225, 324, 370 y 380 líneas para Layers 1–7, y 329 para Layer 8.
+- [x] **Paso 9: verificar el head rebasado local.** `cargo fmt --all -- --check`, `git diff --check`, `cargo clippy --all-targets --all-features -- -D warnings` y los tests de quarantine pasaron (39/39).
+- [ ] **Paso 10: publicar una sola vez con `gh stack push`**; actualización remota con `--force-with-lease` autorizada. Verificar heads/bases, plantilla de PR, drafts y que no hubo merge.
+- [ ] **Paso 11: verificar CI en los tres sistemas**: tests y generación/subida LCOV Linux, macOS y Windows; cobertura >80% global y en `src/linker/quarantine.rs` y `src/commands/doctor.rs`; checks Codecov/Sonar, build, clippy y demás jobs. Las PRs quedan draft hasta decisión posterior.
 
 ## Evidencia de finalización
 
@@ -144,4 +146,4 @@ cargo test --all-features --lib linker::quarantine_tests::unix_tests::
 - **Autorización:** fail closed, fix de handle Windows, rebase y actualización remota `--force-with-lease` aprobados explícitamente.
 - **TDD:** las dos regresiones Windows existentes dieron RED en el runner nativo antes de cambiar producción; el fix está implementado y su GREEN nativo está pendiente.
 - **No autorizado:** merge de PRs, cierre de PRs o cambio de objetivo del Stack.
-- **Estado actual:** fix Windows de directory quarantine implementado en Layer 3 como `d4f2f00`, delta exacto 400; fmt, Clippy del pre-commit y los tests Unix enfocados pasaron. El cross-check Windows local no llegó a compilar por falta de MinGW; falta rebase/publicación autorizados y resultado del CI nativo. Las PRs siguen draft y no se hará merge.
+- **Estado actual:** fix Windows de directory quarantine implementado en Layer 3 como `d4f2f00`, delta exacto 400. Descendientes 4–8 ya fueron respaldados y rebasados localmente sin conflictos; los ocho deltas están dentro de presupuesto. Fmt, Clippy y los tests de quarantine rebasados (39/39) pasaron. El cross-check Windows local no llegó a compilar por falta de MinGW; falta publicar y obtener GREEN del CI nativo. Las PRs siguen draft y no se hará merge.
