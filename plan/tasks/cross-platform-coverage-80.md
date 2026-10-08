@@ -21,7 +21,7 @@ Cadena lineal; cada PR depende de la inmediatamente anterior. Budget: 400 línea
 | 5/8 | `feat/cov-quarantine-fault-removal` | `feat/cov-unix-ops-seam` | `feat/cov-unix-ops-seam` | `FaultOps` para errores de remove/directorio y rollback. | 314 |
 | 6/8 | `feat/cov-quarantine-fault-move` | `feat/cov-quarantine-fault-removal` | `feat/cov-quarantine-fault-removal` | Fallos de move/publish, reemplazo concurrente y restauración. | 370 |
 | 7/8 | `feat/cov-doctor-cli` | `feat/cov-quarantine-fault-move` | `feat/cov-quarantine-fault-move` | Ocho tests CLI black-box para Doctor. | 380 |
-| 8/8 | `feat/cov-coverage-gates` | `feat/cov-doctor-cli` | `feat/cov-doctor-cli` | CI/Codecov/Sonar y tracker RPI. | pendiente |
+| 8/8 | `feat/cov-coverage-gates` | `feat/cov-doctor-cli` | `feat/cov-doctor-cli` | CI/Codecov/Sonar y tracker RPI. | 182 |
 
 - Issue: None. Linear URL: None.
 - El Stack local contiene ya las ocho branches en el orden indicado; layers 1–7 están committeadas localmente. Layer 8 está en curso.
@@ -31,17 +31,17 @@ Cadena lineal; cada PR depende de la inmediatamente anterior. Budget: 400 línea
 
 - HEAD actual: `3171f32792e78393e854bfdc11b3932b056abd16` (`main`, sincronizada con `origin/main`).
 - Baseline textual local Linux antes de tests nuevos: 89.12% líneas, 89.33% regiones, 86.26% funciones; 1202 tests pasaron, 0 fallaron, 6 ignorados.
-- `src/linker/quarantine.rs`: baseline Linux 59.46%; las pruebas Unix están separadas en `src/linker/quarantine_tests.rs`. LCOV Linux (`DA`) da 98.56%; la tabla textual de `cargo llvm-cov report` marca 69.67% en `Lines` y 66.16% en `Regions`. Son métricas distintas. La medición inline de 80.98% se descarta por incluir líneas de test.
+- `src/linker/quarantine.rs`: baseline Linux 59.46%; antes de separar el Stack el LCOV Linux (`DA`) daba 98.56%; la tabla textual de `cargo llvm-cov report` marcaba 69.67% en `Lines` y 66.16% en `Regions`. Son métricas distintas. La medición inline de 80.98% se descarta por incluir líneas de test.
 - `src/commands/doctor.rs`: 8 pruebas black-box multiplataforma nuevas en `tests/test_doctor_cli.rs`; LCOV Linux actual 96.74%. La evidencia macOS/Windows sigue pendiente de CI.
 - `codecov.yml` usa `target: auto`, `threshold: 1%`; cobertura CI está solo en Ubuntu.
 - Árbol antes del trabajo: archivo preexistente `plan/tasks/revert-review-632-633-remediation.md` sigue sin seguimiento; conservarlo intacto.
 
 ## Estado actual
 
-- `UnixQuarantineOps` y `CapStdUnixQuarantineOps` están implementados solo en la ruta no-Windows; Windows conserva sus operaciones por handles. Hay 39 pruebas Unix y 6 pruebas Windows en `src/linker/quarantine_tests.rs`; los tests Unix se ejecutaron localmente.
-- LCOV Linux recién generado: `src/linker/quarantine.rs` 411/417 (98.56%), `src/commands/doctor.rs` 504/521 (96.74%) y unión de Rust bajo `src/` 28,541/31,211 (91.45%). En la tabla textual, `quarantine.rs` registra 69.67% en `Lines` y 66.16% en `Regions`; el gate está configurado para los informes LCOV enviados a Codecov.
-- `cargo test --all-features`: 1,249 pasaron, 0 fallaron, 6 ignorados. `cargo fmt --all -- --check` y Clippy estricto pasan. La sintaxis YAML pasó con `js-yaml`; el validador oficial de Codecov respondió `Valid!`.
-- La comprobación cruzada Windows no pudo compilar por falta de `x86_64-w64-mingw32-gcc`; macOS y Windows aún requieren evidencia de sus runners nativos.
+- `UnixQuarantineOps` y `CapStdUnixQuarantineOps` están implementados solo en la ruta no-Windows; Windows conserva sus operaciones por handles. El Stack contiene 38 pruebas Unix y 6 Windows en `src/linker/quarantine_tests.rs`; los tests Unix se ejecutaron localmente.
+- LCOV Linux recién generado en el Stack: `src/linker/quarantine.rs` 410/417 (98.32%), `src/commands/doctor.rs` 504/521 (96.74%) y unión de Rust bajo `src/` 28,541/31,211 (91.45%). En la tabla textual, `quarantine.rs` registra 69.67% en `Lines` y 66.16% en `Regions`; el gate está configurado para los informes LCOV enviados a Codecov.
+- `cargo test --all-features`: 1,248 pasaron, 0 fallaron, 6 ignorados. `cargo fmt --all -- --check` y Clippy estricto pasan. La sintaxis YAML pasó con `js-yaml`; el validador oficial de Codecov respondió `Valid!`.
+- El cross-check Windows sigue bloqueado localmente por falta de `x86_64-w64-mingw32-gcc`; macOS y Windows requieren runners nativos. Push/CI todavía pendientes por error interno anterior de GitHub.
 
 ## Aceptación
 
@@ -65,8 +65,8 @@ Cadena lineal; cada PR depende de la inmediatamente anterior. Budget: 400 línea
 - [x] Ajustar `sonarcloud.yml` para conservar el reporte Sonar Linux sin duplicar el upload Codecov no etiquetado.
 - [x] Reemplazar targets Codecov relativos por un piso global y seis status path+flag para los dos archivos críticos; cada status falla si falta su reporte. El YAML pasó el validador oficial.
 - [x] Esperar los tres uploads OS con `codecov.notify.after_n_builds: 3` para evitar evaluar statuses antes de completar la matriz.
-- [x] Confirmar la métrica del gate: Codecov consume LCOV `DA`; Linux registra 411/417 líneas para `quarantine.rs`, 504/521 para `doctor.rs` y 91.45% de unión en `src/`. Conservar aparte la cifra regional/textual de `cargo llvm-cov`.
-- [x] Ejecutar verificaciones locales: `cargo test --all-features` (1,249/0/6), `cargo fmt --all -- --check`, Clippy estricto, parseo YAML y validador Codecov.
+- [x] Confirmar la métrica del gate: Codecov consume LCOV `DA`; el Stack Linux registra 410/417 líneas para `quarantine.rs`, 504/521 para `doctor.rs` y 91.45% de unión en `src/`. Conservar aparte la cifra regional/textual de `cargo llvm-cov`.
+- [x] Ejecutar verificaciones locales: `cargo test --all-features` (1,248/0/6), `cargo fmt --all -- --check`, Clippy estricto, parseo YAML y validador Codecov.
 - [ ] Revisar evidencia CI nativa para macOS y Windows; hasta entonces no dar por satisfechos los umbrales por OS.
 
 ## Evidencia y riesgos
