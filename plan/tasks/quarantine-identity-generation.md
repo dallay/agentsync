@@ -134,8 +134,9 @@ cargo test --all-features --lib linker::quarantine_tests::unix_tests::
 - [x] **Paso 10: publicar con `gh stack push`.** Se actualizaron las ocho refs con `--force-with-lease`; todos los heads remotos coinciden con los locales, las bases conservan la cadena y las PR siguen draft.
 - [x] **Paso 11: verificar los heads publicados de #647 y #652.** CI completo, incluidos Windows, macOS, Linux y E2E, pasó en ambos; Coverage/Codecov/SonarCloud también pasó.
 - [x] **Paso 12: corregir el aislamiento del fixture DACL en #650 y rebasar descendientes.** Commit Layer 6 `885392a`; `gh stack rebase --upstack --no-trunk` desde Layer 6 terminó sin conflictos ni cambios a `main`. Los deltas actuales son 295, 400, 400, 225, 324, 400, 380 y 346; todos ≤400.
-- [ ] **Paso 13: publicar con `gh stack push`** usando los leases actuales y confirmar que las ocho refs remotas y bases coinciden; mantener todas las PR draft y no hacer merge.
-- [ ] **Paso 14: verificar CI nuevo.** Confirmar en #650 que los tests MCP DACL paralelos y el resto de Windows/Linux/macOS/E2E pasan; volver a confirmar CI completo y Coverage/Codecov/SonarCloud del top #652.
+- [x] **Paso 13: publicar con `gh stack push`.** Se actualizaron las ocho refs con leases; los heads remotos coinciden con los locales, las bases son lineales y todas las PR siguen draft.
+- [x] **Paso 14: verificar CI de los heads afectados.** En #650, run PR `37821748872` pasó la suite Windows paralela, Linux, macOS y E2E; Coverage/Codecov/SonarCloud `37821749007` pasó. En el top #652, CI `37821747827` y Coverage/SonarCloud `37821747892` pasaron.
+- [x] **Paso 15: revisar checks históricos duplicados.** El push antiguo de #645 (`37766029556`) falló Windows, pero el posterior run PR del mismo head (`37766803237`) pasó; #651 tuvo Rustfmt pendiente en su run push, pero el run PR `37821747854` pasó. No se reejecutaron: la autorización explícita de rerun cubría solo #650.
 
 ## Tarea 4 — Aislar la DACL del fixture de linker (Layer 6)
 
@@ -145,16 +146,16 @@ cargo test --all-features --lib linker::quarantine_tests::unix_tests::
 
 - [x] **Paso 1 — RED:** `default_mcp_ownership_data_roots_are_isolated_per_project` falló como esperado: ambos `Linker` devolvieron `/tmp/.agentsync-test-local-data`.
 - [x] **Paso 2 — GREEN mínimo:** `Linker::new` deriva el test data root como hermano único usando el nombre estable del project root. El cambio es solo `cfg(test)`; no modifica la política DACL de producción.
-- [ ] **Paso 3 — validar Windows:** la regresión local y los 8 tests Linux `linker::tests::test_sync_mcp_` pasan. Confirmar en CI Windows que la suite paralela ya no falla en ownership DACL.
+- [x] **Paso 3 — validar Windows:** la regresión local y los 8 tests Linux `linker::tests::test_sync_mcp_` pasaron; el run PR #650 `37821748872` pasó `Test (windows-latest)` con la suite completa.
 - [x] **Paso 4 — presupuesto:** delta medido contra Layer 5: exactamente 400 líneas (398 inserciones + 2 eliminaciones); no añadir más cambios a Layer 6.
 - [x] **Checkpoint Layer 6:** commit `885392a` (`test: isolate MCP ownership fixture roots`).
 - [x] **Paso 5 — rebase local:** se respaldaron las ocho puntas bajo `backup/mcp-dacl-fixture-v2-before-rebase-layer-1` a `-layer-8`; Layers 7–8 quedaron sobre `885392a`, sin conflictos.
-- [ ] **Paso 6 — publicar/validar:** publicar los heads rebased y confirmar en CI Windows que el aislamiento del fixture elimina la falla DACL bajo ejecución paralela.
+- [x] **Paso 6 — publicar/validar:** Layer 6 se publicó dentro del stack; la suite Windows paralela pasó en #650. El CI completo y Coverage/Codecov/SonarCloud del top #652 también pasaron.
 
 ## Evidencia de finalización
 
 - Regresión Unix pasa en ext4; identidad ausente no ejecuta la operación destructiva.
-- Los dos tests Windows de directorio dieron RED antes del fix y GREEN en CI después. La falla DACL MCP se reprodujo en dos tests distintos del mismo head PR #650; el run push paralelo pasó. El fixture local ya quedó aislado y la regresión Linux pasa; falta la confirmación nativa Windows del nuevo head.
+- Los dos tests Windows de directorio dieron RED antes del fix y GREEN en CI después. La falla DACL MCP se reprodujo en dos tests distintos de #650; el fixture quedó aislado y el rerun Windows pasó. Los jobs PR de #645 y #651 pasan en sus heads actuales, aunque GitHub conserva un fallo/pending de runs push antiguos.
 - `cargo test --all-features`, formato y clippy pasan localmente.
 - Los ocho deltas siguen dentro de 400 líneas y el Stack remoto conserva sus ocho PRs draft, en la misma cadena.
 - Los resultados macOS/Windows se afirman solo con sus runners nativos; LCOV Linux se regenera tras el fix.
@@ -163,6 +164,6 @@ cargo test --all-features --lib linker::quarantine_tests::unix_tests::
 
 - **Ruta:** Delegated direct; sin SDD.
 - **Autorización:** fail closed, fix de handle Windows, rebase/`--force-with-lease` y la investigación/corrección del DACL MCP en #650 aprobados explícitamente. No se autoriza exceder 400 líneas por layer ni hacer merge.
-- **TDD:** el error de share mode tuvo RED/GREEN en CI Windows. Para DACL, la regresión local observó RED por roots compartidos y quedó GREEN tras aislarlos; el GREEN nativo de la suite paralela sigue pendiente.
+- **TDD:** el error de share mode tuvo RED/GREEN en CI Windows. Para DACL, la regresión local observó los roots compartidos y quedó GREEN tras aislarlos; el GREEN nativo pasó en el rerun de #650.
 - **No autorizado:** merge de PRs, cierre de PRs o cambio de objetivo del Stack.
-- **Estado actual:** fix de directory quarantine `d4f2f00` publicado en Layer 3 (400 líneas). La regresión DACL pasó de RED a GREEN en Linux; el fix de fixture está comprometido como `885392a` en Layer 6 (400 líneas) y Layers 7–8 ya están rebasadas localmente. Las ocho capas siguen dentro del límite; falta publicar el rebase y confirmar Windows CI. Todas las PR siguen draft; no hacer merge.
+- **Estado actual:** fix de directory quarantine `d4f2f00` y aislamiento DACL `885392a` publicados; Layers 3 y 6 miden exactamente 400 líneas. Las ocho capas permanecen bajo el límite, todas las PR siguen abiertas/draft y no se hizo merge. CI completo y Coverage/Codecov/Sonar pasó en los heads finales de #650/#652; Windows MCP DACL está verde. GitHub aún lista dos estados antiguos de `push` en #645/#651, mientras que sus runs `pull_request` del mismo head pasaron; no se relanzaron.
