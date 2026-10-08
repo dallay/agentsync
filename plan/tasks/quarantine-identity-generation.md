@@ -141,11 +141,11 @@ cargo test --all-features --lib linker::quarantine_tests::unix_tests::
 
 **Archivos candidatos:** `src/linker/mod.rs` (solo fixture `cfg(test)` y regresión).
 
-- [ ] **Paso 1 — RED:** agregar una regresión que cree dos `Linker` desde proyectos `TempDir` hermanos y falle si sus `mcp_ownership_data_root` coinciden. El código actual usa `project_root.parent().join(".agentsync-test-local-data")`, por lo que el test debe demostrar la colisión.
-- [ ] **Paso 2 — GREEN mínimo:** dar a cada proyecto de test un data root hermano y exclusivo, derivado establemente de su root; no cambiar el comportamiento DACL de producción.
-- [ ] **Paso 3 — validar:** ejecutar la regresión en Linux y confirmar en Windows CI que la suite paralela deja de fallar; verificar además los dos tests MCP reportados.
-- [ ] **Paso 4 — presupuesto:** Layer 6 está en 370/400 líneas. Medir el delta contra Layer 5 después de test y fix; si supera 400, parar y pedir autorización, sin rebanar ni ampliar límites.
-- [ ] **Checkpoint Layer 6:** commit convencional solo si el delta permanece ≤400.
+- [x] **Paso 1 — RED:** `default_mcp_ownership_data_roots_are_isolated_per_project` falló como esperado: ambos `Linker` devolvieron `/tmp/.agentsync-test-local-data`.
+- [x] **Paso 2 — GREEN mínimo:** `Linker::new` deriva el test data root como hermano único usando el nombre estable del project root. El cambio es solo `cfg(test)`; no modifica la política DACL de producción.
+- [ ] **Paso 3 — validar Windows:** la regresión local y los 8 tests Linux `linker::tests::test_sync_mcp_` pasan. Confirmar en CI Windows que la suite paralela ya no falla en ownership DACL.
+- [x] **Paso 4 — presupuesto:** delta medido contra Layer 5: exactamente 400 líneas (398 inserciones + 2 eliminaciones); no añadir más cambios a Layer 6.
+- [x] **Checkpoint Layer 6:** commit `885392a` (`test: isolate MCP ownership fixture roots`).
 
 ## Evidencia de finalización
 
@@ -159,6 +159,6 @@ cargo test --all-features --lib linker::quarantine_tests::unix_tests::
 
 - **Ruta:** Delegated direct; sin SDD.
 - **Autorización:** fail closed, fix de handle Windows, rebase/`--force-with-lease` y la investigación/corrección del DACL MCP en #650 aprobados explícitamente. No se autoriza exceder 400 líneas por layer ni hacer merge.
-- **TDD:** el error de share mode tuvo RED/GREEN en CI Windows. Para DACL, el RED observado en dos tests/run actual se usará para guiar una regresión local de aislamiento del fixture antes del cambio; el GREEN nativo sigue pendiente.
+- **TDD:** el error de share mode tuvo RED/GREEN en CI Windows. Para DACL, la regresión local observó RED por roots compartidos y quedó GREEN tras aislarlos; el GREEN nativo de la suite paralela sigue pendiente.
 - **No autorizado:** merge de PRs, cierre de PRs o cambio de objetivo del Stack.
-- **Estado actual:** fix de directory quarantine `d4f2f00` publicado en Layer 3 (400 líneas). Las ocho capas se publicaron dentro de presupuesto. CI completo y Coverage/Codecov/SonarCloud pasaron en #647/#652; #650 conserva una falla DACL repetida en tests distintos bajo la suite paralela, mientras el run push del mismo head pasó. Investigación DACL autorizada; Layer 6 permanece en 370/400 y el worktree está limpio antes de añadir la regresión. Todas las PR siguen draft; no hacer merge.
+- **Estado actual:** fix de directory quarantine `d4f2f00` publicado en Layer 3 (400 líneas). La regresión DACL de fixture pasó de RED a GREEN en Linux; el fix test-only está comprometido como `885392a` en Layer 6, exactamente 400 líneas. Layers 7–8 todavía requieren rebase/publicación sobre esa punta y CI Windows nativo; no se afirma aún que el DACL esté resuelto en runner. Todas las PR siguen draft; no hacer merge.
