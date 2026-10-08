@@ -275,7 +275,8 @@ mod windows_tests {
 mod unix_tests {
     use crate::linker::quarantine::{
         EntryIdentity, EntryLocation, MoveOutcome, RemoveDirectoryOutcome, RemoveOutcome,
-        move_entry_no_replace, remove_empty_directory_if_unchanged, remove_symlink_if_unchanged,
+        UnixQuarantineOps, move_entry_no_replace, remove_empty_directory_if_unchanged,
+        remove_symlink_if_unchanged, remove_unix,
     };
     use cap_std::ambient_authority;
     use cap_std::fs::Dir;
@@ -285,6 +286,45 @@ mod unix_tests {
     use std::os::unix::fs::symlink;
     use std::path::Path;
     use tempfile::TempDir;
+
+    struct FailRemoveFileOps;
+
+    impl UnixQuarantineOps for FailRemoveFileOps {
+        fn remove_file_or_symlink(&self, _parent: &Dir, _name: &OsStr) -> std::io::Result<()> {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "injected unlink failure",
+            ))
+        }
+    }
+
+    #[test]
+    fn remove_unix_restores_managed_link_when_unlink_fails() {
+        let temp = TempDir::new().unwrap();
+        let target_path = temp.path().join("target.md");
+        let link_path = temp.path().join("managed.md");
+        fs::write(&target_path, b"target bytes").unwrap();
+        symlink(&target_path, &link_path).unwrap();
+
+        let parent = Dir::open_ambient_dir(temp.path(), ambient_authority()).unwrap();
+        let name = OsStr::new("managed.md");
+        let expected = EntryIdentity::capture(&parent.symlink_metadata(name).unwrap());
+        let error = remove_unix(
+            &FailRemoveFileOps,
+            &parent,
+            name,
+            expected,
+            &link_path,
+            || {},
+            |_| {},
+        )
+        .err()
+        .expect("unlink failure must be reported after restoring the link");
+
+        assert!(error.to_string().contains("the entry was restored"));
+        assert_eq!(fs::read_link(&link_path).unwrap(), target_path);
+        assert_eq!(fs::read(&target_path).unwrap(), b"target bytes");
+    }
 
     #[test]
     #[cfg(target_os = "linux")]
