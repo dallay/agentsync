@@ -677,15 +677,15 @@ where
 {
     use cap_std::fs::{OpenOptions, OpenOptionsExt};
     use windows_sys::Win32::Storage::FileSystem::{
-        DELETE, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES,
-        FILE_SHARE_READ, FILE_SHARE_WRITE, SYNCHRONIZE,
+        DELETE, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_LIST_DIRECTORY,
+        FILE_READ_ATTRIBUTES, FILE_SHARE_READ, FILE_SHARE_WRITE, SYNCHRONIZE,
     };
 
     let mut options = OpenOptions::new();
     options
         .read(true)
         .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS)
-        .access_mode(DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE)
+        .access_mode(DELETE | FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES | SYNCHRONIZE)
         .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE);
     let file = match parent.open_with(name, &options) {
         Ok(file) => file,
@@ -699,7 +699,7 @@ where
         return Ok(RemoveDirectoryOutcome::Changed);
     }
     before_move();
-    let directory = CapabilityDir::reopen_dir(&file)?;
+    let directory = CapabilityDir::from_std_file(file.try_clone()?.into_std());
     let display_parent = display_path.parent().unwrap_or_else(|| Path::new("."));
 
     for _ in 0..16 {
