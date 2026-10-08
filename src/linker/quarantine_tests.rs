@@ -179,7 +179,7 @@ mod windows_tests {
         let name = OsStr::new("managed");
         let expected = EntryIdentity::capture(&parent.symlink_metadata(name).unwrap());
         let temp_path = temp.path().to_path_buf();
-        let after_move = move |_| {
+        let after_move = move |_: &std::path::Path| {
             let quarantined = fs::read_dir(&temp_path)
                 .unwrap()
                 .map(|entry| entry.unwrap().path())
