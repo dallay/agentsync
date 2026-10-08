@@ -81,17 +81,17 @@ struct EntryIdentity {
     created: Option<cap_std::time::SystemTime>,
 }
 
-fn same_generation(self, other: Self) -> bool {
-    self.device == other.device
-        && self.file == other.file
-        && matches!(
-            (self.created, other.created),
-            (Some(expected), Some(actual)) if expected == actual
-        )
+fn matches(self, metadata: &cap_std::fs::Metadata) -> bool {
+    let Some(expected_created) = self.created else { return false };
+    let Ok(actual_created) = metadata.created() else { return false };
+
+    self.device == metadata.dev()
+        && self.file == metadata.ino()
+        && expected_created == actual_created
 }
 ```
 
-`capture` obtiene `metadata.created().ok()`; `matches(metadata)` captura la metadata actual y delega en `same_generation`. Auditar `==`/`!=` directos en `quarantine.rs`, `enumerate.rs` y `revert.rs`: cualquier comparación que autorice borrar, mover, publicar, copiar o reutilizar una entrada debe exigir una generación comprobable. Una metadata `created()` ausente significa “no verificable”: preservar la entrada y no completar la operación destructiva.
+`capture` obtiene `metadata.created().ok()`. Auditar `==`/`!=` directos en `quarantine.rs`, `enumerate.rs` y `revert.rs`: reemplazar cualquier comparación que autorice borrar, mover, publicar, copiar o reutilizar una entrada por `EntryIdentity::capture(expected_metadata).matches(actual_metadata)`. Si la metadata capturada o actual no ofrece `created()`, devolver false: preservar la entrada y no completar la operación destructiva.
 
 - [ ] **Paso 4: verificar GREEN y el fail-closed.** Repetir la regresión de reemplazo en ext4 y la prueba Linux sobre `/proc`; ambas deben pasar. Ejecutar después los tests Unix de quarantine.
 
