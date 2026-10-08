@@ -2,9 +2,9 @@
 
 > **Para el agente que implemente:** ejecutar las tareas en orden sobre el Stack existente; cada tarea entrega una capa revisable y verificable.
 
-**Objetivo:** evitar que una entrada reemplazada se confunda con la original cuando el filesystem reutiliza su par `dev/ino`, y restaurar la compilación de los tests Windows.
+**Objetivo:** evitar que una entrada reemplazada se confunda con la original cuando el filesystem reutiliza su par `dev/ino`, y corregir la apertura Windows del directorio en quarantine.
 
-**Arquitectura:** ampliar `EntryIdentity` con la hora de creación expuesta por `cap_std::fs::Metadata::created()`. Las comparaciones que autorizan una operación destructiva deben exigir que ambas identidades tengan esa señal y coincidan; si falta, no se elimina ni mueve la entrada. Auditar las comparaciones directas de identidad para que no eludan esta política. Tipar explícitamente el argumento `Path` de la closure Windows.
+**Arquitectura:** ampliar `EntryIdentity` con la hora de creación expuesta por `cap_std::fs::Metadata::created()`. Las comparaciones que autorizan una operación destructiva deben exigir que ambas identidades tengan esa señal y coincidan; si falta, no se elimina ni mueve la entrada. Auditar las comparaciones directas de identidad para que no eludan esta política. En Windows, pedir `FILE_LIST_DIRECTORY` en el handle exclusivo existente y construir `CapabilityDir` desde un clon de ese handle, sin reabrir el path ni permitir `FILE_SHARE_DELETE`.
 
 **Stack y presupuesto:** estrategia `github-stacked-prs`; corregir Layer 2 (`feat/cov-quarantine-removal`) y Layer 3 (`feat/cov-quarantine-move`), luego rebasar Layers 3–8 y actualizar las ocho ramas remotas con `--force-with-lease`. Mantener cada layer en ≤400 líneas cambiadas; si alguna excede el presupuesto, detenerse y pedir autorización, sin crear capas ni excepción automáticamente. Mantener las ocho PRs como draft; no hacer merge.
 
@@ -19,6 +19,7 @@
 - `ctime` no es señal válida después de quarantine: cambia al renombrar el symlink, archivo o directorio. `created()` cambió al recrear la entrada y se mantuvo al renombrarla en ext4; la comprobación también obtuvo `created()` en tmpfs.
 - Rust documenta la fuente como `statx btime` en Linux, `birthtime` en otros Unix y `ftCreationTime` en Windows. Puede no existir en algunos filesystems; en ese caso la operación destructiva debe preservar la entrada y reportar/categorizar el resultado como cambiado/no verificable.
 - CI Windows falla durante la compilación de tests en `src/linker/quarantine_tests.rs:195`, antes de ejecutar la prueba enfocada de backup. El compilador identifica la closure declarada en la línea 182 y recomienda tipar su argumento como `&std::path::Path`.
+- En el CI Windows del head `a5cb45e`, los tests `remove_empty_directory_if_unchanged_removes_empty_directory` y `remove_nonempty_directory_if_unchanged_restores_contents` fallan con OS error 32 al ejecutar `CapabilityDir::reopen_dir(&file)`, antes de rename/delete. `reopen_dir` abre otra vez `.` con `FILE_SHARE_READ | FILE_SHARE_WRITE`; el handle exclusivo original tiene acceso `DELETE` y no comparte delete. El usuario autorizó corregir este fallo de producción, rebasar y actualizar remotos si Layer 3 permanece ≤400 líneas.
 - Estado inicial: worktree limpio en `feat/cov-coverage-gates`; ocho branches lineales y PRs #645–#652 draft dentro del Stack #653.
 
 ## Archivos y responsabilidades
@@ -100,16 +101,20 @@ cargo test --all-features --lib linker::quarantine_tests::unix_tests::
 - [x] **Paso 5: validar formato, lint y presupuesto de Layer 2.** `cargo fmt --all -- --check`, Clippy estricto y `git diff --check` pasaron; delta final: 400 líneas.
 - [x] **Checkpoint Layer 2:** commit `9fab24d` agrupa identidad, regresión y tests fail-closed; no incluye cambios de Layer 3.
 
-## Tarea 2 — Corregir compilación Windows en Layer 3
+## Tarea 2 — Corregir quarantine de directorios en Windows (Layer 3)
 
 **Rama:** `feat/cov-quarantine-move` (`9a3e2d9`, PR #647); base `feat/cov-quarantine-removal`.
 
-**Archivo:** `src/linker/quarantine_tests.rs`.
+**Archivos:** `src/linker/quarantine.rs`, `src/linker/quarantine_tests.rs`.
 
 - [x] **Paso 1: conservar el diagnóstico RED de CI.** Windows reportó `implementation of FnOnce is not general enough` para `after_move`; la suite filtrada no llegó a ejecutar el test de backup.
 - [x] **Paso 2: aplicar el cambio mínimo:** cambiar `move |_| { ... }` por `move |_: &std::path::Path| { ... }` en `remove_nonempty_directory_if_unchanged_restores_contents`.
 - [x] **Paso 3: ejecutar `cargo fmt --all -- --check` y `git diff --check`; el delta de Layer 3 contra su base histórica es 392 líneas. La compilación nativa Windows queda para CI.
-- [x] **Checkpoint Layer 3:** commit `7ecdc3b` tipa el callback Windows.
+- [x] **Checkpoint Layer 3 inicial:** commit `7ecdc3b` tipa el callback Windows; delta histórico 389 inserciones + 3 eliminaciones = 392 líneas.
+- [x] **Paso 4: preservar el RED de CI Windows.** Los dos tests de directorio anteriores fallan en el mismo `reopen_dir` con OS error 32. Este fallo remoto es el RED del cambio: ambos prueban la ruta pública de eliminación/restauración y llegan al punto afectado.
+- [ ] **Paso 5: corregir la apertura sin debilitar el bloqueo.** Añadir `FILE_LIST_DIRECTORY` al `access_mode` original y sustituir la reapertura por `CapabilityDir::from_std_file(file.try_clone()?.into_std())`. `try_clone` comparte el handle existente, evitando un nuevo chequeo de share mode; mantener `FILE_SHARE_READ | FILE_SHARE_WRITE` y no añadir `FILE_SHARE_DELETE`.
+- [ ] **Paso 6: verificar y respetar el presupuesto.** Ejecutar formato y `git diff --check`; medir Layer 3 contra Layer 2 después del cambio. El estimado es 396 líneas cambiadas (392 actuales + 4 del delta); detenerse antes de publicar si el conteo real supera 400. La verificación nativa de los dos tests y suite queda a cargo del runner Windows.
+- [ ] **Checkpoint Layer 3 actualizado:** commit convencional `fix: reuse exclusive Windows quarantine directory handle`.
 
 ## Tarea 3 — Rebasar, publicar y verificar el Stack
 
@@ -122,7 +127,8 @@ cargo test --all-features --lib linker::quarantine_tests::unix_tests::
 - [x] **Paso 5: actualizar descripciones de PR #646–#652** con el propósito, tests y deltas nuevos, manteniendo la plantilla y Chain Context; conservar todos los drafts y no hacer merge.
 - [x] **Paso 6: actualizar `plan/tasks/cross-platform-coverage-80.md`** con el fail-closed, la closure Windows, el resultado de coverage y los límites de evidencia por OS.
 - [x] **Paso 7: ejecutar `gh stack push` una sola vez** para actualizar las ocho ramas publicadas mediante el mecanismo `--force-with-lease` de Stack. El push terminó correctamente y los ocho heads remotos coinciden con los locales.
-- [ ] **Paso 8: verificar CI en los tres sistemas**: tests y generación/subida LCOV Linux, macOS y Windows; cobertura >80% global y en `src/linker/quarantine.rs` y `src/commands/doctor.rs`; checks Codecov/Sonar, build y clippy. Las PRs quedan draft hasta decisión posterior.
+- [ ] **Paso 8: tras el fix Windows, respaldar las puntas locales, rebasar Layers 4–8 y publicar con `gh stack push`** (mecanismo `--force-with-lease` autorizado). Revisar cada delta y detenerse si cualquiera supera 400 líneas.
+- [ ] **Paso 9: verificar CI en los tres sistemas**: tests y generación/subida LCOV Linux, macOS y Windows; cobertura >80% global y en `src/linker/quarantine.rs` y `src/commands/doctor.rs`; checks Codecov/Sonar, build y clippy. Las PRs quedan draft hasta decisión posterior.
 
 ## Evidencia de finalización
 
@@ -135,7 +141,7 @@ cargo test --all-features --lib linker::quarantine_tests::unix_tests::
 ## Estado
 
 - **Ruta:** Delegated direct; sin SDD.
-- **Autorización:** fail closed + rebase y actualización remota `--force-with-lease` aprobados explícitamente.
+- **Autorización:** fail closed, fix de handle Windows, rebase y actualización remota `--force-with-lease` aprobados explícitamente.
 - **TDD:** usar primero la regresión existente que falla en ext4; añadir el caso sin `created`; implementar después.
 - **No autorizado:** merge de PRs, cierre de PRs o cambio de objetivo del Stack.
-- **Estado actual:** Layers 2/3 corregidas, rebasadas y publicadas; cuerpos de PR actualizados. CI nativa está en curso; cualquier actualización final del tracker quedará en Layer 8.
+- **Estado actual:** el fail-closed y el tipado Windows están publicados. El CI nativo detectó dos fallos de share mode en la ruta de directorios; su corrección fue autorizada, pero aún no se han modificado fuentes.
