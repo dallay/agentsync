@@ -133,7 +133,9 @@ cargo test --all-features --lib linker::quarantine_tests::unix_tests::
 - [x] **Paso 9: verificar el head rebasado local.** `cargo fmt --all -- --check`, `git diff --check`, `cargo clippy --all-targets --all-features -- -D warnings` y los tests de quarantine pasaron (39/39).
 - [x] **Paso 10: publicar con `gh stack push`.** Se actualizaron las ocho refs con `--force-with-lease`; todos los heads remotos coinciden con los locales, las bases conservan la cadena y las PR siguen draft.
 - [x] **Paso 11: verificar los heads publicados de #647 y #652.** CI completo, incluidos Windows, macOS, Linux y E2E, pasó en ambos; Coverage/Codecov/SonarCloud también pasó.
-- [ ] **Paso 12: resolver la falla DACL de #650 y repetir su validación Windows.** Mantener #650 draft; no hacer merge.
+- [x] **Paso 12: corregir el aislamiento del fixture DACL en #650 y rebasar descendientes.** Commit Layer 6 `885392a`; `gh stack rebase --upstack --no-trunk` desde Layer 6 terminó sin conflictos ni cambios a `main`. Los deltas actuales son 295, 400, 400, 225, 324, 400, 380 y 346; todos ≤400.
+- [ ] **Paso 13: publicar con `gh stack push`** usando los leases actuales y confirmar que las ocho refs remotas y bases coinciden; mantener todas las PR draft y no hacer merge.
+- [ ] **Paso 14: verificar CI nuevo.** Confirmar en #650 que los tests MCP DACL paralelos y el resto de Windows/Linux/macOS/E2E pasan; volver a confirmar CI completo y Coverage/Codecov/SonarCloud del top #652.
 
 ## Tarea 4 — Aislar la DACL del fixture de linker (Layer 6)
 
@@ -146,11 +148,13 @@ cargo test --all-features --lib linker::quarantine_tests::unix_tests::
 - [ ] **Paso 3 — validar Windows:** la regresión local y los 8 tests Linux `linker::tests::test_sync_mcp_` pasan. Confirmar en CI Windows que la suite paralela ya no falla en ownership DACL.
 - [x] **Paso 4 — presupuesto:** delta medido contra Layer 5: exactamente 400 líneas (398 inserciones + 2 eliminaciones); no añadir más cambios a Layer 6.
 - [x] **Checkpoint Layer 6:** commit `885392a` (`test: isolate MCP ownership fixture roots`).
+- [x] **Paso 5 — rebase local:** se respaldaron las ocho puntas bajo `backup/mcp-dacl-fixture-v2-before-rebase-layer-1` a `-layer-8`; Layers 7–8 quedaron sobre `885392a`, sin conflictos.
+- [ ] **Paso 6 — publicar/validar:** publicar los heads rebased y confirmar en CI Windows que el aislamiento del fixture elimina la falla DACL bajo ejecución paralela.
 
 ## Evidencia de finalización
 
 - Regresión Unix pasa en ext4; identidad ausente no ejecuta la operación destructiva.
-- Los dos tests Windows de directorio dieron RED antes del fix y GREEN en CI después. El DACL MCP es un incidente separado: dos tests distintos fallaron en el run PR de #650; el mismo head pasó en el run push. Su regresión de fixture aún debe comprobarse.
+- Los dos tests Windows de directorio dieron RED antes del fix y GREEN en CI después. La falla DACL MCP se reprodujo en dos tests distintos del mismo head PR #650; el run push paralelo pasó. El fixture local ya quedó aislado y la regresión Linux pasa; falta la confirmación nativa Windows del nuevo head.
 - `cargo test --all-features`, formato y clippy pasan localmente.
 - Los ocho deltas siguen dentro de 400 líneas y el Stack remoto conserva sus ocho PRs draft, en la misma cadena.
 - Los resultados macOS/Windows se afirman solo con sus runners nativos; LCOV Linux se regenera tras el fix.
@@ -161,4 +165,4 @@ cargo test --all-features --lib linker::quarantine_tests::unix_tests::
 - **Autorización:** fail closed, fix de handle Windows, rebase/`--force-with-lease` y la investigación/corrección del DACL MCP en #650 aprobados explícitamente. No se autoriza exceder 400 líneas por layer ni hacer merge.
 - **TDD:** el error de share mode tuvo RED/GREEN en CI Windows. Para DACL, la regresión local observó RED por roots compartidos y quedó GREEN tras aislarlos; el GREEN nativo de la suite paralela sigue pendiente.
 - **No autorizado:** merge de PRs, cierre de PRs o cambio de objetivo del Stack.
-- **Estado actual:** fix de directory quarantine `d4f2f00` publicado en Layer 3 (400 líneas). La regresión DACL de fixture pasó de RED a GREEN en Linux; el fix test-only está comprometido como `885392a` en Layer 6, exactamente 400 líneas. Layers 7–8 todavía requieren rebase/publicación sobre esa punta y CI Windows nativo; no se afirma aún que el DACL esté resuelto en runner. Todas las PR siguen draft; no hacer merge.
+- **Estado actual:** fix de directory quarantine `d4f2f00` publicado en Layer 3 (400 líneas). La regresión DACL pasó de RED a GREEN en Linux; el fix de fixture está comprometido como `885392a` en Layer 6 (400 líneas) y Layers 7–8 ya están rebasadas localmente. Las ocho capas siguen dentro del límite; falta publicar el rebase y confirmar Windows CI. Todas las PR siguen draft; no hacer merge.
