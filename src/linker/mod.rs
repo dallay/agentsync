@@ -27,6 +27,8 @@ mod discovery;
 mod enumerate;
 mod paths;
 mod quarantine;
+#[cfg(test)]
+mod quarantine_tests;
 mod revert;
 mod symlinks;
 pub mod timing;
@@ -148,7 +150,10 @@ impl Linker {
         #[cfg(test)]
         let mcp_ownership_data_root = {
             let parent = project_root.parent().unwrap_or(&project_root);
-            Some(parent.join(".agentsync-test-local-data"))
+            let project_name = project_root
+                .file_name()
+                .unwrap_or_else(|| std::ffi::OsStr::new("root"));
+            Some(parent.join(".agentsync-test-local-data").join(project_name))
         };
 
         Self {
@@ -1071,6 +1076,31 @@ mod tests {
     #[cfg(unix)]
     use std::os::unix::fs::symlink;
     use tempfile::TempDir;
+
+    #[test]
+    fn default_mcp_ownership_data_roots_are_isolated_per_project() {
+        let first_project = TempDir::new().unwrap();
+        let second_project = TempDir::new().unwrap();
+        let make_linker = |project_root: &Path| {
+            test_support::make_linker(
+                project_root,
+                false,
+                test_support::make_target(
+                    "source",
+                    "destination",
+                    crate::config::SyncType::Symlink,
+                ),
+            )
+        };
+
+        let first = make_linker(first_project.path());
+        let second = make_linker(second_project.path());
+
+        assert_ne!(
+            first.mcp_ownership_data_root,
+            second.mcp_ownership_data_root
+        );
+    }
 
     #[test]
     fn legacy_mcp_warning_requires_an_active_configured_destination() {

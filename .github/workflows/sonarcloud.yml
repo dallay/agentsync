@@ -34,10 +34,9 @@ env:
 
 jobs:
   coverage-and-analysis:
-    name: Coverage, Codecov, and SonarCloud
+    name: Coverage and SonarCloud
     runs-on: ubuntu-latest
     env:
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       AGENTSYNC_LOCAL_SKILLS_REPO: ${{ github.workspace }}/agents-skills
 
@@ -74,7 +73,7 @@ jobs:
             ${{ runner.os }}-cargo-coverage-
 
       - name: Install cargo-llvm-cov
-        run: cargo install cargo-llvm-cov --locked
+        run: cargo install cargo-llvm-cov --version 0.9.1 --locked
 
       - name: Generate Rust coverage reports
         run: |
@@ -82,24 +81,6 @@ jobs:
           mkdir -p target/coverage
           cargo llvm-cov --workspace --all-features --lcov --output-path target/coverage/rust.lcov.info
           cargo llvm-cov report --cobertura --output-path target/coverage/rust-cobertura.xml
-
-      - name: Upload coverage to Codecov
-        if: ${{ env.CODECOV_TOKEN != '' }}
-        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7
-        with:
-          files: target/coverage/rust.lcov.info
-          fail_ci_if_error: true
-          verbose: true
-        env:
-          CODECOV_TOKEN: ${{ env.CODECOV_TOKEN }}
-
-      - name: Upload coverage to Codecov (tokenless)
-        if: ${{ env.CODECOV_TOKEN == '' }}
-        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7
-        with:
-          files: target/coverage/rust.lcov.info
-          fail_ci_if_error: true
-          verbose: true
 
       - name: Analyze with SonarCloud
         if: ${{ env.SONAR_TOKEN != '' && (github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork) }}

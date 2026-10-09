@@ -249,9 +249,8 @@ impl Linker {
             hook(&canonical_root);
         }
         let opened = Self::open_absolute_directory_nofollow(&canonical_root)?;
-        let opened_identity = quarantine::EntryIdentity::capture(&opened.metadata(".")?);
         anyhow::ensure!(
-            opened_identity == expected_identity,
+            expected_identity.matches(&opened.metadata(".")?),
             "Project root changed while opening its no-follow capability: {}",
             canonical_root.display()
         );
