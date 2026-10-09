@@ -38,6 +38,8 @@ For a skipped restore, safely save or resolve any later edits and retry `revert`
 
 If there is no journal from an earlier AgentSync version, `revert` cannot reconstruct the pre-apply file. It leaves the MCP config as-is and warns when relevant; it does not delete servers based on their names or values. Reverting plugin-generated MCP output uses the same snapshot and does not resolve, materialize, or run plugins.
 
+This snapshot mechanism applies uniformly to all 10 MCP formats, including Claude Desktop (global config), Gemini CLI, OpenCode, and Z-Code, whose files carry extra top-level settings alongside the server list. Those settings are preserved by the byte-exact restore, so no format-specific removal logic is needed.
+
 #### Journal location and privacy
 
 The journal is stored at `AGENTSYNC_DATA_DIR/agentsync/mcp-ownership/<sha256-canonical-project-root>/ownership.json` when `AGENTSYNC_DATA_DIR` is set; otherwise it uses `dirs::data_local_dir()/agentsync/mcp-ownership/<sha256-canonical-project-root>/ownership.json`. A project rooted exactly at the user's home directory may use the OS default local data directory beneath that root. An explicit `AGENTSYNC_DATA_DIR` must still resolve outside the project root, even for a home-directory project. The platform data directory is:

@@ -105,7 +105,10 @@ plugin = "engineering"
     assert!(opencode["mcp"][expected_name].is_object());
 
     // Revert consumes the saved file snapshot; it does not materialize plugin
-    // servers again or infer ownership from their names.
+    // servers again or infer ownership from their names. Removing the
+    // marketplace entirely before revert proves no re-resolution happens:
+    // with nothing left to materialize from, only the journal can restore.
+    fs::remove_dir_all(project_root.join("marketplace")).unwrap();
     let revert_result = linker.restore_mcp_ownership(false, None).unwrap();
     assert_eq!(revert_result.errors, 0);
     assert_eq!(revert_result.updated, 4);

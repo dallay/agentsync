@@ -782,6 +782,26 @@ impl Linker {
             | enumerate::NestedGlobDiscoveryStatus::Complete => None,
         };
         if let Some((search_root, reason)) = incomplete_discovery {
+            // Missing search root is exactly when orphans exist: the
+            // source-driven loop has no entries, but the dest-side scan can
+            // still restore dangling twins. Other incomplete states
+            // (unsafe root, walk errors) stay fail-closed with no mutations.
+            let missing_root = reason.contains("does not exist");
+            if !missing_root {
+                result.skipped += 1;
+                println!(
+                    "  {} Revert skipped: nested-glob source discovery is incomplete for {}: {}",
+                    "!".yellow(),
+                    search_root.display(),
+                    reason
+                );
+                tracing::warn!(
+                    search_root = %search_root.display(),
+                    reason = %reason,
+                    "Skipping nested-glob revert because source discovery is incomplete"
+                );
+                return Ok(());
+            }
             result.skipped += 1;
             println!(
                 "  {} Revert skipped: nested-glob source discovery is incomplete for {}: {}",
@@ -792,13 +812,15 @@ impl Linker {
             tracing::warn!(
                 search_root = %search_root.display(),
                 reason = %reason,
-                "Skipping nested-glob revert because source discovery is incomplete"
+                "Source discovery incomplete; attempting dest-side orphan restore"
             );
+            let handled = HashSet::new();
+            self.revert_nested_glob_orphans(target_config, options, result, &handled)?;
             return Ok(());
         }
 
-        for item in enumeration.entries {
-            let dest = match item.dest {
+        for item in &enumeration.entries {
+            let dest = match &item.dest {
                 Ok(dest) => dest,
                 Err(s) => {
                     result.errors += 1;
@@ -807,8 +829,183 @@ impl Linker {
                 }
             };
             // The match's source full path is exactly what apply linked from.
-            let expected = self.relative_path(&dest, &item.source, false).ok();
-            self.revert_destination(&dest, expected, options, result)?;
+            let expected = self.relative_path(dest, &item.source, false).ok();
+            self.revert_destination(dest, expected, options, result)?;
+        }
+        // Phase 2 (issue #635.3): source discovery only sees live sources, so a
+        // source file deleted after apply leaves its symlink plus `.bak` twin
+        // orphaned. Scan dest-side for those twins with strict ownership:
+        // dangling symlink into the search root + regular `.bak` sibling +
+        // static template affix match. Unrelated `.bak` files stay untouched.
+        let mut handled = HashSet::with_capacity(enumeration.entries.len());
+        for item in &enumeration.entries {
+            if let Ok(dest) = &item.dest {
+                handled.insert(dest.clone());
+            }
+        }
+        self.revert_nested_glob_orphans(target_config, options, result, &handled)?;
+        Ok(())
+    }
+
+    /// Static affix of a nested-glob destination template: text before the
+    /// first `{` placeholder and text after the last `}` placeholder.
+    /// Used to scope the orphan scan and to reject unrelated `.bak` twins
+    /// without enumerating sources.
+    fn nested_glob_template_affix(template: &str) -> (String, String) {
+        let prefix = match template.find('{') {
+            Some(idx) => &template[..idx],
+            None => template,
+        };
+        let suffix = match template.rfind('}') {
+            Some(idx) => &template[idx + 1..],
+            None => "",
+        };
+        (prefix.to_string(), suffix.to_string())
+    }
+
+    /// Dest-side orphan scan for nested-glob targets (issue #635.3).
+    ///
+    /// Finds `dest` + `dest.bak` twins where `dest` is a dangling symlink
+    /// into this target's search root. Each candidate reuses
+    /// `revert_destination` so quarantine, TOCTOU, `dry_run`, `keep_backups`
+    /// and backup-restore guards stay identical to the source-driven path.
+    /// Anything that does not meet every ownership check is ignored silently
+    /// so user-owned `.bak` files never inflate skip counters.
+    fn revert_nested_glob_orphans(
+        &self,
+        target_config: &crate::config::TargetConfig,
+        options: &SyncOptions,
+        result: &mut SyncResult,
+        handled: &HashSet<PathBuf>,
+    ) -> Result<()> {
+        let (prefix, suffix) = Self::nested_glob_template_affix(&target_config.destination);
+        let search_root = self.project_root.join(&target_config.source);
+        let scan_root = if prefix.is_empty() {
+            self.project_root.clone()
+        } else {
+            self.project_root.join(&prefix)
+        };
+        if !scan_root.exists() || !scan_root.is_dir() {
+            return Ok(());
+        }
+        if self.revalidate_path(&scan_root).is_err() {
+            return Ok(());
+        }
+        let suffix_needle = suffix.trim_start_matches(['/', '\\']).to_string();
+
+        // Phase 1: collect candidates without mutating, so a walk error
+        // aborts fail-closed before any symlink is touched.
+        let mut candidates: Vec<(PathBuf, PathBuf)> = Vec::new();
+        let mut walk_failed = false;
+        let walker = walkdir::WalkDir::new(&scan_root)
+            .follow_links(false)
+            .sort_by_file_name()
+            .into_iter();
+        for entry in walker.filter_entry(|entry| {
+            if entry.depth() == 0 {
+                return true;
+            }
+            let name = entry.file_name().to_string_lossy();
+            // Never descend into VCS/build/source internals for orphans:
+            // managed nested-glob destinations are project files, not repo
+            // metadata. Skipping here only narrows the scan, never widens it.
+            !(name == ".git" || name == ".agents" || name == "target" || name == "node_modules")
+        }) {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(error) => {
+                    walk_failed = true;
+                    tracing::warn!(error = %error, "Nested-glob orphan scan hit a walk error; aborting scan fail-closed");
+                    break;
+                }
+            };
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            let backup_path = entry.path().to_path_buf();
+            let backup_name = backup_path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            if !backup_name.ends_with(".bak") {
+                continue;
+            }
+            // Sibling destination: strip exactly one trailing `.bak`.
+            let backup_str = backup_path.to_string_lossy().into_owned();
+            let Some(dest_str) = backup_str.strip_suffix(".bak") else {
+                continue;
+            };
+            let dest = PathBuf::from(dest_str);
+            if handled.contains(&dest) {
+                continue;
+            }
+            // Template affix match on the project-relative destination.
+            let Ok(dest_rel) = dest.strip_prefix(&self.project_root) else {
+                continue;
+            };
+            let dest_rel_str = dest_rel.to_string_lossy().replace('\\', "/");
+            if !prefix.is_empty() {
+                let prefix_norm = prefix.replace('\\', "/");
+                if !dest_rel_str.starts_with(prefix_norm.as_str()) {
+                    continue;
+                }
+            }
+            if !suffix_needle.is_empty() && !dest_rel_str.ends_with(suffix_needle.as_str()) {
+                continue;
+            }
+            // Ownership: dangling symlink into the search root + regular
+            // `.bak` sibling. Everything else is ignored silently.
+            let dest_meta = match fs::symlink_metadata(&dest) {
+                Ok(meta) => meta,
+                Err(_) => continue,
+            };
+            if !dest_meta.file_type().is_symlink() {
+                continue;
+            }
+            let backup_meta = match fs::symlink_metadata(&backup_path) {
+                Ok(meta) => meta,
+                Err(_) => continue,
+            };
+            if backup_meta.file_type().is_symlink()
+                || (!backup_meta.is_file() && !backup_meta.is_dir())
+            {
+                continue;
+            }
+            let stored = match fs::read_link(&dest) {
+                Ok(target) => target,
+                Err(_) => continue,
+            };
+            let resolved = if stored.is_absolute() {
+                stored.clone()
+            } else if let Some(parent) = dest.parent() {
+                parent.join(&stored)
+            } else {
+                continue;
+            };
+            if !resolved.starts_with(&search_root) {
+                continue;
+            }
+            if fs::symlink_metadata(&resolved).is_ok() {
+                continue;
+            }
+            // `revert_destination` re-reads the link through the parent
+            // capability and compares against this same stored target, so the
+            // equality check below is a re-verification, not new proof: the
+            // proof is dangling-inside-search-root + `.bak` + affix above.
+            candidates.push((dest, stored));
+        }
+        if walk_failed {
+            result.skipped += 1;
+            println!(
+                "  {} Revert skipped: nested-glob orphan scan hit a walk error",
+                "!".yellow()
+            );
+            return Ok(());
+        }
+
+        for (dest, stored) in candidates {
+            tracing::debug!(path = %dest.display(), "Restoring nested-glob orphan with dangling source");
+            self.revert_destination(&dest, Some(stored), options, result)?;
         }
         Ok(())
     }
@@ -2909,6 +3106,66 @@ mod tests {
         );
         assert!(!module_dir.join("CLAUDE.md.bak").exists());
         assert_eq!(result.restored, 1);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn revert_nested_glob_restores_orphan_when_source_file_vanished() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+        fs::create_dir_all(project_root.join(".agents")).unwrap();
+        let module_dir = project_root.join("mods/a");
+        fs::create_dir_all(&module_dir).unwrap();
+        // Simulate post-apply state, then delete the source: the symlink
+        // dangles and its `.bak` twin is orphaned from source discovery.
+        symlink("AGENTS.md", module_dir.join("CLAUDE.md")).unwrap();
+        fs::write(module_dir.join("CLAUDE.md.bak"), "orig-a\n").unwrap();
+        assert!(!module_dir.join("AGENTS.md").exists());
+
+        let mut target = make_target(".", "{relative_path}/CLAUDE.md", SyncType::NestedGlob);
+        target.pattern = Some("**/AGENTS.md".to_string());
+        target.exclude = vec![".agents/**".to_string()];
+        let linker = make_linker(project_root, true, target);
+
+        let result = linker.revert(&SyncOptions::default()).unwrap();
+
+        assert!(!module_dir.join("CLAUDE.md").is_symlink());
+        assert_eq!(
+            fs::read_to_string(module_dir.join("CLAUDE.md")).unwrap(),
+            "orig-a\n"
+        );
+        assert!(!module_dir.join("CLAUDE.md.bak").exists());
+        assert_eq!(result.restored, 1);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn revert_nested_glob_ignores_user_bak_without_dangling_link() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+        fs::create_dir_all(project_root.join(".agents")).unwrap();
+        let module_dir = project_root.join("mods/b");
+        fs::create_dir_all(&module_dir).unwrap();
+        // Regular user file plus a `.bak` sibling, no managed symlink:
+        // orphan scan must not touch either.
+        fs::write(module_dir.join("CLAUDE.md"), "user\n").unwrap();
+        fs::write(module_dir.join("CLAUDE.md.bak"), "orig-b\n").unwrap();
+
+        let mut target = make_target(".", "{relative_path}/CLAUDE.md", SyncType::NestedGlob);
+        target.pattern = Some("**/AGENTS.md".to_string());
+        target.exclude = vec![".agents/**".to_string()];
+        let linker = make_linker(project_root, true, target);
+
+        let result = linker.revert(&SyncOptions::default()).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(module_dir.join("CLAUDE.md")).unwrap(),
+            "user\n"
+        );
+        assert!(module_dir.join("CLAUDE.md.bak").exists());
+        assert_eq!(result.restored, 0);
     }
 
     #[test]
