@@ -1,5 +1,8 @@
 codecov:
   require_ci_to_pass: true
+  notify:
+    after_n_builds: 3
+    wait_for_ci: true
 
 coverage:
   precision: 2
@@ -8,8 +11,46 @@ coverage:
   status:
     project:
       default:
-        target: auto
-        threshold: 1%
+        target: 80.01%
+        threshold: 0%
+        flags: [linux, macos, windows]
+        if_not_found: failure
+      quarantine-linux:
+        target: 80.01%
+        threshold: 0%
+        flags: [linux]
+        paths: [src/linker/quarantine.rs]
+        if_not_found: failure
+      quarantine-macos:
+        target: 80.01%
+        threshold: 0%
+        flags: [macos]
+        paths: [src/linker/quarantine.rs]
+        if_not_found: failure
+      quarantine-windows:
+        target: 80.01%
+        threshold: 0%
+        flags: [windows]
+        paths: [src/linker/quarantine.rs]
+        if_not_found: failure
+      doctor-linux:
+        target: 80.01%
+        threshold: 0%
+        flags: [linux]
+        paths: [src/commands/doctor.rs]
+        if_not_found: failure
+      doctor-macos:
+        target: 80.01%
+        threshold: 0%
+        flags: [macos]
+        paths: [src/commands/doctor.rs]
+        if_not_found: failure
+      doctor-windows:
+        target: 80.01%
+        threshold: 0%
+        flags: [windows]
+        paths: [src/commands/doctor.rs]
+        if_not_found: failure
     patch:
       default:
         target: auto
@@ -22,3 +63,14 @@ ignore:
   - "openspec/**"
   - "tests/**"
   - ".agents/**"
+
+flags:
+  linux:
+    paths: [src/**]
+    carryforward: false
+  macos:
+    paths: [src/**]
+    carryforward: false
+  windows:
+    paths: [src/**]
+    carryforward: false
