@@ -1631,7 +1631,11 @@ fn test_revert_restores_claude_desktop_global_config_exactly() {
     fs::create_dir_all(&fake_xdg).unwrap();
     fs::create_dir_all(&fake_home).unwrap();
     let data_root = project_root.parent().unwrap().join(".local-data");
-    let global_path = fake_xdg.join("Claude/claude_desktop_config.json");
+    #[cfg(target_os = "macos")]
+    let config_dir = fake_home.join("Library/Application Support");
+    #[cfg(not(target_os = "macos"))]
+    let config_dir = fake_xdg.clone();
+    let global_path = config_dir.join("Claude/claude_desktop_config.json");
     fs::create_dir_all(global_path.parent().unwrap()).unwrap();
     let original = r#"{"theme":"dark","mcpServers":{"user-tool":{"command":"user-search"}}}"#;
     fs::write(&global_path, original).unwrap();

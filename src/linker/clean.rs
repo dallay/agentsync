@@ -505,6 +505,9 @@ impl Linker {
             return Ok(());
         }
         let incomplete_discovery = match &enumeration.discovery {
+            enumerate::NestedGlobDiscoveryStatus::MissingRoot { search_root } => {
+                Some((search_root, "Search root does not exist"))
+            }
             enumerate::NestedGlobDiscoveryStatus::Incomplete {
                 search_root,
                 reason,
