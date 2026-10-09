@@ -14,12 +14,13 @@ pub fn managed_markers(marker: &str) -> (String, String) {
     (format!("# START {}", marker), format!("# END {}", marker))
 }
 
-/// Update .gitignore with managed entries
+/// Update .gitignore or .git/info/exclude with managed entries
 pub fn update_gitignore(
     project_root: &Path,
     marker: &str,
     entries: &[String],
     dry_run: bool,
+    local: bool,
 ) -> Result<()> {
     // SECURITY: Reject control characters that would break the line-oriented
     // managed section. A `destination` like "a\nEVIL" comes from operator
@@ -31,14 +32,22 @@ pub fn update_gitignore(
     if let Some(evil) = entries.iter().find(|e| e.contains(['\n', '\r'])) {
         anyhow::bail!("gitignore entry must not contain newline: {:?}", evil);
     }
-    let gitignore_path = project_root.join(".gitignore");
-    let existing_permissions = reject_gitignore_symlink(&gitignore_path)?;
+    // Determine target path based on local mode
+    let (target_path, display_name) = if local {
+        let git_info_exclude = project_root.join(".git").join("info").join("exclude");
+        (git_info_exclude, ".git/info/exclude")
+    } else {
+        (project_root.join(".gitignore"), ".gitignore")
+    };
+
+    let existing_permissions = reject_gitignore_symlink(&target_path)?;
     let (start_marker, end_marker) = managed_markers(marker);
 
     // Read existing content or start fresh
-    let existing_content = if gitignore_path.exists() {
-        fs::read_to_string(&gitignore_path)
-            .with_context(|| format!("Failed to read .gitignore: {}", gitignore_path.display()))?
+    let existing_content = if target_path.exists() {
+        fs::read_to_string(&target_path).with_context(|| {
+            format!("Failed to read {}: {}", display_name, target_path.display())
+        })?
     } else {
         String::new()
     };
@@ -63,51 +72,79 @@ pub fn update_gitignore(
     let new_content = format!("{}{}", content_without_managed.trim_end(), managed_section);
 
     if dry_run {
+        let mode_suffix = if local { " (local mode)" } else { "" };
         println!(
-            "  {} Would update .gitignore with {} entries",
+            "  {} Would update {} with {} entries{}",
             "→".cyan(),
-            entries.len()
+            display_name,
+            entries.len(),
+            mode_suffix
         );
         return Ok(());
     }
 
     // Optimization: skip write if content is unchanged to avoid unnecessary I/O
     if existing_content == new_content {
+        let mode_suffix = if local { " (local mode)" } else { "" };
         println!(
-            "  {} .gitignore is already up to date ({} entries)",
+            "  {} {} is already up to date ({} entries){}",
             "✔".green(),
-            entries.len()
+            display_name,
+            entries.len(),
+            mode_suffix
         );
         return Ok(());
     }
 
-    write_gitignore_atomically(&gitignore_path, &new_content, existing_permissions)?;
+    // Ensure .git/info directory exists in local mode
+    if local && let Some(parent) = target_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
+    }
 
+    write_gitignore_atomically(&target_path, &new_content, existing_permissions)?;
+
+    let mode_suffix = if local { " (local mode)" } else { "" };
     println!(
-        "  {} Updated .gitignore with {} managed entries",
+        "  {} Updated {} with {} managed entries{}",
         "✔".green(),
-        entries.len()
+        display_name,
+        entries.len(),
+        mode_suffix
     );
 
     Ok(())
 }
 
-/// Remove the managed section from .gitignore when management is disabled.
-pub fn cleanup_gitignore(project_root: &Path, marker: &str, dry_run: bool) -> Result<()> {
+/// Remove the managed section from .gitignore or .git/info/exclude when management is disabled.
+pub fn cleanup_gitignore(
+    project_root: &Path,
+    marker: &str,
+    dry_run: bool,
+    local: bool,
+) -> Result<()> {
     // SECURITY: Same newline guard as update_gitignore so a malicious marker
     // cannot split the marker line and orphan managed content.
     if marker.contains(['\n', '\r']) {
         anyhow::bail!("gitignore marker must not contain newline: {:?}", marker);
     }
-    let gitignore_path = project_root.join(".gitignore");
-    let existing_permissions = reject_gitignore_symlink(&gitignore_path)?;
-    if !gitignore_path.exists() {
+
+    // Determine target path based on local mode
+    let (target_path, display_name) = if local {
+        let git_info_exclude = project_root.join(".git").join("info").join("exclude");
+        (git_info_exclude, ".git/info/exclude")
+    } else {
+        (project_root.join(".gitignore"), ".gitignore")
+    };
+
+    let existing_permissions = reject_gitignore_symlink(&target_path)?;
+    if !target_path.exists() {
         return Ok(());
     }
 
     let (start_marker, end_marker) = managed_markers(marker);
-    let existing_content = fs::read_to_string(&gitignore_path)
-        .with_context(|| format!("Failed to read .gitignore: {}", gitignore_path.display()))?;
+    let existing_content = fs::read_to_string(&target_path)
+        .with_context(|| format!("Failed to read {}: {}", display_name, target_path.display()))?;
     let cleaned_content = remove_managed_section(&existing_content, &start_marker, &end_marker);
 
     if existing_content == cleaned_content {
@@ -115,13 +152,25 @@ pub fn cleanup_gitignore(project_root: &Path, marker: &str, dry_run: bool) -> Re
     }
 
     if dry_run {
-        println!("  {} Would remove managed .gitignore section", "→".cyan(),);
+        let mode_suffix = if local { " (local mode)" } else { "" };
+        println!(
+            "  {} Would remove managed {} section{}",
+            "→".cyan(),
+            display_name,
+            mode_suffix
+        );
         return Ok(());
     }
 
-    write_gitignore_atomically(&gitignore_path, &cleaned_content, existing_permissions)?;
+    write_gitignore_atomically(&target_path, &cleaned_content, existing_permissions)?;
 
-    println!("  {} Removed managed .gitignore section", "✔".green(),);
+    let mode_suffix = if local { " (local mode)" } else { "" };
+    println!(
+        "  {} Removed managed {} section{}",
+        "✔".green(),
+        display_name,
+        mode_suffix
+    );
 
     Ok(())
 }
@@ -553,7 +602,7 @@ after
         let temp_dir = TempDir::new().unwrap();
 
         let entries = vec!["CLAUDE.md".to_string(), "AGENTS.md".to_string()];
-        update_gitignore(temp_dir.path(), "AI Agent Symlinks", &entries, false).unwrap();
+        update_gitignore(temp_dir.path(), "AI Agent Symlinks", &entries, false, false).unwrap();
 
         let gitignore_path = temp_dir.path().join(".gitignore");
         assert!(gitignore_path.exists());
@@ -574,7 +623,7 @@ after
         fs::write(&gitignore_path, "node_modules/\n*.log\n").unwrap();
 
         let entries = vec!["CLAUDE.md".to_string()];
-        update_gitignore(temp_dir.path(), "AI Agent Symlinks", &entries, false).unwrap();
+        update_gitignore(temp_dir.path(), "AI Agent Symlinks", &entries, false, false).unwrap();
 
         let content = fs::read_to_string(&gitignore_path).unwrap();
 
@@ -629,6 +678,7 @@ after
             "AgentSync",
             &["generated.md".to_string()],
             false,
+            false,
         )
         .unwrap();
 
@@ -658,7 +708,7 @@ dist/
         fs::write(&gitignore_path, initial_content).unwrap();
 
         let entries = vec!["NEW_ENTRY.md".to_string()];
-        update_gitignore(temp_dir.path(), "Test Marker", &entries, false).unwrap();
+        update_gitignore(temp_dir.path(), "Test Marker", &entries, false, false).unwrap();
 
         let content = fs::read_to_string(&gitignore_path).unwrap();
 
@@ -678,7 +728,7 @@ dist/
         let temp_dir = TempDir::new().unwrap();
 
         let entries = vec!["CLAUDE.md".to_string()];
-        update_gitignore(temp_dir.path(), "AI Agent Symlinks", &entries, true).unwrap();
+        update_gitignore(temp_dir.path(), "AI Agent Symlinks", &entries, true, false).unwrap();
 
         // File should NOT be created in dry-run mode
         let gitignore_path = temp_dir.path().join(".gitignore");
@@ -694,7 +744,7 @@ dist/
         fs::write(&gitignore_path, original_content).unwrap();
 
         let entries = vec!["CLAUDE.md".to_string()];
-        update_gitignore(temp_dir.path(), "AI Agent Symlinks", &entries, true).unwrap();
+        update_gitignore(temp_dir.path(), "AI Agent Symlinks", &entries, true, false).unwrap();
 
         // Content should NOT be modified
         let content = fs::read_to_string(&gitignore_path).unwrap();
@@ -706,7 +756,7 @@ dist/
         let temp_dir = TempDir::new().unwrap();
 
         let entries: Vec<String> = vec![];
-        update_gitignore(temp_dir.path(), "AI Agent Symlinks", &entries, false).unwrap();
+        update_gitignore(temp_dir.path(), "AI Agent Symlinks", &entries, false, false).unwrap();
 
         let gitignore_path = temp_dir.path().join(".gitignore");
         let content = fs::read_to_string(&gitignore_path).unwrap();
@@ -729,7 +779,7 @@ trailing_content
         fs::write(&gitignore_path, initial_content).unwrap();
 
         let entries = vec!["new_entry".to_string()];
-        update_gitignore(temp_dir.path(), "Marker", &entries, false).unwrap();
+        update_gitignore(temp_dir.path(), "Marker", &entries, false, false).unwrap();
 
         let content = fs::read_to_string(&gitignore_path).unwrap();
 
@@ -748,7 +798,7 @@ trailing_content
             "entry3.md".to_string(),
             ".github/copilot-instructions.md".to_string(),
         ];
-        update_gitignore(temp_dir.path(), "AI Agent Symlinks", &entries, false).unwrap();
+        update_gitignore(temp_dir.path(), "AI Agent Symlinks", &entries, false, false).unwrap();
 
         let gitignore_path = temp_dir.path().join(".gitignore");
         let content = fs::read_to_string(&gitignore_path).unwrap();
@@ -763,7 +813,7 @@ trailing_content
         let temp_dir = TempDir::new().unwrap();
 
         let entries = vec!["test.md".to_string()];
-        update_gitignore(temp_dir.path(), "My Custom Marker", &entries, false).unwrap();
+        update_gitignore(temp_dir.path(), "My Custom Marker", &entries, false, false).unwrap();
 
         let gitignore_path = temp_dir.path().join(".gitignore");
         let content = fs::read_to_string(&gitignore_path).unwrap();
@@ -782,7 +832,7 @@ trailing_content
         )
         .unwrap();
 
-        cleanup_gitignore(temp_dir.path(), "Marker", false).unwrap();
+        cleanup_gitignore(temp_dir.path(), "Marker", false, false).unwrap();
 
         let content = fs::read_to_string(&gitignore_path).unwrap();
         assert_eq!(content, "node_modules/\ndist/\n");
@@ -798,7 +848,7 @@ trailing_content
         )
         .unwrap();
 
-        cleanup_gitignore(temp_dir.path(), "Custom Marker", false).unwrap();
+        cleanup_gitignore(temp_dir.path(), "Custom Marker", false, false).unwrap();
 
         let content = fs::read_to_string(&gitignore_path).unwrap();
         assert!(content.contains("# START Default Marker"));
@@ -814,7 +864,7 @@ trailing_content
         let original = "node_modules/\n# START Marker\nmanaged\n# END Marker\n";
         fs::write(&gitignore_path, original).unwrap();
 
-        cleanup_gitignore(temp_dir.path(), "Marker", true).unwrap();
+        cleanup_gitignore(temp_dir.path(), "Marker", true, false).unwrap();
 
         let content = fs::read_to_string(&gitignore_path).unwrap();
         assert_eq!(content, original);
@@ -827,7 +877,7 @@ trailing_content
         let original = "node_modules/\n# START Other\nmanaged\n# END Other\n";
         fs::write(&gitignore_path, original).unwrap();
 
-        cleanup_gitignore(temp_dir.path(), "Marker", false).unwrap();
+        cleanup_gitignore(temp_dir.path(), "Marker", false, false).unwrap();
 
         let content = fs::read_to_string(&gitignore_path).unwrap();
         assert_eq!(content, original);
@@ -846,7 +896,7 @@ trailing_content
             "path/with spaces/file.md".to_string(),
             "*.md".to_string(),
         ];
-        update_gitignore(temp_dir.path(), "Marker", &entries, false).unwrap();
+        update_gitignore(temp_dir.path(), "Marker", &entries, false, false).unwrap();
 
         let gitignore_path = temp_dir.path().join(".gitignore");
         let content = fs::read_to_string(&gitignore_path).unwrap();
@@ -863,8 +913,8 @@ trailing_content
         let entries = vec!["test.md".to_string()];
 
         // Apply twice
-        update_gitignore(temp_dir.path(), "Marker", &entries, false).unwrap();
-        update_gitignore(temp_dir.path(), "Marker", &entries, false).unwrap();
+        update_gitignore(temp_dir.path(), "Marker", &entries, false, false).unwrap();
+        update_gitignore(temp_dir.path(), "Marker", &entries, false, false).unwrap();
 
         let gitignore_path = temp_dir.path().join(".gitignore");
         let content = fs::read_to_string(&gitignore_path).unwrap();
@@ -884,14 +934,14 @@ trailing_content
         let entries = vec!["test.md".to_string()];
 
         // Initial update
-        update_gitignore(temp_dir.path(), "Marker", &entries, false).unwrap();
+        update_gitignore(temp_dir.path(), "Marker", &entries, false, false).unwrap();
         let mtime1 = fs::metadata(&gitignore_path).unwrap().modified().unwrap();
 
         // Small sleep to ensure mtime would change if written
         std::thread::sleep(std::time::Duration::from_millis(20));
 
         // Second update with same content
-        update_gitignore(temp_dir.path(), "Marker", &entries, false).unwrap();
+        update_gitignore(temp_dir.path(), "Marker", &entries, false, false).unwrap();
         let mtime2 = fs::metadata(&gitignore_path).unwrap().modified().unwrap();
 
         assert_eq!(
@@ -904,7 +954,7 @@ trailing_content
     fn test_update_gitignore_rejects_newline_in_entries() {
         let temp_dir = TempDir::new().unwrap();
         let entries = vec!["good.md".to_string(), "evil\nINJECTED".to_string()];
-        let result = update_gitignore(temp_dir.path(), "Marker", &entries, false);
+        let result = update_gitignore(temp_dir.path(), "Marker", &entries, false, false);
         assert!(
             result.is_err(),
             "newline in gitignore entry must be rejected, got Ok"
@@ -915,11 +965,158 @@ trailing_content
     fn test_update_gitignore_rejects_newline_in_marker() {
         let temp_dir = TempDir::new().unwrap();
         let entries = vec!["good.md".to_string()];
-        let result = update_gitignore(temp_dir.path(), "Bad\nMarker", &entries, false);
+        let result = update_gitignore(temp_dir.path(), "Bad\nMarker", &entries, false, false);
         assert!(
             result.is_err(),
             "newline in marker must be rejected, got Ok"
         );
+    }
+
+    // =============================================================================
+    // Local mode tests (.git/info/exclude)
+    // =============================================================================
+
+    #[test]
+    fn test_update_gitignore_local_creates_exclude_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path();
+
+        let entries = vec!["CLAUDE.md".to_string(), "AGENTS.md".to_string()];
+
+        // Call with local = true
+        update_gitignore(project_root, "AI Agent Symlinks", &entries, false, true).unwrap();
+
+        // Should create .git/info/exclude
+        let exclude_path = project_root.join(".git").join("info").join("exclude");
+        assert!(
+            exclude_path.exists(),
+            ".git/info/exclude should be created in local mode"
+        );
+
+        let content = fs::read_to_string(&exclude_path).unwrap();
+        assert!(content.contains("# START AI Agent Symlinks"));
+        assert!(content.contains("# END AI Agent Symlinks"));
+        assert!(content.contains("CLAUDE.md"));
+        assert!(content.contains("AGENTS.md"));
+
+        // Should NOT create .gitignore
+        let gitignore_path = project_root.join(".gitignore");
+        assert!(
+            !gitignore_path.exists(),
+            ".gitignore should not be created in local mode"
+        );
+    }
+
+    #[test]
+    fn test_update_gitignore_local_appends_to_existing_exclude() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path();
+
+        // Create .git/info directory structure first
+        let exclude_dir = project_root.join(".git").join("info");
+        fs::create_dir_all(&exclude_dir).unwrap();
+        let exclude_path = exclude_dir.join("exclude");
+        fs::write(&exclude_path, "node_modules/\n*.log\n").unwrap();
+
+        let entries = vec!["CLAUDE.md".to_string()];
+        update_gitignore(project_root, "AI Agent Symlinks", &entries, false, true).unwrap();
+
+        let content = fs::read_to_string(&exclude_path).unwrap();
+
+        // Original content preserved
+        assert!(content.contains("node_modules/"));
+        assert!(content.contains("*.log"));
+
+        // New content added
+        assert!(content.contains("# START AI Agent Symlinks"));
+        assert!(content.contains("CLAUDE.md"));
+        assert!(content.contains("# END AI Agent Symlinks"));
+    }
+
+    #[test]
+    fn test_update_gitignore_local_does_not_modify_gitignore() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path();
+
+        // Create existing .gitignore
+        let gitignore_path = project_root.join(".gitignore");
+        fs::write(&gitignore_path, "node_modules/\n").unwrap();
+
+        let entries = vec!["CLAUDE.md".to_string()];
+        update_gitignore(project_root, "AI Agent Symlinks", &entries, false, true).unwrap();
+
+        // .gitignore should remain unchanged
+        let gitignore_content = fs::read_to_string(&gitignore_path).unwrap();
+        assert!(gitignore_content.contains("node_modules/"));
+        assert!(!gitignore_content.contains("CLAUDE.md"));
+        assert!(!gitignore_content.contains("AI Agent Symlinks"));
+    }
+
+    #[test]
+    fn test_cleanup_gitignore_local_cleans_exclude_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path();
+
+        // Create .git/info directory structure with managed content
+        let exclude_dir = project_root.join(".git").join("info");
+        fs::create_dir_all(&exclude_dir).unwrap();
+        let exclude_path = exclude_dir.join("exclude");
+        let original =
+            "# Existing entry\n# START AI Agent Symlinks\nCLAUDE.md\n# END AI Agent Symlinks\n";
+        fs::write(&exclude_path, original).unwrap();
+
+        cleanup_gitignore(project_root, "AI Agent Symlinks", false, true).unwrap();
+
+        let content = fs::read_to_string(&exclude_path).unwrap();
+
+        // Should remove managed section
+        assert!(!content.contains("CLAUDE.md"));
+        assert!(!content.contains("# START AI Agent Symlinks"));
+
+        // Should preserve original entry
+        assert!(content.contains("# Existing entry"));
+    }
+
+    #[test]
+    fn test_update_gitignore_local_idempotent() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path();
+
+        let entries = vec!["CLAUDE.md".to_string()];
+
+        // First call
+        update_gitignore(project_root, "AI Agent Symlinks", &entries, false, true).unwrap();
+
+        // Second call should be idempotent
+        update_gitignore(project_root, "AI Agent Symlinks", &entries, false, true).unwrap();
+
+        let exclude_path = project_root.join(".git").join("info").join("exclude");
+        let content = fs::read_to_string(&exclude_path).unwrap();
+
+        // Should have exactly one managed block
+        let start_count = content.matches("# START AI Agent Symlinks").count();
+        let end_count = content.matches("# END AI Agent Symlinks").count();
+        assert_eq!(start_count, 1);
+        assert_eq!(end_count, 1);
+    }
+
+    #[test]
+    fn test_cleanup_gitignore_local_does_not_modify_gitignore() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path();
+
+        // Create .gitignore with managed content
+        let gitignore_path = project_root.join(".gitignore");
+        let gitignore_content = "# START AI Agent Symlinks\nCLAUDE.md\n# END AI Agent Symlinks\n";
+        fs::write(&gitignore_path, gitignore_content).unwrap();
+
+        // Cleanup should only affect .git/info/exclude, not .gitignore
+        cleanup_gitignore(project_root, "AI Agent Symlinks", false, true).unwrap();
+
+        // .gitignore should remain unchanged
+        let content = fs::read_to_string(&gitignore_path).unwrap();
+        assert!(content.contains("# START AI Agent Symlinks"));
+        assert!(content.contains("CLAUDE.md"));
     }
 
     #[test]
@@ -940,6 +1137,7 @@ trailing_content
             "AgentSync",
             &["new-entry".to_string()],
             false,
+            false,
         )
         .expect_err("symlinked .gitignore must be rejected");
         assert!(format!("{error:#}").contains(".gitignore"));
@@ -959,7 +1157,7 @@ trailing_content
         fs::write(&external, original).unwrap();
         symlink(&external, project_root.join(".gitignore")).unwrap();
 
-        let error = cleanup_gitignore(&project_root, "AgentSync", false)
+        let error = cleanup_gitignore(&project_root, "AgentSync", false, false)
             .expect_err("symlinked .gitignore must be rejected");
         assert!(format!("{error:#}").contains(".gitignore"));
         assert_eq!(fs::read_to_string(&external).unwrap(), original);
@@ -1021,13 +1219,20 @@ trailing_content
         let original_uid = original_metadata.uid();
         let original_gid = original_metadata.gid();
 
-        update_gitignore(temp_dir.path(), "Marker", &["new-entry".to_string()], false).unwrap();
+        update_gitignore(
+            temp_dir.path(),
+            "Marker",
+            &["new-entry".to_string()],
+            false,
+            false,
+        )
+        .unwrap();
         let metadata = fs::metadata(&gitignore_path).unwrap();
         assert_eq!(metadata.permissions().mode() & 0o777, 0o640);
         assert_eq!(metadata.uid(), original_uid);
         assert_eq!(metadata.gid(), original_gid);
 
-        cleanup_gitignore(temp_dir.path(), "Marker", false).unwrap();
+        cleanup_gitignore(temp_dir.path(), "Marker", false, false).unwrap();
         let metadata = fs::metadata(&gitignore_path).unwrap();
         assert_eq!(metadata.permissions().mode() & 0o777, 0o640);
         assert_eq!(metadata.uid(), original_uid);
@@ -1046,6 +1251,7 @@ trailing_content
             temp_dir.path(),
             "AgentSync",
             &["new-entry".to_string()],
+            false,
             false,
         )
         .unwrap();
@@ -1069,7 +1275,14 @@ trailing_content
             }
 
             let project_root = Path::new(&path);
-            update_gitignore(project_root, "Marker", &["new-entry".to_string()], false).unwrap();
+            update_gitignore(
+                project_root,
+                "Marker",
+                &["new-entry".to_string()],
+                false,
+                false,
+            )
+            .unwrap();
             let gitignore_path = project_root.join(".gitignore");
             assert_eq!(
                 fs::metadata(&gitignore_path).unwrap().permissions().mode() & 0o777,
@@ -1083,6 +1296,7 @@ trailing_content
                 &new_project_root,
                 "Marker",
                 &["new-entry".to_string()],
+                false,
                 false,
             )
             .unwrap();

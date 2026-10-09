@@ -267,6 +267,7 @@ fn update_and_cleanup_preserve_gitignore_owner_sid_and_dacl() {
         "AgentSync",
         &["generated.md".to_string()],
         false,
+        false,
     )
     .unwrap();
     assert_eq!(
@@ -275,7 +276,7 @@ fn update_and_cleanup_preserve_gitignore_owner_sid_and_dacl() {
         "atomic update must preserve the original owner SID and DACL"
     );
 
-    cleanup_gitignore(temp.path(), "AgentSync", false).unwrap();
+    cleanup_gitignore(temp.path(), "AgentSync", false, false).unwrap();
     assert_eq!(
         security_snapshot(&gitignore).unwrap(),
         expected,
@@ -308,6 +309,7 @@ fn update_fails_closed_and_keeps_original_when_owner_sid_cannot_be_restored() {
         temp.path(),
         "AgentSync",
         &["generated.md".to_string()],
+        false,
         false,
     );
 
