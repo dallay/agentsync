@@ -32,12 +32,66 @@ pub fn update_gitignore(
     if let Some(evil) = entries.iter().find(|e| e.contains(['\n', '\r'])) {
         anyhow::bail!("gitignore entry must not contain newline: {:?}", evil);
     }
+
     // Determine target path based on local mode
-    let (target_path, display_name) = if local {
-        let git_info_exclude = project_root.join(".git").join("info").join("exclude");
-        (git_info_exclude, ".git/info/exclude")
+    let (target_path, display_name, opposite_path) = if local {
+        // Verify Git repository exists before using local mode
+        let git_dir = project_root.join(".git");
+        if !git_dir.exists() {
+            anyhow::bail!(
+                "Cannot use local gitignore mode: no Git repository found at {}",
+                project_root.display()
+            );
+        }
+
+        // Resolve Git common directory for worktrees and submodules
+        let git_common_dir = if git_dir.is_file() {
+            // .git file in worktrees/submodules points to actual git dir
+            let content = fs::read_to_string(&git_dir)
+                .with_context(|| format!("Failed to read .git file: {}", git_dir.display()))?;
+
+            if let Some(line) = content.lines().next() {
+                if let Some(path_str) = line.strip_prefix("gitdir: ") {
+                    let gitdir_path = if Path::new(path_str).is_absolute() {
+                        Path::new(path_str).to_path_buf()
+                    } else {
+                        project_root.join(path_str)
+                    };
+
+                    // For worktrees, navigate to main .git directory
+                    if gitdir_path
+                        .components()
+                        .any(|c| c.as_os_str() == "worktrees")
+                    {
+                        if let Some(parent) = gitdir_path.parent() {
+                            if let Some(grandparent) = parent.parent() {
+                                grandparent.to_path_buf()
+                            } else {
+                                git_dir
+                            }
+                        } else {
+                            git_dir
+                        }
+                    } else {
+                        gitdir_path
+                    }
+                } else {
+                    git_dir
+                }
+            } else {
+                git_dir
+            }
+        } else {
+            git_dir
+        };
+
+        let git_info_exclude = git_common_dir.join("info").join("exclude");
+        let opposite = project_root.join(".gitignore");
+        (git_info_exclude, ".git/info/exclude", Some(opposite))
     } else {
-        (project_root.join(".gitignore"), ".gitignore")
+        let gitignore = project_root.join(".gitignore");
+        let opposite = project_root.join(".git").join("info").join("exclude");
+        (gitignore, ".gitignore", Some(opposite))
     };
 
     let existing_permissions = reject_gitignore_symlink(&target_path)?;
@@ -113,10 +167,37 @@ pub fn update_gitignore(
         mode_suffix
     );
 
+    // Clean up the opposite file if it has managed entries (mode switch)
+    if let Some(opposite) = opposite_path
+        && opposite.exists()
+    {
+        let opposite_permissions = reject_gitignore_symlink(&opposite)?;
+        let opposite_content = fs::read_to_string(&opposite).ok().unwrap_or_default();
+        let cleaned = remove_managed_section(&opposite_content, &start_marker, &end_marker);
+
+        if opposite_content != cleaned && !cleaned.trim().is_empty() {
+            // Only write if we actually removed something
+            if !dry_run {
+                write_gitignore_atomically(&opposite, &cleaned, opposite_permissions)?;
+                let opposite_name = if local {
+                    ".gitignore"
+                } else {
+                    ".git/info/exclude"
+                };
+                println!(
+                    "  {} Cleaned managed entries from {}",
+                    "✔".green(),
+                    opposite_name
+                );
+            }
+        }
+    }
+
     Ok(())
 }
 
 /// Remove the managed section from .gitignore or .git/info/exclude when management is disabled.
+/// Also cleans the opposite file if it contains managed entries (handles mode switches).
 pub fn cleanup_gitignore(
     project_root: &Path,
     marker: &str,
@@ -137,40 +218,79 @@ pub fn cleanup_gitignore(
         (project_root.join(".gitignore"), ".gitignore")
     };
 
-    let existing_permissions = reject_gitignore_symlink(&target_path)?;
-    if !target_path.exists() {
-        return Ok(());
-    }
+    let opposite_path = if local {
+        project_root.join(".gitignore")
+    } else {
+        project_root.join(".git").join("info").join("exclude")
+    };
 
     let (start_marker, end_marker) = managed_markers(marker);
-    let existing_content = fs::read_to_string(&target_path)
-        .with_context(|| format!("Failed to read {}: {}", display_name, target_path.display()))?;
-    let cleaned_content = remove_managed_section(&existing_content, &start_marker, &end_marker);
 
-    if existing_content == cleaned_content {
-        return Ok(());
+    // Clean the primary target file
+    if target_path.exists() {
+        let existing_permissions = reject_gitignore_symlink(&target_path)?;
+        let existing_content = fs::read_to_string(&target_path).with_context(|| {
+            format!("Failed to read {}: {}", display_name, target_path.display())
+        })?;
+        let cleaned_content = remove_managed_section(&existing_content, &start_marker, &end_marker);
+
+        if existing_content != cleaned_content {
+            if dry_run {
+                let mode_suffix = if local { " (local mode)" } else { "" };
+                println!(
+                    "  {} Would remove managed {} section{}",
+                    "→".cyan(),
+                    display_name,
+                    mode_suffix
+                );
+            } else {
+                write_gitignore_atomically(&target_path, &cleaned_content, existing_permissions)?;
+                let mode_suffix = if local { " (local mode)" } else { "" };
+                println!(
+                    "  {} Removed managed {} section{}",
+                    "✔".green(),
+                    display_name,
+                    mode_suffix
+                );
+            }
+        }
     }
 
-    if dry_run {
-        let mode_suffix = if local { " (local mode)" } else { "" };
-        println!(
-            "  {} Would remove managed {} section{}",
-            "→".cyan(),
-            display_name,
-            mode_suffix
-        );
-        return Ok(());
+    // Also clean the opposite file if it contains managed entries (handles mode switches)
+    if opposite_path.exists() {
+        let opposite_permissions = reject_gitignore_symlink(&opposite_path)?;
+        let opposite_content = fs::read_to_string(&opposite_path).with_context(|| {
+            format!("Failed to read opposite file: {}", opposite_path.display())
+        })?;
+        let cleaned_opposite =
+            remove_managed_section(&opposite_content, &start_marker, &end_marker);
+
+        if opposite_content != cleaned_opposite {
+            let opposite_name = if local {
+                ".gitignore"
+            } else {
+                ".git/info/exclude"
+            };
+            if dry_run {
+                println!(
+                    "  {} Would remove orphaned managed entries from {}",
+                    "→".cyan(),
+                    opposite_name
+                );
+            } else {
+                write_gitignore_atomically(
+                    &opposite_path,
+                    &cleaned_opposite,
+                    opposite_permissions,
+                )?;
+                println!(
+                    "  {} Removed orphaned managed entries from {}",
+                    "✔".green(),
+                    opposite_name
+                );
+            }
+        }
     }
-
-    write_gitignore_atomically(&target_path, &cleaned_content, existing_permissions)?;
-
-    let mode_suffix = if local { " (local mode)" } else { "" };
-    println!(
-        "  {} Removed managed {} section{}",
-        "✔".green(),
-        display_name,
-        mode_suffix
-    );
 
     Ok(())
 }
@@ -976,10 +1096,22 @@ trailing_content
     // Local mode tests (.git/info/exclude)
     // =============================================================================
 
+    /// Helper to create a Git repository for local mode tests
+    fn create_git_repo(project_root: &Path) {
+        let git_dir = project_root.join(".git");
+        fs::create_dir_all(&git_dir).unwrap();
+        // Create a minimal .git directory structure
+        fs::create_dir_all(git_dir.join("info")).unwrap();
+        fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+    }
+
     #[test]
     fn test_update_gitignore_local_creates_exclude_file() {
         let temp_dir = TempDir::new().unwrap();
         let project_root = temp_dir.path();
+
+        // Create Git repository first
+        create_git_repo(project_root);
 
         let entries = vec!["CLAUDE.md".to_string(), "AGENTS.md".to_string()];
 
@@ -999,7 +1131,7 @@ trailing_content
         assert!(content.contains("CLAUDE.md"));
         assert!(content.contains("AGENTS.md"));
 
-        // Should NOT create .gitignore
+        // Should NOT create .gitignore (separate file in project root)
         let gitignore_path = project_root.join(".gitignore");
         assert!(
             !gitignore_path.exists(),
@@ -1012,10 +1144,11 @@ trailing_content
         let temp_dir = TempDir::new().unwrap();
         let project_root = temp_dir.path();
 
-        // Create .git/info directory structure first
-        let exclude_dir = project_root.join(".git").join("info");
-        fs::create_dir_all(&exclude_dir).unwrap();
-        let exclude_path = exclude_dir.join("exclude");
+        // Create Git repository first
+        create_git_repo(project_root);
+
+        // Create existing .git/info/exclude with content
+        let exclude_path = project_root.join(".git").join("info").join("exclude");
         fs::write(&exclude_path, "node_modules/\n*.log\n").unwrap();
 
         let entries = vec!["CLAUDE.md".to_string()];
@@ -1038,6 +1171,9 @@ trailing_content
         let temp_dir = TempDir::new().unwrap();
         let project_root = temp_dir.path();
 
+        // Create Git repository first
+        create_git_repo(project_root);
+
         // Create existing .gitignore
         let gitignore_path = project_root.join(".gitignore");
         fs::write(&gitignore_path, "node_modules/\n").unwrap();
@@ -1048,6 +1184,7 @@ trailing_content
         // .gitignore should remain unchanged
         let gitignore_content = fs::read_to_string(&gitignore_path).unwrap();
         assert!(gitignore_content.contains("node_modules/"));
+        // Note: update now cleans opposite file, so these assertions change
         assert!(!gitignore_content.contains("CLAUDE.md"));
         assert!(!gitignore_content.contains("AI Agent Symlinks"));
     }
@@ -1057,10 +1194,11 @@ trailing_content
         let temp_dir = TempDir::new().unwrap();
         let project_root = temp_dir.path();
 
-        // Create .git/info directory structure with managed content
-        let exclude_dir = project_root.join(".git").join("info");
-        fs::create_dir_all(&exclude_dir).unwrap();
-        let exclude_path = exclude_dir.join("exclude");
+        // Create Git repository first
+        create_git_repo(project_root);
+
+        // Create managed content in .git/info/exclude
+        let exclude_path = project_root.join(".git").join("info").join("exclude");
         let original =
             "# Existing entry\n# START AI Agent Symlinks\nCLAUDE.md\n# END AI Agent Symlinks\n";
         fs::write(&exclude_path, original).unwrap();
@@ -1081,6 +1219,9 @@ trailing_content
     fn test_update_gitignore_local_idempotent() {
         let temp_dir = TempDir::new().unwrap();
         let project_root = temp_dir.path();
+
+        // Create Git repository first
+        create_git_repo(project_root);
 
         let entries = vec!["CLAUDE.md".to_string()];
 
@@ -1105,18 +1246,23 @@ trailing_content
         let temp_dir = TempDir::new().unwrap();
         let project_root = temp_dir.path();
 
-        // Create .gitignore with managed content
+        // Create Git repository first
+        create_git_repo(project_root);
+
+        // Create .gitignore with managed content (opposite file)
         let gitignore_path = project_root.join(".gitignore");
         let gitignore_content = "# START AI Agent Symlinks\nCLAUDE.md\n# END AI Agent Symlinks\n";
         fs::write(&gitignore_path, gitignore_content).unwrap();
 
-        // Cleanup should only affect .git/info/exclude, not .gitignore
+        // Cleanup in local mode should clean .git/info/exclude AND the opposite .gitignore
         cleanup_gitignore(project_root, "AI Agent Symlinks", false, true).unwrap();
 
-        // .gitignore should remain unchanged
+        // .gitignore should have the managed section removed (cleanup now cleans opposite file)
         let content = fs::read_to_string(&gitignore_path).unwrap();
-        assert!(content.contains("# START AI Agent Symlinks"));
-        assert!(content.contains("CLAUDE.md"));
+        assert!(
+            !content.contains("# START AI Agent Symlinks"),
+            "Opposite file should have managed section removed"
+        );
     }
 
     #[test]
