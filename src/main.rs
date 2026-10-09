@@ -179,6 +179,9 @@ enum Commands {
         agents: Option<Vec<String>>,
         #[arg(long)]
         no_gitignore: bool,
+        /// Write managed entries to .git/info/exclude instead of .gitignore (overrides config)
+        #[arg(long)]
+        gitignore_local: bool,
         /// Do not use the network. Missing Git plugin snapshots fail instead of restoring.
         #[arg(long)]
         offline: bool,
@@ -283,6 +286,7 @@ fn run() -> Result<()> {
             verbose,
             agents,
             no_gitignore,
+            gitignore_local,
             offline,
             rebase_mcp_journal,
         } => run_in_root_span("apply", || {
@@ -294,6 +298,7 @@ fn run() -> Result<()> {
                 verbose,
                 agents,
                 no_gitignore,
+                gitignore_local,
                 offline,
                 rebase_mcp_journal,
             })?;
@@ -400,6 +405,7 @@ struct ApplyArgs {
     verbose: bool,
     agents: Option<Vec<String>>,
     no_gitignore: bool,
+    gitignore_local: bool,
     offline: bool,
     rebase_mcp_journal: bool,
 }
@@ -461,7 +467,13 @@ fn handle_apply(args: ApplyArgs) -> Result<()> {
         merge_clean_result_into_apply_result(&mut result, clean_result);
     }
     if !args.no_gitignore {
-        handle_apply_gitignore(&linker, args.dry_run, use_color)?;
+        // If --gitignore-local is passed, use Some(true); otherwise None to use config default
+        let gitignore_local_override = if args.gitignore_local {
+            Some(true)
+        } else {
+            None
+        };
+        handle_apply_gitignore(&linker, args.dry_run, use_color, gitignore_local_override)?;
     }
     if linker.config().mcp.enabled
         && (!linker.config().mcp_servers.is_empty() || !plugin_result.mcp_servers.is_empty())
@@ -491,7 +503,15 @@ fn handle_apply(args: ApplyArgs) -> Result<()> {
     Ok(())
 }
 
-fn handle_apply_gitignore(linker: &Linker, dry_run: bool, use_color: bool) -> Result<()> {
+fn handle_apply_gitignore(
+    linker: &Linker,
+    dry_run: bool,
+    use_color: bool,
+    gitignore_local_override: Option<bool>,
+) -> Result<()> {
+    // Determine local mode: CLI flag overrides config
+    let local = gitignore_local_override.unwrap_or(linker.config().gitignore.local);
+
     if linker.config().gitignore.enabled {
         println!();
         print_lines(&render_gitignore_phase_with_color(true, dry_run, use_color));
@@ -501,6 +521,7 @@ fn handle_apply_gitignore(linker: &Linker, dry_run: bool, use_color: bool) -> Re
             &linker.config().gitignore.marker,
             &entries,
             dry_run,
+            local,
         )?;
     } else {
         println!();
@@ -511,6 +532,7 @@ fn handle_apply_gitignore(linker: &Linker, dry_run: bool, use_color: bool) -> Re
             linker.project_root(),
             &linker.config().gitignore.marker,
             dry_run,
+            local,
         )?;
     }
     Ok(())
@@ -683,6 +705,7 @@ fn handle_revert(
             linker.project_root(),
             &linker.config().gitignore.marker,
             dry_run,
+            linker.config().gitignore.local,
         )?;
     }
     println!();

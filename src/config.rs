@@ -201,6 +201,11 @@ pub struct GitignoreConfig {
     /// A list of additional paths to include in the `.gitignore` managed section.
     #[serde(default)]
     pub entries: Vec<String>,
+
+    /// If `true`, write managed entries to `.git/info/exclude` instead of `.gitignore`.
+    /// Defaults to `false` (use `.gitignore`).
+    #[serde(default)]
+    pub local: bool,
 }
 
 fn default_marker() -> String {
@@ -213,6 +218,7 @@ impl Default for GitignoreConfig {
             enabled: true,
             marker: default_marker(),
             entries: Vec::new(),
+            local: false,
         }
     }
 }
