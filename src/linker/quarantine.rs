@@ -54,6 +54,57 @@ pub(super) enum MoveOutcome {
     Changed,
 }
 
+#[cfg(not(windows))]
+pub(super) trait UnixQuarantineOps {
+    fn symlink_metadata(
+        &self,
+        parent: &CapabilityDir,
+        name: &OsStr,
+    ) -> io::Result<cap_std::fs::Metadata> {
+        parent.symlink_metadata(name)
+    }
+
+    fn rename_no_replace(
+        &self,
+        parent: &CapabilityDir,
+        from: &OsStr,
+        to: &OsStr,
+    ) -> io::Result<()> {
+        platform_rename_no_replace(parent, from, to)
+    }
+
+    fn remove_file_or_symlink(&self, parent: &CapabilityDir, name: &OsStr) -> io::Result<()> {
+        parent.remove_file_or_symlink(name)
+    }
+
+    fn open_dir_nofollow(&self, parent: &CapabilityDir, name: &OsStr) -> io::Result<CapabilityDir> {
+        parent.open_dir_nofollow(name)
+    }
+
+    fn directory_metadata(&self, directory: &CapabilityDir) -> io::Result<cap_std::fs::Metadata> {
+        directory.metadata(".")
+    }
+
+    fn directory_has_entries(&self, directory: &CapabilityDir) -> io::Result<bool> {
+        let mut entries = directory.entries()?;
+        match entries.next() {
+            None => Ok(false),
+            Some(Ok(_)) => Ok(true),
+            Some(Err(error)) => Err(error),
+        }
+    }
+
+    fn remove_dir(&self, parent: &CapabilityDir, name: &OsStr) -> io::Result<()> {
+        parent.remove_dir(name)
+    }
+}
+
+#[cfg(not(windows))]
+pub(super) struct CapStdUnixQuarantineOps;
+
+#[cfg(not(windows))]
+impl UnixQuarantineOps for CapStdUnixQuarantineOps {}
+
 /// Remove a symlink only if the object at `name` is still the object observed
 /// during enumeration. The temporary sibling name is random and is published
 /// with an atomic no-replace rename before the identity is checked again.
@@ -83,7 +134,9 @@ where
 
     #[cfg(not(windows))]
     {
+        let ops = CapStdUnixQuarantineOps;
         remove_unix(
+            &ops,
             parent,
             name,
             expected,
@@ -120,7 +173,9 @@ where
 
     #[cfg(not(windows))]
     {
+        let ops = CapStdUnixQuarantineOps;
         remove_unix_empty_directory(
+            &ops,
             parent,
             name,
             expected,
@@ -156,12 +211,21 @@ where
 
     #[cfg(not(windows))]
     {
-        move_unix_entry_no_replace(source, destination, expected, before_move, after_quarantine)
+        let ops = CapStdUnixQuarantineOps;
+        move_unix_entry_no_replace(
+            &ops,
+            source,
+            destination,
+            expected,
+            before_move,
+            after_quarantine,
+        )
     }
 }
 
 #[cfg(not(windows))]
-fn remove_unix<F, G>(
+pub(super) fn remove_unix<F, G, O: UnixQuarantineOps + ?Sized>(
+    ops: &O,
     parent: &CapabilityDir,
     name: &OsStr,
     expected: EntryIdentity,
@@ -173,7 +237,7 @@ where
     F: FnOnce(),
     G: FnOnce(&Path),
 {
-    let before = match parent.symlink_metadata(name) {
+    let before = match ops.symlink_metadata(parent, name) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
             return Ok(RemoveOutcome::Changed);
@@ -192,13 +256,14 @@ where
 
     for _ in 0..16 {
         let quarantine_name = random_quarantine_name();
-        match rename_no_replace(parent, name, &quarantine_name) {
+        match ops.rename_no_replace(parent, name, &quarantine_name) {
             Ok(()) => {
                 after_move(display_path);
-                let quarantined = match parent.symlink_metadata(&quarantine_name) {
+                let quarantined = match ops.symlink_metadata(parent, &quarantine_name) {
                     Ok(metadata) => metadata,
                     Err(error) => {
                         return Err(restore_or_report(
+                            ops,
                             parent,
                             &quarantine_name,
                             name,
@@ -208,12 +273,13 @@ where
                     }
                 };
                 if !quarantined.file_type().is_symlink() || !expected.matches(&quarantined) {
-                    restore_quarantined(parent, &quarantine_name, name, display_path)?;
+                    restore_quarantined(ops, parent, &quarantine_name, name, display_path)?;
                     return Ok(RemoveOutcome::Changed);
                 }
 
-                if let Err(error) = parent.remove_file_or_symlink(&quarantine_name) {
+                if let Err(error) = ops.remove_file_or_symlink(parent, &quarantine_name) {
                     return Err(restore_or_report(
+                        ops,
                         parent,
                         &quarantine_name,
                         name,
@@ -241,7 +307,8 @@ where
 }
 
 #[cfg(not(windows))]
-fn remove_unix_empty_directory<F, G>(
+pub(super) fn remove_unix_empty_directory<F, G, O: UnixQuarantineOps + ?Sized>(
+    ops: &O,
     parent: &CapabilityDir,
     name: &OsStr,
     expected: EntryIdentity,
@@ -253,7 +320,7 @@ where
     F: FnOnce(),
     G: FnOnce(&Path),
 {
-    let before = match parent.symlink_metadata(name) {
+    let before = match ops.symlink_metadata(parent, name) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
             return Ok(RemoveDirectoryOutcome::Changed);
@@ -267,13 +334,14 @@ where
 
     for _ in 0..16 {
         let quarantine_name = random_quarantine_name();
-        match rename_no_replace(parent, name, &quarantine_name) {
+        match ops.rename_no_replace(parent, name, &quarantine_name) {
             Ok(()) => {
                 after_move(display_path);
-                let quarantined = match parent.symlink_metadata(&quarantine_name) {
+                let quarantined = match ops.symlink_metadata(parent, &quarantine_name) {
                     Ok(metadata) => metadata,
                     Err(error) => {
                         return Err(restore_or_report(
+                            ops,
                             parent,
                             &quarantine_name,
                             name,
@@ -286,13 +354,14 @@ where
                     || !quarantined.is_dir()
                     || !expected.matches(&quarantined)
                 {
-                    restore_quarantined(parent, &quarantine_name, name, display_path)?;
+                    restore_quarantined(ops, parent, &quarantine_name, name, display_path)?;
                     return Ok(RemoveDirectoryOutcome::Changed);
                 }
-                let directory = match parent.open_dir_nofollow(&quarantine_name) {
+                let directory = match ops.open_dir_nofollow(parent, &quarantine_name) {
                     Ok(directory) => directory,
                     Err(error) => {
                         return Err(restore_or_report(
+                            ops,
                             parent,
                             &quarantine_name,
                             name,
@@ -301,10 +370,11 @@ where
                         ));
                     }
                 };
-                let directory_metadata = match directory.metadata(".") {
+                let directory_metadata = match ops.directory_metadata(&directory) {
                     Ok(metadata) => metadata,
                     Err(error) => {
                         return Err(restore_or_report(
+                            ops,
                             parent,
                             &quarantine_name,
                             name,
@@ -314,13 +384,14 @@ where
                     }
                 };
                 if !expected.matches(&directory_metadata) {
-                    restore_quarantined(parent, &quarantine_name, name, display_path)?;
+                    restore_quarantined(ops, parent, &quarantine_name, name, display_path)?;
                     return Ok(RemoveDirectoryOutcome::Changed);
                 }
-                let mut entries = match directory.entries() {
-                    Ok(entries) => entries,
+                let has_entries = match ops.directory_has_entries(&directory) {
+                    Ok(has_entries) => has_entries,
                     Err(error) => {
                         return Err(restore_or_report(
+                            ops,
                             parent,
                             &quarantine_name,
                             name,
@@ -329,26 +400,14 @@ where
                         ));
                     }
                 };
-                match entries.next() {
-                    None => {}
-                    Some(Ok(_)) => {
-                        restore_quarantined(parent, &quarantine_name, name, display_path)?;
-                        return Ok(RemoveDirectoryOutcome::NotEmpty);
-                    }
-                    Some(Err(error)) => {
-                        return Err(restore_or_report(
-                            parent,
-                            &quarantine_name,
-                            name,
-                            display_path,
-                            error,
-                        ));
-                    }
+                if has_entries {
+                    restore_quarantined(ops, parent, &quarantine_name, name, display_path)?;
+                    return Ok(RemoveDirectoryOutcome::NotEmpty);
                 }
-                drop(entries);
                 drop(directory);
-                if let Err(error) = parent.remove_dir(&quarantine_name) {
+                if let Err(error) = ops.remove_dir(parent, &quarantine_name) {
                     return Err(restore_or_report(
+                        ops,
                         parent,
                         &quarantine_name,
                         name,
@@ -373,7 +432,8 @@ where
 
 #[cfg(not(windows))]
 #[allow(clippy::too_many_arguments)]
-fn move_unix_entry_no_replace<F, G>(
+pub(super) fn move_unix_entry_no_replace<F, G, O: UnixQuarantineOps + ?Sized>(
+    ops: &O,
     source: EntryLocation<'_>,
     destination: EntryLocation<'_>,
     expected: EntryIdentity,
@@ -393,7 +453,7 @@ where
     let destination_name = destination.name;
     let source_path = source.path;
     let destination_path = destination.path;
-    let before = match parent.symlink_metadata(source_name) {
+    let before = match ops.symlink_metadata(parent, source_name) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
             return Ok(MoveOutcome::Changed);
@@ -410,13 +470,14 @@ where
 
     for _ in 0..16 {
         let quarantine_name = random_quarantine_name();
-        match rename_no_replace(parent, source_name, &quarantine_name) {
+        match ops.rename_no_replace(parent, source_name, &quarantine_name) {
             Ok(()) => {
                 after_quarantine(source_path);
-                let quarantined = match parent.symlink_metadata(&quarantine_name) {
+                let quarantined = match ops.symlink_metadata(parent, &quarantine_name) {
                     Ok(metadata) => metadata,
                     Err(error) => {
                         return Err(restore_or_report(
+                            ops,
                             parent,
                             &quarantine_name,
                             source_name,
@@ -429,12 +490,15 @@ where
                     || (!quarantined.is_file() && !quarantined.is_dir())
                     || !expected.matches(&quarantined)
                 {
-                    restore_quarantined(parent, &quarantine_name, source_name, source_path)?;
+                    restore_quarantined(ops, parent, &quarantine_name, source_name, source_path)?;
                     return Ok(MoveOutcome::Changed);
                 }
 
-                if let Err(error) = rename_no_replace(parent, &quarantine_name, destination_name) {
+                if let Err(error) =
+                    ops.rename_no_replace(parent, &quarantine_name, destination_name)
+                {
                     return Err(restore_or_report(
+                        ops,
                         parent,
                         &quarantine_name,
                         source_name,
@@ -445,7 +509,7 @@ where
                         format!("failed to publish backup at {}", destination_path.display())
                     });
                 }
-                let published = match parent.symlink_metadata(destination_name) {
+                let published = match ops.symlink_metadata(parent, destination_name) {
                     Ok(metadata) => metadata,
                     Err(error) => {
                         return Err(anyhow::Error::from(error).context(format!(
@@ -459,14 +523,14 @@ where
                     || !expected.matches(&published)
                 {
                     let quarantine_name = random_quarantine_name();
-                    rename_no_replace(parent, destination_name, &quarantine_name).map_err(|error| {
+                    ops.rename_no_replace(parent, destination_name, &quarantine_name).map_err(|error| {
                         anyhow::anyhow!(
                             "restored backup at {} changed identity and could not be quarantined: {}; preserve the current destination",
                             destination_path.display(),
                             error
                         )
                     })?;
-                    restore_quarantined(parent, &quarantine_name, source_name, source_path)?;
+                    restore_quarantined(ops, parent, &quarantine_name, source_name, source_path)?;
                     return Ok(MoveOutcome::Changed);
                 }
                 return Ok(MoveOutcome::Moved);
@@ -486,7 +550,7 @@ where
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-fn rename_no_replace(parent: &CapabilityDir, from: &OsStr, to: &OsStr) -> io::Result<()> {
+fn platform_rename_no_replace(parent: &CapabilityDir, from: &OsStr, to: &OsStr) -> io::Result<()> {
     rustix::fs::renameat_with(parent, from, parent, to, rustix::fs::RenameFlags::NOREPLACE)
         .map_err(io::Error::from)
 }
@@ -544,7 +608,11 @@ pub(super) fn rename_between_no_replace(
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
-fn rename_no_replace(_parent: &CapabilityDir, _from: &OsStr, _to: &OsStr) -> io::Result<()> {
+fn platform_rename_no_replace(
+    _parent: &CapabilityDir,
+    _from: &OsStr,
+    _to: &OsStr,
+) -> io::Result<()> {
     Err(io::Error::new(
         io::ErrorKind::Unsupported,
         "handle-relative no-replace rename is unsupported on this platform",
@@ -552,31 +620,34 @@ fn rename_no_replace(_parent: &CapabilityDir, _from: &OsStr, _to: &OsStr) -> io:
 }
 
 #[cfg(not(windows))]
-fn restore_quarantined(
+fn restore_quarantined<O: UnixQuarantineOps + ?Sized>(
+    ops: &O,
     parent: &CapabilityDir,
     quarantine_name: &OsStr,
     original_name: &OsStr,
     display_path: &Path,
 ) -> anyhow::Result<()> {
-    rename_no_replace(parent, quarantine_name, original_name).map_err(|error| {
-        anyhow::anyhow!(
-            "could not restore changed entry for {}: {}; recovery entry remains at {}",
-            display_path.display(),
-            error,
-            quarantine_path(display_path, quarantine_name).display()
-        )
-    })
+    ops.rename_no_replace(parent, quarantine_name, original_name)
+        .map_err(|error| {
+            anyhow::anyhow!(
+                "could not restore changed entry for {}: {}; recovery entry remains at {}",
+                display_path.display(),
+                error,
+                quarantine_path(display_path, quarantine_name).display()
+            )
+        })
 }
 
 #[cfg(not(windows))]
-fn restore_or_report(
+fn restore_or_report<O: UnixQuarantineOps + ?Sized>(
+    ops: &O,
     parent: &CapabilityDir,
     quarantine_name: &OsStr,
     original_name: &OsStr,
     display_path: &Path,
     cause: io::Error,
 ) -> anyhow::Error {
-    match restore_quarantined(parent, quarantine_name, original_name, display_path) {
+    match restore_quarantined(ops, parent, quarantine_name, original_name, display_path) {
         Ok(()) => anyhow::Error::from(cause).context(format!(
             "failed to remove quarantined symlink for {} (the entry was restored)",
             display_path.display()
@@ -677,15 +748,15 @@ where
 {
     use cap_std::fs::{OpenOptions, OpenOptionsExt};
     use windows_sys::Win32::Storage::FileSystem::{
-        DELETE, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES,
-        FILE_SHARE_READ, FILE_SHARE_WRITE, SYNCHRONIZE,
+        DELETE, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_LIST_DIRECTORY,
+        FILE_READ_ATTRIBUTES, FILE_SHARE_READ, FILE_SHARE_WRITE, SYNCHRONIZE,
     };
 
     let mut options = OpenOptions::new();
     options
         .read(true)
         .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS)
-        .access_mode(DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE)
+        .access_mode(DELETE | FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES | SYNCHRONIZE)
         .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE);
     let file = match parent.open_with(name, &options) {
         Ok(file) => file,
@@ -699,7 +770,7 @@ where
         return Ok(RemoveDirectoryOutcome::Changed);
     }
     before_move();
-    let directory = CapabilityDir::reopen_dir(&file)?;
+    let directory = CapabilityDir::from_std_file(file.try_clone()?.into_std());
     let display_parent = display_path.parent().unwrap_or_else(|| Path::new("."));
 
     for _ in 0..16 {
