@@ -1470,3 +1470,212 @@ fn test_revert_leaves_repointed_symlink_untouched() {
         "managed gitignore block must remain when revert skips a destination"
     );
 }
+
+// Issue #635.2: snapshot round-trip per format. Each test pre-creates the
+// agent config with extra top-level settings plus a user-owned server,
+// runs apply (managed server merges, top-level preserved), then revert
+// must restore the original file byte-exact from the ownership journal.
+
+#[test]
+#[cfg(unix)]
+fn test_revert_restores_gemini_config_with_top_level_settings_exactly() {
+    let temp_dir = TempDir::new().unwrap();
+    let project_root = &temp_dir.path().join("project");
+    fs::create_dir_all(project_root.join(".agents")).unwrap();
+    fs::write(
+        project_root.join(".agents/agentsync.toml"),
+        "source_dir = \".\"\n\n[mcp]\nenabled = true\n\n[mcp_servers.managed]\ncommand = \"managed-server\"\n\n[agents.gemini]\nenabled = true\n",
+    )
+    .unwrap();
+    let config_path = project_root.join(".gemini/settings.json");
+    fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+    let original =
+        r#"{"editor":{"theme":"dark"},"mcpServers":{"user-search":{"command":"user-search"}}}"#;
+    fs::write(&config_path, original).unwrap();
+
+    let apply = run_agentsync(project_root, &["apply"]);
+    assert!(
+        apply.status.success(),
+        "apply failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&apply.stdout),
+        String::from_utf8_lossy(&apply.stderr)
+    );
+    let after_apply = fs::read_to_string(&config_path).unwrap();
+    assert_ne!(after_apply, original);
+    assert!(after_apply.contains("managed"), "managed server must merge");
+    assert!(
+        after_apply.contains("user-search"),
+        "user server must survive"
+    );
+    assert!(
+        after_apply.contains("theme"),
+        "top-level settings must survive"
+    );
+
+    let revert = run_agentsync(project_root, &["revert"]);
+    assert!(
+        revert.status.success(),
+        "revert failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&revert.stdout),
+        String::from_utf8_lossy(&revert.stderr)
+    );
+    assert_eq!(fs::read_to_string(&config_path).unwrap(), original);
+}
+
+#[test]
+#[cfg(unix)]
+fn test_revert_restores_opencode_config_with_top_level_settings_exactly() {
+    let temp_dir = TempDir::new().unwrap();
+    let project_root = &temp_dir.path().join("project");
+    fs::create_dir_all(project_root.join(".agents")).unwrap();
+    fs::write(
+        project_root.join(".agents/agentsync.toml"),
+        "source_dir = \".\"\n\n[mcp]\nenabled = true\n\n[mcp_servers.managed]\ncommand = \"managed-server\"\n\n[agents.opencode]\nenabled = true\n",
+    )
+    .unwrap();
+    let config_path = project_root.join("opencode.json");
+    let original = r#"{"$schema":"https://opencode.ai/config.json","theme":"dark","mcp":{"user-tool":{"type":"local","command":["user-tool"]}}}"#;
+    fs::write(&config_path, original).unwrap();
+
+    let apply = run_agentsync(project_root, &["apply"]);
+    assert!(
+        apply.status.success(),
+        "apply failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&apply.stdout),
+        String::from_utf8_lossy(&apply.stderr)
+    );
+    let after_apply = fs::read_to_string(&config_path).unwrap();
+    assert_ne!(after_apply, original);
+    assert!(after_apply.contains("managed"), "managed server must merge");
+    assert!(
+        after_apply.contains("user-tool"),
+        "user server must survive"
+    );
+    assert!(
+        after_apply.contains("theme"),
+        "top-level settings must survive"
+    );
+
+    let revert = run_agentsync(project_root, &["revert"]);
+    assert!(
+        revert.status.success(),
+        "revert failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&revert.stdout),
+        String::from_utf8_lossy(&revert.stderr)
+    );
+    assert_eq!(fs::read_to_string(&config_path).unwrap(), original);
+}
+
+#[test]
+#[cfg(unix)]
+fn test_revert_restores_zcode_config_with_top_level_settings_exactly() {
+    let temp_dir = TempDir::new().unwrap();
+    let project_root = &temp_dir.path().join("project");
+    fs::create_dir_all(project_root.join(".agents")).unwrap();
+    fs::write(
+        project_root.join(".agents/agentsync.toml"),
+        "source_dir = \".\"\n\n[mcp]\nenabled = true\n\n[mcp_servers.managed]\ncommand = \"managed-server\"\n\n[agents.zcode]\nenabled = true\n",
+    )
+    .unwrap();
+    let config_path = project_root.join(".zcode/config.json");
+    fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+    let original = r#"{"theme":"dark","mcp":{"servers":{"user-tool":{"command":"user-search"}}}}"#;
+    fs::write(&config_path, original).unwrap();
+
+    let apply = run_agentsync(project_root, &["apply"]);
+    assert!(
+        apply.status.success(),
+        "apply failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&apply.stdout),
+        String::from_utf8_lossy(&apply.stderr)
+    );
+    let after_apply = fs::read_to_string(&config_path).unwrap();
+    assert_ne!(after_apply, original);
+    assert!(after_apply.contains("managed"), "managed server must merge");
+    assert!(
+        after_apply.contains("user-tool"),
+        "user server must survive"
+    );
+    assert!(
+        after_apply.contains("theme"),
+        "top-level settings must survive"
+    );
+
+    let revert = run_agentsync(project_root, &["revert"]);
+    assert!(
+        revert.status.success(),
+        "revert failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&revert.stdout),
+        String::from_utf8_lossy(&revert.stderr)
+    );
+    assert_eq!(fs::read_to_string(&config_path).unwrap(), original);
+}
+
+#[test]
+#[cfg(unix)]
+fn test_revert_restores_claude_desktop_global_config_exactly() {
+    use std::process::Command;
+
+    let temp_dir = TempDir::new().unwrap();
+    let project_root = &temp_dir.path().join("project");
+    fs::create_dir_all(project_root.join(".agents")).unwrap();
+    fs::write(
+        project_root.join(".agents/agentsync.toml"),
+        "source_dir = \".\"\n\n[mcp]\nenabled = true\n\n[mcp_servers.managed]\ncommand = \"managed-server\"\n\n[agents.claude-desktop]\nenabled = true\n",
+    )
+    .unwrap();
+    // Isolate the global config path: dirs::config_dir honors
+    // XDG_CONFIG_HOME on Linux and HOME on macOS; set both to temp dirs.
+    let fake_xdg = temp_dir.path().join("fake-config");
+    let fake_home = temp_dir.path().join("fake-home");
+    fs::create_dir_all(&fake_xdg).unwrap();
+    fs::create_dir_all(&fake_home).unwrap();
+    let data_root = project_root.parent().unwrap().join(".local-data");
+    #[cfg(target_os = "macos")]
+    let config_dir = fake_home.join("Library/Application Support");
+    #[cfg(not(target_os = "macos"))]
+    let config_dir = fake_xdg.clone();
+    let global_path = config_dir.join("Claude/claude_desktop_config.json");
+    fs::create_dir_all(global_path.parent().unwrap()).unwrap();
+    let original = r#"{"theme":"dark","mcpServers":{"user-tool":{"command":"user-search"}}}"#;
+    fs::write(&global_path, original).unwrap();
+
+    let run_isolated = |args: &[&str]| -> Output {
+        Command::new(agentsync_bin())
+            .current_dir(project_root)
+            .env("AGENTSYNC_DATA_DIR", &data_root)
+            .env("XDG_CONFIG_HOME", &fake_xdg)
+            .env("HOME", &fake_home)
+            .args(args)
+            .output()
+            .unwrap_or_else(|error| panic!("failed to run agentsync {args:?}: {error}"))
+    };
+
+    let apply = run_isolated(&["apply"]);
+    assert!(
+        apply.status.success(),
+        "apply failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&apply.stdout),
+        String::from_utf8_lossy(&apply.stderr)
+    );
+    let after_apply = fs::read_to_string(&global_path).unwrap();
+    assert_ne!(after_apply, original);
+    assert!(after_apply.contains("managed"), "managed server must merge");
+    assert!(
+        after_apply.contains("user-tool"),
+        "user server must survive"
+    );
+    assert!(
+        after_apply.contains("theme"),
+        "top-level settings must survive"
+    );
+
+    let revert = run_isolated(&["revert"]);
+    assert!(
+        revert.status.success(),
+        "revert failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&revert.stdout),
+        String::from_utf8_lossy(&revert.stderr)
+    );
+    assert_eq!(fs::read_to_string(&global_path).unwrap(), original);
+}

@@ -47,6 +47,9 @@ pub(super) struct NestedGlobEnumeration {
 pub(super) enum NestedGlobDiscoveryStatus {
     NotAttempted,
     Complete,
+    MissingRoot {
+        search_root: PathBuf,
+    },
     Incomplete {
         search_root: PathBuf,
         reason: String,
@@ -373,12 +376,19 @@ impl Linker {
                 entries: Vec::new(),
             });
         }
-        if !search_root.exists() || !search_root.is_dir() {
+        if !search_root.exists() {
+            return Ok(NestedGlobEnumeration {
+                template,
+                discovery: NestedGlobDiscoveryStatus::MissingRoot { search_root },
+                entries: Vec::new(),
+            });
+        }
+        if !search_root.is_dir() {
             return Ok(NestedGlobEnumeration {
                 template,
                 discovery: NestedGlobDiscoveryStatus::Incomplete {
                     search_root,
-                    reason: "Search root does not exist or is not a directory".to_string(),
+                    reason: "Search root is not a directory".to_string(),
                 },
                 entries: Vec::new(),
             });
