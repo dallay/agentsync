@@ -411,12 +411,10 @@ where
         temporary_file
             .as_file()
             .set_permissions(fs::Permissions::from_mode(0o600))
-            .with_context(|| {
-                format!(
-                    "Failed to restrict new .gitignore permissions for {}",
-                    gitignore_path.display()
-                )
-            })?;
+            .context(format!(
+                "Failed to restrict new .gitignore permissions for {}",
+                gitignore_path.display()
+            ))?;
     }
     temporary_file
         .write_all(content.as_bytes())

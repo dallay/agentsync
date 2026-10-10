@@ -372,12 +372,10 @@ impl Linker {
                     .set_permissions(cap_std::fs::Permissions::from_std(
                         fs::Permissions::from_mode(0o600),
                     ))
-                    .with_context(|| {
-                        format!(
-                            "Failed to restrict staged compressed AGENTS.md permissions: {}",
-                            dest.display()
-                        )
-                    })?;
+                    .context(format!(
+                        "Failed to restrict staged compressed AGENTS.md permissions: {}",
+                        dest.display()
+                    ))?;
             }
             staged_file
                 .write_all(compressed.as_bytes())
