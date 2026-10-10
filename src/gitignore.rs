@@ -405,6 +405,19 @@ where
             parent.display()
         )
     })?;
+    #[cfg(unix)]
+    if existing_permissions.is_none() {
+        use std::os::unix::fs::PermissionsExt;
+        temporary_file
+            .as_file()
+            .set_permissions(fs::Permissions::from_mode(0o600))
+            .with_context(|| {
+                format!(
+                    "Failed to restrict new .gitignore permissions for {}",
+                    gitignore_path.display()
+                )
+            })?;
+    }
     temporary_file
         .write_all(content.as_bytes())
         .with_context(|| {
@@ -1476,7 +1489,7 @@ trailing_content
             // SAFETY: This subprocess runs only this test, so changing its process umask
             // cannot affect other test threads or processes.
             unsafe {
-                umask(0o000);
+                umask(0o777);
             }
 
             let project_root = Path::new(&path);
@@ -1492,11 +1505,12 @@ trailing_content
             assert_eq!(
                 fs::metadata(&gitignore_path).unwrap().permissions().mode() & 0o777,
                 0o644,
-                ".gitignore mode should be restored exactly despite umask 000"
+                ".gitignore mode should be restored exactly despite umask 0777"
             );
 
             let new_project_root = project_root.join("new-file-project");
             fs::create_dir(&new_project_root).unwrap();
+            fs::set_permissions(&new_project_root, fs::Permissions::from_mode(0o700)).unwrap();
             update_gitignore(
                 &new_project_root,
                 "Marker",
@@ -1512,7 +1526,7 @@ trailing_content
                     .mode()
                     & 0o777,
                 0o600,
-                "new .gitignore should be owner-only even with umask 000"
+                "new .gitignore should be exactly owner-only even with umask 0777"
             );
             return;
         }
