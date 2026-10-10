@@ -1542,6 +1542,10 @@ trailing_content
             .arg(test_name)
             .arg("--nocapture")
             .env(CHILD_PATH_ENV, temp_dir.path())
+            .env(
+                "LLVM_PROFILE_FILE",
+                temp_dir.path().join("gitignore-umask-%p.profraw"),
+            )
             .output()
             .unwrap();
         assert!(

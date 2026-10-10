@@ -3512,6 +3512,10 @@ mod tests {
             .arg(test_name)
             .arg("--nocapture")
             .env(CHILD_PATH_ENV, temp_dir.path())
+            .env(
+                "LLVM_PROFILE_FILE",
+                temp_dir.path().join("compressed-output-%p.profraw"),
+            )
             .output()
             .unwrap();
 
