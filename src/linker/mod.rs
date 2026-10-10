@@ -3489,9 +3489,7 @@ mod tests {
 
             // SAFETY: This subprocess runs only this test, so changing its umask
             // cannot affect other test threads or processes.
-            unsafe {
-                umask(0o777);
-            }
+            let previous_umask = unsafe { umask(0o777) };
 
             linker
                 .write_compressed_agents_md(&source, &dest, &SyncOptions::default())
@@ -3502,6 +3500,11 @@ mod tests {
                 0o600,
                 "compressed AGENTS.md output must be exactly owner-only despite umask 0777"
             );
+            // SAFETY: Restore this subprocess's original umask before the coverage runtime
+            // writes its profile file on process exit.
+            unsafe {
+                umask(previous_umask);
+            }
             return;
         }
 
@@ -3512,10 +3515,6 @@ mod tests {
             .arg(test_name)
             .arg("--nocapture")
             .env(CHILD_PATH_ENV, temp_dir.path())
-            .env(
-                "LLVM_PROFILE_FILE",
-                temp_dir.path().join("compressed-output-%p.profraw"),
-            )
             .output()
             .unwrap();
 

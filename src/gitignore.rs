@@ -1488,9 +1488,7 @@ trailing_content
         if let Some(path) = std::env::var_os(CHILD_PATH_ENV) {
             // SAFETY: This subprocess runs only this test, so changing its process umask
             // cannot affect other test threads or processes.
-            unsafe {
-                umask(0o777);
-            }
+            let previous_umask = unsafe { umask(0o777) };
 
             let project_root = Path::new(&path);
             update_gitignore(
@@ -1528,6 +1526,11 @@ trailing_content
                 0o600,
                 "new .gitignore should be exactly owner-only even with umask 0777"
             );
+            // SAFETY: Restore this subprocess's original umask before the coverage runtime
+            // writes its profile file on process exit.
+            unsafe {
+                umask(previous_umask);
+            }
             return;
         }
 
@@ -1542,10 +1545,6 @@ trailing_content
             .arg(test_name)
             .arg("--nocapture")
             .env(CHILD_PATH_ENV, temp_dir.path())
-            .env(
-                "LLVM_PROFILE_FILE",
-                temp_dir.path().join("gitignore-umask-%p.profraw"),
-            )
             .output()
             .unwrap();
         assert!(
