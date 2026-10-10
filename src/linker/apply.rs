@@ -340,7 +340,7 @@ impl Linker {
                 .create_new(true)
                 .follow(FollowSymlinks::No);
             #[cfg(unix)]
-            create_options.mode(0o666);
+            create_options.mode(0o600);
 
             match directory.open_with(candidate.as_str(), &create_options) {
                 Ok(file) => {

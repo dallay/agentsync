@@ -396,7 +396,7 @@ where
     #[cfg(unix)]
     if existing_permissions.is_none() {
         use std::os::unix::fs::PermissionsExt;
-        builder.permissions(fs::Permissions::from_mode(0o666));
+        builder.permissions(fs::Permissions::from_mode(0o600));
     }
 
     let mut temporary_file = builder.tempfile_in(parent).with_context(|| {
@@ -1466,7 +1466,7 @@ trailing_content
 
     #[test]
     #[cfg(unix)]
-    fn update_gitignore_preserves_existing_mode_under_restrictive_umask() {
+    fn update_gitignore_preserves_existing_mode_and_restricts_new_file() {
         use std::os::unix::fs::PermissionsExt;
         use std::process::Command;
 
@@ -1476,7 +1476,7 @@ trailing_content
             // SAFETY: This subprocess runs only this test, so changing its process umask
             // cannot affect other test threads or processes.
             unsafe {
-                umask(0o077);
+                umask(0o000);
             }
 
             let project_root = Path::new(&path);
@@ -1492,7 +1492,7 @@ trailing_content
             assert_eq!(
                 fs::metadata(&gitignore_path).unwrap().permissions().mode() & 0o777,
                 0o644,
-                ".gitignore mode should be restored exactly despite umask 077"
+                ".gitignore mode should be restored exactly despite umask 000"
             );
 
             let new_project_root = project_root.join("new-file-project");
@@ -1512,7 +1512,7 @@ trailing_content
                     .mode()
                     & 0o777,
                 0o600,
-                "new .gitignore should retain the default 0666 filtered by umask 077"
+                "new .gitignore should be owner-only even with umask 000"
             );
             return;
         }

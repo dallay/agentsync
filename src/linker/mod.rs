@@ -3467,6 +3467,33 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
+    fn compressed_agents_output_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp_dir = TempDir::new().unwrap();
+        let agents_dir = temp_dir.path().join(".agents");
+        fs::create_dir_all(&agents_dir).unwrap();
+        let config_path = agents_dir.join("agentsync.toml");
+        fs::write(&config_path, "source_dir = \".\"\n").unwrap();
+
+        let source = temp_dir.path().join("AGENTS.md");
+        fs::write(&source, "# instructions\n").unwrap();
+        let dest = temp_dir.path().join("workspace/AGENTS.compact.md");
+        let linker = Linker::new(Config::load(&config_path).unwrap(), config_path);
+
+        linker
+            .write_compressed_agents_md(&source, &dest, &SyncOptions::default())
+            .unwrap();
+
+        assert_eq!(
+            fs::metadata(dest).unwrap().permissions().mode() & 0o777,
+            0o600,
+            "compressed AGENTS.md output must be owner-only"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
     fn test_nested_glob_excludes_patterns() {
         let temp_dir = TempDir::new().unwrap();
         let agents_dir = temp_dir.path().join(".agents");
