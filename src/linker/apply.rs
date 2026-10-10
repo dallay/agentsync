@@ -340,7 +340,7 @@ impl Linker {
                 .create_new(true)
                 .follow(FollowSymlinks::No);
             #[cfg(unix)]
-            create_options.mode(0o666);
+            create_options.mode(0o600);
 
             match directory.open_with(candidate.as_str(), &create_options) {
                 Ok(file) => {
@@ -365,6 +365,18 @@ impl Linker {
         let mut staged_file = staged_file
             .ok_or_else(|| anyhow::anyhow!("Staged compressed AGENTS.md file was not created"))?;
         let stage_result = (|| -> Result<()> {
+            #[cfg(unix)]
+            if existing_metadata.is_none() {
+                use std::os::unix::fs::PermissionsExt;
+                staged_file
+                    .set_permissions(cap_std::fs::Permissions::from_std(
+                        fs::Permissions::from_mode(0o600),
+                    ))
+                    .context(format!(
+                        "Failed to restrict staged compressed AGENTS.md permissions: {}",
+                        dest.display()
+                    ))?;
+            }
             staged_file
                 .write_all(compressed.as_bytes())
                 .with_context(|| {

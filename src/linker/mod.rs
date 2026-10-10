@@ -3467,6 +3467,72 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
+    fn compressed_agents_output_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        use std::process::Command;
+
+        const CHILD_PATH_ENV: &str = "AGENTSYNC_COMPRESSED_OUTPUT_UMASK_TEST_PATH";
+
+        if let Some(path) = std::env::var_os(CHILD_PATH_ENV) {
+            let project_root = Path::new(&path);
+            let agents_dir = project_root.join(".agents");
+            fs::create_dir_all(&agents_dir).unwrap();
+            let workspace_dir = project_root.join("workspace");
+            fs::create_dir_all(&workspace_dir).unwrap();
+            let config_path = agents_dir.join("agentsync.toml");
+            fs::write(&config_path, "source_dir = \".\"\n").unwrap();
+
+            let source = project_root.join("AGENTS.md");
+            fs::write(&source, "# instructions\n").unwrap();
+            let dest = project_root.join("workspace/AGENTS.compact.md");
+            let linker = Linker::new(Config::load(&config_path).unwrap(), config_path);
+
+            // SAFETY: This subprocess runs only this test, so changing its umask
+            // cannot affect other test threads or processes.
+            let previous_umask = unsafe { umask(0o777) };
+
+            linker
+                .write_compressed_agents_md(&source, &dest, &SyncOptions::default())
+                .unwrap();
+
+            assert_eq!(
+                fs::metadata(dest).unwrap().permissions().mode() & 0o777,
+                0o600,
+                "compressed AGENTS.md output must be exactly owner-only despite umask 0777"
+            );
+            // SAFETY: Restore this subprocess's original umask before the coverage runtime
+            // writes its profile file on process exit.
+            unsafe {
+                umask(previous_umask);
+            }
+            return;
+        }
+
+        let temp_dir = TempDir::new().unwrap();
+        let test_name = std::thread::current().name().unwrap().to_owned();
+        let output = Command::new(std::env::current_exe().unwrap())
+            .arg("--exact")
+            .arg(test_name)
+            .arg("--nocapture")
+            .env(CHILD_PATH_ENV, temp_dir.path())
+            .output()
+            .unwrap();
+
+        assert!(
+            output.status.success(),
+            "isolated umask test subprocess failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[cfg(unix)]
+    unsafe extern "C" {
+        fn umask(mask: u32) -> u32;
+    }
+
+    #[test]
+    #[cfg(unix)]
     fn test_nested_glob_excludes_patterns() {
         let temp_dir = TempDir::new().unwrap();
         let agents_dir = temp_dir.path().join(".agents");

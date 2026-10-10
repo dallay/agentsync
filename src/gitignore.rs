@@ -396,7 +396,7 @@ where
     #[cfg(unix)]
     if existing_permissions.is_none() {
         use std::os::unix::fs::PermissionsExt;
-        builder.permissions(fs::Permissions::from_mode(0o666));
+        builder.permissions(fs::Permissions::from_mode(0o600));
     }
 
     let mut temporary_file = builder.tempfile_in(parent).with_context(|| {
@@ -405,6 +405,17 @@ where
             parent.display()
         )
     })?;
+    #[cfg(unix)]
+    if existing_permissions.is_none() {
+        use std::os::unix::fs::PermissionsExt;
+        temporary_file
+            .as_file()
+            .set_permissions(fs::Permissions::from_mode(0o600))
+            .context(format!(
+                "Failed to restrict new .gitignore permissions for {}",
+                gitignore_path.display()
+            ))?;
+    }
     temporary_file
         .write_all(content.as_bytes())
         .with_context(|| {
@@ -1466,7 +1477,7 @@ trailing_content
 
     #[test]
     #[cfg(unix)]
-    fn update_gitignore_preserves_existing_mode_under_restrictive_umask() {
+    fn update_gitignore_preserves_existing_mode_and_restricts_new_file() {
         use std::os::unix::fs::PermissionsExt;
         use std::process::Command;
 
@@ -1475,9 +1486,7 @@ trailing_content
         if let Some(path) = std::env::var_os(CHILD_PATH_ENV) {
             // SAFETY: This subprocess runs only this test, so changing its process umask
             // cannot affect other test threads or processes.
-            unsafe {
-                umask(0o077);
-            }
+            let previous_umask = unsafe { umask(0o777) };
 
             let project_root = Path::new(&path);
             update_gitignore(
@@ -1492,11 +1501,12 @@ trailing_content
             assert_eq!(
                 fs::metadata(&gitignore_path).unwrap().permissions().mode() & 0o777,
                 0o644,
-                ".gitignore mode should be restored exactly despite umask 077"
+                ".gitignore mode should be restored exactly despite umask 0777"
             );
 
             let new_project_root = project_root.join("new-file-project");
             fs::create_dir(&new_project_root).unwrap();
+            fs::set_permissions(&new_project_root, fs::Permissions::from_mode(0o700)).unwrap();
             update_gitignore(
                 &new_project_root,
                 "Marker",
@@ -1512,8 +1522,13 @@ trailing_content
                     .mode()
                     & 0o777,
                 0o600,
-                "new .gitignore should retain the default 0666 filtered by umask 077"
+                "new .gitignore should be exactly owner-only even with umask 0777"
             );
+            // SAFETY: Restore this subprocess's original umask before the coverage runtime
+            // writes its profile file on process exit.
+            unsafe {
+                umask(previous_umask);
+            }
             return;
         }
 
