@@ -242,12 +242,12 @@ pub fn install_from_zip(
     let mut extracted_bytes = 0_u64;
     for i in 0..zip.len() {
         let mut file = zip.by_index(i).map_err(SkillInstallError::ZipArchive)?;
-        let filename = file.name();
+        let filename = file.name().map_err(SkillInstallError::ZipArchive)?;
         // SECURITY: Reject absolute paths, drive prefixes, and path traversal attempts.
-        if archive_path_is_unsafe(filename) {
-            return Err(SkillInstallError::PathTraversal(filename.to_string()));
+        if archive_path_is_unsafe(filename.as_ref()) {
+            return Err(SkillInstallError::PathTraversal(filename.into_owned()));
         }
-        let outpath = tmp.path().join(filename);
+        let outpath = tmp.path().join(&*filename);
         if file.is_dir() {
             std::fs::create_dir_all(&outpath).map_err(SkillInstallError::Io)?;
         } else {
@@ -641,7 +641,10 @@ fn unpack_zip(
 
     for i in 0..zip.len() {
         let mut file = zip.by_index(i).map_err(SkillInstallError::ZipArchive)?;
-        let full_name = file.name().to_string();
+        let full_name = file
+            .name()
+            .map_err(SkillInstallError::ZipArchive)?
+            .into_owned();
 
         if archive_path_is_unsafe(&full_name) {
             return Err(SkillInstallError::PathTraversal(full_name));
@@ -682,13 +685,20 @@ fn zip_common_root(
         .by_index(0)
         .map_err(SkillInstallError::ZipArchive)?
         .name()
-        .to_string();
+        .map_err(SkillInstallError::ZipArchive)?
+        .into_owned();
     let root = first_name.split('/').next().unwrap_or("");
+    // zip v9: file_names() is fallible (invalid names -> ZipError).
+    // Collect once, propagate error instead of panicking or skipping.
+    let names: Vec<std::borrow::Cow<'_, str>> = zip
+        .file_names()
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(SkillInstallError::ZipArchive)?;
     if !root.is_empty()
-        && zip
-            .file_names()
+        && names
+            .iter()
             .all(|n| n == root || n.starts_with(&format!("{root}/")))
-        && zip.file_names().any(|n| n.starts_with(&format!("{root}/")))
+        && names.iter().any(|n| n.starts_with(&format!("{root}/")))
     {
         Ok(Some(root.to_string()))
     } else {
