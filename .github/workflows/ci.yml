@@ -290,7 +290,7 @@ jobs:
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
         with:
-          toolchain: 1.99.0
+          toolchain: 1.99.1
 
       - name: Install system packages required to build cargo-audit
         run: |
