@@ -11,4 +11,5 @@ permissions:
 jobs:
   stale:
     uses: dallay/common-actions/.github/workflows/stale.yml@5efa6a4c8865caf90a607cc5d5232564312048fd # v2.3.0
-    secrets: inherit
+    secrets:
+      github-token: ${{ secrets.GITHUB_TOKEN }}

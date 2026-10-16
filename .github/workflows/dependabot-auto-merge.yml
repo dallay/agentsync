@@ -11,8 +11,11 @@ jobs:
       github.actor == 'renovate[bot]' ||
       github.actor == 'dependabot[bot]' ||
       github.actor == 'dependabot-preview[bot]'
-    uses: dallay/common-actions/.github/workflows/dependabot-auto-merge.yml@v2.3.0
+    uses: dallay/common-actions/.github/workflows/dependabot-auto-merge.yml@5efa6a4c8865caf90a607cc5d5232564312048fd # v2.3.0
     with:
       target: squash
       approve: true
-    secrets: inherit
+    secrets:
+      APP_ID: ${{ secrets.APP_ID }}
+      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+      token: ${{ secrets.token }}
