@@ -8,5 +8,6 @@ permissions:
 
 jobs:
   label:
-    uses: dallay/common-actions/.github/workflows/pr-labeler.yml@v2.2.4
-    secrets: inherit
+    uses: dallay/common-actions/.github/workflows/pr-labeler.yml@5efa6a4c8865caf90a607cc5d5232564312048fd # v2.3.0
+    secrets:
+      github-token: ${{ secrets.GITHUB_TOKEN }}

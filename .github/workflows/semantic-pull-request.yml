@@ -6,4 +6,4 @@ on:
     types: [opened, edited, synchronize]
 jobs:
   main:
-    uses: dallay/common-actions/.github/workflows/semantic-pr.yml@v2.2.4
+    uses: dallay/common-actions/.github/workflows/semantic-pr.yml@5efa6a4c8865caf90a607cc5d5232564312048fd # v2.3.0
