@@ -21,6 +21,27 @@
 * **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
 * **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
 
+## [1.52.1](https://github.com/dallay/agentsync/compare/v1.52.0...v1.52.1) (2026-10-16)
+
+
+### Bug Fixes
+
+* migrate to zip v9 handling fallible file names ([#668](https://github.com/dallay/agentsync/issues/668)) ([9a5cd4a](https://github.com/dallay/agentsync/commit/9a5cd4a9d09c0a7e48d48bf5b2772d2767378c11))
+* update cap-std and cap-fs-ext to v4 together ([#669](https://github.com/dallay/agentsync/issues/669)) ([85b5138](https://github.com/dallay/agentsync/commit/85b51383e8e480bb655d0cb030ff59956f893dcd))
+* update quinn-proto to 0.11.19 and rustls to 0.23.46 to resolve RUSTSEC advisories ([#667](https://github.com/dallay/agentsync/issues/667)) ([4fa2156](https://github.com/dallay/agentsync/commit/4fa2156c51a47104d5c7125b3cf3d3da2d015fc8))
+
+
+### Documentation
+
+* revalidate repo-scoped marketplace behavior for Claude and Codex ([#567](https://github.com/dallay/agentsync/issues/567)) ([#662](https://github.com/dallay/agentsync/issues/662)) ([14a325c](https://github.com/dallay/agentsync/commit/14a325c7754f288c3f1c5506b4e27696449447e8))
+
+
+### Chores
+
+* **deps:** update dependency astro to v7.3.8 ([#666](https://github.com/dallay/agentsync/issues/666)) ([add7ac1](https://github.com/dallay/agentsync/commit/add7ac11df2077c9899b5d24d39dcd9b5025a04b))
+* **deps:** update dtolnay/rust-toolchain digest to e2a55d2 ([#664](https://github.com/dallay/agentsync/issues/664)) ([2885ead](https://github.com/dallay/agentsync/commit/2885ead5aa257cf84da77ace45e0ab258be58be6))
+* **deps:** update github actions ([#665](https://github.com/dallay/agentsync/issues/665)) ([8fb3d4f](https://github.com/dallay/agentsync/commit/8fb3d4ff9927832988d80dd02cf02b840d9f615f))
+
 ## [1.52.0](https://github.com/dallay/agentsync/compare/v1.51.0...v1.52.0) (2026-10-10)
 
 
