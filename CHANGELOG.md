@@ -21,6 +21,20 @@
 * **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
 * **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
 
+## [1.52.2](https://github.com/dallay/agentsync/compare/v1.52.1...v1.52.2) (2026-10-18)
+
+
+### Chores
+
+* **deps:** update actions/create-github-app-token digest to 64ab729 ([#670](https://github.com/dallay/agentsync/issues/670)) ([697954a](https://github.com/dallay/agentsync/commit/697954aa5e0c4b53676fdc9b802bd4a85737722e))
+* **deps:** update agentsync to v1.52.0 ([#674](https://github.com/dallay/agentsync/issues/674)) ([036561a](https://github.com/dallay/agentsync/commit/036561acd8a217647639b42e247c7c5418b8981d))
+* **deps:** update cargo dependencies ([#678](https://github.com/dallay/agentsync/issues/678)) ([f435a21](https://github.com/dallay/agentsync/commit/f435a215c79735b1a589cbf06ad8d8b6903d3605))
+* **deps:** update dependency @astrojs/starlight to v0.42.6 ([#673](https://github.com/dallay/agentsync/issues/673)) ([cadbf93](https://github.com/dallay/agentsync/commit/cadbf934892ade1064ed53dbf1e91ca2ab871304))
+* **deps:** update dependency @iconify/json to v2.2.543 ([#677](https://github.com/dallay/agentsync/issues/677)) ([e6c8f70](https://github.com/dallay/agentsync/commit/e6c8f70d078aa026a0c2e50ae58849a4e8ae7933))
+* **deps:** update dependency lefthook to v2.2.2 ([#675](https://github.com/dallay/agentsync/issues/675)) ([32c264e](https://github.com/dallay/agentsync/commit/32c264eaa42717b00675dd649649818777601b9c))
+* **deps:** update dtolnay/rust-toolchain digest to 683b588 ([#671](https://github.com/dallay/agentsync/issues/671)) ([659ddf6](https://github.com/dallay/agentsync/commit/659ddf60ddd3ff9823479be5eb33544a7ab701a0))
+* **deps:** update node.js to v24.22.0 ([#676](https://github.com/dallay/agentsync/issues/676)) ([3b59a2a](https://github.com/dallay/agentsync/commit/3b59a2a254e1e67fd47b969d02fdfbe012c9bf55))
+
 ## [1.52.1](https://github.com/dallay/agentsync/compare/v1.52.0...v1.52.1) (2026-10-16)
 
 
