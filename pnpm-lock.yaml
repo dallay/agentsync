@@ -25,23 +25,23 @@ importers:
         version: 7.0.2
     optionalDependencies:
       '@dallay/agentsync-darwin-arm64':
-        specifier: 1.52.1
-        version: 1.52.1
+        specifier: 1.52.2
+        version: 1.52.2
       '@dallay/agentsync-darwin-x64':
-        specifier: 1.52.1
-        version: 1.52.1
+        specifier: 1.52.2
+        version: 1.52.2
       '@dallay/agentsync-linux-arm64':
-        specifier: 1.52.1
-        version: 1.52.1
+        specifier: 1.52.2
+        version: 1.52.2
       '@dallay/agentsync-linux-x64':
-        specifier: 1.52.1
-        version: 1.52.1
+        specifier: 1.52.2
+        version: 1.52.2
       '@dallay/agentsync-windows-arm64':
-        specifier: 1.52.1
-        version: 1.52.1
+        specifier: 1.52.2
+        version: 1.52.2
       '@dallay/agentsync-windows-x64':
-        specifier: 1.52.1
-        version: 1.52.1
+        specifier: 1.52.2
+        version: 1.52.2
 
   website/docs:
     dependencies:
@@ -335,43 +335,43 @@ packages:
     resolution: {integrity: sha512-kzyuwOAQnXJNLS9PSyrk0CWk35nWJW/zl/6KvnTBMFK65gm7U1/Z5BqjxeapjZCIhQcM/DsrEmcbRwDyXyXK4A==}
     engines: {node: '>=14'}
 
-  '@dallay/agentsync-darwin-arm64@1.52.1':
-    resolution: {integrity: sha512-s9fT2rSIviA9IL2J6D899t34CwQ72tWOe5gIfH4soQpoL52EaK9+D3edHc6hObeAGh9UcVuUt1ecN0IlDyWgkA==}
+  '@dallay/agentsync-darwin-arm64@1.52.2':
+    resolution: {integrity: sha512-CispJLqnatiE9K/CNZR7Uf6yuGGqJa1De9g8XnQJ0o0fwYWp3DOXWzXFcX8m10ondnyUQqR3bl8ic8tlsNeefw==}
     engines: {node: '>=18'}
     cpu: [arm64]
     os: [darwin]
     hasBin: true
 
-  '@dallay/agentsync-darwin-x64@1.52.1':
-    resolution: {integrity: sha512-AgFcXFcUrAU+IGqmr9Z09Hq/WgH8AWSQ8xrR0pjzkKUYRO7ktxj+naj8ZvE+PwX56rvI2aRWF9xmajQ/nU+jzA==}
+  '@dallay/agentsync-darwin-x64@1.52.2':
+    resolution: {integrity: sha512-Bq5x9AQSMl1NriMNuA2bZldUoF3mDrYgfrwbn5+4xWG1uQtvuWZar6V0iEcgZ5eS5GQaNWGEGeWeuXZq0cVdAQ==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [darwin]
     hasBin: true
 
-  '@dallay/agentsync-linux-arm64@1.52.1':
-    resolution: {integrity: sha512-hr8CJCZRCl0w46N/AY5deml4O9oTV18J61pV34hWMBiUg9ICJJbXTIlArYtE+T8Qgw/PfMETvz7zJVPvmIVXMA==}
+  '@dallay/agentsync-linux-arm64@1.52.2':
+    resolution: {integrity: sha512-Zbi3/S4zewAAdIw43zPq5h9ctPQ6+VoOa6H7lOdHGcdxie45i/E1g5/nop52QeGujl5z6rPzFGR0uRTH0Bqs3Q==}
     engines: {node: '>=18'}
     cpu: [arm64]
     os: [linux]
     hasBin: true
 
-  '@dallay/agentsync-linux-x64@1.52.1':
-    resolution: {integrity: sha512-O0gtCXmkMwygsNDEd6K0vN7Kx6BdjpecdW3lO+lLC3niOCe0Iev2v0dcVnHZ/xP7H/0N64kvv9HF2Dfo+PQVVg==}
+  '@dallay/agentsync-linux-x64@1.52.2':
+    resolution: {integrity: sha512-TA9UM6OkvaqkmJhBLm6d1DhNsMuatNoejNF/L/EspT6c5A2Fd/P9pU7zWAZpBPps04UgFk+XKQS5p57fi0Y1ng==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [linux]
     hasBin: true
 
-  '@dallay/agentsync-windows-arm64@1.52.1':
-    resolution: {integrity: sha512-BrlewAX+jiN4k5UGdjsdbnAN0bi9Tiz7mgzMVfCzAP1CcX/XaNjut6B5yQQUAv98wSlVcy/p3eMN4U7EDooZSw==}
+  '@dallay/agentsync-windows-arm64@1.52.2':
+    resolution: {integrity: sha512-ZLyrlb+EdJZZZp5f/dV84ut1ah2ZPesThybHsebf+NMiuTmzYq8H+WWF0tMqZbbaQhTyfBj8XKgOgQK1Tab7xw==}
     engines: {node: '>=18'}
     cpu: [arm64]
     os: [win32]
     hasBin: true
 
-  '@dallay/agentsync-windows-x64@1.52.1':
-    resolution: {integrity: sha512-f5jyNPQqjE+GEO6uX+7yRfbWI8LKsrmahGBcuRl3yD9+CC12XvNAuom5ZDZbrHLpeALTkvUoidNwmWgSOFhD3w==}
+  '@dallay/agentsync-windows-x64@1.52.2':
+    resolution: {integrity: sha512-SoJ//1oPBjsOHikvRqQt1wAnCERpJkT9nHD5Ml6vVu7FXzBml0fjShYRHKnG/aqFY0mJLCn67yC7TJ6EKxbq8w==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
@@ -1945,10 +1945,6 @@ packages:
     engines: {node: '>=20.19.5', npm: '>=10.8.2'}
     hasBin: true
 
-  smol-toml@1.8.0:
-    resolution: {integrity: sha512-kCZr2V3ch9i00x8zXRhjUNVcjG9ijES5dDudkXvUVCT5QlJNQWElSJdZqyPemffHoLNUYwOcou0Fy+ojN0uHSQ==}
-    engines: {node: '>= 18'}
-
   smol-toml@1.9.1:
     resolution: {integrity: sha512-j7WyPdf0CJoutMzMoPLF/bVXHtKZIT9Rb4eGeEbWw8X2t5oirjPgpL+OpaENZrILYaXqYwnVH+qgUwVbl+pUJQ==}
     engines: {node: '>= 18'}
@@ -2314,7 +2310,7 @@ snapshots:
       picomatch: 4.0.5
       retext-smartypants: 6.2.0
       shiki: 4.4.3
-      smol-toml: 1.8.0
+      smol-toml: 1.9.1
       unified: 11.0.5
       yaml: 2.9.1
 
@@ -2503,22 +2499,22 @@ snapshots:
 
   '@ctrl/tinycolor@4.2.0': {}
 
-  '@dallay/agentsync-darwin-arm64@1.52.1':
+  '@dallay/agentsync-darwin-arm64@1.52.2':
     optional: true
 
-  '@dallay/agentsync-darwin-x64@1.52.1':
+  '@dallay/agentsync-darwin-x64@1.52.2':
     optional: true
 
-  '@dallay/agentsync-linux-arm64@1.52.1':
+  '@dallay/agentsync-linux-arm64@1.52.2':
     optional: true
 
-  '@dallay/agentsync-linux-x64@1.52.1':
+  '@dallay/agentsync-linux-x64@1.52.2':
     optional: true
 
-  '@dallay/agentsync-windows-arm64@1.52.1':
+  '@dallay/agentsync-windows-arm64@1.52.2':
     optional: true
 
-  '@dallay/agentsync-windows-x64@1.52.1':
+  '@dallay/agentsync-windows-x64@1.52.2':
     optional: true
 
   '@emnapi/core@1.11.1':
@@ -4149,8 +4145,6 @@ snapshots:
       '@types/sax': 1.2.7
       arg: 5.0.2
       sax: 1.6.1
-
-  smol-toml@1.8.0: {}
 
   smol-toml@1.9.1: {}
 
