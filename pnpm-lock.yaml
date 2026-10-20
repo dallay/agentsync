@@ -23,25 +23,6 @@ importers:
       typescript:
         specifier: ^7.0.0
         version: 7.0.2
-    optionalDependencies:
-      '@dallay/agentsync-darwin-arm64':
-        specifier: 1.52.1
-        version: 1.52.1
-      '@dallay/agentsync-darwin-x64':
-        specifier: 1.52.1
-        version: 1.52.1
-      '@dallay/agentsync-linux-arm64':
-        specifier: 1.52.1
-        version: 1.52.1
-      '@dallay/agentsync-linux-x64':
-        specifier: 1.52.1
-        version: 1.52.1
-      '@dallay/agentsync-windows-arm64':
-        specifier: 1.52.1
-        version: 1.52.1
-      '@dallay/agentsync-windows-x64':
-        specifier: 1.52.1
-        version: 1.52.1
 
   website/docs:
     dependencies:
@@ -324,48 +305,6 @@ packages:
   '@ctrl/tinycolor@4.2.0':
     resolution: {integrity: sha512-kzyuwOAQnXJNLS9PSyrk0CWk35nWJW/zl/6KvnTBMFK65gm7U1/Z5BqjxeapjZCIhQcM/DsrEmcbRwDyXyXK4A==}
     engines: {node: '>=14'}
-
-  '@dallay/agentsync-darwin-arm64@1.52.1':
-    resolution: {integrity: sha512-s9fT2rSIviA9IL2J6D899t34CwQ72tWOe5gIfH4soQpoL52EaK9+D3edHc6hObeAGh9UcVuUt1ecN0IlDyWgkA==}
-    engines: {node: '>=18'}
-    cpu: [arm64]
-    os: [darwin]
-    hasBin: true
-
-  '@dallay/agentsync-darwin-x64@1.52.1':
-    resolution: {integrity: sha512-AgFcXFcUrAU+IGqmr9Z09Hq/WgH8AWSQ8xrR0pjzkKUYRO7ktxj+naj8ZvE+PwX56rvI2aRWF9xmajQ/nU+jzA==}
-    engines: {node: '>=18'}
-    cpu: [x64]
-    os: [darwin]
-    hasBin: true
-
-  '@dallay/agentsync-linux-arm64@1.52.1':
-    resolution: {integrity: sha512-hr8CJCZRCl0w46N/AY5deml4O9oTV18J61pV34hWMBiUg9ICJJbXTIlArYtE+T8Qgw/PfMETvz7zJVPvmIVXMA==}
-    engines: {node: '>=18'}
-    cpu: [arm64]
-    os: [linux]
-    hasBin: true
-
-  '@dallay/agentsync-linux-x64@1.52.1':
-    resolution: {integrity: sha512-O0gtCXmkMwygsNDEd6K0vN7Kx6BdjpecdW3lO+lLC3niOCe0Iev2v0dcVnHZ/xP7H/0N64kvv9HF2Dfo+PQVVg==}
-    engines: {node: '>=18'}
-    cpu: [x64]
-    os: [linux]
-    hasBin: true
-
-  '@dallay/agentsync-windows-arm64@1.52.1':
-    resolution: {integrity: sha512-BrlewAX+jiN4k5UGdjsdbnAN0bi9Tiz7mgzMVfCzAP1CcX/XaNjut6B5yQQUAv98wSlVcy/p3eMN4U7EDooZSw==}
-    engines: {node: '>=18'}
-    cpu: [arm64]
-    os: [win32]
-    hasBin: true
-
-  '@dallay/agentsync-windows-x64@1.52.1':
-    resolution: {integrity: sha512-f5jyNPQqjE+GEO6uX+7yRfbWI8LKsrmahGBcuRl3yD9+CC12XvNAuom5ZDZbrHLpeALTkvUoidNwmWgSOFhD3w==}
-    engines: {node: '>=18'}
-    cpu: [x64]
-    os: [win32]
-    hasBin: true
 
   '@emnapi/core@1.11.1':
     resolution: {integrity: sha512-RSvbQmHzdKzNsLYa/wHrbc3KN4sYLKAdPZxqiM2HATqv/SBk2/ENSHpvXGaLOMcsAyz0poEGqkmmKYG3OWiJEQ==}
@@ -1413,8 +1352,8 @@ packages:
   html-whitespace-sensitive-tag-names@3.0.1:
     resolution: {integrity: sha512-q+310vW8zmymYHALr1da4HyXUQ0zgiIwIicEfotYPWGN0OJVEN/58IJ3A4GBYcEq3LGAZqKb+ugvP0GNB9CEAA==}
 
-  http-cache-semantics@4.2.0:
-    resolution: {integrity: sha512-dTxcvPXqPvXBQpq5dUr6mEMJX4oIEFv6bwom3FDwKRDsuIjjJGANqhBuoAn9c1RQJIdAKav33ED65E2ys+87QQ==}
+  http-cache-semantics@4.3.0:
+    resolution: {integrity: sha512-M5t5LlJpS1UHMjvwRQVdFHvPISGeLAxNcrWuJkeGh0KxsqCHZ1O3NXZU/8x7cD0BDcGW8kapxMKTvwlqrNkHkA==}
 
   i18next@26.3.6:
     resolution: {integrity: sha512-Bu5Z2nAXgfVyM8xvW3jk9EKRIuX37PudsrBViThNFx7CR7aaYTpP01cxNB/E4c4UUzTDiAZRstEhsRfPOL/8xA==}
@@ -1900,17 +1839,9 @@ packages:
     engines: {node: '>=20.19.5', npm: '>=10.8.2'}
     hasBin: true
 
-  smol-toml@1.8.0:
-    resolution: {integrity: sha512-kCZr2V3ch9i00x8zXRhjUNVcjG9ijES5dDudkXvUVCT5QlJNQWElSJdZqyPemffHoLNUYwOcou0Fy+ojN0uHSQ==}
-    engines: {node: '>= 18'}
-
   smol-toml@1.9.1:
     resolution: {integrity: sha512-j7WyPdf0CJoutMzMoPLF/bVXHtKZIT9Rb4eGeEbWw8X2t5oirjPgpL+OpaENZrILYaXqYwnVH+qgUwVbl+pUJQ==}
     engines: {node: '>= 18'}
-
-  source-map-js@1.2.1:
-    resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
-    engines: {node: '>=0.10.0'}
 
   source-map-js@1.2.2:
     resolution: {integrity: sha512-KGj/8Y43x35aZVDtt+J4mK1hoLGHULMYfSkODJNQjNDC3oW1PqPoxMwo0pLUsWM/UEGzON/NxeHywEfNXNP3Vw==}
@@ -2264,7 +2195,7 @@ snapshots:
       picomatch: 4.0.5
       retext-smartypants: 6.2.0
       shiki: 4.4.3
-      smol-toml: 1.8.0
+      smol-toml: 1.9.1
       unified: 11.0.5
       yaml: 2.9.1
 
@@ -2430,24 +2361,6 @@ snapshots:
       sisteransi: 1.0.5
 
   '@ctrl/tinycolor@4.2.0': {}
-
-  '@dallay/agentsync-darwin-arm64@1.52.1':
-    optional: true
-
-  '@dallay/agentsync-darwin-x64@1.52.1':
-    optional: true
-
-  '@dallay/agentsync-linux-arm64@1.52.1':
-    optional: true
-
-  '@dallay/agentsync-linux-x64@1.52.1':
-    optional: true
-
-  '@dallay/agentsync-windows-arm64@1.52.1':
-    optional: true
-
-  '@dallay/agentsync-windows-x64@1.52.1':
-    optional: true
 
   '@emnapi/core@1.11.1':
     dependencies:
@@ -3014,7 +2927,7 @@ snapshots:
       get-tsconfig: 5.0.0-beta.6
       github-slugger: 2.0.0
       html-escaper: 3.0.3
-      http-cache-semantics: 4.2.0
+      http-cache-semantics: 4.3.0
       jsonc-parser: 3.3.1
       magic-string: 1.4.2
       magicast: 0.5.5
@@ -3140,12 +3053,12 @@ snapshots:
   css-tree@2.2.1:
     dependencies:
       mdn-data: 2.0.28
-      source-map-js: 1.2.1
+      source-map-js: 1.2.2
 
   css-tree@3.2.1:
     dependencies:
       mdn-data: 2.27.1
-      source-map-js: 1.2.1
+      source-map-js: 1.2.2
 
   css-what@7.0.0: {}
 
@@ -3405,7 +3318,7 @@ snapshots:
 
   html-whitespace-sensitive-tag-names@3.0.1: {}
 
-  http-cache-semantics@4.2.0: {}
+  http-cache-semantics@4.3.0: {}
 
   i18next@26.3.6(typescript@7.0.2):
     optionalDependencies:
@@ -3552,7 +3465,7 @@ snapshots:
     dependencies:
       '@babel/parser': 7.29.8
       '@babel/types': 7.29.8
-      source-map-js: 1.2.1
+      source-map-js: 1.2.2
 
   mdast-util-directive@3.1.0:
     dependencies:
@@ -4025,11 +3938,7 @@ snapshots:
       arg: 5.0.2
       sax: 1.6.1
 
-  smol-toml@1.8.0: {}
-
   smol-toml@1.9.1: {}
-
-  source-map-js@1.2.1: {}
 
   source-map-js@1.2.2: {}
 
