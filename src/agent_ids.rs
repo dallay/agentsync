@@ -121,9 +121,13 @@ pub fn agent_convention_filename(agent_name: &str) -> Option<&'static str> {
 /// configurable-only agents (via `canonical_configurable_agent_id`).
 pub fn known_ignore_patterns(agent_name: &str) -> &'static [&'static str] {
     // Check native MCP agents first
+    //
+    // Skills paths omit the trailing slash: agent targets symlink the whole
+    // skills directory, and git only applies a trailing-slash pattern to real
+    // directories, never to symlinks.
     if let Some(canonical) = canonical_mcp_agent_id(agent_name) {
         return match canonical {
-            "claude" => &[".mcp.json", ".claude/commands/", ".claude/skills/"],
+            "claude" => &[".mcp.json", ".claude/commands/", ".claude/skills"],
             "claude-desktop" => &[],
             "copilot" => &[".vscode/mcp.json"],
             "codex" => &[".codex/config.toml"],
@@ -131,12 +135,12 @@ pub fn known_ignore_patterns(agent_name: &str) -> &'static [&'static str] {
                 "GEMINI.md",
                 ".gemini/settings.json",
                 ".gemini/commands/",
-                ".gemini/skills/",
+                ".gemini/skills",
             ],
-            "opencode" => &["opencode.json", ".opencode/command/", ".opencode/skills/"],
+            "opencode" => &["opencode.json", ".opencode/command/", ".opencode/skills"],
             "zcode" => &[".zcode/config.json", ".zcode/commands/"],
             "minimax" => &[".mcp.json"],
-            "cursor" => &[".cursor/mcp.json", ".cursor/skills/"],
+            "cursor" => &[".cursor/mcp.json", ".cursor/skills"],
             "vscode" => &[".vscode/mcp.json"],
             _ => &[],
         };
@@ -148,7 +152,7 @@ pub fn known_ignore_patterns(agent_name: &str) -> &'static [&'static str] {
         Some("cline") => &[".clinerules"],
         Some("crush") => &["CRUSH.md", ".crush.json"],
         Some("amp") => &[],
-        Some("antigravity") => &[".agent/rules/", ".agent/skills/"],
+        Some("antigravity") => &[".agent/rules/", ".agent/skills"],
         Some("amazonq") => &[".amazonq/rules/", ".amazonq/mcp.json"],
         Some("aider") => &[".aider.conf.yml", ".aiderignore"],
         Some("firebase") => &[".idx/airules.md", ".idx/mcp.json"],
@@ -158,14 +162,14 @@ pub fn known_ignore_patterns(agent_name: &str) -> &'static [&'static str] {
         Some("kilocode") => &[".kilocode/mcp.json"],
         Some("goose") => &[".goosehints"],
         Some("qwen") => &[".qwen/settings.json"],
-        Some("roo") => &[".roo/mcp.json", ".roo/rules/", ".roo/skills/"],
+        Some("roo") => &[".roo/mcp.json", ".roo/rules/", ".roo/skills"],
         Some("zed") => &[".zed/settings.json"],
         Some("trae") => &[".trae/rules/"],
         Some("warp") => &["WARP.md"],
         Some("kiro") => &[".kiro/steering/", ".kiro/settings/mcp.json"],
         Some("firebender") => &["firebender.json"],
-        Some("factory") => &[".factory/mcp.json", ".factory/skills/"],
-        Some("vibe") => &[".vibe/config.toml", ".vibe/skills/"],
+        Some("factory") => &[".factory/mcp.json", ".factory/skills"],
+        Some("vibe") => &[".vibe/config.toml", ".vibe/skills"],
         Some("jetbrains") => &[".aiassistant/rules/"],
         Some("pi") | Some("jules") => &[],
         _ => &[],
@@ -429,7 +433,7 @@ mod tests {
         let patterns = known_ignore_patterns("roo");
         assert!(patterns.contains(&".roo/mcp.json"));
         assert!(patterns.contains(&".roo/rules/"));
-        assert!(patterns.contains(&".roo/skills/"));
+        assert!(patterns.contains(&".roo/skills"));
         assert_eq!(
             known_ignore_patterns("roocode"),
             known_ignore_patterns("roo")
@@ -463,7 +467,7 @@ mod tests {
     fn test_known_ignore_patterns_factory() {
         let patterns = known_ignore_patterns("factory");
         assert!(patterns.contains(&".factory/mcp.json"));
-        assert!(patterns.contains(&".factory/skills/"));
+        assert!(patterns.contains(&".factory/skills"));
         assert_eq!(
             known_ignore_patterns("factory-droid"),
             known_ignore_patterns("factory")
@@ -474,7 +478,7 @@ mod tests {
     fn test_known_ignore_patterns_vibe() {
         let patterns = known_ignore_patterns("vibe");
         assert!(patterns.contains(&".vibe/config.toml"));
-        assert!(patterns.contains(&".vibe/skills/"));
+        assert!(patterns.contains(&".vibe/skills"));
         assert_eq!(
             known_ignore_patterns("mistral-vibe"),
             known_ignore_patterns("vibe")
@@ -508,7 +512,33 @@ mod tests {
         let patterns = known_ignore_patterns("opencode");
         assert!(patterns.contains(&"opencode.json"));
         assert!(patterns.contains(&".opencode/command/"));
-        assert!(patterns.contains(&".opencode/skills/"));
+        assert!(patterns.contains(&".opencode/skills"));
+    }
+
+    #[test]
+    fn test_known_ignore_patterns_for_skills_do_not_require_real_directories() {
+        // Skills targets symlink the whole skills directory. A trailing-slash
+        // pattern only matches real directories in git, never symlinks, so any
+        // fallback skills pattern must omit the slash.
+        for agent in [
+            "claude",
+            "gemini",
+            "opencode",
+            "cursor",
+            "antigravity",
+            "roo",
+            "factory",
+            "vibe",
+        ] {
+            for pattern in known_ignore_patterns(agent) {
+                if pattern.contains("skills") {
+                    assert!(
+                        !pattern.ends_with('/'),
+                        "{agent} skills pattern must match symlinks: {pattern}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

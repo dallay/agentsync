@@ -94,7 +94,7 @@ entry1
         let start_marker = format!("# START {}", marker);
         let end_marker = format!("# END {}", marker);
         let content = format!(
-            "{}\n/AGENTS.md\n/AGENTS.md.bak\n/.mcp.json\n.agents/skills/*.bak\n.claude/commands/\n.claude/skills/\n{}\n",
+            "{}\n/AGENTS.md\n/AGENTS.md.bak\n/.mcp.json\n.agents/skills/*.bak\n.claude/commands/\n.claude/skills\n{}\n",
             start_marker, end_marker
         );
 
@@ -127,7 +127,7 @@ entry1
         let start_marker = format!("# START {}", marker);
         let end_marker = format!("# END {}", marker);
         let content = format!(
-            "{}\nAGENTS.md\n/AGENTS.md.bak\n/.mcp.json\n.claude/commands/\n.claude/skills/\n{}\n",
+            "{}\nAGENTS.md\n/AGENTS.md.bak\n/.mcp.json\n.claude/commands/\n.claude/skills\n{}\n",
             start_marker, end_marker
         );
 

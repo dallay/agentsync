@@ -963,7 +963,7 @@ mod tests {
         let patterns = Config::known_ignore_patterns("claude");
         assert!(patterns.contains(&".mcp.json"));
         assert!(patterns.contains(&".claude/commands/"));
-        assert!(patterns.contains(&".claude/skills/"));
+        assert!(patterns.contains(&".claude/skills"));
     }
 
     #[test]
@@ -996,7 +996,7 @@ mod tests {
         assert!(patterns.contains(&"GEMINI.md"));
         assert!(patterns.contains(&".gemini/settings.json"));
         assert!(patterns.contains(&".gemini/commands/"));
-        assert!(patterns.contains(&".gemini/skills/"));
+        assert!(patterns.contains(&".gemini/skills"));
     }
 
     #[test]
@@ -1009,7 +1009,7 @@ mod tests {
     fn test_known_ignore_patterns_cursor() {
         let patterns = Config::known_ignore_patterns("cursor");
         assert!(patterns.contains(&".cursor/mcp.json"));
-        assert!(patterns.contains(&".cursor/skills/"));
+        assert!(patterns.contains(&".cursor/skills"));
     }
 
     #[test]
@@ -1065,7 +1065,7 @@ mod tests {
         // Should include known patterns for Claude
         assert!(entries.contains(&"/.mcp.json".to_string()));
         assert!(entries.contains(&".claude/commands/".to_string()));
-        assert!(entries.contains(&".claude/skills/".to_string()));
+        assert!(entries.contains(&".claude/skills".to_string()));
 
         // Should include known patterns for OpenCode
         assert!(entries.contains(&"/opencode.json".to_string()));
