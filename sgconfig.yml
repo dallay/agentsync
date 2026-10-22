@@ -2,6 +2,6 @@
 #
 # CodeRabbit reads the same rules through `.coderabbit.yaml`
 # (`reviews.tools.ast-grep.rule_dirs`). This file makes the rules runnable
-# locally with `ast-grep scan`.
+# locally with `ast-grep scan --no-ignore hidden` to include `.github` files.
 ruleDirs:
   - .coderabbit/rules

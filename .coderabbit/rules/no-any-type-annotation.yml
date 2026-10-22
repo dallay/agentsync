@@ -9,6 +9,3 @@ note: |
 rule:
   kind: predefined_type
   regex: '^any$'
-  inside:
-    kind: type_annotation
-    stopBy: end

@@ -9,6 +9,5 @@ note: |
 rule:
   kind: block_mapping_pair
   regex: 'pull_request_target'
-paths:
-  include:
-    - '.github/workflows/**'
+files:
+  - '.github/workflows/**'

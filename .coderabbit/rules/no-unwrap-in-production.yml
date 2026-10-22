@@ -5,9 +5,13 @@ message: |
   Avoid `unwrap()` / `expect()` in production code. Propagate the error with
   `?` and add context with `anyhow::Context` so failures remain diagnosable.
 note: |
-  AGENTS.md allows these calls in tests. This rule requires the Rust source
-  file to declare a public item and excludes test modules and test functions
-  to avoid reporting integration-test helpers.
+  AGENTS.md allows these calls in tests. This rule scans production source
+  files and excludes test files, test modules, and test functions.
+files:
+  - 'src/**/*.rs'
+ignores:
+  - '**/tests/**'
+  - '**/*_tests.rs'
 rule:
   all:
     - any:
@@ -27,26 +31,3 @@ rule:
           follows:
             kind: attribute_item
             regex: '(test|tokio::test|rstest)'
-    - inside:
-        kind: source_file
-        stopBy: end
-        has:
-          any:
-            - kind: function_item
-              has:
-                kind: visibility_modifier
-            - kind: struct_item
-              has:
-                kind: visibility_modifier
-            - kind: enum_item
-              has:
-                kind: visibility_modifier
-            - kind: const_item
-              has:
-                kind: visibility_modifier
-            - kind: static_item
-              has:
-                kind: visibility_modifier
-            - kind: trait_item
-              has:
-                kind: visibility_modifier

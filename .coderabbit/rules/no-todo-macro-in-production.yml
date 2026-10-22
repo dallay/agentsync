@@ -10,7 +10,6 @@ rule:
   any:
     - pattern: todo!($$$ARGS)
     - pattern: unimplemented!($$$ARGS)
-paths:
-  exclude:
-    - 'tests/**'
-    - '**/*_tests.rs'
+ignores:
+  - 'tests/**'
+  - '**/*_tests.rs'

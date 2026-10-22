@@ -12,7 +12,6 @@ rule:
     - regex: 'uses:'
     - not:
         regex: '@[0-9a-f]{40}'
-paths:
-  include:
-    - '.github/workflows/**'
-    - '.github/actions/**'
+files:
+  - '.github/workflows/**'
+  - '.github/actions/**'
