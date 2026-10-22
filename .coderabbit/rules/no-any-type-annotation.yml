@@ -1,0 +1,11 @@
+id: no-any-type-annotation
+language: TypeScript
+severity: error
+message: |
+  Do not annotate values as `any`. Use `unknown` and narrow the value with a
+  type guard, or declare the precise type.
+note: |
+  AGENTS.md — strict TypeScript, no `any`.
+rule:
+  kind: predefined_type
+  regex: '^any$'

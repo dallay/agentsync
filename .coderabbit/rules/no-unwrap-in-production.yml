@@ -1,0 +1,33 @@
+id: no-unwrap-in-production
+language: Rust
+severity: warning
+message: |
+  Avoid `unwrap()` / `expect()` in production code. Propagate the error with
+  `?` and add context with `anyhow::Context` so failures remain diagnosable.
+note: |
+  AGENTS.md allows these calls in tests. This rule scans production source
+  files and excludes test files, test modules, and test functions.
+files:
+  - 'src/**/*.rs'
+ignores:
+  - '**/tests/**'
+  - '**/*_tests.rs'
+rule:
+  all:
+    - any:
+        - pattern: $E.unwrap()
+        - pattern: $E.expect($MSG)
+    - not:
+        inside:
+          kind: mod_item
+          stopBy: end
+          follows:
+            kind: attribute_item
+            regex: 'cfg\(test\)'
+    - not:
+        inside:
+          kind: function_item
+          stopBy: end
+          follows:
+            kind: attribute_item
+            regex: '(test|tokio::test|rstest)'

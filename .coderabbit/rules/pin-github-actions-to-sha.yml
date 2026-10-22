@@ -1,0 +1,17 @@
+id: pin-github-actions-to-sha
+language: yaml
+severity: error
+message: |
+  Pin GitHub Actions to a full commit SHA. A mutable tag lets an upstream
+  release change the code that runs in this repository.
+note: |
+  Repo convention: `uses: owner/action@<40-hex-sha> # vX.Y.Z`.
+rule:
+  all:
+    - kind: block_mapping_pair
+    - regex: 'uses:'
+    - not:
+        regex: '@[0-9a-f]{40}'
+files:
+  - '.github/workflows/**'
+  - '.github/actions/**'

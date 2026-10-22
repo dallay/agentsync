@@ -1,0 +1,15 @@
+id: no-todo-macro-in-production
+language: Rust
+severity: error
+message: |
+  `todo!` / `unimplemented!` must never reach a release build. Implement the
+  branch or return an explicit error.
+note: |
+  AGENTS.md — no placeholders in shipped code.
+rule:
+  any:
+    - pattern: todo!($$$ARGS)
+    - pattern: unimplemented!($$$ARGS)
+ignores:
+  - 'tests/**'
+  - '**/*_tests.rs'

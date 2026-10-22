@@ -1,0 +1,190 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# AgentSync: Rust CLI, TypeScript npm wrapper, Astro documentation.
+early_access: true
+inheritance: true
+language: en-US
+
+tone_instructions: >-
+  Direct, constructive, and educational. Prioritize correctness, security,
+  cross-platform behavior, backwards compatibility, and maintainability.
+  Respect the repository conventions in AGENTS.md. Do not report style issues
+  already enforced by deterministic checks unless they create a real defect.
+
+reviews:
+  profile: assertive
+  request_changes_workflow: true
+  high_level_summary_in_walkthrough: true
+  fail_commit_status: true
+  collapse_walkthrough: true
+  auto_apply_labels: true
+  auto_assign_reviewers: false
+  in_progress_fortune: false
+  poem: false
+  sequence_diagrams: true
+  estimate_code_review_effort: true
+  assess_linked_issues: true
+  related_issues: true
+  related_prs: true
+  changed_files_summary: true
+  suggested_labels: true
+  suggested_reviewers: false
+  review_status: true
+  review_details: false
+  enable_prompt_for_ai_agents: true
+
+  path_filters:
+    - '!target/**'
+    - '!node_modules/**'
+    - '!website/docs/dist/**'
+    - '!website/docs/.astro/**'
+    - '!npm/agentsync/lib/**'
+    - '!**/*.lock'
+    - '!CHANGELOG.md'
+
+  auto_title_instructions: >-
+    Use Conventional Commits, as required by repository CI. Allowed types:
+    feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert.
+    Use an optional lowercase scope and imperative mood.
+
+  labeling_instructions:
+    - label: backend
+      instructions: >-
+        Use for Rust CLI behavior, core synchronization, configuration parsing,
+        MCP integration, skills, or npm wrapper implementation.
+    - label: ci
+      instructions: >-
+        Use for GitHub Actions, release automation, repository checks, or CI
+        configuration.
+    - label: chore
+      instructions: >-
+        Use for maintenance, repository configuration, or non-feature upkeep.
+    - label: dependencies
+      instructions: Use for dependency or lockfile updates.
+    - label: renovate
+      instructions: Use only for Renovate-generated pull requests.
+    - label: released
+      instructions: Do not apply manually; managed by the release process.
+
+  path_instructions:
+    - path: 'src/**/*.rs'
+      instructions: |
+        Rust CLI and library code. Follow AGENTS.md and preserve the boundary
+        between user output and diagnostics: use `println!` with `colored` for
+        user-facing output, and `tracing` for diagnostics. Propagate errors
+        with `anyhow::Result` at CLI boundaries and add `.with_context()` for
+        filesystem or network operations. Avoid `unwrap()` and `expect()` in
+        production paths. Check cross-platform behavior, symlink safety,
+        path validation, deterministic output, and backward compatibility.
+        Do not flag `println!` as a defect by itself.
+    - path: 'tests/**/*.rs'
+      instructions: |
+        Tests intentionally use `unwrap()` and `expect()` for concise setup and
+        assertions. Review test isolation, cleanup, platform assumptions, and
+        whether assertions verify behavior rather than implementation details.
+        Update contract tests when machine-readable CLI output changes.
+    - path: 'npm/agentsync/**'
+      instructions: |
+        This is the TypeScript npm wrapper that selects and launches a
+        platform-specific Rust binary. Preserve supported OS/architecture
+        mappings, Windows executable handling, argument forwarding, inherited
+        stdio, and exit-code behavior. Keep strict types and use `node:` for
+        Node.js built-ins.
+    - path: 'website/docs/**'
+      instructions: |
+        Astro/Starlight documentation and components. Keep documentation
+        consistent with implemented CLI behavior and source content under
+        `website/docs/src/`. Check links, accessible markup, and responsive
+        behavior. Do not describe planned behavior as released functionality.
+    - path: '.github/workflows/**'
+      instructions: |
+        Review workflow permissions using least privilege. Keep third-party
+        actions pinned to full commit SHAs, preserve secret masking, and avoid
+        running untrusted pull-request code in privileged contexts. Check
+        triggers, branch filters, cache keys, and release permissions.
+    - path: 'scripts/**'
+      instructions: |
+        These scripts support repository setup and version maintenance. Check
+        failure handling, idempotence, safe path handling, and compatibility
+        with the supported Node version. Do not change generated outputs by
+        hand when a source generator exists.
+    - path: 'tests/contracts/**'
+      instructions: |
+        These tests define machine-readable CLI contracts. Treat changes as
+        externally visible behavior and verify that documentation and callers
+        remain compatible.
+
+  pre_merge_checks:
+    override_requested_reviewers_only: true
+    docstrings:
+      mode: warning
+      threshold: 80
+    title:
+      mode: error
+      requirements: >-
+        Follow Conventional Commits with an allowed type and optional scope,
+        for example `feat(skill): add provider support`. Use imperative mood.
+    description:
+      mode: warning
+    issue_assessment:
+      mode: warning
+    custom_checks:
+      - name: Rust correctness and safety
+        mode: warning
+        instructions: |
+          Short-circuit with PASS if the change does not modify Rust code or
+          Cargo configuration. For relevant changes, review error propagation,
+          filesystem and symlink safety, path traversal boundaries, platform
+          differences, deterministic behavior, and regression coverage. Treat
+          existing test-only `unwrap()` / `expect()` usage as intentional.
+          CI runs `cargo check --all-targets --all-features`, `cargo fmt --all
+          -- --check`, `cargo clippy --all-targets --all-features -- -D
+          warnings`, and Rust tests; do not claim these checks passed unless
+          their results are available.
+      - name: CLI contract compatibility
+        mode: warning
+        instructions: |
+          Short-circuit with PASS if the change does not affect CLI output,
+          exit codes, configuration semantics, or machine-readable output. For
+          relevant changes, check `tests/contracts/`, integration tests, and
+          the matching reference documentation. Call out compatibility risks.
+      - name: npm wrapper platform behavior
+        mode: warning
+        instructions: |
+          Short-circuit with PASS if `npm/agentsync/` is unchanged. Otherwise
+          verify supported platform package names, executable resolution,
+          argument and stdio forwarding, and propagation of the child process
+          exit status. Do not assume a binary exists for an unsupported target.
+
+  tools:
+    ast-grep:
+      enabled: true
+      rule_dirs:
+        - .coderabbit/rules
+      util_dirs: []
+      essential_rules: true
+    clippy:
+      enabled: true
+    biome:
+      enabled: true
+    markdownlint:
+      enabled: true
+    actionlint:
+      enabled: true
+    zizmor:
+      enabled: true
+    yamllint:
+      enabled: true
+    shellcheck:
+      enabled: true
+    checkmake:
+      enabled: true
+    gitleaks:
+      enabled: true
+    trufflehog:
+      enabled: true
+    osvScanner:
+      enabled: true
+
+chat:
+  art: false
+  auto_reply: true

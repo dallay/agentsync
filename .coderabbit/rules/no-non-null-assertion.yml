@@ -1,0 +1,10 @@
+id: no-non-null-assertion
+language: TypeScript
+severity: error
+message: |
+  Do not use the non-null assertion operator (`!`). Handle the null case
+  explicitly so the failure mode stays visible.
+note: |
+  AGENTS.md — strict TypeScript; avoid `any` and unchecked assertions.
+rule:
+  kind: non_null_expression
