@@ -21,6 +21,19 @@
 * **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
 * **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
 
+## [1.52.3](https://github.com/dallay/agentsync/compare/v1.52.2...v1.52.3) (2026-10-22)
+
+
+### Bug Fixes
+
+* **deps:** patch smol-toml and postcss-selector-parser advisories ([#684](https://github.com/dallay/agentsync/issues/684)) ([9ab916e](https://github.com/dallay/agentsync/commit/9ab916ef59e4d2398ecd6549a4eced5570e420d7))
+* **gitignore:** match symlinked skills directories ([#683](https://github.com/dallay/agentsync/issues/683)) ([619d28e](https://github.com/dallay/agentsync/commit/619d28e04d26fd3b016abf4d69b3ba6703fd72b7))
+
+
+### Chores
+
+* **deps:** update dependency astro to v7.4.0 ([#679](https://github.com/dallay/agentsync/issues/679)) ([ceee57c](https://github.com/dallay/agentsync/commit/ceee57c881d7c020bc610f6656d9dda979522e95))
+
 ## [1.52.2](https://github.com/dallay/agentsync/compare/v1.52.1...v1.52.2) (2026-10-18)
 
 
