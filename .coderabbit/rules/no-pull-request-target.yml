@@ -1,0 +1,14 @@
+id: no-pull-request-target
+language: yaml
+severity: error
+message: |
+  Do not use `pull_request_target`. It runs with write access to the
+  repository while checking out untrusted fork code.
+note: |
+  Use `pull_request` and split privileged work into a separate workflow.
+rule:
+  kind: block_mapping_pair
+  regex: 'pull_request_target'
+paths:
+  include:
+    - '.github/workflows/**'

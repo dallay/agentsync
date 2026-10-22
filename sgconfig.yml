@@ -1,0 +1,7 @@
+# AST-grep configuration for local rule execution.
+#
+# CodeRabbit reads the same rules through `.coderabbit.yaml`
+# (`reviews.tools.ast-grep.rule_dirs`). This file makes the rules runnable
+# locally with `ast-grep scan`.
+ruleDirs:
+  - .coderabbit/rules

@@ -1,0 +1,10 @@
+id: no-dbg-macro
+language: Rust
+severity: error
+message: |
+  `dbg!` is a debugging leftover. Remove it and use `tracing::debug!` when the
+  diagnostic must survive release builds.
+note: |
+  AGENTS.md — Diagnostics: `tracing::{info,warn,error}!`.
+rule:
+  pattern: dbg!($$$ARGS)

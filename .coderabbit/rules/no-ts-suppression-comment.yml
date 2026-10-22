@@ -1,0 +1,9 @@
+id: no-ts-suppression-comment
+language: TypeScript
+severity: error
+message: |
+  Do not suppress type errors with `@ts-ignore` / `@ts-nocheck`. Use
+  `// biome-ignore` with a reason, or fix the type.
+rule:
+  kind: comment
+  regex: '@ts-(ignore|nocheck)'

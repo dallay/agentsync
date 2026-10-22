@@ -1,0 +1,52 @@
+id: no-unwrap-in-production
+language: Rust
+severity: warning
+message: |
+  Avoid `unwrap()` / `expect()` in production code. Propagate the error with
+  `?` and add context with `anyhow::Context` so failures remain diagnosable.
+note: |
+  AGENTS.md allows these calls in tests. This rule requires the Rust source
+  file to declare a public item and excludes test modules and test functions
+  to avoid reporting integration-test helpers.
+rule:
+  all:
+    - any:
+        - pattern: $E.unwrap()
+        - pattern: $E.expect($MSG)
+    - not:
+        inside:
+          kind: mod_item
+          stopBy: end
+          follows:
+            kind: attribute_item
+            regex: 'cfg\(test\)'
+    - not:
+        inside:
+          kind: function_item
+          stopBy: end
+          follows:
+            kind: attribute_item
+            regex: '(test|tokio::test|rstest)'
+    - inside:
+        kind: source_file
+        stopBy: end
+        has:
+          any:
+            - kind: function_item
+              has:
+                kind: visibility_modifier
+            - kind: struct_item
+              has:
+                kind: visibility_modifier
+            - kind: enum_item
+              has:
+                kind: visibility_modifier
+            - kind: const_item
+              has:
+                kind: visibility_modifier
+            - kind: static_item
+              has:
+                kind: visibility_modifier
+            - kind: trait_item
+              has:
+                kind: visibility_modifier
