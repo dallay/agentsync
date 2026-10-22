@@ -516,6 +516,12 @@ mod tests {
     }
 
     #[test]
+    fn test_known_ignore_patterns_antigravity() {
+        let patterns = known_ignore_patterns("antigravity");
+        assert!(patterns.contains(&".agent/skills"));
+    }
+
+    #[test]
     fn test_known_ignore_patterns_for_skills_do_not_require_real_directories() {
         // Skills targets symlink the whole skills directory. A trailing-slash
         // pattern only matches real directories in git, never symlinks, so any

@@ -57,4 +57,10 @@ fn opencode_skills_symlink_is_ignored_without_configured_skills_target() {
         entries,
         String::from_utf8_lossy(&output.stderr)
     );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.starts_with(".gitignore:")
+            && stdout.ends_with(":.opencode/skills\t.opencode/skills\n"),
+        "expected the repository's .gitignore rule for .opencode/skills; got: {stdout:?}"
+    );
 }
