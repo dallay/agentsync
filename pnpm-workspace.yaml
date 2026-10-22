@@ -22,6 +22,9 @@ minimumReleaseAgeExclude:
   - astro@6.1.6 || 7.2.8
   # Renovate security update: sharp@0.35.0 || 0.35.4
   - sharp@0.35.0 || 0.35.4
+  # Security fix GHSA-rj75-hqrm-r3gf: only 0.44.3 moves postcss-nested to ^7.0.2,
+  # which pulls postcss-selector-parser >=7.1.6 (vulnerable <7.1.6)
+  - '@expressive-code/core@0.44.3'
 
 allowBuilds:
   esbuild: true
