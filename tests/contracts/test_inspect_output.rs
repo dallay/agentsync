@@ -1,4 +1,5 @@
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::process::Command;
 use tempfile::TempDir;
 
@@ -111,6 +112,30 @@ plugin = "engineering"
     project
 }
 
+fn inspect_git_plugin_project() -> (TempDir, std::path::PathBuf) {
+    let project = inspect_plugin_project();
+    let lock_path = project.path().join(".agents/plugins.lock.toml");
+    let mut lock = agentsync::plugins::PluginLock::load(&lock_path).unwrap();
+    let location = "https://example.invalid/marketplace.git";
+    let revision = "0123456789abcdef0123456789abcdef01234567";
+    for plugin in lock.plugins.values_mut() {
+        plugin.source.kind = agentsync::plugins::LockedSourceKind::Git;
+        plugin.source.location = location.into();
+        plugin.source.revision = revision.into();
+        plugin.provenance.resolved_revision = revision.into();
+    }
+    lock.save_atomic(&lock_path).unwrap();
+    let digest = Sha256::digest(location.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    let snapshot = project
+        .path()
+        .join(".agents/.agentsync-plugin-sources")
+        .join(format!("{}-{revision}", &digest[..16]));
+    (project, snapshot)
+}
+
 fn copy_tree(source: &std::path::Path, target: &std::path::Path) {
     std::fs::create_dir_all(target).unwrap();
     for entry in std::fs::read_dir(source).unwrap() {
@@ -210,7 +235,7 @@ fn inspect_reports_plugin_mcp_collision_with_explicit_server() {
 command = "/bin/true"
 "#,
     );
-    std::fs::write(config_path, config).unwrap();
+    std::fs::write(&config_path, &config).unwrap();
 
     let output = inspect(&project, "opencode", false);
     assert!(
@@ -229,6 +254,7 @@ command = "/bin/true"
         })
         .unwrap();
     assert_eq!(plugin_server["included"], false);
+    assert_eq!(plugin_server["state"], "conflicted");
     assert!(
         value["diagnostics"]
             .as_array()
@@ -238,6 +264,23 @@ command = "/bin/true"
                 diagnostic["code"] == "mcp-name-collision" && diagnostic["severity"] == "error"
             })
     );
+
+    let config = config.replace(
+        "allowed_mcp = [\"plugin/internal/engineering/safe-fixture\"]",
+        "allowed_mcp = []",
+    );
+    std::fs::write(config_path, config).unwrap();
+    let output = inspect(&project, "opencode", false);
+    assert!(output.status.success());
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let plugin_server = value["mcp"]["servers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|server| server["origin"] == "plugin")
+        .unwrap();
+    assert_eq!(plugin_server["included"], false);
+    assert_eq!(plugin_server["state"], "conflicted");
 }
 
 #[test]
@@ -266,32 +309,8 @@ fn inspect_reports_plugin_error_when_lockfile_is_missing() {
 
 #[test]
 fn inspect_reports_missing_plugin_snapshot_from_git_lock_entry() {
-    let project = inspect_plugin_project();
-    let lock_path = project.path().join(".agents/plugins.lock.toml");
-    let lock = std::fs::read_to_string(&lock_path).unwrap();
-    let lock = lock
-        .lines()
-        .map(|line| {
-            if line.trim() == "kind = \"local\"" {
-                "kind = \"git\"".to_string()
-            } else if line.trim() == "location = \"../marketplace\"" {
-                "location = \"https://example.invalid/marketplace.git\"".to_string()
-            } else if line.trim_start().starts_with("revision = \"local:")
-                || line
-                    .trim_start()
-                    .starts_with("resolved_revision = \"local:")
-            {
-                format!(
-                    "{}\"0123456789abcdef0123456789abcdef01234567\"",
-                    line.split_once("= ").unwrap().0.to_owned() + "= "
-                )
-            } else {
-                line.to_string()
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    std::fs::write(lock_path, lock).unwrap();
+    let (project, snapshot) = inspect_git_plugin_project();
+    assert!(!snapshot.exists());
 
     let output = inspect(&project, "opencode", false);
     assert!(
@@ -312,6 +331,94 @@ fn inspect_reports_missing_plugin_snapshot_from_git_lock_entry() {
         "diagnostics: {}",
         value["diagnostics"]
     );
+}
+
+#[test]
+fn inspect_classifies_plugin_failures_by_the_actual_error() {
+    let (project, snapshot) = inspect_git_plugin_project();
+    let fixture = project.path().join("marketplace");
+    copy_tree(&fixture, &snapshot);
+    let before = std::fs::read(project.path().join(".agents/plugins.lock.toml")).unwrap();
+    let manifest = snapshot.join(".agents/plugins/marketplace.json");
+    assert!(manifest.is_file());
+    std::fs::write(&manifest, "invalid json").unwrap();
+
+    let output = inspect(&project, "opencode", false);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let diagnostics = value["diagnostics"].as_array().unwrap();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|d| d["code"] == "unsupported-plugin-component")
+    );
+    assert!(
+        !diagnostics
+            .iter()
+            .any(|d| d["code"] == "missing-plugin-snapshot")
+    );
+    assert_eq!(std::fs::read(manifest).unwrap(), b"invalid json");
+    assert_eq!(
+        std::fs::read(project.path().join(".agents/plugins.lock.toml")).unwrap(),
+        before
+    );
+    assert!(!project.path().join(".agents/plugins").exists());
+}
+
+#[test]
+fn inspect_reports_stale_approvals_before_missing_git_snapshot() {
+    let (project, snapshot) = inspect_git_plugin_project();
+    let config_path = project.path().join(".agents/agentsync.toml");
+    let config = std::fs::read_to_string(&config_path).unwrap().replace(
+        "plugin/internal/engineering/safe-fixture",
+        "plugin/internal/engineering/unknown",
+    );
+    std::fs::write(config_path, config).unwrap();
+    let output = inspect(&project, "opencode", false);
+    assert!(output.status.success());
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let diagnostics = value["diagnostics"].as_array().unwrap();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|d| d["code"] == "unsupported-plugin-component")
+    );
+    assert!(
+        !diagnostics
+            .iter()
+            .any(|d| d["code"] == "missing-plugin-snapshot")
+    );
+    assert!(!snapshot.exists());
+}
+
+#[test]
+fn inspect_reports_invalid_plugin_lock_path_without_aborting() {
+    let project = inspect_plugin_project();
+    let config_path = project.path().join(".agents/agentsync.toml");
+    let config = std::fs::read_to_string(&config_path).unwrap().replace(
+        "lockfile = \"plugins.lock.toml\"",
+        "lockfile = \"../plugins.lock.toml\"",
+    );
+    std::fs::write(config_path, config).unwrap();
+    let output = inspect(&project, "opencode", false);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let diagnostic = value["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["code"] == "unsupported-plugin-component")
+        .unwrap();
+    assert!(diagnostic["path"].is_null());
+    assert!(!project.path().join("plugins.lock.toml").exists());
 }
 
 #[test]
@@ -447,6 +554,20 @@ destination = "src/two"
     assert_eq!(children[0]["destination"], "src/one/AGENTS.md");
     assert_eq!(children[1]["source"], ".agents/source/second.md");
     assert_eq!(children[1]["destination"], "src/two/AGENTS.md");
+
+    std::fs::remove_file(agents.join("first.md")).unwrap();
+    std::fs::remove_file(agents.join("second.md")).unwrap();
+    let output = inspect(&project, "codex", false);
+    assert!(output.status.success());
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let broken_paths = value["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|d| d["code"] == "broken-symlink")
+        .map(|d| d["path"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(broken_paths, ["src/one/AGENTS.md", "src/two/AGENTS.md"]);
 }
 
 #[test]

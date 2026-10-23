@@ -6,7 +6,7 @@
 use crate::Linker;
 use crate::config::{Config, McpServerConfig, SyncType};
 use crate::mcp::McpAgent;
-use crate::plugins::PluginLock;
+use crate::plugins::PluginInspectError;
 use crate::status::{
     AgentStatusEntry, DestinationKind, StatusIssueKind, collect_agent_status_entries, paths_match,
     sync_type_label,
@@ -360,7 +360,10 @@ fn resolve_target(
                 code: DiagnosticCode::BrokenSymlink,
                 severity: DiagnosticSeverity::Error,
                 target: Some(target_name.clone()),
-                path: Some(portable_destination.clone()),
+                path: Some(portable_path(
+                    project_root,
+                    Path::new(&entry.entry.destination),
+                )),
                 message: "Destination is a broken or unreadable symlink.".into(),
             });
             state = ItemState::Conflicted;
@@ -687,7 +690,9 @@ fn append_plugin_mcp_servers(
                     dest,
                 );
                 server_report.included = approved && !collision && !item.server.disabled;
-                server_report.state = if item.server.disabled || !approved {
+                server_report.state = if collision {
+                    ItemState::Conflicted
+                } else if item.server.disabled || !approved {
                     ItemState::Configured
                 } else if existing_equal {
                     ItemState::Observed
@@ -701,14 +706,15 @@ fn append_plugin_mcp_servers(
             }
         }
         Err(error) => {
-            let lock_path = manager.lock_path()?;
-            let lock = PluginLock::load(&lock_path).ok();
-            let missing_snapshot = lock.as_ref().is_some_and(|lock| {
-                lock.plugins
-                    .values()
-                    .any(|plugin| plugin.source.kind == crate::plugins::LockedSourceKind::Git)
-            });
-            diagnostics.push(Diagnostic { code: if missing_snapshot { DiagnosticCode::MissingPluginSnapshot } else { DiagnosticCode::UnsupportedPluginComponent }, severity: DiagnosticSeverity::Warning, target: Some("plugins".into()), path: Some(portable_path(root, &lock_path)), message: if missing_snapshot { "A required local plugin snapshot is unavailable; plugin MCP contributions are unknown.".into() } else { format!("Plugin contributions could not be resolved offline: {}", error.to_string().split(':').next().unwrap_or("plugin metadata error")) } });
+            let missing_snapshot = matches!(
+                error.downcast_ref::<PluginInspectError>(),
+                Some(PluginInspectError::MissingSnapshot)
+            );
+            let path = manager
+                .lock_path()
+                .ok()
+                .map(|path| portable_path(root, &path));
+            diagnostics.push(Diagnostic { code: if missing_snapshot { DiagnosticCode::MissingPluginSnapshot } else { DiagnosticCode::UnsupportedPluginComponent }, severity: DiagnosticSeverity::Warning, target: Some("plugins".into()), path, message: if missing_snapshot { "A required local plugin snapshot is unavailable; plugin MCP contributions are unknown.".into() } else { format!("Plugin contributions could not be resolved offline: {}", error.to_string().split(':').next().unwrap_or("plugin metadata error")) } });
         }
     }
     Ok(())

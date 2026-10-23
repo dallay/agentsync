@@ -302,6 +302,12 @@ enum GitRestoreAction {
     Skipped,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum PluginInspectError {
+    #[error("plugin snapshot unavailable")]
+    MissingSnapshot,
+}
+
 /// Repository-owned plugin operations.
 #[derive(Clone)]
 pub struct PluginManager {
@@ -364,7 +370,10 @@ impl PluginManager {
             );
             return Ok(report);
         }
-        let lock = PluginLock::load(&self.lock_path()?)?;
+        let lock_path = self
+            .lock_path()
+            .context("failed to resolve plugin lockfile path")?;
+        let lock = PluginLock::load(&lock_path)?;
         let selections = selected_lock_entries(&self.config, &lock)?;
         validate_allowed_mcp_against_lock(&self.config.allowed_mcp, &selections)?;
         let allowed = self.config.allowed_mcp.iter().collect::<BTreeSet<_>>();
@@ -381,15 +390,33 @@ impl PluginManager {
                         .unwrap_or_else(|| Path::new("."))
                         .join(location)
                 }
-                LockedSourceKind::Git => {
-                    let root = self.git_source_cache_path(&locked.source)?;
-                    ensure_git_snapshot_dir(&root)?;
-                    root
-                }
+                LockedSourceKind::Git => self.git_source_cache_path(&locked.source)?,
             };
+            let metadata = match locked.source.kind {
+                LockedSourceKind::Local => fs::metadata(&root),
+                LockedSourceKind::Git => fs::symlink_metadata(&root),
+            }
+            .map_err(|error| {
+                let missing = error.kind() == std::io::ErrorKind::NotFound;
+                let error = anyhow::Error::new(error);
+                if missing {
+                    error.context(PluginInspectError::MissingSnapshot)
+                } else {
+                    error
+                }
+            })
+            .with_context(|| {
+                format!(
+                    "failed to read plugin snapshot metadata: {}",
+                    root.display()
+                )
+            })?;
+            if locked.source.kind == LockedSourceKind::Git {
+                ensure_git_snapshot_dir(&root)?;
+            }
             ensure!(
-                root.is_dir(),
-                "plugin snapshot unavailable: {}",
+                metadata.is_dir(),
+                "plugin snapshot is not a directory: {}",
                 root.display()
             );
             let discovered = discover_plugin(&root, &locked.marketplace, &locked.plugin)?;
