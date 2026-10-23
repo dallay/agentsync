@@ -322,14 +322,14 @@ agentsync skill uninstall [OPTIONS] <SKILL_ID>
 
 #### `list`
 
-List all installed skills.
-
-> [!NOTE]
-> The `list` command is currently not implemented.
+List the skills in the project-local `.agents/skills/` directory and reconcile them with its `registry.json`. The command performs no network access and does not modify files. Entries are sorted by ID using bytewise ascending order; paths use repository-relative `/` separators.
 
 ```bash
 agentsync skill list
+agentsync skill list --json
 ```
+
+`--json` writes a stable JSON object to stdout with `schema_version: 1`, `skills`, and `diagnostics`. Each skill reports `id`, `path`, `source_kind` (`direct`, `plugin`, `manual/untracked`, or `unknown`), nullable `version` and `provenance`, and `state` (`installed`, `missing`, `missing_manifest`, `malformed`, `duplicate_id`, or `broken_symlink`). Diagnostics are separate from inventory entries in the JSON response. A malformed or missing individual skill does not fail the command. A present but unreadable or invalid `registry.json` returns exit code `1`; with `--json`, stdout contains the same top-level JSON shape and a redacted `registry_invalid` diagnostic, while the error details go to stderr. An absent registry is recoverable and unregistered skill directories are listed as `manual/untracked`. An empty or absent skills directory returns exit code `0` and a successful empty list. Human-readable warnings are written to stderr. Duplicate manifest IDs receive the `duplicate_id` state and a diagnostic; broken symlinks receive the `broken_symlink` state. A skill directory without `SKILL.md` receives the `missing_manifest` state.
 
 #### `registry`
 

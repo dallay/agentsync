@@ -5,10 +5,9 @@ inheritance: true
 language: en-US
 
 tone_instructions: >-
-  Direct, constructive, and educational. Prioritize correctness, security,
-  cross-platform behavior, backwards compatibility, and maintainability.
-  Respect the repository conventions in AGENTS.md. Do not report style issues
-  already enforced by deterministic checks unless they create a real defect.
+  Be direct, constructive, and educational. Prioritize correctness, security,
+  cross-platform behavior, compatibility, and maintainability. Follow AGENTS.md.
+  Skip style issues enforced by deterministic checks unless they cause a defect.
 
 reviews:
   profile: assertive

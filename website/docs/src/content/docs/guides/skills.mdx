@@ -235,9 +235,32 @@ Example non-interactive install-all:
 
 <CommandTabs command="skill update my-skill" />
 
-- List installed skills (structured JSON output is planned for future releases):
+- List installed skills with source category and provenance:
 
 <CommandTabs command="skill list" />
+
+`agentsync skill list --json` provides a read-only, offline inventory of project-local skills. It reports source category, available manifest version, verifiable registry provenance, and explicit states for missing or malformed files. The project installation registry at `.agents/skills/registry.json` is not the maintainer curated registry. Missing registry metadata does not establish trust: such skills are reported as `manual/untracked` or `unknown`.
+
+Example `skill list --json` response:
+
+```json
+{
+  "schema_version": 1,
+  "skills": [
+    {
+      "id": "my-skill",
+      "path": ".agents/skills/my-skill",
+      "source_kind": "direct",
+      "version": "1.0.0",
+      "provenance": "https://example.test/my-skill",
+      "state": "installed"
+    }
+  ],
+  "diagnostics": []
+}
+```
+
+`version` and `provenance` are `null` when the project registry cannot verify them. A skill directory that is not registered is reported as `manual/untracked`, and its `state` reflects the on-disk files: `installed`, `missing_manifest`, `malformed`, `duplicate_id`, or `broken_symlink`. A registry entry without files appears with `state: "missing"`. A corrupted `registry.json` fails the command with exit code `1` instead of returning an untrustworthy inventory.
 
 Flags:
 - `--source` — optional for `skill install` and `skill update`. Use a local path, archive URL, or provider-specific identifier.
