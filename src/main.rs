@@ -30,7 +30,16 @@ use output::{
 };
 
 fn should_spawn_update_check(command: &Commands) -> bool {
-    !matches!(command, Commands::Apply { offline: true, .. })
+    if matches!(command, Commands::Apply { offline: true, .. }) {
+        return false;
+    }
+    // `skill list` is a read-only, offline inventory and must not perform network access.
+    if let Commands::Skill { cmd, .. } = command
+        && matches!(cmd, SkillCommand::List { .. })
+    {
+        return false;
+    }
+    true
 }
 
 fn current_project_root<F>(path: Option<PathBuf>, current_dir: F) -> Result<PathBuf>
