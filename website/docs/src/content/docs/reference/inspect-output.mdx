@@ -1,0 +1,58 @@
+---
+title: Inspect Output
+description: Stable JSON v1 contract for agentsync inspect.
+---
+
+# `agentsync inspect --json` output
+
+`inspect --json` writes one compact JSON object to stdout. The report is deterministic for the same
+configuration and filesystem tree. It contains no timestamp.
+
+## Envelope
+
+- `schema_version`: JSON contract version (`1`).
+- `scope`: always `agentsync-managed`.
+- `agent`: selected configured assistant identifier (lowercase for an unconfigured identifier).
+- `items`: configured instruction, skill, command, and other targets.
+- `mcp`: AgentSync-managed MCP declarations, plugin contributions, and existing destination names.
+- `diagnostics`: sorted typed findings.
+- `scope_notice`: explicit boundary from provider runtime-effective configuration.
+
+Each item reports `kind`, `target`, `sync_mode`, `source`, `destination`, `origin`, `owner`,
+`provider_support`, `state`, `observed`, and optional `children`. Paths inside the project root are
+relative and use `/` separators. Symlink `points_to` values are the observed link text and therefore
+may be relative to the destination.
+
+Item states are:
+
+- `configured`: declared intent exists but its source is missing.
+- `projected`: source exists but the destination is not materialized.
+- `observed`: the materialized destination matches the projection.
+- `conflicted`: the materialized destination differs from the projection, or a collision exists.
+- `unsupported`: AgentSync cannot project the requested capability for the selected assistant.
+
+`provider_support: "unknown"` means the report does not assert that the provider natively supports
+the semantic capability. This is deliberate; `inspect` does not implement cross-provider adapters.
+
+## Diagnostics
+
+Diagnostics contain `code`, `severity`, `target`, `path`, and a concise `message`. Codes include
+`agent-not-configured`, `missing-source`, `drifted-symlink`, `broken-symlink`,
+`destination-collision`, `mcp-name-collision`, `unsupported-target`, `missing-plugin-snapshot`,
+`disabled-mcp-server`, `pending-plugin-approval`, `unsupported-plugin-component`, and
+`existing-mcp-server`.
+
+Default exit behavior is report-oriented: exit `0` if a report was produced. With `--strict`, any
+error-severity diagnostic returns exit `1`. Invalid CLI arguments use Clap's exit `2`.
+
+## Redaction and limits
+
+Environment and header values are never included. Only keys and value classifications are reported.
+Sensitive argument values and sensitive URL query values are redacted. Existing unmanaged MCP
+configuration is parsed only to obtain server names; its values are not included. `inspect` does not
+read arbitrary instruction/skill contents into the JSON report, but this is not a general secret scan.
+
+The report describes AgentSync-owned configuration only. Native global, user, organization, and
+session settings outside AgentSync's control are unknown. The command does not invoke provider CLIs,
+start MCP servers, perform network requests, expand environment variables, download snapshots, or
+write files.

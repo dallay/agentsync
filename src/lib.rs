@@ -8,6 +8,7 @@ pub(crate) mod agent_ids;
 pub mod config;
 pub mod gitignore;
 pub mod init;
+pub mod inspect;
 pub mod linker;
 pub mod logging;
 pub mod mcp;
@@ -16,6 +17,7 @@ pub(crate) mod mcp_ownership;
 pub mod plugins;
 pub mod skills;
 pub mod skills_layout;
+pub mod status;
 pub mod update_check;
 
 pub use config::Config;

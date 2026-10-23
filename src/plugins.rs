@@ -346,6 +346,71 @@ impl PluginManager {
         })
     }
 
+    /// Read plugin state without restoring snapshots or writing files.
+    ///
+    /// Unlike `status_report`, this method never materializes a local plugin source. Git snapshots
+    /// must already exist in the local cache. This is intended for offline inspection.
+    pub(crate) fn inspect_status_report_read_only(&self) -> Result<PluginStatusReport> {
+        self.config.validate()?;
+        let mut report = PluginStatusReport {
+            status: "ok".to_string(),
+            ..PluginStatusReport::default()
+        };
+        if !self.config.enabled || self.config.selections.is_empty() {
+            ensure!(
+                self.config.allowed_mcp.is_empty(),
+                "plugin MCP approvals are stale: no selected plugin can provide {}",
+                self.config.allowed_mcp.join(", ")
+            );
+            return Ok(report);
+        }
+        let lock = PluginLock::load(&self.lock_path()?)?;
+        let selections = selected_lock_entries(&self.config, &lock)?;
+        validate_allowed_mcp_against_lock(&self.config.allowed_mcp, &selections)?;
+        let allowed = self.config.allowed_mcp.iter().collect::<BTreeSet<_>>();
+        for locked in selections.values() {
+            let root = match locked.source.kind {
+                LockedSourceKind::Local => {
+                    let location = Path::new(&locked.source.location);
+                    ensure!(
+                        !is_absolute_path(&locked.source.location),
+                        "locked local plugin source must be relative"
+                    );
+                    self.config_path
+                        .parent()
+                        .unwrap_or_else(|| Path::new("."))
+                        .join(location)
+                }
+                LockedSourceKind::Git => self.git_source_cache_path(&locked.source)?,
+            };
+            ensure!(
+                root.is_dir(),
+                "plugin snapshot unavailable: {}",
+                root.display()
+            );
+            let discovered = discover_plugin(&root, &locked.marketplace, &locked.plugin)?;
+            ensure_snapshot_discovery_matches_lock(&discovered, locked)?;
+            report.skills += discovered.skills.len();
+            for (name, server) in
+                discovered.namespaced_mcp_servers(&locked.marketplace, &locked.plugin)?
+            {
+                report.servers.push(PluginMcpStatus {
+                    approval: if allowed.contains(&name) {
+                        PluginMcpApproval::Allowed
+                    } else {
+                        PluginMcpApproval::Pending
+                    },
+                    name,
+                    server,
+                });
+            }
+        }
+        report
+            .servers
+            .sort_by(|left, right| left.name.cmp(&right.name));
+        Ok(report)
+    }
+
     pub fn status_report(&self) -> Result<PluginStatusReport> {
         self.config.validate()?;
         let mut report = PluginStatusReport {
