@@ -460,7 +460,7 @@ fn display_path(path: &Path) -> String {
     path.to_string_lossy().to_string()
 }
 
-fn paths_match(destination: &Path, points_to: &Path, expected: &Path) -> bool {
+pub(crate) fn paths_match(destination: &Path, points_to: &Path, expected: &Path) -> bool {
     let actual_path = if points_to.is_absolute() {
         points_to.to_path_buf()
     } else {
@@ -475,7 +475,7 @@ fn paths_match(destination: &Path, points_to: &Path, expected: &Path) -> bool {
     expected_canon == actual_canon
 }
 
-fn sync_type_label(sync_type: SyncType) -> &'static str {
+pub(crate) fn sync_type_label(sync_type: SyncType) -> &'static str {
     match sync_type {
         SyncType::Symlink => "symlink",
         SyncType::SymlinkContents => "symlink-contents",

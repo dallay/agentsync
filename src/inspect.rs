@@ -8,7 +8,8 @@ use crate::config::{Config, McpServerConfig, SyncType};
 use crate::mcp::McpAgent;
 use crate::plugins::PluginLock;
 use crate::status::{
-    AgentStatusEntry, DestinationKind, StatusIssueKind, collect_agent_status_entries,
+    AgentStatusEntry, DestinationKind, StatusIssueKind, collect_agent_status_entries, paths_match,
+    sync_type_label,
 };
 use anyhow::Result;
 use serde::Serialize;
@@ -52,6 +53,7 @@ pub enum DiagnosticCode {
     PendingPluginApproval,
     UnsupportedPluginComponent,
     ExistingMcpServer,
+    DisabledAgent,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -168,38 +170,72 @@ pub fn resolve_configuration(
     let source_root = config.source_dir(config_path);
     let mut items = Vec::new();
     let mut destinations = BTreeMap::<String, String>::new();
+    if !agent.enabled {
+        diagnostics.push(Diagnostic {
+            code: DiagnosticCode::DisabledAgent,
+            severity: DiagnosticSeverity::Info,
+            target: None,
+            path: None,
+            message: "Agent is disabled in agentsync.toml; its targets are not projected.".into(),
+        });
+    }
     if agent.enabled {
         for (target_name, target) in &agent.targets {
             let kind = classify_target(target_name);
+            let is_module_map = target.sync_type == SyncType::ModuleMap;
             let source = if target.sync_type == SyncType::NestedGlob {
                 project_root.join(&target.source)
             } else {
                 source_root.join(&target.source)
             };
-            let destination = project_root.join(&target.destination);
-            let portable_source = portable_path(&project_root, &source);
-            let portable_destination = portable_path(&project_root, &destination);
-            if let Some(previous) =
-                destinations.insert(portable_destination.clone(), target_name.clone())
-            {
-                diagnostics.push(Diagnostic {
-                    code: DiagnosticCode::DestinationCollision,
-                    severity: DiagnosticSeverity::Error,
-                    target: Some(target_name.clone()),
-                    path: Some(portable_destination.clone()),
-                    message: format!(
-                        "Targets {previous} and {target_name} project to the same destination."
-                    ),
-                });
+            let mappings = if is_module_map {
+                target
+                    .mappings
+                    .iter()
+                    .map(|mapping| {
+                        (
+                            source_root.join(&mapping.source),
+                            project_root.join(&mapping.destination).join(
+                                crate::config::resolve_module_map_filename(mapping, &agent_name),
+                            ),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            } else {
+                vec![(source.clone(), project_root.join(&target.destination))]
+            };
+            let (projection_source, projection_destination) = mappings
+                .first()
+                .cloned()
+                .unwrap_or_else(|| (source.clone(), project_root.join(&target.destination)));
+            let portable_source = portable_path(&project_root, &projection_source);
+            let portable_destination = portable_path(&project_root, &projection_destination);
+            for (_, mapped_destination) in &mappings {
+                let mapped_destination = portable_path(&project_root, mapped_destination);
+                if let Some(previous) =
+                    destinations.insert(mapped_destination.clone(), target_name.clone())
+                {
+                    diagnostics.push(Diagnostic {
+                        code: DiagnosticCode::DestinationCollision,
+                        severity: DiagnosticSeverity::Error,
+                        target: Some(target_name.clone()),
+                        path: Some(mapped_destination),
+                        message: format!(
+                            "Targets {previous} and {target_name} project to the same destination."
+                        ),
+                    });
+                }
             }
             let matched = status
                 .iter()
                 .filter(|entry| entry.agent == agent_name && entry.target == *target_name)
                 .collect::<Vec<_>>();
             let observed = observed_for(&matched);
-            let source_exists = source.exists();
+            let source_exists = mappings
+                .iter()
+                .all(|(mapped_source, _)| mapped_source.exists());
             let destination_occupied = target.sync_type == SyncType::Symlink
-                && std::fs::symlink_metadata(&destination).is_ok();
+                && std::fs::symlink_metadata(&projection_destination).is_ok();
             let mut state = if !source_exists {
                 ItemState::Configured
             } else if observed.matches_projection == Some(true) {
@@ -210,16 +246,42 @@ pub fn resolve_configuration(
                 ItemState::Projected
             };
             if !source_exists {
+                let missing_source = mappings
+                    .iter()
+                    .find(|(mapped_source, _)| !mapped_source.exists())
+                    .map(|(mapped_source, _)| portable_path(&project_root, mapped_source))
+                    .unwrap_or_else(|| portable_source.clone());
                 diagnostics.push(Diagnostic {
                     code: DiagnosticCode::MissingSource,
                     severity: DiagnosticSeverity::Error,
                     target: Some(target_name.clone()),
-                    path: Some(portable_source.clone()),
+                    path: Some(missing_source),
                     message: "Configured source does not exist.".into(),
                 });
             }
-            for entry in &matched {
-                diagnostics.extend(status_diagnostics(entry, target_name, &project_root));
+            for (index, entry) in matched.iter().enumerate() {
+                let entry_state = if is_module_map {
+                    let source_exists = mappings
+                        .get(index)
+                        .is_some_and(|(source, _)| source.exists());
+                    if !source_exists {
+                        ItemState::Configured
+                    } else if entry.entry.issues.is_empty() && entry.entry.exists {
+                        ItemState::Observed
+                    } else if entry.entry.exists {
+                        ItemState::Conflicted
+                    } else {
+                        ItemState::Projected
+                    }
+                } else {
+                    state
+                };
+                diagnostics.extend(status_diagnostics(
+                    entry,
+                    target_name,
+                    &project_root,
+                    entry_state,
+                ));
                 if entry.entry.destination_kind == DestinationKind::Symlink
                     && entry.entry.points_to.as_deref().is_some_and(|target| {
                         let target = Path::new(target);
@@ -245,7 +307,38 @@ pub fn resolve_configuration(
                 }
             }
             let mut children = Vec::new();
-            if let Some(entry) = matched
+            if is_module_map {
+                for ((mapped_source, mapped_destination), entry) in
+                    mappings.iter().zip(matched.iter())
+                {
+                    let exists = mapped_source.exists();
+                    let matches = entry.entry.issues.is_empty() && entry.entry.exists;
+                    children.push(ManagedChild {
+                        source: portable_path(&project_root, mapped_source),
+                        destination: portable_path(&project_root, mapped_destination),
+                        state: if !exists {
+                            ItemState::Configured
+                        } else if matches {
+                            ItemState::Observed
+                        } else if entry.entry.exists {
+                            ItemState::Conflicted
+                        } else {
+                            ItemState::Projected
+                        },
+                        observed: ObservedState {
+                            exists: entry.entry.exists,
+                            kind: format!("{:?}", entry.entry.destination_kind)
+                                .to_ascii_lowercase(),
+                            points_to: entry
+                                .entry
+                                .points_to
+                                .as_ref()
+                                .map(|path| portable_path(&project_root, Path::new(path))),
+                            matches_projection: Some(matches),
+                        },
+                    });
+                }
+            } else if let Some(entry) = matched
                 .iter()
                 .find(|entry| entry.entry.managed_children.is_some())
                 && let Some(entry) = entry.entry.managed_children.as_ref()
@@ -257,7 +350,7 @@ pub fn resolve_configuration(
                     let child_matches = child.exists
                         && child.is_symlink
                         && child.points_to.as_deref().is_some_and(|actual| {
-                            same_link_target(
+                            paths_match(
                                 Path::new(&child.path),
                                 Path::new(actual),
                                 Path::new(&child.expected_source),
@@ -296,7 +389,7 @@ pub fn resolve_configuration(
             items.push(ManagedItem {
                 kind,
                 target: target_name.clone(),
-                sync_mode: sync_type_name(target.sync_type).into(),
+                sync_mode: sync_type_label(target.sync_type).into(),
                 source: portable_source,
                 destination: portable_destination,
                 origin: "config".into(),
@@ -396,6 +489,14 @@ fn resolve_mcp(
         BTreeMap::new()
     };
     let existing_names = existing_servers.keys().cloned().collect::<Vec<_>>();
+    let projected = config
+        .mcp_servers
+        .iter()
+        .map(|(name, server)| (name.as_str(), server))
+        .collect::<BTreeMap<_, _>>();
+    let formatter = agent.formatter();
+    let formatted = formatter.format_to_string(&projected)?;
+    let formatted_servers = formatter.parse_existing(&formatted).unwrap_or_default();
     let mut servers = Vec::new();
     if !config.mcp.enabled
         && (!config.mcp_servers.is_empty() || !config.plugins.selections.is_empty())
@@ -410,9 +511,12 @@ fn resolve_mcp(
     }
     if config.mcp.enabled {
         for (name, server) in &config.mcp_servers {
-            let existing_equal = existing_servers
-                .get(name)
-                .is_some_and(|value| existing_server_matches(value, server));
+            let existing_equal = match (existing_servers.get(name), formatted_servers.get(name)) {
+                (Some(existing), Some(expected)) => {
+                    normalized_mcp_value(existing) == normalized_mcp_value(expected)
+                }
+                _ => false,
+            };
             let mut server_report =
                 mcp_server_report(name, server, "config", None, existing_equal, root, &dest);
             server_report.state = if server.disabled {
@@ -463,9 +567,17 @@ fn resolve_mcp(
                         if collision {
                             diagnostics.push(Diagnostic { code: DiagnosticCode::McpNameCollision, severity: DiagnosticSeverity::Error, target: Some("mcp".into()), path: Some(dest.clone()), message: format!("Explicit MCP declaration and plugin contribution collide at {}; apply rejects differing definitions.", item.name) });
                         }
+                        let plugin_expected = formatter
+                            .format_to_string(&BTreeMap::from([(item.name.as_str(), &item.server)]))
+                            .ok()
+                            .and_then(|formatted| formatter.parse_existing(&formatted).ok())
+                            .and_then(|servers| servers.get(&item.name).cloned());
                         let existing_equal = existing_servers
                             .get(&item.name)
-                            .is_some_and(|value| existing_server_matches(value, &item.server));
+                            .zip(plugin_expected.as_ref())
+                            .is_some_and(|(existing, expected)| {
+                                normalized_mcp_value(existing) == normalized_mcp_value(expected)
+                            });
                         let mut server_report = mcp_server_report(
                             &item.name,
                             &item.server,
@@ -537,25 +649,25 @@ fn resolve_mcp(
     })
 }
 
-fn existing_server_matches(value: &serde_json::Value, server: &McpServerConfig) -> bool {
-    let Some(object) = value.as_object() else {
-        return false;
-    };
-    let field_matches = |key: &str, expected: Option<serde_json::Value>| match expected {
-        Some(expected) => object.get(key) == Some(&expected),
-        None => object.get(key).is_none_or(serde_json::Value::is_null),
-    };
-    field_matches(
-        "command",
-        server.command.clone().map(serde_json::Value::String),
-    ) && field_matches("args", Some(serde_json::json!(server.args)))
-        && field_matches("url", server.url.clone().map(serde_json::Value::String))
-        && field_matches("env", Some(serde_json::json!(server.env)))
-        && field_matches("headers", Some(serde_json::json!(server.headers)))
-        && field_matches(
-            "type",
-            server.transport_type.clone().map(serde_json::Value::String),
-        )
+fn normalized_mcp_value(value: &serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(object) => {
+            let normalized = object
+                .iter()
+                .filter(|(_, value)| {
+                    !value.is_null()
+                        && !matches!(value, serde_json::Value::Array(values) if values.is_empty())
+                        && !matches!(value, serde_json::Value::Object(values) if values.is_empty())
+                })
+                .map(|(key, value)| (key.clone(), normalized_mcp_value(value)))
+                .collect::<serde_json::Map<_, _>>();
+            serde_json::Value::Object(normalized)
+        }
+        serde_json::Value::Array(values) => {
+            serde_json::Value::Array(values.iter().map(normalized_mcp_value).collect())
+        }
+        _ => value.clone(),
+    }
 }
 
 fn mcp_server_report(
@@ -605,7 +717,7 @@ fn classify_values(values: &BTreeMap<String, String>) -> BTreeMap<String, String
         .map(|(key, value)| {
             (
                 key.clone(),
-                if is_environment_reference(value) {
+                if crate::plugins::is_environment_reference(value) {
                     "environment-reference".into()
                 } else if is_sensitive_key(key) {
                     "redacted-literal".into()
@@ -617,32 +729,7 @@ fn classify_values(values: &BTreeMap<String, String>) -> BTreeMap<String, String
         .collect()
 }
 fn is_sensitive_key(key: &str) -> bool {
-    let key = key.to_ascii_lowercase().replace(['-', '.'], "_");
-    [
-        "token",
-        "secret",
-        "password",
-        "passwd",
-        "credential",
-        "api_key",
-        "apikey",
-        "auth",
-        "cookie",
-        "credential",
-        "private_key",
-        "client_secret",
-    ]
-    .iter()
-    .any(|part| key.contains(part))
-}
-fn is_environment_reference(value: &str) -> bool {
-    let value = value.trim();
-    value.starts_with("${")
-        && value.ends_with('}')
-        && value.len() > 3
-        && value[2..value.len() - 1]
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_')
+    crate::plugins::is_sensitive_mcp_key(key)
 }
 fn redact_inline_secret(value: &str) -> String {
     if let Some((key, _)) = value.split_once('=')
@@ -680,26 +767,42 @@ fn redact_args(args: &[String]) -> Vec<String> {
                 redact_next = is_sensitive_key(key) && value.is_empty();
                 return arg.clone();
             }
-            if is_environment_reference(arg) {
-                return "<environment-reference-redacted>".into();
-            }
             redact_next = false;
-            redact_inline_secret(arg)
+            let value = if arg.contains("://") {
+                redact_url(arg)
+            } else {
+                arg.clone()
+            };
+            if crate::plugins::is_environment_reference(&value) {
+                "<environment-reference-redacted>".into()
+            } else {
+                redact_inline_secret(&value)
+            }
         })
         .collect()
 }
 fn redact_url(value: &str) -> String {
     let (scheme, rest) = value.split_once("://").unwrap_or(("", value));
-    let (authority, path_query) = rest.split_once('/').unwrap_or((rest, ""));
+    let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let (authority, path_query) = rest.split_at(authority_end);
+
     let safe_authority = if let Some((_, host)) = authority.rsplit_once('@') {
         format!("<redacted>@{host}")
+    } else if authority.starts_with('[') {
+        authority.to_string()
+    } else if let Some((host, port)) = authority.rsplit_once(':') {
+        if is_sensitive_key(host) {
+            format!("<redacted>:{port}")
+        } else {
+            authority.to_string()
+        }
     } else {
         authority.to_string()
     };
     let base_value = if scheme.is_empty() {
-        format!("{safe_authority}/{path_query}")
+        format!("{safe_authority}{path_query}")
     } else {
-        format!("{scheme}://{safe_authority}/{path_query}")
+        format!("{scheme}://{safe_authority}{path_query}")
     };
     if let Some((base, query)) = base_value.split_once('?') {
         let parts = query
@@ -708,7 +811,7 @@ fn redact_url(value: &str) -> String {
                 let (key, val) = part.split_once('=').unwrap_or((part, ""));
                 if is_sensitive_key(key) {
                     format!("{key}=<redacted>")
-                } else if is_environment_reference(val) {
+                } else if crate::plugins::is_environment_reference(val) {
                     format!("{key}=<environment-reference-redacted>")
                 } else {
                     part.into()
@@ -729,11 +832,23 @@ fn plugin_owner(name: &str) -> String {
     }
 }
 
-fn status_diagnostics(entry: &AgentStatusEntry, target: &str, root: &Path) -> Vec<Diagnostic> {
+fn status_diagnostics(
+    entry: &AgentStatusEntry,
+    target: &str,
+    root: &Path,
+    state: ItemState,
+) -> Vec<Diagnostic> {
     entry
         .entry
         .issues
         .iter()
+        .filter(|issue| {
+            !(state == ItemState::Projected
+                && matches!(
+                    issue.kind,
+                    StatusIssueKind::MissingExpectedSource | StatusIssueKind::MissingDestination
+                ))
+        })
         .map(|issue| {
             let code = match issue.kind {
                 StatusIssueKind::IncorrectLinkTarget => DiagnosticCode::DriftedSymlink,
@@ -788,34 +903,32 @@ fn classify_target(name: &str) -> String {
     }
     .into()
 }
-fn sync_type_name(sync_type: SyncType) -> &'static str {
-    match sync_type {
-        SyncType::Symlink => "symlink",
-        SyncType::SymlinkContents => "symlink-contents",
-        SyncType::NestedGlob => "nested-glob",
-        SyncType::ModuleMap => "module-map",
-    }
-}
-fn same_link_target(destination: &Path, actual: &Path, expected: &Path) -> bool {
-    let actual = if actual.is_absolute() {
-        actual.to_path_buf()
-    } else {
-        destination.parent().unwrap_or(Path::new(".")).join(actual)
-    };
-    std::fs::canonicalize(&actual).unwrap_or(actual)
-        == std::fs::canonicalize(expected).unwrap_or_else(|_| expected.to_path_buf())
-}
 fn portable_path(root: &Path, path: &Path) -> String {
     let value = path.strip_prefix(root).unwrap_or(path);
-    value
-        .components()
-        .map(|component| match component {
-            Component::Normal(part) => part.to_string_lossy().to_string(),
-            Component::CurDir => ".".into(),
-            Component::ParentDir => "..".into(),
-            Component::RootDir => "/".into(),
-            Component::Prefix(prefix) => prefix.as_os_str().to_string_lossy().to_string(),
-        })
-        .collect::<Vec<_>>()
-        .join("/")
+    let mut result = String::new();
+    for component in value.components() {
+        match component {
+            Component::Normal(part) => {
+                if !result.is_empty() && !result.ends_with('/') {
+                    result.push('/');
+                }
+                result.push_str(&part.to_string_lossy());
+            }
+            Component::CurDir => {
+                if !result.is_empty() && !result.ends_with('/') {
+                    result.push('/');
+                }
+                result.push('.');
+            }
+            Component::ParentDir => {
+                if !result.is_empty() && !result.ends_with('/') {
+                    result.push('/');
+                }
+                result.push_str("..");
+            }
+            Component::RootDir => result.push('/'),
+            Component::Prefix(prefix) => result.push_str(&prefix.as_os_str().to_string_lossy()),
+        }
+    }
+    result
 }

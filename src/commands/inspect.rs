@@ -79,7 +79,14 @@ fn print_human(report: &ResolvedConfiguration) {
         );
     }
     for diagnostic in &report.diagnostics {
-        println!("\n{:?}: {}", diagnostic.code, diagnostic.message);
+        println!(
+            "\n{:?} [{:?}] target={} path={}: {}",
+            diagnostic.code,
+            diagnostic.severity,
+            diagnostic.target.as_deref().unwrap_or("-"),
+            diagnostic.path.as_deref().unwrap_or("-"),
+            diagnostic.message
+        );
     }
     println!("\n{}", report.scope_notice);
 }

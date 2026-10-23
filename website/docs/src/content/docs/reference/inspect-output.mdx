@@ -19,7 +19,8 @@ configuration and filesystem tree. It contains no timestamp.
 - `scope_notice`: explicit boundary from provider runtime-effective configuration.
 
 Each item reports `kind`, `target`, `sync_mode`, `source`, `destination`, `origin`, `owner`,
-`provider_support`, `state`, `observed`, and optional `children`. Paths inside the project root are
+`provider_support`, `state`, `observed`, and the always-present `children` array (empty when no child
+projection applies). For `module-map`, each mapping is represented as a child. Paths inside the project root are
 relative and use `/` separators. Symlink `points_to` values are the observed link text and therefore
 may be relative to the destination.
 
@@ -29,7 +30,7 @@ Item states are:
 - `projected`: source exists but the destination is not materialized.
 - `observed`: the materialized destination matches the projection.
 - `conflicted`: the materialized destination differs from the projection, or a collision exists.
-- `unsupported`: AgentSync cannot project the requested capability for the selected assistant.
+- `unsupported`: reserved for a future capability-specific projection; current v1 reports do not assign this state to targets or items.
 
 `provider_support: "unknown"` means the report does not assert that the provider natively supports
 the semantic capability. This is deliberate; `inspect` does not implement cross-provider adapters.

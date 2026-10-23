@@ -1003,22 +1003,23 @@ pub fn run_skill(cmd: SkillCommand, project_root: PathBuf) -> Result<()> {
                 Ok(inventory) => inventory,
                 Err(error) => {
                     if json {
-                        let diagnostic = match &error {
-                            SkillInventoryError::Registry(_) => serde_json::json!({
-                                "code": "registry_invalid",
-                                "message": "installed skill registry could not be read or parsed"
-                            }),
-                            SkillInventoryError::Scan(_) => serde_json::json!({
-                                "code": "inventory_unreadable",
-                                "message": "skill inventory could not be scanned"
-                            }),
+                        let (code, message) = match &error {
+                            SkillInventoryError::Registry(_) => (
+                                "registry_invalid",
+                                "installed skill registry could not be read or parsed",
+                            ),
+                            SkillInventoryError::Scan(_) => (
+                                "inventory_unreadable",
+                                "skill inventory could not be scanned",
+                            ),
                         };
                         println!(
                             "{}",
                             serde_json::json!({
                                 "schema_version": 1,
                                 "skills": [],
-                                "diagnostics": [diagnostic]
+                                "diagnostic_code": code,
+                                "diagnostics": [message]
                             })
                         );
                     }

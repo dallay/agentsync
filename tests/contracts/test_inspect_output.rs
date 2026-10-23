@@ -75,8 +75,16 @@ type = "symlink-contents"
 
 fn inspect(project: &TempDir, agent: &str, strict: bool) -> std::process::Output {
     let mut command = Command::new(binary());
-    command.args(["inspect", "--agent", agent, "--json", "--project-root"]);
+    command.args([
+        "inspect",
+        "--agent",
+        if agent == "human" { "opencode" } else { agent },
+        "--project-root",
+    ]);
     command.arg(project.path());
+    if agent != "human" {
+        command.arg("--json");
+    }
     if strict {
         command.arg("--strict");
     }
@@ -144,6 +152,8 @@ fn inspect_json_is_stable_read_only_and_secret_safe() {
     assert!(!String::from_utf8_lossy(&first.stdout).contains("${MCP_TOKEN}"));
     assert!(!String::from_utf8_lossy(&first.stdout).contains("CANARY_USERINFO_SECRET"));
     assert!(!String::from_utf8_lossy(&first.stdout).contains("CANARY_URL_SECRET"));
+    let url = value["mcp"]["servers"][0]["url"].as_str().unwrap();
+    assert!(url.contains("example.invalid/path"), "redacted URL: {url}");
     assert_eq!(std::fs::read_dir(project.path()).unwrap().count(), before);
     assert!(!project.path().join("AGENTS.md").exists());
     assert!(!project.path().join(".opencode").exists());
@@ -169,6 +179,66 @@ fn inspect_codex_projects_canonical_sources_and_destinations() {
 }
 
 #[test]
+fn inspect_module_map_projects_each_mapping_as_child() {
+    let project = TempDir::new().unwrap();
+    let agents = project.path().join(".agents/source");
+    std::fs::create_dir_all(&agents).unwrap();
+    std::fs::write(agents.join("first.md"), "first\n").unwrap();
+    std::fs::write(agents.join("second.md"), "second\n").unwrap();
+    std::fs::write(
+        project.path().join(".agents/agentsync.toml"),
+        r#"
+source_dir = "source"
+[agents.codex]
+enabled = true
+[agents.codex.targets.modules]
+source = "placeholder-source"
+destination = "placeholder-destination"
+type = "module-map"
+[[agents.codex.targets.modules.mappings]]
+source = "first.md"
+destination = "src/one"
+[[agents.codex.targets.modules.mappings]]
+source = "second.md"
+destination = "src/two"
+"#,
+    )
+    .unwrap();
+    let apply = Command::new(binary())
+        .current_dir(project.path())
+        .arg("apply")
+        .output()
+        .unwrap();
+    assert!(
+        apply.status.success(),
+        "{}",
+        String::from_utf8_lossy(&apply.stderr)
+    );
+    let output = inspect(&project, "codex", false);
+    assert!(output.status.success());
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let item = value["items"].as_array().unwrap().first().unwrap();
+    let children = item["children"].as_array().unwrap();
+    assert_eq!(children.len(), 2);
+    assert_eq!(children[0]["source"], ".agents/source/first.md");
+    assert_eq!(children[0]["destination"], "src/one/AGENTS.md");
+    assert_eq!(children[1]["source"], ".agents/source/second.md");
+    assert_eq!(children[1]["destination"], "src/two/AGENTS.md");
+}
+
+#[test]
+fn inspect_human_diagnostics_show_code_severity_target_and_path() {
+    let project = project();
+    std::fs::remove_file(project.path().join(".agents/AGENTS.md")).unwrap();
+    let output = inspect(&project, "human", false);
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("MissingSource [Error]"));
+    assert!(stdout.contains("target=instructions"));
+    assert!(stdout.contains("path=.agents/AGENTS.md"));
+}
+
+#[test]
 fn inspect_default_is_report_only_and_strict_fails_for_missing_source() {
     let project = project();
     std::fs::remove_file(project.path().join(".agents/AGENTS.md")).unwrap();
@@ -189,19 +259,21 @@ fn inspect_default_is_report_only_and_strict_fails_for_missing_source() {
 #[test]
 fn inspect_broken_symlink_has_distinct_typed_diagnostic() {
     let project = project();
-    let path = project.path().join("AGENTS.md");
     #[cfg(unix)]
-    std::os::unix::fs::symlink("missing-source.md", &path).unwrap();
-    let output = inspect(&project, "codex", false);
-    assert!(output.status.success());
-    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert!(
-        value["diagnostics"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|diagnostic| diagnostic["code"] == "broken-symlink")
-    );
+    {
+        let path = project.path().join("AGENTS.md");
+        std::os::unix::fs::symlink("missing-source.md", &path).unwrap();
+        let output = inspect(&project, "codex", false);
+        assert!(output.status.success());
+        let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert!(
+            value["diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|diagnostic| diagnostic["code"] == "broken-symlink")
+        );
+    }
 }
 
 #[test]

@@ -143,7 +143,11 @@ fn skill_list_json_scan_failure_has_distinct_diagnostic_and_preserves_error() {
 
     assert!(!output.status.success());
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(value["diagnostics"][0]["code"], "inventory_unreadable");
+    assert_eq!(value["diagnostic_code"], "inventory_unreadable");
+    assert_eq!(
+        value["diagnostics"][0],
+        "skill inventory could not be scanned"
+    );
     assert!(String::from_utf8_lossy(&output.stderr).contains("not a directory"));
 }
 
@@ -165,9 +169,9 @@ fn skill_list_json_corrupt_registry_reports_redacted_diagnostic_and_fails() {
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(value["schema_version"], 1);
     assert_eq!(value["skills"], serde_json::json!([]));
-    assert_eq!(value["diagnostics"][0]["code"], "registry_invalid");
+    assert_eq!(value["diagnostic_code"], "registry_invalid");
     assert_eq!(
-        value["diagnostics"][0]["message"],
+        value["diagnostics"][0],
         "installed skill registry could not be read or parsed"
     );
     assert!(!String::from_utf8_lossy(&output.stdout).contains("not json"));

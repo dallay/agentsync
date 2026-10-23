@@ -381,7 +381,11 @@ impl PluginManager {
                         .unwrap_or_else(|| Path::new("."))
                         .join(location)
                 }
-                LockedSourceKind::Git => self.git_source_cache_path(&locked.source)?,
+                LockedSourceKind::Git => {
+                    let root = self.git_source_cache_path(&locked.source)?;
+                    ensure_git_snapshot_dir(&root)?;
+                    root
+                }
             };
             ensure!(
                 root.is_dir(),
@@ -1768,7 +1772,7 @@ fn validate_plugin_mcp_server(name: &str, server: &McpServerConfig) -> Result<()
     Ok(())
 }
 
-fn is_sensitive_mcp_key(key: &str) -> bool {
+pub(crate) fn is_sensitive_mcp_key(key: &str) -> bool {
     let normalized = key.to_ascii_lowercase().replace(['-', '.'], "_");
     [
         "token",
@@ -1785,7 +1789,7 @@ fn is_sensitive_mcp_key(key: &str) -> bool {
     .any(|marker| normalized.contains(marker))
 }
 
-fn is_environment_reference(value: &str) -> bool {
+pub(crate) fn is_environment_reference(value: &str) -> bool {
     let value = value.trim();
     let valid_name = |name: &str| {
         !name.is_empty()
