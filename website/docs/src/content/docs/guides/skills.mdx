@@ -260,7 +260,7 @@ Example `skill list --json` response:
 }
 ```
 
-`version` and `provenance` are `null` when the project registry cannot verify them. A skill directory that is not registered is reported as `manual/untracked`, and its `state` reflects the on-disk files: `installed`, `missing_manifest`, `malformed`, `duplicate_id`, or `broken_symlink`. A registry entry without files appears with `state: "missing"`. A corrupted `registry.json` fails the command with exit code `1` instead of returning an untrustworthy inventory.
+`version` comes from the on-disk manifest first and falls back to the project registry; it is `null` only when neither provides a version. `provenance` is `null` unless the registry `source` uses `https://` or `git@`; accepted values have credentials and query tokens redacted. A skill directory that is not registered is reported as `manual/untracked`, and its `state` reflects the on-disk files: `installed`, `missing_manifest`, `malformed`, `duplicate_id`, or `broken_symlink`. A registry entry without files appears with `state: "missing"`. A corrupted `registry.json` fails the command with a `registry_invalid` diagnostic and exit code `1` instead of returning an untrustworthy inventory. Filesystem scan failures use `inventory_unreadable` and also return exit code `1`.
 
 Flags:
 - `--source` — optional for `skill install` and `skill update`. Use a local path, archive URL, or provider-specific identifier.
