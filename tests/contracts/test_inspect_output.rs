@@ -35,7 +35,7 @@ merge_strategy = "merge"
 [mcp_servers.fixture]
 command = "fixture-mcp"
 args = ["--token", "CANARY_ARG_SECRET", "--api-key=CANARY_INLINE_SECRET", "${MCP_TOKEN}"]
-url = "https://user:CANARY_USERINFO_SECRET@example.invalid/path?token=CANARY_URL_SECRET"
+url = "https://user:CANARY_USERINFO_SECRET@example.invalid/path?token=CANARY_URL_SECRET&api_key=CANARY_QUERY_KEY_SECRET"
 [mcp_servers.fixture.env]
 API_TOKEN = "CANARY_ENV_SECRET"
 LOG_LEVEL = "debug"
@@ -73,6 +73,59 @@ type = "symlink-contents"
     project
 }
 
+fn inspect_plugin_project() -> TempDir {
+    let project = project();
+    let fixture =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/plugin-marketplace");
+    copy_tree(&fixture, &project.path().join("marketplace"));
+    let config_path = project.path().join(".agents/agentsync.toml");
+    let mut config = std::fs::read_to_string(&config_path).unwrap();
+    config.push_str(
+        r#"
+[plugins]
+enabled = true
+lockfile = "plugins.lock.toml"
+allowed_mcp = ["plugin/internal/engineering/safe-fixture"]
+
+[plugins.marketplaces.internal]
+source = "../marketplace"
+reference = "main"
+
+[[plugins.selections]]
+marketplace = "internal"
+plugin = "engineering"
+"#,
+    );
+    std::fs::write(config_path, config).unwrap();
+    let add = Command::new(binary())
+        .args(["plugin", "--project-root"])
+        .arg(project.path())
+        .args(["add", "internal/engineering"])
+        .output()
+        .unwrap();
+    assert!(
+        add.status.success(),
+        "plugin add failed: {}",
+        String::from_utf8_lossy(&add.stderr)
+    );
+    project
+}
+
+fn copy_tree(source: &std::path::Path, target: &std::path::Path) {
+    std::fs::create_dir_all(target).unwrap();
+    for entry in std::fs::read_dir(source).unwrap() {
+        let entry = entry.unwrap();
+        let source_path = entry.path();
+        let target_path = target.join(entry.file_name());
+        if source_path.is_dir() {
+            copy_tree(&source_path, &target_path);
+        } else {
+            std::fs::create_dir_all(target_path.parent().unwrap()).unwrap();
+            std::fs::copy(source_path, target_path).unwrap();
+        }
+    }
+}
+
 fn inspect(project: &TempDir, agent: &str, strict: bool) -> std::process::Output {
     let mut command = Command::new(binary());
     command.args([
@@ -89,6 +142,176 @@ fn inspect(project: &TempDir, agent: &str, strict: bool) -> std::process::Output
         command.arg("--strict");
     }
     command.output().unwrap()
+}
+
+#[test]
+fn inspect_projects_approved_plugin_mcp_and_reports_pending_plugin_mcp() {
+    let project = inspect_plugin_project();
+
+    let config_path = project.path().join(".agents/agentsync.toml");
+    let config = std::fs::read_to_string(&config_path).unwrap().replace(
+        "allowed_mcp = [\"plugin/internal/engineering/safe-fixture\"]",
+        "allowed_mcp = []",
+    );
+    std::fs::write(config_path, config).unwrap();
+
+    let output = inspect(&project, "opencode", false);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let servers = value["mcp"]["servers"].as_array().unwrap();
+    let plugin_server = servers
+        .iter()
+        .find(|server| server["name"] == "plugin/internal/engineering/safe-fixture")
+        .unwrap();
+    assert_eq!(plugin_server["origin"], "plugin");
+    assert_eq!(plugin_server["state"], "configured");
+    assert_eq!(plugin_server["included"], false);
+    assert!(
+        value["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|diagnostic| {
+                diagnostic["code"] == "pending-plugin-approval"
+                    && diagnostic["severity"] == "warning"
+            })
+    );
+
+    let config_path = project.path().join(".agents/agentsync.toml");
+    let config = std::fs::read_to_string(&config_path).unwrap().replace(
+        "allowed_mcp = []",
+        "allowed_mcp = [\"plugin/internal/engineering/safe-fixture\"]",
+    );
+    std::fs::write(config_path, config).unwrap();
+    let output = inspect(&project, "opencode", false);
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let plugin_server = value["mcp"]["servers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|server| server["name"] == "plugin/internal/engineering/safe-fixture")
+        .unwrap();
+    assert_eq!(plugin_server["state"], "projected");
+    assert_eq!(plugin_server["included"], true);
+}
+
+#[test]
+fn inspect_reports_plugin_mcp_collision_with_explicit_server() {
+    let project = inspect_plugin_project();
+    let config_path = project.path().join(".agents/agentsync.toml");
+    let mut config = std::fs::read_to_string(&config_path).unwrap();
+    config.push_str(
+        r#"
+[mcp_servers."plugin/internal/engineering/safe-fixture"]
+command = "/bin/true"
+"#,
+    );
+    std::fs::write(config_path, config).unwrap();
+
+    let output = inspect(&project, "opencode", false);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let plugin_server = value["mcp"]["servers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|server| {
+            server["name"] == "plugin/internal/engineering/safe-fixture"
+                && server["origin"] == "plugin"
+        })
+        .unwrap();
+    assert_eq!(plugin_server["included"], false);
+    assert!(
+        value["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|diagnostic| {
+                diagnostic["code"] == "mcp-name-collision" && diagnostic["severity"] == "error"
+            })
+    );
+}
+
+#[test]
+fn inspect_reports_plugin_error_when_lockfile_is_missing() {
+    let project = inspect_plugin_project();
+    std::fs::remove_file(project.path().join(".agents/plugins.lock.toml")).unwrap();
+
+    let output = inspect(&project, "opencode", false);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(
+        value["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|diagnostic| {
+                diagnostic["code"] == "unsupported-plugin-component"
+                    && diagnostic["severity"] == "warning"
+            })
+    );
+}
+
+#[test]
+fn inspect_reports_missing_plugin_snapshot_from_git_lock_entry() {
+    let project = inspect_plugin_project();
+    let lock_path = project.path().join(".agents/plugins.lock.toml");
+    let lock = std::fs::read_to_string(&lock_path).unwrap();
+    let lock = lock
+        .lines()
+        .map(|line| {
+            if line.trim() == "kind = \"local\"" {
+                "kind = \"git\"".to_string()
+            } else if line.trim() == "location = \"../marketplace\"" {
+                "location = \"https://example.invalid/marketplace.git\"".to_string()
+            } else if line.trim_start().starts_with("revision = \"local:")
+                || line
+                    .trim_start()
+                    .starts_with("resolved_revision = \"local:")
+            {
+                format!(
+                    "{}\"0123456789abcdef0123456789abcdef01234567\"",
+                    line.split_once("= ").unwrap().0.to_owned() + "= "
+                )
+            } else {
+                line.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    std::fs::write(lock_path, lock).unwrap();
+
+    let output = inspect(&project, "opencode", false);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(
+        value["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|diagnostic| {
+                diagnostic["code"] == "missing-plugin-snapshot"
+                    && diagnostic["severity"] == "warning"
+            }),
+        "diagnostics: {}",
+        value["diagnostics"]
+    );
 }
 
 #[test]
@@ -318,6 +541,55 @@ fn inspect_reports_overwrite_without_claiming_unmanaged_servers_survive() {
             .as_array()
             .unwrap()
             .is_empty()
+    );
+}
+
+#[test]
+fn inspect_malformed_existing_mcp_config_falls_back_to_projection() {
+    let project = project();
+    std::fs::create_dir_all(project.path().join(".codex")).unwrap();
+    std::fs::write(
+        project.path().join(".codex/config.toml"),
+        "mcp_servers = [\n",
+    )
+    .unwrap();
+
+    let output = inspect(&project, "codex", false);
+    assert!(output.status.success());
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["mcp"]["servers"][0]["name"], "fixture");
+    assert_eq!(value["mcp"]["servers"][0]["state"], "projected");
+    assert!(
+        value["mcp"]["existing_server_names"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn inspect_disabled_server_is_configured_and_not_included() {
+    let project = project();
+    let config_path = project.path().join(".agents/agentsync.toml");
+    let config = std::fs::read_to_string(&config_path).unwrap().replace(
+        "command = \"fixture-mcp\"",
+        "command = \"fixture-mcp\"\ndisabled = true",
+    );
+    std::fs::write(config_path, config).unwrap();
+
+    let output = inspect(&project, "codex", false);
+    assert!(output.status.success());
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let server = &value["mcp"]["servers"][0];
+    assert_eq!(server["disabled"], true);
+    assert_eq!(server["included"], false);
+    assert_eq!(server["state"], "configured");
+    assert!(
+        value["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|diagnostic| diagnostic["code"] == "disabled-mcp-server")
     );
 }
 

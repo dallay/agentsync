@@ -983,7 +983,8 @@ fn parse_pnpm_workspace_yaml(content: &str) -> Vec<String> {
         packages: Vec<String>,
     }
 
-    serde_yaml::from_str::<PnpmWorkspace>(content)
+    let options = serde_saphyr::options! { strict_booleans: true };
+    serde_saphyr::from_str_with_options::<PnpmWorkspace>(content, options)
         .map(|ws| ws.packages)
         .unwrap_or_default()
 }

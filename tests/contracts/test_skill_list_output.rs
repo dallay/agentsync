@@ -5,6 +5,45 @@ fn binary() -> &'static str {
     env!("CARGO_BIN_EXE_agentsync")
 }
 
+#[cfg(unix)]
+#[test]
+fn skill_list_json_reports_missing_manifest_and_broken_symlink() {
+    let project = TempDir::new().unwrap();
+    let skills = project.path().join(".agents/skills");
+    std::fs::create_dir_all(skills.join("missing-manifest")).unwrap();
+    std::os::unix::fs::symlink("does-not-exist", skills.join("broken-link")).unwrap();
+
+    let output = Command::new(binary())
+        .args(["skill", "--project-root"])
+        .arg(project.path())
+        .args(["list", "--json"])
+        .output()
+        .expect("run agentsync skill list");
+
+    assert!(output.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["skills"][0]["id"], "broken-link");
+    assert_eq!(value["skills"][0]["state"], "broken_symlink");
+    assert_eq!(value["skills"][1]["id"], "missing-manifest");
+    assert_eq!(value["skills"][1]["state"], "missing_manifest");
+    assert!(
+        value["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|diagnostic| { diagnostic == "broken symlink: .agents/skills/broken-link" })
+    );
+    assert!(
+        value["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|diagnostic| {
+                diagnostic == "missing SKILL.md: .agents/skills/missing-manifest"
+            })
+    );
+}
+
 #[test]
 fn skill_list_json_empty_contract() {
     let project = TempDir::new().unwrap();
@@ -129,6 +168,33 @@ fn skill_list_json_is_deterministic_and_read_only() {
 }
 
 #[test]
+fn skill_list_json_reports_malformed_manifest_state_and_diagnostic() {
+    let project = TempDir::new().unwrap();
+    let skill = project.path().join(".agents/skills/malformed");
+    std::fs::create_dir_all(&skill).unwrap();
+    std::fs::write(skill.join("SKILL.md"), "---\nname: invalid name\n---\n").unwrap();
+
+    let output = Command::new(binary())
+        .args(["skill", "--project-root"])
+        .arg(project.path())
+        .args(["list", "--json"])
+        .output()
+        .expect("run agentsync skill list");
+
+    assert!(output.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["skills"][0]["id"], "malformed");
+    assert_eq!(value["skills"][0]["state"], "malformed");
+    assert!(
+        value["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|diagnostic| { diagnostic == "malformed SKILL.md: .agents/skills/malformed" })
+    );
+}
+
+#[test]
 fn skill_list_json_scan_failure_has_distinct_diagnostic_and_preserves_error() {
     let project = TempDir::new().unwrap();
     std::fs::create_dir_all(project.path().join(".agents")).unwrap();
@@ -175,4 +241,35 @@ fn skill_list_json_corrupt_registry_reports_redacted_diagnostic_and_fails() {
         "installed skill registry could not be read or parsed"
     );
     assert!(!String::from_utf8_lossy(&output.stdout).contains("not json"));
+}
+
+#[test]
+fn skill_list_json_reports_duplicate_manifest_ids() {
+    let project = TempDir::new().unwrap();
+    write_skill(&project, "first-copy", "---\nname: shared-skill\n---\n");
+    write_skill(&project, "second-copy", "---\nname: shared-skill\n---\n");
+
+    let output = Command::new(binary())
+        .args(["skill", "--project-root"])
+        .arg(project.path())
+        .args(["list", "--json"])
+        .output()
+        .expect("run agentsync skill list");
+
+    assert!(output.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["skills"][0]["id"], "first-copy");
+    assert_eq!(value["skills"][0]["state"], "duplicate_id");
+    assert_eq!(value["skills"][1]["id"], "second-copy");
+    assert_eq!(value["skills"][1]["state"], "duplicate_id");
+    assert!(
+        value["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|diagnostic| {
+                diagnostic
+                    == "duplicate skill ID 'shared-skill' in directories: first-copy, second-copy"
+            })
+    );
 }

@@ -180,225 +180,16 @@ pub fn resolve_configuration(
         });
     }
     if agent.enabled {
+        let mut context = TargetResolutionContext {
+            agent_name: &agent_name,
+            project_root: &project_root,
+            source_root: &source_root,
+            status: &status,
+            destinations: &mut destinations,
+            diagnostics: &mut diagnostics,
+        };
         for (target_name, target) in &agent.targets {
-            let kind = classify_target(target_name);
-            let is_module_map = target.sync_type == SyncType::ModuleMap;
-            let source = if target.sync_type == SyncType::NestedGlob {
-                project_root.join(&target.source)
-            } else {
-                source_root.join(&target.source)
-            };
-            let mappings = if is_module_map {
-                target
-                    .mappings
-                    .iter()
-                    .map(|mapping| {
-                        (
-                            source_root.join(&mapping.source),
-                            project_root.join(&mapping.destination).join(
-                                crate::config::resolve_module_map_filename(mapping, &agent_name),
-                            ),
-                        )
-                    })
-                    .collect::<Vec<_>>()
-            } else {
-                vec![(source.clone(), project_root.join(&target.destination))]
-            };
-            let (projection_source, projection_destination) = mappings
-                .first()
-                .cloned()
-                .unwrap_or_else(|| (source.clone(), project_root.join(&target.destination)));
-            let portable_source = portable_path(&project_root, &projection_source);
-            let portable_destination = portable_path(&project_root, &projection_destination);
-            for (_, mapped_destination) in &mappings {
-                let mapped_destination = portable_path(&project_root, mapped_destination);
-                if let Some(previous) =
-                    destinations.insert(mapped_destination.clone(), target_name.clone())
-                {
-                    diagnostics.push(Diagnostic {
-                        code: DiagnosticCode::DestinationCollision,
-                        severity: DiagnosticSeverity::Error,
-                        target: Some(target_name.clone()),
-                        path: Some(mapped_destination),
-                        message: format!(
-                            "Targets {previous} and {target_name} project to the same destination."
-                        ),
-                    });
-                }
-            }
-            let matched = status
-                .iter()
-                .filter(|entry| entry.agent == agent_name && entry.target == *target_name)
-                .collect::<Vec<_>>();
-            let observed = observed_for(&matched);
-            let source_exists = mappings
-                .iter()
-                .all(|(mapped_source, _)| mapped_source.exists());
-            let destination_occupied = target.sync_type == SyncType::Symlink
-                && std::fs::symlink_metadata(&projection_destination).is_ok();
-            let mut state = if !source_exists {
-                ItemState::Configured
-            } else if observed.matches_projection == Some(true) {
-                ItemState::Observed
-            } else if observed.exists || destination_occupied {
-                ItemState::Conflicted
-            } else {
-                ItemState::Projected
-            };
-            if !source_exists {
-                let missing_source = mappings
-                    .iter()
-                    .find(|(mapped_source, _)| !mapped_source.exists())
-                    .map(|(mapped_source, _)| portable_path(&project_root, mapped_source))
-                    .unwrap_or_else(|| portable_source.clone());
-                diagnostics.push(Diagnostic {
-                    code: DiagnosticCode::MissingSource,
-                    severity: DiagnosticSeverity::Error,
-                    target: Some(target_name.clone()),
-                    path: Some(missing_source),
-                    message: "Configured source does not exist.".into(),
-                });
-            }
-            for (index, entry) in matched.iter().enumerate() {
-                let entry_state = if is_module_map {
-                    let source_exists = mappings
-                        .get(index)
-                        .is_some_and(|(source, _)| source.exists());
-                    if !source_exists {
-                        ItemState::Configured
-                    } else if entry.entry.issues.is_empty() && entry.entry.exists {
-                        ItemState::Observed
-                    } else if entry.entry.exists {
-                        ItemState::Conflicted
-                    } else {
-                        ItemState::Projected
-                    }
-                } else {
-                    state
-                };
-                diagnostics.extend(status_diagnostics(
-                    entry,
-                    target_name,
-                    &project_root,
-                    entry_state,
-                ));
-                if entry.entry.destination_kind == DestinationKind::Symlink
-                    && entry.entry.points_to.as_deref().is_some_and(|target| {
-                        let target = Path::new(target);
-                        let resolved = if target.is_absolute() {
-                            target.to_path_buf()
-                        } else {
-                            Path::new(&entry.entry.destination)
-                                .parent()
-                                .unwrap_or(Path::new("."))
-                                .join(target)
-                        };
-                        !resolved.exists()
-                    })
-                {
-                    diagnostics.push(Diagnostic {
-                        code: DiagnosticCode::BrokenSymlink,
-                        severity: DiagnosticSeverity::Error,
-                        target: Some(target_name.clone()),
-                        path: Some(portable_destination.clone()),
-                        message: "Destination is a broken or unreadable symlink.".into(),
-                    });
-                    state = ItemState::Conflicted;
-                }
-            }
-            let mut children = Vec::new();
-            if is_module_map {
-                for ((mapped_source, mapped_destination), entry) in
-                    mappings.iter().zip(matched.iter())
-                {
-                    let exists = mapped_source.exists();
-                    let matches = entry.entry.issues.is_empty() && entry.entry.exists;
-                    children.push(ManagedChild {
-                        source: portable_path(&project_root, mapped_source),
-                        destination: portable_path(&project_root, mapped_destination),
-                        state: if !exists {
-                            ItemState::Configured
-                        } else if matches {
-                            ItemState::Observed
-                        } else if entry.entry.exists {
-                            ItemState::Conflicted
-                        } else {
-                            ItemState::Projected
-                        },
-                        observed: ObservedState {
-                            exists: entry.entry.exists,
-                            kind: format!("{:?}", entry.entry.destination_kind)
-                                .to_ascii_lowercase(),
-                            points_to: entry
-                                .entry
-                                .points_to
-                                .as_ref()
-                                .map(|path| portable_path(&project_root, Path::new(path))),
-                            matches_projection: Some(matches),
-                        },
-                    });
-                }
-            } else if let Some(entry) = matched
-                .iter()
-                .find(|entry| entry.entry.managed_children.is_some())
-                && let Some(entry) = entry.entry.managed_children.as_ref()
-            {
-                for child in entry {
-                    let child_source =
-                        portable_path(&project_root, Path::new(&child.expected_source));
-                    let child_destination = portable_path(&project_root, Path::new(&child.path));
-                    let child_matches = child.exists
-                        && child.is_symlink
-                        && child.points_to.as_deref().is_some_and(|actual| {
-                            paths_match(
-                                Path::new(&child.path),
-                                Path::new(actual),
-                                Path::new(&child.expected_source),
-                            )
-                        });
-                    let child_state = if !child.exists {
-                        ItemState::Projected
-                    } else if child_matches {
-                        ItemState::Observed
-                    } else {
-                        ItemState::Conflicted
-                    };
-                    children.push(ManagedChild {
-                        source: child_source,
-                        destination: child_destination,
-                        state: child_state,
-                        observed: ObservedState {
-                            exists: child.exists,
-                            kind: if child.is_symlink {
-                                "symlink"
-                            } else if child.exists {
-                                "other"
-                            } else {
-                                "missing"
-                            }
-                            .into(),
-                            points_to: child
-                                .points_to
-                                .as_deref()
-                                .map(|path| portable_path(&project_root, Path::new(path))),
-                            matches_projection: Some(child_matches),
-                        },
-                    });
-                }
-            }
-            items.push(ManagedItem {
-                kind,
-                target: target_name.clone(),
-                sync_mode: sync_type_label(target.sync_type).into(),
-                source: portable_source,
-                destination: portable_destination,
-                origin: "config".into(),
-                owner: "agentsync".into(),
-                provider_support: "unknown".into(),
-                state,
-                observed,
-                children,
-            });
+            items.push(resolve_target(target_name, target, &mut context));
         }
     }
     items.sort_by(|a, b| {
@@ -429,6 +220,241 @@ pub fn resolve_configuration(
         diagnostics,
         scope_notice: SCOPE_NOTICE.into(),
     })
+}
+
+struct TargetResolutionContext<'a> {
+    agent_name: &'a str,
+    project_root: &'a Path,
+    source_root: &'a Path,
+    status: &'a [AgentStatusEntry],
+    destinations: &'a mut BTreeMap<String, String>,
+    diagnostics: &'a mut Vec<Diagnostic>,
+}
+
+fn resolve_target(
+    target_name: &String,
+    target: &crate::config::TargetConfig,
+    context: &mut TargetResolutionContext<'_>,
+) -> ManagedItem {
+    let agent_name = context.agent_name;
+    let project_root = context.project_root;
+    let source_root = context.source_root;
+    let status = context.status;
+    let destinations = &mut *context.destinations;
+    let diagnostics = &mut *context.diagnostics;
+    let kind = classify_target(target_name);
+    let is_module_map = target.sync_type == SyncType::ModuleMap;
+    let source = if target.sync_type == SyncType::NestedGlob {
+        project_root.join(&target.source)
+    } else {
+        source_root.join(&target.source)
+    };
+    let mappings = if is_module_map {
+        target
+            .mappings
+            .iter()
+            .map(|mapping| {
+                (
+                    source_root.join(&mapping.source),
+                    project_root.join(&mapping.destination).join(
+                        crate::config::resolve_module_map_filename(mapping, agent_name),
+                    ),
+                )
+            })
+            .collect::<Vec<_>>()
+    } else {
+        vec![(source.clone(), project_root.join(&target.destination))]
+    };
+    let (projection_source, projection_destination) = mappings
+        .first()
+        .cloned()
+        .unwrap_or_else(|| (source.clone(), project_root.join(&target.destination)));
+    let portable_source = portable_path(project_root, &projection_source);
+    let portable_destination = portable_path(project_root, &projection_destination);
+    for (_, mapped_destination) in &mappings {
+        let mapped_destination = portable_path(project_root, mapped_destination);
+        if let Some(previous) = destinations.insert(mapped_destination.clone(), target_name.clone())
+        {
+            diagnostics.push(Diagnostic {
+                code: DiagnosticCode::DestinationCollision,
+                severity: DiagnosticSeverity::Error,
+                target: Some(target_name.clone()),
+                path: Some(mapped_destination),
+                message: format!(
+                    "Targets {previous} and {target_name} project to the same destination."
+                ),
+            });
+        }
+    }
+    let matched = status
+        .iter()
+        .filter(|entry| entry.agent == agent_name && entry.target == *target_name)
+        .collect::<Vec<_>>();
+    let observed = observed_for(&matched);
+    let source_exists = mappings
+        .iter()
+        .all(|(mapped_source, _)| mapped_source.exists());
+    let destination_occupied = target.sync_type == SyncType::Symlink
+        && std::fs::symlink_metadata(&projection_destination).is_ok();
+    let mut state = if !source_exists {
+        ItemState::Configured
+    } else if observed.matches_projection == Some(true) {
+        ItemState::Observed
+    } else if observed.exists || destination_occupied {
+        ItemState::Conflicted
+    } else {
+        ItemState::Projected
+    };
+    if !source_exists {
+        let missing_source = mappings
+            .iter()
+            .find(|(mapped_source, _)| !mapped_source.exists())
+            .map(|(mapped_source, _)| portable_path(project_root, mapped_source))
+            .unwrap_or_else(|| portable_source.clone());
+        diagnostics.push(Diagnostic {
+            code: DiagnosticCode::MissingSource,
+            severity: DiagnosticSeverity::Error,
+            target: Some(target_name.clone()),
+            path: Some(missing_source),
+            message: "Configured source does not exist.".into(),
+        });
+    }
+    for (index, entry) in matched.iter().enumerate() {
+        let entry_state = if is_module_map {
+            let source_exists = mappings
+                .get(index)
+                .is_some_and(|(source, _)| source.exists());
+            if !source_exists {
+                ItemState::Configured
+            } else if entry.entry.issues.is_empty() && entry.entry.exists {
+                ItemState::Observed
+            } else if entry.entry.exists {
+                ItemState::Conflicted
+            } else {
+                ItemState::Projected
+            }
+        } else {
+            state
+        };
+        diagnostics.extend(status_diagnostics(
+            entry,
+            target_name,
+            project_root,
+            entry_state,
+        ));
+        if entry.entry.destination_kind == DestinationKind::Symlink
+            && entry.entry.points_to.as_deref().is_some_and(|target| {
+                let target = Path::new(target);
+                let resolved = if target.is_absolute() {
+                    target.to_path_buf()
+                } else {
+                    Path::new(&entry.entry.destination)
+                        .parent()
+                        .unwrap_or(Path::new("."))
+                        .join(target)
+                };
+                !resolved.exists()
+            })
+        {
+            diagnostics.push(Diagnostic {
+                code: DiagnosticCode::BrokenSymlink,
+                severity: DiagnosticSeverity::Error,
+                target: Some(target_name.clone()),
+                path: Some(portable_destination.clone()),
+                message: "Destination is a broken or unreadable symlink.".into(),
+            });
+            state = ItemState::Conflicted;
+        }
+    }
+    let mut children = Vec::new();
+    if is_module_map {
+        for ((mapped_source, mapped_destination), entry) in mappings.iter().zip(matched.iter()) {
+            let exists = mapped_source.exists();
+            let matches = entry.entry.issues.is_empty() && entry.entry.exists;
+            children.push(ManagedChild {
+                source: portable_path(project_root, mapped_source),
+                destination: portable_path(project_root, mapped_destination),
+                state: if !exists {
+                    ItemState::Configured
+                } else if matches {
+                    ItemState::Observed
+                } else if entry.entry.exists {
+                    ItemState::Conflicted
+                } else {
+                    ItemState::Projected
+                },
+                observed: ObservedState {
+                    exists: entry.entry.exists,
+                    kind: format!("{:?}", entry.entry.destination_kind).to_ascii_lowercase(),
+                    points_to: entry
+                        .entry
+                        .points_to
+                        .as_ref()
+                        .map(|path| portable_path(project_root, Path::new(path))),
+                    matches_projection: Some(matches),
+                },
+            });
+        }
+    } else if let Some(entry) = matched
+        .iter()
+        .find(|entry| entry.entry.managed_children.is_some())
+        && let Some(entry) = entry.entry.managed_children.as_ref()
+    {
+        for child in entry {
+            let child_source = portable_path(project_root, Path::new(&child.expected_source));
+            let child_destination = portable_path(project_root, Path::new(&child.path));
+            let child_matches = child.exists
+                && child.is_symlink
+                && child.points_to.as_deref().is_some_and(|actual| {
+                    paths_match(
+                        Path::new(&child.path),
+                        Path::new(actual),
+                        Path::new(&child.expected_source),
+                    )
+                });
+            let child_state = if !child.exists {
+                ItemState::Projected
+            } else if child_matches {
+                ItemState::Observed
+            } else {
+                ItemState::Conflicted
+            };
+            children.push(ManagedChild {
+                source: child_source,
+                destination: child_destination,
+                state: child_state,
+                observed: ObservedState {
+                    exists: child.exists,
+                    kind: if child.is_symlink {
+                        "symlink"
+                    } else if child.exists {
+                        "other"
+                    } else {
+                        "missing"
+                    }
+                    .into(),
+                    points_to: child
+                        .points_to
+                        .as_deref()
+                        .map(|path| portable_path(project_root, Path::new(path))),
+                    matches_projection: Some(child_matches),
+                },
+            });
+        }
+    }
+    ManagedItem {
+        kind,
+        target: target_name.clone(),
+        sync_mode: sync_type_label(target.sync_type).into(),
+        source: portable_source,
+        destination: portable_destination,
+        origin: "config".into(),
+        owner: "agentsync".into(),
+        provider_support: "unknown".into(),
+        state,
+        observed,
+        children,
+    }
 }
 
 fn empty_mcp_report() -> McpReport {
@@ -548,71 +574,18 @@ fn resolve_mcp(
                 });
             }
         }
-        let plugins = &config.plugins;
-        if plugins.enabled && !plugins.selections.is_empty() {
-            let manager = crate::plugins::PluginManager::new(
-                root.to_path_buf(),
-                config_path.to_path_buf(),
-                plugins.clone(),
-            );
-            match manager.inspect_status_report_read_only() {
-                Ok(report) => {
-                    for item in report.servers {
-                        let approved =
-                            matches!(item.approval, crate::plugins::PluginMcpApproval::Allowed);
-                        let collision = config
-                            .mcp_servers
-                            .get(&item.name)
-                            .is_some_and(|explicit| explicit != &item.server);
-                        if collision {
-                            diagnostics.push(Diagnostic { code: DiagnosticCode::McpNameCollision, severity: DiagnosticSeverity::Error, target: Some("mcp".into()), path: Some(dest.clone()), message: format!("Explicit MCP declaration and plugin contribution collide at {}; apply rejects differing definitions.", item.name) });
-                        }
-                        let plugin_expected = formatter
-                            .format_to_string(&BTreeMap::from([(item.name.as_str(), &item.server)]))
-                            .ok()
-                            .and_then(|formatted| formatter.parse_existing(&formatted).ok())
-                            .and_then(|servers| servers.get(&item.name).cloned());
-                        let existing_equal = existing_servers
-                            .get(&item.name)
-                            .zip(plugin_expected.as_ref())
-                            .is_some_and(|(existing, expected)| {
-                                normalized_mcp_value(existing) == normalized_mcp_value(expected)
-                            });
-                        let mut server_report = mcp_server_report(
-                            &item.name,
-                            &item.server,
-                            "plugin",
-                            Some(plugin_owner(&item.name)),
-                            existing_equal,
-                            root,
-                            &dest,
-                        );
-                        server_report.included = approved && !collision && !item.server.disabled;
-                        server_report.state = if item.server.disabled || !approved {
-                            ItemState::Configured
-                        } else if existing_equal {
-                            ItemState::Observed
-                        } else {
-                            ItemState::Projected
-                        };
-                        servers.push(server_report);
-                        if !approved {
-                            diagnostics.push(Diagnostic { code: DiagnosticCode::PendingPluginApproval, severity: DiagnosticSeverity::Warning, target: Some("mcp".into()), path: Some(dest.clone()), message: format!("Plugin MCP server {} is not approved by plugins.allowed_mcp and is not included.", item.name) });
-                        }
-                    }
-                }
-                Err(error) => {
-                    let lock_path = manager.lock_path()?;
-                    let lock = PluginLock::load(&lock_path).ok();
-                    let missing_snapshot = lock.as_ref().is_some_and(|lock| {
-                        lock.plugins.values().any(|plugin| {
-                            plugin.source.kind == crate::plugins::LockedSourceKind::Git
-                        })
-                    });
-                    diagnostics.push(Diagnostic { code: if missing_snapshot { DiagnosticCode::MissingPluginSnapshot } else { DiagnosticCode::UnsupportedPluginComponent }, severity: DiagnosticSeverity::Warning, target: Some("plugins".into()), path: Some(portable_path(root, &lock_path)), message: if missing_snapshot { "A required local plugin snapshot is unavailable; plugin MCP contributions are unknown.".into() } else { format!("Plugin contributions could not be resolved offline: {}", error.to_string().split(':').next().unwrap_or("plugin metadata error")) } });
-                }
-            }
-        }
+        append_plugin_mcp_servers(
+            PluginMcpContext {
+                config,
+                config_path,
+                agent,
+                root,
+                destination: &dest,
+                existing_servers: &existing_servers,
+            },
+            &mut servers,
+            diagnostics,
+        )?;
     }
     servers.sort_by(|a, b| a.name.cmp(&b.name));
     let existing_unmanaged = existing_names
@@ -647,6 +620,98 @@ fn resolve_mcp(
         servers,
         existing_server_names: existing_unmanaged,
     })
+}
+
+struct PluginMcpContext<'a> {
+    config: &'a Config,
+    config_path: &'a Path,
+    agent: McpAgent,
+    root: &'a Path,
+    destination: &'a str,
+    existing_servers: &'a BTreeMap<String, serde_json::Value>,
+}
+
+fn append_plugin_mcp_servers(
+    context: PluginMcpContext<'_>,
+    servers: &mut Vec<McpServerReport>,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Result<()> {
+    let PluginMcpContext {
+        config,
+        config_path,
+        agent,
+        root,
+        destination,
+        existing_servers,
+    } = context;
+    let dest = destination;
+    let plugins = &config.plugins;
+    if !plugins.enabled || plugins.selections.is_empty() {
+        return Ok(());
+    }
+    let manager = crate::plugins::PluginManager::new(
+        root.to_path_buf(),
+        config_path.to_path_buf(),
+        plugins.clone(),
+    );
+    let formatter = agent.formatter();
+    match manager.inspect_status_report_read_only() {
+        Ok(report) => {
+            for item in report.servers {
+                let approved = matches!(item.approval, crate::plugins::PluginMcpApproval::Allowed);
+                let collision = config
+                    .mcp_servers
+                    .get(&item.name)
+                    .is_some_and(|explicit| explicit != &item.server);
+                if collision {
+                    diagnostics.push(Diagnostic { code: DiagnosticCode::McpNameCollision, severity: DiagnosticSeverity::Error, target: Some("mcp".into()), path: Some(dest.into()), message: format!("Explicit MCP declaration and plugin contribution collide at {}; apply rejects differing definitions.", item.name) });
+                }
+                let plugin_expected = formatter
+                    .format_to_string(&BTreeMap::from([(item.name.as_str(), &item.server)]))
+                    .ok()
+                    .and_then(|formatted| formatter.parse_existing(&formatted).ok())
+                    .and_then(|servers| servers.get(&item.name).cloned());
+                let existing_equal = existing_servers
+                    .get(&item.name)
+                    .zip(plugin_expected.as_ref())
+                    .is_some_and(|(existing, expected)| {
+                        normalized_mcp_value(existing) == normalized_mcp_value(expected)
+                    });
+                let mut server_report = mcp_server_report(
+                    &item.name,
+                    &item.server,
+                    "plugin",
+                    Some(plugin_owner(&item.name)),
+                    existing_equal,
+                    root,
+                    dest,
+                );
+                server_report.included = approved && !collision && !item.server.disabled;
+                server_report.state = if item.server.disabled || !approved {
+                    ItemState::Configured
+                } else if existing_equal {
+                    ItemState::Observed
+                } else {
+                    ItemState::Projected
+                };
+                servers.push(server_report);
+                if !approved {
+                    diagnostics.push(Diagnostic { code: DiagnosticCode::PendingPluginApproval, severity: DiagnosticSeverity::Warning, target: Some("mcp".into()), path: Some(dest.into()), message: format!("Plugin MCP server {} is not approved by plugins.allowed_mcp and is not included.", item.name) });
+                }
+            }
+        }
+        Err(error) => {
+            let lock_path = manager.lock_path()?;
+            let lock = PluginLock::load(&lock_path).ok();
+            let missing_snapshot = lock.as_ref().is_some_and(|lock| {
+                lock.plugins
+                    .values()
+                    .any(|plugin| plugin.source.kind == crate::plugins::LockedSourceKind::Git)
+            });
+            diagnostics.push(Diagnostic { code: if missing_snapshot { DiagnosticCode::MissingPluginSnapshot } else { DiagnosticCode::UnsupportedPluginComponent }, severity: DiagnosticSeverity::Warning, target: Some("plugins".into()), path: Some(portable_path(root, &lock_path)), message: if missing_snapshot { "A required local plugin snapshot is unavailable; plugin MCP contributions are unknown.".into() } else { format!("Plugin contributions could not be resolved offline: {}", error.to_string().split(':').next().unwrap_or("plugin metadata error")) } });
+        }
+    }
+    Ok(())
 }
 
 fn normalized_mcp_value(value: &serde_json::Value) -> serde_json::Value {

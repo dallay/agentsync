@@ -832,17 +832,21 @@ fn skill_inventory(
         None
     };
     let entries = registry_data.as_ref().and_then(|reg| reg.skills.as_ref());
-    let skills_root_metadata = match std::fs::symlink_metadata(&skills_root) {
+    let skills_root_metadata = match std::fs::symlink_metadata(&skills_root).with_context(|| {
+        format!(
+            "failed to inspect skills directory {}",
+            skills_root.display()
+        )
+    }) {
         Ok(metadata) => Some(metadata),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-        Err(error) => {
-            return Err(SkillInventoryError::Scan(
-                anyhow::Error::new(error).context(format!(
-                    "failed to inspect skills directory {}",
-                    skills_root.display()
-                )),
-            ));
+        Err(error)
+            if error
+                .downcast_ref::<std::io::Error>()
+                .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound) =>
+        {
+            None
         }
+        Err(error) => return Err(SkillInventoryError::Scan(error)),
     };
     if skills_root_metadata.as_ref().is_some_and(|metadata| {
         !metadata.is_dir() && !(metadata.file_type().is_symlink() && skills_root.is_dir())
@@ -856,90 +860,120 @@ fn skill_inventory(
     let mut manifest_ids = std::collections::BTreeMap::<String, Vec<String>>::new();
     let mut diagnostics = Vec::new();
     if skills_root_metadata.is_some() {
-        let directory = std::fs::read_dir(&skills_root)
-            .with_context(|| format!("failed to read skills directory {}", skills_root.display()))
-            .map_err(SkillInventoryError::Scan)?;
-        let mut items = directory
-            .collect::<std::io::Result<Vec<_>>>()
-            .context("failed to collect skill directory entries")
-            .map_err(SkillInventoryError::Scan)?;
-        items.sort_by_key(|item| item.file_name());
+        let items = read_skill_directory(&skills_root)?;
+        let mut context = InventoryEntryContext {
+            entries,
+            found: &mut found,
+            manifest_ids: &mut manifest_ids,
+            diagnostics: &mut diagnostics,
+        };
         for item in items {
-            let name = item.file_name().to_string_lossy().into_owned();
-            if name == "registry.json" {
-                continue;
-            }
-            let path = item.path();
-            let relative = format!(".agents/skills/{name}");
-            let metadata = std::fs::symlink_metadata(&path)
-                .with_context(|| format!("failed to inspect skill entry {}", path.display()))
-                .map_err(SkillInventoryError::Scan)?;
-            let is_link = metadata.file_type().is_symlink();
-            if is_link && !path.exists() {
-                diagnostics.push(format!("broken symlink: {relative}"));
-                found.insert(
-                    name.clone(),
-                    InventorySkill {
-                        id: name,
-                        path: relative,
-                        source_kind: "unknown".into(),
-                        version: None,
-                        provenance: None,
-                        state: "broken_symlink".into(),
-                    },
-                );
-                continue;
-            }
-            if is_link {
-                continue;
-            }
-            if !path.is_dir() {
-                continue;
-            }
-            let manifest_path = path.join("SKILL.md");
-            let manifest_exists = manifest_path.is_file();
-            let parsed = agentsync::skills::manifest::parse_skill_manifest(&manifest_path);
-            let entry = entries.and_then(|all| all.get(&name));
-            let source_kind = inventory_source_kind(entry);
-            let state = if parsed.is_err() {
-                if manifest_exists {
-                    diagnostics.push(format!("malformed SKILL.md: {relative}"));
-                    "malformed"
-                } else {
-                    diagnostics.push(format!("missing SKILL.md: {relative}"));
-                    "missing_manifest"
-                }
-            } else {
-                "installed"
-            };
-            let manifest = parsed.ok();
-            if let Some(manifest) = &manifest {
-                manifest_ids
-                    .entry(manifest.name.clone())
-                    .or_default()
-                    .push(name.clone());
-            }
-            found.insert(
-                name.clone(),
-                InventorySkill {
-                    id: name,
-                    path: relative,
-                    source_kind: source_kind.into(),
-                    version: manifest
-                        .as_ref()
-                        .and_then(|m| m.version.clone())
-                        .or_else(|| entry.and_then(|e| e.version.clone())),
-                    provenance: entry
-                        .and_then(|e| e.source.as_deref())
-                        .filter(|source| {
-                            source.starts_with("https://") || source.starts_with("git@")
-                        })
-                        .map(agentsync::logging::redact_url),
-                    state: state.into(),
-                },
-            );
+            add_inventory_entry(item, &mut context)?;
         }
     }
+    mark_duplicate_inventory_ids(&manifest_ids, &mut found, &mut diagnostics);
+    add_missing_registry_entries(entries, &mut found, &mut diagnostics);
+    Ok(SkillInventory {
+        schema_version: 1,
+        skills: found.into_values().collect(),
+        diagnostics,
+    })
+}
+
+struct InventoryEntryContext<'a> {
+    entries: Option<&'a std::collections::BTreeMap<String, registry::SkillEntry>>,
+    found: &'a mut std::collections::BTreeMap<String, InventorySkill>,
+    manifest_ids: &'a mut std::collections::BTreeMap<String, Vec<String>>,
+    diagnostics: &'a mut Vec<String>,
+}
+
+fn add_inventory_entry(
+    item: std::fs::DirEntry,
+    context: &mut InventoryEntryContext<'_>,
+) -> std::result::Result<(), SkillInventoryError> {
+    let name = item.file_name().to_string_lossy().into_owned();
+    if name == "registry.json" {
+        return Ok(());
+    }
+    let path = item.path();
+    let relative = format!(".agents/skills/{name}");
+    let metadata = std::fs::symlink_metadata(&path)
+        .with_context(|| format!("failed to inspect skill entry {}", path.display()))
+        .map_err(SkillInventoryError::Scan)?;
+    let is_link = metadata.file_type().is_symlink();
+    if is_link && !path.exists() {
+        context
+            .diagnostics
+            .push(format!("broken symlink: {relative}"));
+        context.found.insert(
+            name.clone(),
+            InventorySkill {
+                id: name,
+                path: relative,
+                source_kind: "unknown".into(),
+                version: None,
+                provenance: None,
+                state: "broken_symlink".into(),
+            },
+        );
+        return Ok(());
+    }
+    if is_link || !path.is_dir() {
+        return Ok(());
+    }
+
+    let manifest_path = path.join("SKILL.md");
+    let manifest_exists = manifest_path.is_file();
+    let parsed = agentsync::skills::manifest::parse_skill_manifest(&manifest_path);
+    let entry = context.entries.and_then(|all| all.get(&name));
+    let state = if parsed.is_err() {
+        if manifest_exists {
+            context
+                .diagnostics
+                .push(format!("malformed SKILL.md: {relative}"));
+            "malformed"
+        } else {
+            context
+                .diagnostics
+                .push(format!("missing SKILL.md: {relative}"));
+            "missing_manifest"
+        }
+    } else {
+        "installed"
+    };
+    let manifest = parsed.ok();
+    if let Some(manifest) = &manifest {
+        context
+            .manifest_ids
+            .entry(manifest.name.clone())
+            .or_default()
+            .push(name.clone());
+    }
+    context.found.insert(
+        name.clone(),
+        InventorySkill {
+            id: name,
+            path: relative,
+            source_kind: inventory_source_kind(entry).into(),
+            version: manifest
+                .as_ref()
+                .and_then(|manifest| manifest.version.clone())
+                .or_else(|| entry.and_then(|entry| entry.version.clone())),
+            provenance: entry
+                .and_then(|entry| entry.source.as_deref())
+                .filter(|source| source.starts_with("https://") || source.starts_with("git@"))
+                .map(agentsync::logging::redact_url),
+            state: state.into(),
+        },
+    );
+    Ok(())
+}
+
+fn mark_duplicate_inventory_ids(
+    manifest_ids: &std::collections::BTreeMap<String, Vec<String>>,
+    found: &mut std::collections::BTreeMap<String, InventorySkill>,
+    diagnostics: &mut Vec<String>,
+) {
     for (manifest_id, directory_ids) in manifest_ids.iter().filter(|(_, ids)| ids.len() > 1) {
         diagnostics.push(format!(
             "duplicate skill ID '{manifest_id}' in directories: {}",
@@ -951,35 +985,52 @@ fn skill_inventory(
             }
         }
     }
+}
+
+fn add_missing_registry_entries(
+    entries: Option<&std::collections::BTreeMap<String, registry::SkillEntry>>,
+    found: &mut std::collections::BTreeMap<String, InventorySkill>,
+    diagnostics: &mut Vec<String>,
+) {
     if let Some(entries) = entries {
         for (id, entry) in entries {
-            if !found.contains_key(id) {
-                found.insert(
-                    id.clone(),
-                    InventorySkill {
-                        id: id.clone(),
-                        path: format!(".agents/skills/{id}"),
-                        source_kind: inventory_source_kind(Some(entry)).into(),
-                        version: entry.version.clone(),
-                        provenance: entry
-                            .source
-                            .as_deref()
-                            .filter(|source| {
-                                source.starts_with("https://") || source.starts_with("git@")
-                            })
-                            .map(agentsync::logging::redact_url),
-                        state: "missing".into(),
-                    },
-                );
-                diagnostics.push(format!("registry entry has no skill files: {id}"));
+            if found.contains_key(id) {
+                continue;
             }
+            found.insert(
+                id.clone(),
+                InventorySkill {
+                    id: id.clone(),
+                    path: format!(".agents/skills/{id}"),
+                    source_kind: inventory_source_kind(Some(entry)).into(),
+                    version: entry.version.clone(),
+                    provenance: entry
+                        .source
+                        .as_deref()
+                        .filter(|source| {
+                            source.starts_with("https://") || source.starts_with("git@")
+                        })
+                        .map(agentsync::logging::redact_url),
+                    state: "missing".into(),
+                },
+            );
+            diagnostics.push(format!("registry entry has no skill files: {id}"));
         }
     }
-    Ok(SkillInventory {
-        schema_version: 1,
-        skills: found.into_values().collect(),
-        diagnostics,
-    })
+}
+
+fn read_skill_directory(
+    skills_root: &Path,
+) -> std::result::Result<Vec<std::fs::DirEntry>, SkillInventoryError> {
+    let directory = std::fs::read_dir(skills_root)
+        .with_context(|| format!("failed to read skills directory {}", skills_root.display()))
+        .map_err(SkillInventoryError::Scan)?;
+    let mut items = directory
+        .collect::<std::io::Result<Vec<_>>>()
+        .context("failed to collect skill directory entries")
+        .map_err(SkillInventoryError::Scan)?;
+    items.sort_by_key(|item| item.file_name());
+    Ok(items)
 }
 
 fn skill_label_kind(state: &str) -> LabelKind {

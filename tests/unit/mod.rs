@@ -2,6 +2,9 @@
 mod install;
 
 #[cfg(test)]
+mod manifest;
+
+#[cfg(test)]
 mod provider;
 
 #[cfg(test)]
