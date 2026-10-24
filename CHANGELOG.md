@@ -21,6 +21,20 @@
 * **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
 * **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
 
+## [1.53.0](https://github.com/dallay/agentsync/compare/v1.52.3...v1.53.0) (2026-10-24)
+
+
+### Features
+
+* add read-only agent configuration inspect ([#706](https://github.com/dallay/agentsync/issues/706)) ([bdaf77a](https://github.com/dallay/agentsync/commit/bdaf77aaf0ab1491b2a9ed6ea0da46557683d54d))
+* **skill:** add read-only installed skill inventory ([#705](https://github.com/dallay/agentsync/issues/705)) ([d407550](https://github.com/dallay/agentsync/commit/d4075505c95634c8545114c36b5867567e63ddcb))
+
+
+### Chores
+
+* **deps:** update dependency astro to v7.4.1 ([#708](https://github.com/dallay/agentsync/issues/708)) ([3bead1e](https://github.com/dallay/agentsync/commit/3bead1e5f0f2c769dab9e7429aae09aef13e2159))
+* **deps:** update rust crate tokio to v1.54.1 ([#703](https://github.com/dallay/agentsync/issues/703)) ([3255013](https://github.com/dallay/agentsync/commit/3255013012431ab3df969b0678c356953324c403))
+
 ## [1.52.3](https://github.com/dallay/agentsync/compare/v1.52.2...v1.52.3) (2026-10-22)
 
 
