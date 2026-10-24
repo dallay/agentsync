@@ -17,6 +17,6 @@
 		"astro": "^7.3.3",
 		"sharp": "^0.35.0",
 		"starlight-theme-black": "^0.7.0",
-		"unplugin-icons": "^23.0.1"
+		"unplugin-icons": "^24.0.0"
 	}
 }
