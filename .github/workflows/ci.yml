@@ -230,7 +230,9 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: rust-${{ matrix.coverage_flag }}.lcov.info
           flags: ${{ matrix.coverage_flag }}
-          fail_ci_if_error: true
+          # Coverage upload requires CODECOV_TOKEN for protected branches.
+          # Do not fail the test job when repository secrets are unavailable (e.g. fork PRs).
+          fail_ci_if_error: false
           verbose: true
 
   # ==========================================================================
