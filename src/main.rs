@@ -18,6 +18,7 @@ mod commands;
 mod output;
 use commands::dev_bench::{DevBenchArgs, run_dev_bench};
 use commands::doctor::run_doctor;
+use commands::inspect::{InspectArgs, run_inspect};
 use commands::plugin::{PluginCommand, run_plugin};
 use commands::skill::{SkillCommand, run_skill};
 use commands::status::{StatusArgs, run_status};
@@ -37,6 +38,9 @@ fn should_spawn_update_check(command: &Commands) -> bool {
     if let Commands::Skill { cmd, .. } = command
         && matches!(cmd, SkillCommand::List { .. })
     {
+        return false;
+    }
+    if matches!(command, Commands::Inspect { .. }) {
         return false;
     }
     true
@@ -126,6 +130,14 @@ enum Commands {
     },
     /// Run diagnostic and health check
     Doctor {
+        /// Project root (defaults to CWD)
+        #[arg(short, long)]
+        project_root: Option<PathBuf>,
+    },
+    /// Inspect resolved AgentSync-managed configuration for one assistant.
+    Inspect {
+        #[command(flatten)]
+        args: InspectArgs,
         /// Project root (defaults to CWD)
         #[arg(short, long)]
         project_root: Option<PathBuf>,
@@ -264,6 +276,12 @@ fn run() -> Result<()> {
             let runtime = tokio::runtime::Runtime::new()
                 .context("failed to create runtime for plugin command")?;
             runtime.block_on(run_plugin(cmd, root))
+        }),
+        Commands::Inspect { args, project_root } => run_in_root_span("inspect", || {
+            let project_root =
+                current_project_root(project_root, || env::current_dir().map_err(Into::into))?;
+            run_inspect(args, project_root)?;
+            Ok(())
         }),
         Commands::Status { args, project_root } => run_in_root_span("status", || {
             let project_root =

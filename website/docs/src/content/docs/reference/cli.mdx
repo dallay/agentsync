@@ -329,7 +329,7 @@ agentsync skill list
 agentsync skill list --json
 ```
 
-`--json` writes a stable JSON object to stdout with `schema_version: 1`, `skills`, and `diagnostics`. Each skill reports `id`, `path`, `source_kind` (`direct`, `plugin`, `manual/untracked`, or `unknown`), nullable `version` and `provenance`, and `state` (`installed`, `missing`, `missing_manifest`, `malformed`, `duplicate_id`, or `broken_symlink`). Diagnostics are separate from inventory entries in the JSON response. A malformed or missing individual skill does not fail the command. A present but unreadable or invalid `registry.json` returns exit code `1`; with `--json`, stdout contains the same top-level JSON shape and a redacted `registry_invalid` diagnostic, while the error details go to stderr. An absent registry is recoverable and unregistered skill directories are listed as `manual/untracked`. An empty or absent skills directory returns exit code `0` and a successful empty list. Human-readable warnings are written to stderr. Duplicate manifest IDs receive the `duplicate_id` state and a diagnostic; broken symlinks receive the `broken_symlink` state. A skill directory without `SKILL.md` receives the `missing_manifest` state.
+`--json` writes a stable JSON object to stdout with `schema_version: 1`, `skills`, and `diagnostics`. Each skill reports `id`, `path`, `source_kind` (`direct`, `plugin`, `manual/untracked`, or `unknown`), nullable `version` and `provenance`, and `state` (`installed`, `missing`, `missing_manifest`, `malformed`, `duplicate_id`, or `broken_symlink`). Diagnostics are separate from inventory entries in the JSON response. A malformed or missing individual skill does not fail the command. A present but unreadable or invalid `registry.json` returns exit code `1`; with `--json`, stdout contains the same top-level JSON shape and a redacted `registry_invalid` diagnostic, while the error details go to stderr. Filesystem scan failures use a distinct `inventory_unreadable` diagnostic and also return exit code `1`. An absent registry is recoverable and unregistered skill directories are listed as `manual/untracked`. An empty or absent skills directory returns exit code `0` and a successful empty list. Human-readable warnings are written to stderr. Duplicate manifest IDs receive the `duplicate_id` state and a diagnostic; broken symlinks receive the `broken_symlink` state. A skill directory without `SKILL.md` receives the `missing_manifest` state.
 
 #### `registry`
 
@@ -502,6 +502,50 @@ Shows help information for the CLI or a specific command.
 <CommandTabs command="--help" />
 
 <CommandTabs command="apply --help" />
+
+---
+
+### `inspect`
+
+Inspect the deterministic projection of configuration AgentSync manages for one assistant. This is a
+read-only, offline report. It does not apply changes, download plugin snapshots, expand environment
+variables, invoke provider CLIs, or start MCP servers.
+
+```bash
+agentsync inspect --agent <id> [--json] [--strict] [--project-root <path>]
+```
+
+**Flags**:
+- `--agent <id>`: Required. Selects one configured assistant, such as `opencode` or `codex`.
+- `--json`: Emit compact, deterministic JSON v1 on stdout.
+- `--strict`: Exit with code `1` if the report contains an error-severity diagnostic.
+- `-p, --project-root <path>`: Project root; defaults to the current directory.
+
+By default, exit code `0` means the report was produced, even when it contains diagnostics. Strict
+mode is suitable for CI. Configuration or runtime errors exit non-zero; invalid CLI arguments use
+Clap's usage-error exit code.
+
+The report separates declared configuration, planned destinations, observed filesystem state, and
+unsupported capabilities. It identifies source, target, sync mode, owner, and provenance. It does not
+claim to describe complete native runtime-effective settings. Global, user, organization, and session
+overlays outside AgentSync's control are unknown, not absent.
+
+MCP reports show explicit declarations, approved or pending plugin contributions, disabled servers,
+and existing destination server names. Explicit project MCP declarations are the base input;
+plugin contributions require approval in `plugins.allowed_mcp`. A differing explicit/plugin name
+collision is rejected by `apply`. Existing destination entries are preserved or replaced according
+to the configured merge strategy. Existing unmanaged server values are never emitted.
+
+Environment and header values are never included in the report. The output includes variable/header
+names and a value classification only. Do not treat the report as a secret scanner for arbitrary
+instruction or skill content.
+
+Examples:
+- `agentsync inspect --agent opencode`
+- `agentsync inspect --agent codex --json`
+- `agentsync inspect --agent codex --json --strict`
+
+The JSON contract is documented in <a href="/reference/inspect-output/">Inspect output</a>.
 
 ---
 

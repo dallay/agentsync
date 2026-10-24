@@ -40,8 +40,9 @@ pub fn parse_skill_manifest(path: &Path) -> Result<SkillManifest, SkillInstallEr
         ))?;
 
     let yaml = &caps["yaml"];
-    let manifest: SkillManifest = serde_yaml::from_str(yaml)
-        .map_err(|e| SkillInstallError::Validation(format!("manifest parse error: {}", e)))?;
+    let manifest: SkillManifest =
+        serde_saphyr::from_str_with_options(yaml, serde_saphyr::options! { strict_booleans: true })
+            .map_err(|e| SkillInstallError::Validation(format!("manifest parse error: {}", e)))?;
 
     // Validate name: stricter pattern (no leading/trailing/consecutive hyphens)
     if !name_re().is_match(&manifest.name) {

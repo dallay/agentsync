@@ -1,0 +1,40 @@
+---
+title: Inspect AgentSync-Managed Configuration
+description: Review one assistant's declared sources, planned targets, observed drift, and MCP inputs.
+---
+
+# Inspect AgentSync-managed configuration
+
+Use `inspect` to explain what AgentSync intends to manage for one assistant before applying changes.
+
+```bash
+agentsync inspect --agent opencode
+agentsync inspect --agent codex --json
+```
+
+The report connects each configured target to its source and destination. It also reports the observed
+filesystem state, such as a missing source, a missing destination, a broken link, or a drifted link.
+For skills and commands configured as `symlink-contents`, child links are listed individually.
+
+The command is read-only and offline. It does not repair drift, write files, download plugins, expand
+environment variables, invoke assistant CLIs, or start MCP servers. A normal invocation exits `0`
+when it can produce a report. Add `--strict` to return `1` if an error-severity diagnostic exists.
+This lets teams review reports without turning every warning into a CI failure.
+
+For example, use strict JSON in a check:
+
+```bash
+agentsync inspect --agent opencode --json --strict > inspect.json
+```
+
+MCP precedence follows the current `apply` rules: explicit `[mcp_servers.*]` declarations form the
+base set; plugin contributions are namespaced and require approval in `plugins.allowed_mcp`. A
+conflicting explicit/plugin name with a different definition is rejected by `apply`. Existing
+unmanaged server names are reported without exposing their configuration values. Merge behavior
+preserves or replaces destination entries according to `mcp.merge_strategy`.
+
+`inspect` reports only AgentSync-managed configuration. It does not claim that provider-native,
+global, user, organization, or session settings are absent. `provider_support: "unknown"` means
+AgentSync is not asserting that the assistant natively supports the semantic capability. See the
+<a href="/reference/inspect-output/">inspect output reference</a> for the JSON schema and diagnostic
+codes.

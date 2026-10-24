@@ -302,6 +302,12 @@ enum GitRestoreAction {
     Skipped,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum PluginInspectError {
+    #[error("plugin snapshot unavailable")]
+    MissingSnapshot,
+}
+
 /// Repository-owned plugin operations.
 #[derive(Clone)]
 pub struct PluginManager {
@@ -344,6 +350,96 @@ impl PluginManager {
             dry_run,
             offline: false,
         })
+    }
+
+    /// Read plugin state without restoring snapshots or writing files.
+    ///
+    /// Unlike `status_report`, this method never materializes a local plugin source. Git snapshots
+    /// must already exist in the local cache. This is intended for offline inspection.
+    pub(crate) fn inspect_status_report_read_only(&self) -> Result<PluginStatusReport> {
+        self.config.validate()?;
+        let mut report = PluginStatusReport {
+            status: "ok".to_string(),
+            ..PluginStatusReport::default()
+        };
+        if !self.config.enabled || self.config.selections.is_empty() {
+            ensure!(
+                self.config.allowed_mcp.is_empty(),
+                "plugin MCP approvals are stale: no selected plugin can provide {}",
+                self.config.allowed_mcp.join(", ")
+            );
+            return Ok(report);
+        }
+        let lock_path = self
+            .lock_path()
+            .context("failed to resolve plugin lockfile path")?;
+        let lock = PluginLock::load(&lock_path)?;
+        let selections = selected_lock_entries(&self.config, &lock)?;
+        validate_allowed_mcp_against_lock(&self.config.allowed_mcp, &selections)?;
+        let allowed = self.config.allowed_mcp.iter().collect::<BTreeSet<_>>();
+        for locked in selections.values() {
+            let root = match locked.source.kind {
+                LockedSourceKind::Local => {
+                    let location = Path::new(&locked.source.location);
+                    ensure!(
+                        !is_absolute_path(&locked.source.location),
+                        "locked local plugin source must be relative"
+                    );
+                    self.config_path
+                        .parent()
+                        .unwrap_or_else(|| Path::new("."))
+                        .join(location)
+                }
+                LockedSourceKind::Git => self.git_source_cache_path(&locked.source)?,
+            };
+            let metadata = match locked.source.kind {
+                LockedSourceKind::Local => fs::metadata(&root),
+                LockedSourceKind::Git => fs::symlink_metadata(&root),
+            }
+            .map_err(|error| {
+                let missing = error.kind() == std::io::ErrorKind::NotFound;
+                let error = anyhow::Error::new(error);
+                if missing {
+                    error.context(PluginInspectError::MissingSnapshot)
+                } else {
+                    error
+                }
+            })
+            .with_context(|| {
+                format!(
+                    "failed to read plugin snapshot metadata: {}",
+                    root.display()
+                )
+            })?;
+            if locked.source.kind == LockedSourceKind::Git {
+                ensure_git_snapshot_dir(&root)?;
+            }
+            ensure!(
+                metadata.is_dir(),
+                "plugin snapshot is not a directory: {}",
+                root.display()
+            );
+            let discovered = discover_plugin(&root, &locked.marketplace, &locked.plugin)?;
+            ensure_snapshot_discovery_matches_lock(&discovered, locked)?;
+            report.skills += discovered.skills.len();
+            for (name, server) in
+                discovered.namespaced_mcp_servers(&locked.marketplace, &locked.plugin)?
+            {
+                report.servers.push(PluginMcpStatus {
+                    approval: if allowed.contains(&name) {
+                        PluginMcpApproval::Allowed
+                    } else {
+                        PluginMcpApproval::Pending
+                    },
+                    name,
+                    server,
+                });
+            }
+        }
+        report
+            .servers
+            .sort_by(|left, right| left.name.cmp(&right.name));
+        Ok(report)
     }
 
     pub fn status_report(&self) -> Result<PluginStatusReport> {
@@ -1703,7 +1799,7 @@ fn validate_plugin_mcp_server(name: &str, server: &McpServerConfig) -> Result<()
     Ok(())
 }
 
-fn is_sensitive_mcp_key(key: &str) -> bool {
+pub(crate) fn is_sensitive_mcp_key(key: &str) -> bool {
     let normalized = key.to_ascii_lowercase().replace(['-', '.'], "_");
     [
         "token",
@@ -1720,7 +1816,7 @@ fn is_sensitive_mcp_key(key: &str) -> bool {
     .any(|marker| normalized.contains(marker))
 }
 
-fn is_environment_reference(value: &str) -> bool {
+pub(crate) fn is_environment_reference(value: &str) -> bool {
     let value = value.trim();
     let valid_name = |name: &str| {
         !name.is_empty()
