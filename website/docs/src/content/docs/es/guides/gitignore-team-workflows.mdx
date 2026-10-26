@@ -1,0 +1,247 @@
+---
+title: Flujos de trabajo de equipo con Gitignore
+description: Elige entre el flujo predeterminado con Gitignore administrado o la opción de versionar destinos.
+---
+
+import BaseLink from "../../../../components/BaseLink.astro";
+import CommandTabs from "../../../../components/CommandTabs.astro";
+
+Usa esta guía cuando tu equipo necesite decidir cómo debe interactuar `agentsync` con `.gitignore`.
+
+En resumen:
+
+- **Predeterminado:** conserva `[gitignore].enabled = true` y deja que AgentSync administre un bloque delimitado por marcadores en `.gitignore`.
+- **Desactivación intencional:** configura `[gitignore].enabled = false` solo si el equipo quiere versionar los destinos administrados por AgentSync.
+- **Desactivación temporal de CLI:** usa `agentsync apply --no-gitignore` para omitir la conciliación de `.gitignore` en una ejecución, sin cambiar la política del equipo.
+
+Consulta la <BaseLink href="/reference/configuration/#gitignore-management">referencia de configuración</BaseLink> para ver cada campo, la <BaseLink href="/reference/cli/#apply">referencia de CLI</BaseLink> para conocer el comportamiento de los comandos y la guía de <BaseLink href="/guides/git-hook-automation/">automatización con Git hooks</BaseLink> para ver ejemplos con administradores de hooks y hooks nativos.
+
+## Cuándo elegir cada flujo
+
+### Elige el flujo predeterminado con Gitignore administrado cuando
+
+- quieras mantener fuera del control de versiones los destinos generados mediante symlinks;
+- quieras que `agentsync apply` mantenga `.gitignore` para todo el equipo;
+- quieras que quienes se incorporen usen un hook `prepare` sencillo o ejecuten `agentsync apply`.
+
+Este es el punto de partida recomendado, y `[gitignore].enabled = true` sigue siendo el valor predeterminado.
+
+### Elige desactivar la gestión para versionar destinos cuando
+
+- el equipo quiera versionar intencionalmente los destinos administrados por AgentSync;
+- revisen esos archivos de destino como cambios normales del repositorio;
+- estén preparados para que `agentsync apply` elimine el bloque administrado existente de `.gitignore`.
+
+Este modo es una excepción para un flujo de equipo específico; no es el predeterminado.
+
+## Flujo 1: Gitignore administrado (predeterminado)
+
+### Qué hace AgentSync
+
+Con `[gitignore].enabled = true`, AgentSync escribe y actualiza un bloque administrado en `.gitignore`. El bloque usa el marcador configurado e incluye:
+
+- patrones de exclusión conocidos para los asistentes habilitados;
+- rutas de destino de symlinks administradas por la configuración;
+- **entradas limitadas a la raíz** para los destinos administrados ubicados en la raíz del repositorio;
+- rutas adicionales declaradas en `[gitignore].entries`.
+
+Ejemplo de configuración:
+
+```toml
+[gitignore]
+enabled = true
+marker = "AI Agent Symlinks"
+entries = []
+```
+
+Ejemplo de bloque administrado:
+
+```text
+# START AI Agent Symlinks
+/CLAUDE.md
+/.mcp.json
+.claude/commands/
+.claude/skills/
+# END AI Agent Symlinks
+```
+
+Las líneas `# START <marker>` y `# END <marker>` usan exactamente el marcador configurado. La `/` inicial en archivos de la raíz es intencional: limita la regla al destino administrado ubicado en la raíz del repositorio.
+
+### Pasos para mantenedores
+
+1. Inicializa o actualiza la configuración de AgentSync.
+
+   <CommandTabs command="init" />
+   o
+   <CommandTabs command="init --wizard" />
+
+2. Mantén `[gitignore].enabled = true` (o no lo declares para usar el valor predeterminado).
+
+3. Si quieres revisar los cambios antes de escribirlos, previsualiza la primera conciliación.
+
+   <CommandTabs command="apply --dry-run" />
+
+4. Aplica la configuración.
+
+   <CommandTabs command="apply" />
+
+5. Revisa y prepara los cambios esperados:
+   - `.agents/agentsync.toml`;
+   - `.agents/AGENTS.md` y otros archivos fuente canónicos de `.agents/`;
+   - el bloque administrado de `.gitignore`;
+   - los nuevos destinos symlink que deben estar en los directorios de trabajo locales, pero ignorados por Git.
+
+### Diferencias esperadas después de `init` y `apply`
+
+Después de `agentsync init`, espera nuevos archivos bajo `.agents/` y una configuración inicial.
+
+Después de `agentsync apply`, espera:
+
+- destinos symlink, como `CLAUDE.md` o `.github/copilot-instructions.md`;
+- actualizaciones de `.gitignore` dentro del bloque administrado por AgentSync;
+- no tener que editar manualmente el bloque administrado después.
+
+Al revisar el cambio, el mantenedor debe tratar la actualización del bloque de `.gitignore` como parte normal de la configuración cuando se agrega un asistente o cambian los destinos administrados.
+
+### Pasos para colaboradores
+
+1. Descarga los cambios más recientes del repositorio.
+2. Ejecuta el flujo de configuración del repositorio.
+3. Si el repositorio ya tiene un hook `prepare` del administrador de paquetes que ejecuta `agentsync apply`, deja que el hook lo haga.
+4. Si no hay un hook automático, ejecuta:
+
+   <CommandTabs command="apply" />
+
+Resultado local esperado:
+
+- los symlinks se actualizan;
+- existen los archivos de destino administrados localmente;
+- `.gitignore` sigue en el modo administrado predeterminado;
+- las ejecuciones repetidas suelen no producir cambios, salvo que cambie la configuración.
+
+### Recomendación para el hook `prepare`
+
+En repositorios Node, esta configuración es habitual:
+
+```json
+{
+  "scripts": {
+    "prepare": "agentsync apply || true"
+  }
+}
+```
+
+Usa el hook para actualizar los symlinks durante el onboarding y la instalación de dependencias. Los colaboradores aún deben ejecutar `agentsync apply` manualmente cuando:
+
+- el hook no se ejecuta en su entorno;
+- instalaron AgentSync después del primer clon;
+- quieran repetir la configuración después de cambiar `.agents/agentsync.toml`.
+
+Si el equipo también quiere actualizaciones automáticas al cambiar de rama, fusionar o hacer rebase, agrega hooks del ciclo de vida de Git. Usa los ejemplos listos para copiar de Lefthook, Husky, `simple-git-hooks` o hooks nativos en la guía de <BaseLink href="/guides/git-hook-automation/">automatización con Git hooks</BaseLink>.
+
+## Flujo 2: Desactivar la gestión para versionar destinos
+
+Elige esta opción solo si el equipo quiere versionar intencionalmente los destinos administrados por AgentSync.
+
+### Qué hace AgentSync
+
+Con `[gitignore].enabled = false`, AgentSync deja de administrar el bloque de `.gitignore`. En la siguiente ejecución de `agentsync apply`, elimina el bloque administrado existente que coincida con el marcador configurado.
+
+La limpieza respeta los marcadores:
+
+- elimina el bloque administrado por AgentSync que coincide;
+- conserva las líneas de `.gitignore` no administradas antes y después del bloque;
+- no escribe un nuevo bloque mientras la gestión siga desactivada.
+
+Ejemplo de configuración:
+
+```toml
+[gitignore]
+enabled = false
+marker = "AI Agent Symlinks"
+```
+
+### Pasos para mantenedores
+
+1. Actualiza la configuración para desactivar la gestión de Gitignore.
+
+   ```toml
+   [gitignore]
+   enabled = false
+   ```
+
+2. Si quieres confirmar primero la limpieza, previsualiza el cambio.
+
+   <CommandTabs command="apply --dry-run" />
+
+3. Concilia el repositorio.
+
+   <CommandTabs command="apply" />
+
+4. Revisa y prepara los cambios esperados:
+   - `.agents/agentsync.toml`;
+   - la eliminación del bloque de `.gitignore` administrado que haya quedado obsoleto;
+   - los archivos de destino administrados por AgentSync que el equipo ahora quiera versionar.
+
+### Diferencias esperadas al desactivar la gestión
+
+Espera que `agentsync apply` elimine el bloque administrado obsoleto de `.gitignore` sin cambiar líneas de exclusión ajenas.
+
+Por ejemplo:
+
+```diff
+ node_modules/
+-# START AI Agent Symlinks
+-/CLAUDE.md
+-/.mcp.json
+-# END AI Agent Symlinks
+ dist/
+```
+
+Después de esa limpieza, las siguientes ejecuciones de `agentsync apply` dejan `.gitignore` sin cambios, salvo que se vuelva a activar la gestión.
+
+### Pasos para colaboradores
+
+1. Descarga los cambios más recientes del repositorio.
+2. Ejecuta el mismo flujo de configuración que documenta el equipo.
+3. Si el proyecto usa un hook `prepare`, este puede seguir ejecutando `agentsync apply`.
+4. Si no, ejecuta:
+
+   <CommandTabs command="apply" />
+
+Resultado local esperado:
+
+- se actualizan los symlinks y destinos administrados;
+- AgentSync no administra `.gitignore`;
+- los destinos versionados pueden aparecer en las diferencias normales de Git y en las revisiones.
+
+Los equipos de este flujo también pueden usar los patrones de hooks de la guía de <BaseLink href="/guides/git-hook-automation/">automatización con Git hooks</BaseLink>, aunque suelen ser menos necesarios porque los archivos de destino ya se distribuyen con el repositorio.
+
+## Desactivación temporal para un comando
+
+Usa `--no-gitignore` si quieres omitir la conciliación de `.gitignore` en una sola ejecución.
+
+<CommandTabs command="apply --no-gitignore" />
+<CommandTabs command="apply --dry-run --no-gitignore" />
+
+Esta opción es más acotada que cambiar la configuración:
+
+- solo aplica a esa ejecución;
+- omite las escrituras, actualizaciones y limpiezas de `.gitignore`;
+- **no** cambia el flujo del equipo ni el valor predeterminado de la configuración.
+
+Si `[gitignore].enabled = false` y aún existe un bloque administrado obsoleto, `agentsync apply --no-gitignore` lo deja intacto durante esa ejecución.
+
+## Lista de revisión recomendada
+
+Al revisar un cambio de AgentSync relacionado con Gitignore, confirma que:
+
+- el repositorio conserva el flujo de trabajo previsto;
+- los cambios de `.gitignore` corresponden a la política elegida;
+- las entradas limitadas a la raíz son esperadas para destinos administrados ubicados allí;
+- los colaboradores tienen un hook `prepare` claro o un paso explícito de `agentsync apply`;
+- la documentación del repositorio enlaza a esta guía en lugar de duplicarla.
+
+## Nota sobre plataformas
+
+Los flujos anteriores son iguales en macOS, Linux y Windows. Si necesitas requisitos específicos para crear symlinks en Windows, configurar WSL o resolver problemas, consulta la guía de <BaseLink href="/guides/windows-symlink-setup/">configuración de symlinks en Windows</BaseLink>, en lugar de crear aquí una segunda explicación.

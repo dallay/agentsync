@@ -1,0 +1,64 @@
+---
+title: Referencia de salida de status
+description: Esquema legible por máquinas y comportamiento por tipo de sincronización de agentsync status.
+---
+
+import BaseLink from "../../../../components/BaseLink.astro";
+
+`agentsync status` verifica todos los destinos administrados por AgentSync e informa las diferencias. Recorre los asistentes habilitados y sus destinos en `agentsync.toml`, valida cada uno según su tipo de sincronización y muestra el resultado.
+
+## Salida para personas
+
+La salida legible para personas usa colores y estos estados:
+
+- `✔ OK`: el symlink existe y apunta a la fuente esperada.
+- `✗ Incorrect link`: el symlink existe, pero apunta a otra ubicación.
+- `! Missing`: el destino no existe.
+- `· Exists but not a symlink`: hay un archivo o directorio normal en el destino.
+
+## Esquema JSON (`status --json`)
+
+Cada elemento informa campos legibles por máquinas:
+
+| Campo | Tipo | Significado |
+| :--- | :--- | :--- |
+| `destination` | string | Ruta del proyecto donde se encuentra el destino administrado. |
+| `sync_type` | string | Modo de sincronización configurado para ese destino. |
+| `destination_kind` | string | Indica si el destino actual resuelve a symlink, directorio, archivo o no existe. |
+| `exists` | boolean | Indica si existe la ruta del destino. |
+| `is_symlink` | boolean | Indica si el propio destino es un symlink. |
+| `points_to` | string / null | Destino del symlink, si existe. |
+| `expected_source` | string / null | Ruta resuelta de la fuente esperada para destinos de enlace único, si la fuente existe. |
+| `issues` | array | Motivos estructurados de las diferencias. |
+| `managed_children` | array / null | Detalle por elemento para destinos `symlink-contents`. |
+
+## Comportamiento por tipo de sincronización
+
+### `symlink`
+
+Comprueba la ruta del destino como symlink administrado y la compara con la fuente esperada.
+
+### `symlink-contents`
+
+Comprueba que el destino sea un directorio contenedor administrado y que contenga los symlinks secundarios esperados. Una fuente válida pero vacía, como `.agents/commands/` sin archivos elegibles, sigue mostrando `OK`; el destino no se considera ausente solo porque se esperen cero elementos administrados.
+
+### `nested-glob`
+
+Emite una sola entrada para el destino. `destination` contiene la plantilla configurada, por ejemplo `packages/{relative_path}/CLAUDE.md`, y `expected_source` es la raíz de búsqueda resuelta desde la raíz del proyecto. No se emite una entrada separada por cada coincidencia expandida. Ejecuta `agentsync apply` o inspecciona el sistema de archivos para ver los symlinks de cada coincidencia.
+
+### `module-map`
+
+Emite una entrada por cada asociación. El destino de cada entrada es el directorio de destino de la asociación unido al nombre de archivo resuelto. Consulta la guía de <BaseLink href="/concepts/sync-types/#module-map">tipos de sincronización</BaseLink> para conocer el orden de prioridad al resolver el nombre.
+
+## Códigos de salida
+
+- `0`: no se detectaron problemas.
+- `1`: se encontró uno o más problemas; puede usarse para hacer fallar builds de CI.
+
+## Ejemplo de CI
+
+```bash
+agentsync status --json > status.json
+```
+
+El arreglo de estados se escribe en `status.json`; los eventos de diagnóstico van a stderr. En Windows, `status` también sirve para verificar el entorno después de configurarlo. Consulta la guía de <BaseLink href="/guides/windows-symlink-setup/">configuración de symlinks en Windows</BaseLink>.

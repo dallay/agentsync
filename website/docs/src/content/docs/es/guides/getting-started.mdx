@@ -1,0 +1,158 @@
+---
+title: Primeros pasos
+description: Guía rápida para instalar y usar AgentSync en tu proyecto.
+---
+
+import BaseLink from "../../../../components/BaseLink.astro";
+import CommandTabs from "../../../../components/CommandTabs.astro";
+
+`agentsync` es una herramienta CLI rápida y portable para sincronizar configuraciones de agentes de IA entre distintos asistentes de programación mediante enlaces simbólicos.
+
+## Instalación
+
+### Administradores de paquetes de Node.js (recomendado)
+
+Si tienes Node.js (>=18), la forma más sencilla de instalar AgentSync es usar un administrador de paquetes.
+
+#### Instalación global
+
+```bash
+# Con npm
+npm install -g @dallay/agentsync
+
+# Con pnpm
+pnpm add -g @dallay/agentsync
+
+# Con yarn (Classic v1)
+yarn global add @dallay/agentsync
+
+# Con bun
+bun i -g @dallay/agentsync
+```
+
+#### Ejecución puntual
+
+```bash
+# Con npx (npm)
+npx @dallay/agentsync apply
+
+# Con dlx (pnpm)
+pnpm dlx @dallay/agentsync apply
+
+# Con dlx (yarn v2+)
+yarn dlx @dallay/agentsync apply
+
+# Con bunx (bun)
+bunx @dallay/agentsync apply
+```
+
+### Desde GitHub Releases
+
+Descarga la versión más reciente para tu plataforma. Los binarios se adjuntan a la página de [GitHub Releases](https://github.com/dallay/agentsync/releases). El nombre del recurso incluye la versión; usa GitHub CLI para seleccionar el archivo de tu plataforma. Este ejemplo descarga el archivo para Apple Silicon en macOS:
+
+```bash
+gh release download --repo dallay/agentsync --pattern '*aarch64-apple-darwin.tar.gz'
+tar xzf agentsync-*-aarch64-apple-darwin.tar.gz
+sudo install agentsync-*/agentsync /usr/local/bin/agentsync
+```
+
+Los destinos disponibles incluyen Linux x64/ARM64 con GNU o musl (`x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`), macOS x64/ARM64 y Windows x64. Para usar un binario descargado, asegúrate de que esté en tu `PATH`.
+
+### En Windows
+
+Para crear enlaces simbólicos, Windows requiere permisos o el modo de desarrollador. Consulta la guía de <BaseLink href="/guides/windows-symlink-setup/">configuración de symlinks en Windows</BaseLink> si `agentsync apply` no puede crear enlaces.
+
+## Inicializa AgentSync
+
+Desde la raíz del proyecto, ejecuta el asistente interactivo:
+
+<CommandTabs command="init --wizard" />
+
+El asistente te ayuda a elegir asistentes, fuentes y destinos. También puedes crear la estructura básica sin el asistente:
+
+<CommandTabs command="init" />
+
+Esto crea la configuración y los archivos de origen que AgentSync necesita. Revisa `agentsync.toml` antes de sincronizar.
+
+## Prepara una fuente
+
+Por ejemplo, crea `.agents/AGENTS.md` con las instrucciones compartidas del proyecto. Puedes agregar skills, comandos y servidores MCP en los archivos y directorios que especifique la configuración:
+
+```text
+.agents/
+├── AGENTS.md
+├── skills/
+├── commands/
+└── agentsync.toml
+```
+
+## Revisa y aplica
+
+Antes de modificar archivos, inspecciona el plan:
+
+<CommandTabs command="inspect" />
+<CommandTabs command="apply --dry-run" />
+
+Si el resultado es correcto, aplica la sincronización y comprueba el estado:
+
+<CommandTabs command="apply" />
+<CommandTabs command="status" />
+
+`inspect` y `--dry-run` permiten revisar los destinos antes de modificarlos. Usa `status` para comprobar el resultado después de aplicar. Consulta <BaseLink href="/concepts/instruction-files/">Archivos de instrucciones</BaseLink> y <BaseLink href="/concepts/sync-types/">Tipos de sincronización</BaseLink> para elegir fuentes y destinos apropiados.
+
+## Próximos pasos
+
+- Configura las fuentes y destinos en `agentsync.toml`.
+- Revisa las <BaseLink href="/guides/recipes/">recetas de configuración</BaseLink> para patrones habituales.
+- Ejecuta `agentsync doctor` para diagnosticar el entorno.
+
+## Inicializa AgentSync
+
+En la raíz del proyecto, ejecuta el asistente interactivo:
+
+```bash
+agentsync init --wizard
+```
+
+El asistente te ayuda a elegir asistentes, fuentes y destinos. También puedes crear la estructura básica sin el asistente:
+
+```bash
+agentsync init
+```
+
+Esto crea la configuración y los archivos de origen que AgentSync necesita. Revisa `agentsync.toml` antes de sincronizar.
+
+## Prepara una fuente
+
+Por ejemplo, crea `.agents/AGENTS.md` con las instrucciones compartidas de tu proyecto. Puedes agregar skills, comandos y servidores MCP en los directorios y archivos que especifique la configuración.
+
+```text
+.agents/
+├── AGENTS.md
+├── skills/
+└── agentsync.toml
+```
+
+## Revisa y aplica
+
+Antes de cambiar archivos, inspecciona el plan:
+
+```bash
+agentsync inspect
+agentsync apply --dry-run
+```
+
+Si el resultado es correcto, aplica la sincronización:
+
+```bash
+agentsync apply
+agentsync status
+```
+
+`inspect` y `--dry-run` te permiten revisar destinos antes de modificarlos. Usa `status` para comprobar el estado después de aplicar. Consulta <BaseLink href="/concepts/instruction-files/">Archivos de instrucciones</BaseLink> y <BaseLink href="/concepts/sync-types/">Tipos de sincronización</BaseLink> para elegir las fuentes y destinos apropiados.
+
+## Próximos pasos
+
+- Configura las fuentes y los destinos en `agentsync.toml`.
+- Revisa las <BaseLink href="/guides/recipes/">recetas de configuración</BaseLink> para patrones habituales.
+- Ejecuta `agentsync doctor` si necesitas diagnosticar el entorno.

@@ -1,0 +1,224 @@
+---
+title: Automatización con Git hooks
+description: Automatiza agentsync apply con scripts prepare, administradores de Git hooks y hooks nativos de Git.
+---
+
+import BaseLink from "../../../../components/BaseLink.astro";
+
+Usa esta guía si tu equipo quiere ejecutar `agentsync apply` automáticamente durante la instalación, los cambios de rama, las fusiones o los rebase.
+
+Esta página solo cubre patrones de automatización. Para definir la política de `.gitignore` y las expectativas de mantenedores y colaboradores, consulta la guía de <BaseLink href="/guides/gitignore-team-workflows/">flujos de trabajo de equipo con Gitignore</BaseLink>.
+
+## Elige la automatización más sencilla que cubra tu flujo
+
+### Usa solo `prepare` cuando
+
+- principalmente quieras que el onboarding y la instalación de dependencias creen los symlinks;
+- quienes colaboran ya ejecuten `pnpm install`, `npm install` o un comando equivalente después de clonar;
+- tu equipo pueda ejecutar `agentsync apply` manualmente después de cambiar de rama o hacer rebase.
+
+Ejemplo mínimo:
+
+```json
+{
+  "scripts": {
+    "prepare": "agentsync apply || true"
+  }
+}
+```
+
+### Agrega Git hooks cuando
+
+- tu equipo use el flujo predeterminado de `.gitignore` administrado;
+- los destinos administrados por AgentSync sean symlinks locales que normalmente no se versionan;
+- quienes colaboran cambien de rama, hagan pull, fusionen o rebase con frecuencia.
+
+En esos casos, `post-checkout`, `post-merge` y `post-rewrite` ayudan:
+
+- `post-checkout`: actualiza los symlinks después de cambiar de rama;
+- `post-merge`: los actualiza después de `git pull` o de una fusión manual;
+- `post-rewrite`: los actualiza después de un rebase u otra reescritura del historial.
+
+### Los Git hooks son opcionales cuando
+
+- el equipo versiona intencionalmente los destinos con `[gitignore].enabled = false`;
+- los archivos administrados ya se distribuyen con el repositorio.
+
+Aun en esos casos, los hooks pueden ser útiles para actualizar automáticamente los symlinks locales después de un rebase o un cambio de rama.
+
+## Manejo de fallos
+
+Para la automatización local, prefiere este patrón:
+
+```sh
+agentsync apply || true
+```
+
+Esto evita que los flujos de instalación y hooks fallen cuando `agentsync` todavía no está disponible, y evita bloquear operaciones normales de Git por diferencias de configuración local.
+
+Regla práctica:
+
+- usa `|| true` para la automatización local de desarrollo;
+- al principio, deja visible la salida para que el equipo confirme que el hook se ejecuta;
+- silencia la salida solo después de comprobar que la configuración es confiable.
+
+Si un hook no se ejecutó o el estado local sigue incorrecto, ejecuta `agentsync apply` manualmente.
+
+## Matriz de hooks recomendada
+
+### Configuración con menos fricción
+
+- `prepare`
+
+### Recomendación para la mayoría de equipos que ignoran los symlinks locales
+
+- `prepare`
+- `post-checkout`
+- `post-merge`
+- `post-rewrite`
+
+### Configuración razonable para destinos versionados
+
+- `prepare`;
+- opcionalmente, los Git hooks anteriores si el equipo quiere actualizar automáticamente los enlaces locales.
+
+## Lefthook
+
+Si el repositorio ya usa Lefthook, agrega AgentSync como automatización local posterior a operaciones de Git en lugar de crear un segundo sistema de hooks.
+
+`lefthook.yml`:
+
+```yaml
+post-checkout:
+  commands:
+    agentsync-apply:
+      run: agentsync apply || true
+
+post-merge:
+  commands:
+    agentsync-apply:
+      run: agentsync apply || true
+
+post-rewrite:
+  commands:
+    agentsync-apply:
+      run: agentsync apply || true
+```
+
+Combínalo con un script `prepare` del administrador de paquetes:
+
+```json
+{
+  "scripts": {
+    "prepare": "lefthook install && agentsync apply || true"
+  }
+}
+```
+
+Si ya tienes un script `prepare` más largo, agrega AgentSync al flujo existente en lugar de reemplazarlo.
+
+## Husky
+
+Usa Husky si el repositorio ya administra hooks en `.husky/`.
+
+`package.json`:
+
+```json
+{
+  "scripts": {
+    "prepare": "husky && agentsync apply || true"
+  }
+}
+```
+
+`.husky/post-checkout`:
+
+```sh
+#!/usr/bin/env sh
+agentsync apply || true
+```
+
+`.husky/post-merge`:
+
+```sh
+#!/usr/bin/env sh
+agentsync apply || true
+```
+
+`.husky/post-rewrite`:
+
+```sh
+#!/usr/bin/env sh
+agentsync apply || true
+```
+
+Los archivos de hooks de Husky pueden ser así de pequeños porque AgentSync no necesita los argumentos de Git para este flujo de actualización.
+
+## simple-git-hooks
+
+Usa `simple-git-hooks` si quieres mantener toda la configuración de hooks en `package.json`.
+
+```json
+{
+  "scripts": {
+    "prepare": "simple-git-hooks && agentsync apply || true"
+  },
+  "simple-git-hooks": {
+    "post-checkout": "agentsync apply || true",
+    "post-merge": "agentsync apply || true",
+    "post-rewrite": "agentsync apply || true"
+  }
+}
+```
+
+Así tendrás configuración durante la instalación y actualización en los ciclos de vida de Git, sin agregar archivos de hooks separados.
+
+## Hooks nativos de Git
+
+Usa hooks nativos si no quieres otra dependencia ni un administrador de hooks.
+
+Crea estos archivos ejecutables en `.git/hooks/`.
+
+`.git/hooks/post-checkout`:
+
+```sh
+#!/usr/bin/env sh
+agentsync apply || true
+```
+
+`.git/hooks/post-merge`:
+
+```sh
+#!/usr/bin/env sh
+agentsync apply || true
+```
+
+`.git/hooks/post-rewrite`:
+
+```sh
+#!/usr/bin/env sh
+agentsync apply || true
+```
+
+Luego hazlos ejecutables:
+
+```sh
+chmod +x .git/hooks/post-checkout .git/hooks/post-merge .git/hooks/post-rewrite
+```
+
+Los hooks nativos son sencillos, pero viven en los metadatos Git locales y no se comparten automáticamente con el resto del equipo como las configuraciones de Husky, Lefthook o `simple-git-hooks`.
+
+## ¿Qué ejemplo debería elegir la mayoría de los equipos?
+
+- Si ya usas **Lefthook**, continúa con Lefthook.
+- Si ya usas **Husky**, continúa con Husky.
+- Si quieres la configuración en `package.json`, usa **simple-git-hooks**.
+- Si no quieres dependencias adicionales, usa **Git hooks nativos**.
+
+La decisión principal no es la herramienta de hooks. Es si tu equipo necesita solo la configuración durante la instalación o también actualizaciones después de `post-checkout`, `post-merge` y `post-rewrite`.
+
+## Documentación relacionada
+
+- <BaseLink href="/guides/getting-started/">Primeros pasos</BaseLink> para el flujo inicial de `agentsync init` y `agentsync apply`.
+- <BaseLink href="/guides/gitignore-team-workflows/">Flujos de trabajo de equipo con Gitignore</BaseLink> para decidir si los destinos administrados se ignoran o se versionan.
+- <BaseLink href="/reference/cli/#apply">Referencia de CLI para `apply`</BaseLink> para conocer el comportamiento del comando.

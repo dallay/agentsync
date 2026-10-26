@@ -1,19 +1,29 @@
 ---
-import { withBase } from "../utils/links";
+import { withBase, withLocale } from "../utils/links";
 
 // Premium Footer component for AgentSync
 const currentYear = new Date().getFullYear();
-const docsHref = withBase("/guides/getting-started/");
-const contributingHref = withBase("/contributing/contributing/");
+const locale = Astro.locals.starlightRoute.locale;
+const isSpanish = locale === "es";
+const docsHref = withBase(withLocale("/guides/getting-started/", locale));
+const contributingHref = withBase(withLocale("/contributing/contributing/", locale));
+const ariaLabel = isSpanish ? "Enlaces del pie de página" : "Footer links";
+const tagline = isSpanish
+	? "Sincroniza tus agentes de IA en todos tus asistentes, al instante."
+	: "Sync your AI agents across all assistants — instantly.";
+const docsLabel = isSpanish ? "Documentación" : "Docs";
+const docsAriaLabel = isSpanish ? "Documentación" : "Docs";
+const contributingAriaLabel = isSpanish ? "Contribuir" : "Contributing";
+const contributingLabel = isSpanish ? "Contribuir" : "Contributing";
+const builtWithLabel = isSpanish ? "Creado con" : "Built with";
+const copyrightLabel = isSpanish ? "Todos los derechos reservados." : "All rights reserved.";
 ---
 
-<footer class="as-footer">
+<footer class="as-footer" aria-label={ariaLabel}>
     <div class="as-footer-inner">
         <div class="as-footer-brand">
             <span class="as-footer-logo gradient-text">AgentSync</span>
-            <p class="as-footer-tagline">
-                Sync your AI agents across all assistants — instantly.
-            </p>
+            <p class="as-footer-tagline">{tagline}</p>
         </div>
         <div class="as-footer-links">
             <a
@@ -34,16 +44,16 @@ const contributingHref = withBase("/contributing/contributing/");
                 </svg>
                 GitHub
             </a>
-            <a href={docsHref}>Docs</a>
-            <a href={contributingHref}>Contributing</a>
+            <a href={docsHref} aria-label={docsAriaLabel}>{docsLabel}</a>
+            <a href={contributingHref} aria-label={contributingAriaLabel}>{contributingLabel}</a>
         </div>
         <div class="as-footer-copy">
             <p>
-                &copy; {currentYear} agentsync. Built with <a
+                &copy; {currentYear} agentsync. {builtWithLabel} <a
                     href="https://starlight.astro.build"
                     target="_blank"
                     rel="noopener noreferrer">Starlight</a
-                >.
+                >. {copyrightLabel}
             </p>
         </div>
     </div>

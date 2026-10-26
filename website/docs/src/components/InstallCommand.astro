@@ -2,17 +2,35 @@
 // InstallCommand — hero install command with copy affordance.
 // Real <button>, 44px target, aria-live success state, clipboard fallback.
 const command = "npx @dallay/agentsync init";
+const isSpanish = Astro.locals.starlightRoute.locale === "es";
+const copyLabel = isSpanish ? "Copiar" : "Copy";
+const copiedLabel = isSpanish ? "Copiado" : "Copied";
+const failedLabel = isSpanish ? "Error" : "Failed";
+const copyFailedAriaLabel = isSpanish
+	? "No se pudo copiar el comando de instalación"
+	: "Could not copy install command";
+const copyAriaLabel = isSpanish ? "Copiar comando de instalación" : "Copy install command";
 ---
 
 <div class="install-command">
 	<span class="install-prompt" aria-hidden="true">$</span>
 	<code class="install-code">{command}</code>
-	<button type="button" class="install-copy" data-command={command} aria-label="Copy install command">
+	<button
+		type="button"
+		class="install-copy"
+		data-command={command}
+		data-copy-label={copyLabel}
+		data-copied-label={copiedLabel}
+		data-failed-label={failedLabel}
+		data-copy-aria-label={copyAriaLabel}
+		data-failed-aria-label={copyFailedAriaLabel}
+		aria-label={copyAriaLabel}
+	>
 		<svg class="copy-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
 			<rect x="5.5" y="5.5" width="8" height="8" rx="2" stroke="currentColor" stroke-width="1.5" />
 			<path d="M10.5 5.5v-2a2 2 0 0 0-2-2h-5a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h2" stroke="currentColor" stroke-width="1.5" />
 		</svg>
-		<span class="copy-label" aria-live="polite">Copy</span>
+		<span class="copy-label" aria-live="polite">{copyLabel}</span>
 	</button>
 </div>
 
@@ -21,23 +39,29 @@ const command = "npx @dallay/agentsync init";
 		btn.addEventListener("click", function () {
 			const el = btn;
 			const text = el.getAttribute("data-command") || "";
-			const done = function () {
+			const setCopyState = function (copied, succeeded) {
 				const label = el.querySelector(".copy-label");
-				if (label) label.textContent = "Copied";
-				el.classList.add("is-copied");
-				window.setTimeout(function () {
-					if (label) label.textContent = "Copy";
-					el.classList.remove("is-copied");
-				}, 2000);
+				const copyLabel = el.getAttribute("data-copy-label") || "Copy";
+				const stateLabel = succeeded
+					? el.getAttribute("data-copied-label") || "Copied"
+					: el.getAttribute("data-failed-label") || "Failed";
+				if (label) label.textContent = copied ? stateLabel : copyLabel;
+				el.setAttribute(
+					"aria-label",
+					copied
+						? succeeded
+							? el.getAttribute("data-copy-aria-label") || "Copy install command"
+							: el.getAttribute("data-failed-aria-label") || "Could not copy install command"
+						: el.getAttribute("data-copy-aria-label") || "Copy install command",
+				);
+				el.classList.toggle("is-copied", copied && succeeded);
+				if (copied) window.setTimeout(function () { setCopyState(false, succeeded); }, 2000);
+			};
+			const done = function () {
+				setCopyState(true, true);
 			};
 			const fail = function () {
-				const label = el.querySelector(".copy-label");
-				if (label) label.textContent = "Failed";
-				el.classList.add("is-copied");
-				window.setTimeout(function () {
-					if (label) label.textContent = "Copy";
-					el.classList.remove("is-copied");
-				}, 2000);
+				setCopyState(true, false);
 			};
 			if (navigator.clipboard && navigator.clipboard.writeText) {
 				navigator.clipboard.writeText(text).then(done, fail);

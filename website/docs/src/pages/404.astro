@@ -1,0 +1,24 @@
+---
+import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
+import { withBase } from "../utils/links";
+
+const pageTitle = "Page not found";
+const tagline = "The page you requested does not exist. Check the URL or return to the documentation home page.";
+const homeLabel = "Go to the documentation";
+const homeHref = withBase("/");
+---
+
+<StarlightPage
+	frontmatter={{
+		title: pageTitle,
+		description: tagline,
+		template: "splash",
+		pagefind: false,
+		editUrl: false,
+		hero: {
+			title: pageTitle,
+			tagline,
+			actions: [{ text: homeLabel, link: homeHref, variant: "primary" }],
+		},
+	}}
+/>

@@ -1,0 +1,524 @@
+---
+title: Referencia de CLI
+description: Documentación detallada de todos los comandos de agentsync.
+---
+
+import BaseLink from "../../../../components/BaseLink.astro";
+import CommandTabs from "../../../../components/CommandTabs.astro";
+
+`agentsync` ofrece un conjunto directo de comandos para administrar la configuración de tus agentes de IA.
+
+## Logs y diagnósticos
+
+Los logs de diagnóstico siempre se escriben en stderr y los resultados de los comandos permanecen en stdout. Así, la salida funcional `--json` se puede analizar en CI.
+
+**Opciones globales** (disponibles antes o después de un subcomando):
+
+- `--log-format human|json`: muestra diagnósticos legibles por personas (predeterminado) o un evento JSON por cada línea de stderr.
+- `--log-level trace|debug|info|warn|error|off`: establece el nivel mínimo de diagnóstico. Tiene prioridad sobre `RUST_LOG`; si no se especifica, `RUST_LOG` admite directivas EnvFilter por destino y usa `info` si el valor no es válido.
+
+Las opciones de logging son independientes de `--json` específico de cada comando:
+
+```bash
+agentsync status --log-format json --json >status.json 2>diagnostics.jsonl
+```
+
+El arreglo de estados se escribe en `status.json`; los eventos de diagnóstico estructurados se escriben en `diagnostics.jsonl`.
+
+Si ejecutas AgentSync en Windows y necesitas conocer los requisitos para crear symlinks, la configuración de WSL o cómo recuperarte de un problema, consulta la <BaseLink href="/guides/windows-symlink-setup/">guía de configuración de symlinks en Windows</BaseLink>. Esta referencia se centra en el comportamiento de la CLI.
+
+## Comandos
+
+### `init`
+
+Inicializa una configuración nueva de AgentSync en el directorio actual o en el que especifiques.
+
+```bash
+agentsync init [OPTIONS]
+```
+
+**Opciones**:
+
+- `-p, --path <PATH>`: directorio raíz del proyecto; de forma predeterminada usa el directorio actual. También tiene el alias `--project-root`.
+- `-f, --force`: reemplaza la configuración existente sin preguntar.
+- `-w, --wizard`: ejecuta el asistente interactivo de configuración para migrar archivos existentes.
+- `--experimental-tui`: ejecuta el asistente de `init` con una introducción experimental de TUI a pantalla completa. Requiere `--wizard`.
+- `-t, --template <PATH>`: usa un archivo de plantilla personalizado en lugar del valor predeterminado integrado. Debe ser TOML válido conforme al esquema `agentsync.toml`. Omite la búsqueda de configuración de usuario XDG.
+
+**Acciones**:
+
+- Crea el directorio `.agents/` si no existe.
+- Crea `.agents/agentsync.toml` a partir de la plantilla seleccionada o de la configuración predeterminada integrada si no hay una plantilla.
+- Crea el archivo de plantilla `.agents/AGENTS.md`.
+
+**Plantilla de configuración de usuario**:
+
+AgentSync admite una plantilla de configuración a nivel de usuario que sirve como valor predeterminado para todos los proyectos nuevos. Si no se pasa el flag `--template`, `agentsync init` busca en este orden:
+
+1. `$XDG_CONFIG_HOME/agentsync/config.toml` (si `XDG_CONFIG_HOME` está definido).
+2. `~/.config/agentsync/config.toml` (ruta XDG predeterminada).
+3. Configuración predeterminada integrada (seis agentes habilitados: claude, copilot, cursor, codex, gemini y opencode; claude-desktop también está incluido, pero deshabilitado de forma predeterminada).
+
+Para crear una plantilla personal:
+
+```bash
+mkdir -p ~/.config/agentsync
+# Crea una plantilla con solo los agentes que usas
+cat > ~/.config/agentsync/config.toml << 'EOF'
+source_dir = "."
+default_agents = ["claude", "copilot"]
+
+[agents.claude]
+enabled = true
+description = "Claude Code"
+
+[agents.claude.targets.instructions]
+source = "AGENTS.md"
+destination = "CLAUDE.md"
+type = "symlink"
+
+[agents.copilot]
+enabled = true
+description = "GitHub Copilot"
+
+[agents.copilot.targets.instructions]
+source = "AGENTS.md"
+destination = ".github/copilot-instructions.md"
+type = "symlink"
+EOF
+```
+
+Después de crearla, `agentsync init` usará la plantilla automáticamente, sin necesitar flags adicionales.
+
+**Modo asistente**:
+
+Con el flag `--wizard`, AgentSync guía el mismo flujo de configuración que se describe en la guía de primeros pasos. El flujo del asistente incluye:
+
+1. Analizar el proyecto en busca de archivos de agentes existentes, incluidos archivos de instrucciones (CLAUDE.md, AGENTS.md, GEMINI.md, .windsurfrules, AMPCODE.md, entre otros), directorios de skills (`.claude/skills/`, `.cursor/skills/`, `.codex/skills/`, `.gemini/skills/`, `.opencode/skills/`, `.roo/skills/`, `.factory/skills/`, `.vibe/skills/`) y configuraciones MCP.
+2. Mostrar los asistentes detectados y permitir que selecciones cuáles configurar.
+3. Crear el directorio canónico `.agents/`.
+4. Para los directorios de skills, copiar su contenido a `.agents/skills/`; detectar colisiones y omitir duplicados con una advertencia.
+5. Para los directorios de comandos, copiar su contenido a `.agents/commands/`.
+6. Detectar configuraciones MCP y señalar que su migración a `[mcp_servers]` en `agentsync.toml` debe hacerse manualmente.
+7. Copiar otros archivos de agentes (por ejemplo, `.cursor/`) al directorio `.agents/`.
+8. Para cada destino de skills migrado, preguntar explícitamente si debe usar `symlink` o `symlink-contents`, recomendar `symlink` y conservar de forma predeterminada un symlink de directorio que ya sea correcto.
+9. Generar `.agents/agentsync.toml` para administrar esos archivos mediante symlinks.
+10. Ejecutar un resumen de validación posterior a la inicialización que advierte si un destino de skills usa `symlink-contents`, aunque el destino ya sea un symlink de directorio a `.agents/skills`.
+11. Opcionalmente, crear copias de seguridad de los archivos originales después de pedir confirmación; solo se respaldan los archivos que se copiaron.
+
+### `apply`
+
+Aplica la configuración de `agentsync.toml` creando symlinks y actualizando `.gitignore`.
+
+En términos del flujo de trabajo, `agentsync apply` concilia los destinos locales administrados y luego sigue la política de `.gitignore` del repositorio:
+
+- Flujo predeterminado: escribe o actualiza el bloque de `.gitignore` administrado por AgentSync.
+- Exclusión para versionar destinos: elimina un bloque obsoleto administrado por AgentSync cuando `[gitignore].enabled = false`.
+- Exclusión temporal de CLI: omite toda conciliación de `.gitignore` si se pasa `--no-gitignore`.
+
+Consulta la <BaseLink href="/guides/gitignore-team-workflows/">guía de flujos de trabajo de equipo con Gitignore</BaseLink> para conocer la decisión del equipo. Para patrones de automatización durante la instalación y con Git hooks alrededor de `apply`, consulta la <BaseLink href="/guides/git-hook-automation/">guía de automatización con Git hooks</BaseLink>.
+
+Si `apply` falla porque el entorno local de Windows todavía no puede crear symlinks, corrige primero los requisitos del shell o de configuración con la <BaseLink href="/guides/windows-symlink-setup/">guía de configuración de symlinks en Windows</BaseLink>.
+
+```bash
+agentsync apply [OPTIONS]
+```
+
+**Opciones**:
+
+- `-p, --path <PATH>`: directorio raíz del proyecto. También tiene el alias `--project-root`.
+- `-c, --config <CONFIG>`: usa una ruta personalizada al archivo de configuración en lugar de la predeterminada `.agents/agentsync.toml`.
+- `--clean`: elimina los symlinks existentes antes de aplicar la configuración.
+- `--dry-run`: muestra las acciones previstas sin ejecutarlas, incluidas las escrituras pendientes de `.gitignore` o su limpieza cuando la conciliación está activa.
+- `-v, --verbose`: activa el logging detallado.
+- `-a, --agents <AGENTS>`: filtra por agentes usando una lista separada por comas, por ejemplo `claude,copilot`. **Tiene prioridad** sobre `default_agents` en la configuración.
+- `--no-gitignore`: desactiva estrictamente la conciliación de `.gitignore` para esta ejecución. AgentSync no escribirá, actualizará ni eliminará su bloque administrado.
+- `--rebase-mcp-journal`: adopta explícitamente el estado MCP actual como nuevo estado base administrado para el journal existente. Conserva la instantánea original anterior al primer `apply`; un `revert` posterior aún puede restaurar esa instantánea y descartar cambios posteriores. Revisa la configuración MCP antes de usar esta opción.
+
+### `clean`
+
+Elimina todos los symlinks administrados por AgentSync.
+
+```bash
+agentsync clean [FLAGS]
+```
+
+**Flags**:
+
+- `-p, --path <PATH>`: ruta a la raíz del proyecto. También tiene el alias `--project-root`.
+- `-c, --config <PATH>`: ruta a un archivo de configuración personalizado.
+- `--dry-run`: muestra qué se eliminaría sin borrar nada.
+- `-v, --verbose`: activa el logging detallado.
+
+### `revert`
+
+Restaura el estado previo a `apply`: elimina los symlinks administrados y restaura las copias de seguridad `.bak` de los archivos que existían antes de que `apply` los reemplazara. A diferencia de `clean`, que solo elimina, `revert` devuelve los archivos originales.
+
+```bash
+agentsync revert [FLAGS]
+```
+
+**Flags**:
+
+- `-p, --path <PATH>`: ruta a la raíz del proyecto. También tiene el alias `--project-root`.
+- `-c, --config <PATH>`: ruta a un archivo de configuración personalizado.
+- `--dry-run`: muestra qué se eliminaría y restauraría sin cambiar nada en el disco.
+- `-v, --verbose`: activa el logging detallado.
+- `-a, --agents <AGENTS>`: revierte solo los agentes indicados, separados por comas (por ejemplo, `claude,copilot`). La selección sigue este orden: `--agents`, luego `default_agents`, y después todos los agentes configurados, incluidos los deshabilitados. La restauración MCP usa los IDs de propietario registrados aunque ahora un agente o `[mcp]` estén deshabilitados; aun así, el conjunto seleccionado debe incluir todos los propietarios registrados de un destino MCP compartido.
+- `--keep-backups`: en Unix, copia las copias `.bak` en vez de moverlas, para que sigan disponibles para inspección. No se admite en Windows; `revert` rechaza esta opción antes de cambiar destinos administrados o archivos de respaldo. En Windows, usa `revert` normal para mover la copia original y conservar sus permisos heredados.
+
+Comportamiento:
+
+- Los archivos que nunca tuvieron una copia de seguridad (porque no existían antes de `apply`) se desvinculan.
+- Los archivos normales del usuario que no sean symlinks administrados nunca se modifican. Una copia de seguridad solo se restaura en un destino ausente o sobre un symlink administrado, nunca encima de un archivo real que haya aparecido después.
+- En las ejecuciones completas y sin filtros de reversión de symlinks, se elimina el bloque de `.gitignore` administrado por AgentSync. Si se pasa `--agents`, se reduce `default_agents` o hay un error u omisión al revertir symlinks, el bloque se conserva porque aún pueden quedar destinos administrados; vuelve a ejecutar `apply` para conciliarlo. Omitir una instantánea MCP no impide esta limpieza, porque el bloque rastrea destinos symlink, no archivos de configuración MCP.
+- Para destinos `symlink-contents`, `revert` elimina los symlinks secundarios administrados, pero puede dejar vacío el directorio de destino. No puede inferir si el contenedor existía antes de `apply`, así que no lo elimina.
+- Las configuraciones MCP se restauran desde la instantánea completa tomada durante `apply` cuando el archivo todavía coincide con el estado registrado. Si antes no había archivo, el archivo normal generado se elimina solo si no cambió. Las ediciones posteriores, los symlinks, un journal no válido o la selección parcial de propietarios conservan el archivo y el journal, e informan de la omisión o el error; no se hace una combinación de tres vías. Si falta un journal de una versión anterior de AgentSync, no se puede reconstruir el estado original, por lo que se deja el archivo como está en vez de eliminar servidores por nombre o valor. Consulta la <BaseLink href="/guides/mcp/#reverting-mcp-configurations">guía del journal MCP y de restauración</BaseLink> para conocer su ubicación, retención y recuperación.
+
+Ejemplos:
+
+Previsualiza la restauración:
+
+<CommandTabs command="revert --dry-run" />
+
+Revierte un solo agente:
+
+<CommandTabs command="revert --agents claude" />
+
+Revierte y conserva los archivos `.bak` para inspeccionarlos:
+
+<CommandTabs command="revert --keep-backups" />
+
+### `skill`
+
+Administra skills instalables de agentes de IA desde skills.sh y otros proveedores.
+
+```bash
+agentsync skill [OPTIONS] <COMMAND>
+```
+
+**Opciones globales**:
+
+- `-p, --project-root <PROJECT_ROOT>`: raíz del proyecto; de forma predeterminada usa el directorio de trabajo actual.
+
+#### `install`
+
+Instala una skill desde skills.sh o un proveedor personalizado.
+
+```bash
+agentsync skill install [OPTIONS] <SKILL_ID>
+```
+
+- `--source <SOURCE>`: fuente opcional (directorio, archivo comprimido o URL).
+- `--json`: genera JSON legible por máquinas.
+
+#### `suggest`
+
+Sugiere skills relevantes para el repositorio sin instalarlas.
+
+```bash
+agentsync skill suggest [--json] [--install [--all]]
+```
+
+- `--json`: genera en JSON detecciones, recomendaciones y conteos de resumen.
+- `--install`: inicia el flujo de instalación guiado por recomendaciones.
+- `--all`: se usa con `--install` para instalar, sin preguntar, todas las recomendaciones aún no instaladas.
+
+**Comportamiento**:
+
+- `skill suggest` es de solo lectura de forma predeterminada.
+- La detección admite actualmente más de 110 tecnologías. Consulta la <BaseLink href="/guides/skills/#supported-repository-technology-detection-current-scope">guía de skills</BaseLink> para ver una lista representativa.
+- La detección se realiza mediante el análisis del repositorio en Rust; la asignación de recomendaciones proviene del catálogo curado de AgentSync.
+- Las recomendaciones reflejan criterios propios y no son exhaustivas.
+- El runtime carga primero un catálogo declarativo integrado y, de forma opcional, agrega metadatos válidos de proveedores.
+- Una tecnología detectada puede corresponder a varias skills recomendadas.
+- Las entradas combinadas del catálogo permiten recomendar skills específicas cuando se detecta una combinación de tecnologías (por ejemplo, React y shadcn/ui).
+- `--install` abre un selector interactivo en una TTY.
+- `--install --all` es la opción explícita no interactiva e instala todas las recomendaciones que aún no estén instaladas.
+- Las instalaciones basadas en recomendaciones reutilizan la canalización y las actualizaciones del registro de `skill install`; omiten las recomendaciones ya instaladas.
+
+**Nota de compatibilidad**:
+
+- Los metadatos del catálogo pueden incluir internamente IDs canónicos de skills del proveedor.
+- La salida actual de la CLI, la instalación y el seguimiento del estado instalado aún usan valores locales de `skill_id`, similares a slugs.
+- Por ello, `skill install <SKILL_ID>` directo sigue esperando el formato actual de ID local/runtime.
+
+Ejemplos:
+
+<CommandTabs command="skill suggest" />
+<CommandTabs command="skill suggest --json" />
+<CommandTabs command="skill suggest --install" />
+<CommandTabs command="skill suggest --install --all" />
+
+#### `update`
+
+Actualiza una skill a la versión más reciente.
+
+```bash
+agentsync skill update [OPTIONS] <SKILL_ID>
+```
+
+- `--source <SOURCE>`: fuente opcional (directorio, archivo comprimido o URL).
+- `--json`: genera JSON legible por máquinas.
+
+#### `uninstall`
+
+Desinstala una skill.
+
+```bash
+agentsync skill uninstall [OPTIONS] <SKILL_ID>
+```
+
+- `--json`: genera JSON legible por máquinas.
+
+#### `list`
+
+Enumera las skills del directorio local `.agents/skills/` y las compara con su `registry.json`. No accede a la red ni modifica archivos. Ordena las entradas por ID en orden ascendente byte a byte y usa `/` como separador en las rutas relativas al repositorio.
+
+```bash
+agentsync skill list
+agentsync skill list --json
+```
+
+`--json` escribe en stdout un objeto JSON estable con `schema_version: 1`, `skills` y `diagnostics`. Cada skill informa `id`, `path`, `source_kind` (`direct`, `plugin`, `manual/untracked` o `unknown`), `version` y `provenance` anulables, y `state` (`installed`, `missing`, `missing_manifest`, `malformed`, `duplicate_id` o `broken_symlink`). Los diagnósticos se separan de las entradas del inventario. Una skill individual mal formada o ausente no hace fallar el comando. Si `registry.json` existe, pero no se puede leer o no es válido, el comando devuelve código `1`; con `--json`, stdout contiene la misma estructura de nivel superior e incluye un diagnóstico `registry_invalid` redactado, mientras que los detalles del error se escriben en stderr. Los errores de lectura del sistema de archivos usan el diagnóstico distinto `inventory_unreadable` y también devuelven código `1`. Si no existe el registro, la situación se puede recuperar y los directorios de skills sin registrar aparecen como `manual/untracked`. Si el directorio de skills no existe o está vacío, el comando devuelve código `0` y una lista vacía. Las advertencias legibles por personas se escriben en stderr. Los IDs de manifiesto duplicados reciben el estado `duplicate_id` y un diagnóstico; los symlinks rotos reciben `broken_symlink`; los directorios sin `SKILL.md` reciben `missing_manifest`.
+
+#### `registry`
+
+Valida y actualiza el registro curado por los mantenedores.
+
+```bash
+agentsync skill registry <COMMAND>
+```
+
+##### `validate`
+
+Valida un manifiesto del registro curado según las restricciones del archivo lock.
+
+```bash
+agentsync skill registry validate [OPTIONS]
+```
+
+**Opciones**:
+
+- `--manifest <MANIFEST>`: ruta al manifiesto del registro. De forma predeterminada, `src/skills/registry.v1.toml`.
+- `--lock <LOCK>`: ruta al archivo lock. De forma predeterminada, `src/skills/registry.lock.toml`.
+
+##### `sync`
+
+Valida un manifiesto del registro curado y regenera atómicamente su archivo lock.
+
+```bash
+agentsync skill registry sync [OPTIONS]
+```
+
+**Opciones**:
+
+- `--manifest <MANIFEST>`: ruta al manifiesto del registro. De forma predeterminada, `src/skills/registry.v1.toml`.
+- `--lock <LOCK>`: ruta al archivo lock. De forma predeterminada, `src/skills/registry.lock.toml`.
+
+### `plugin`
+
+Administra la materialización de plugins propiedad del repositorio y neutral respecto al proveedor.
+
+```bash
+agentsync plugin [OPTIONS] <COMMAND>
+```
+
+**Opciones globales**:
+
+- `-p, --project-root <PROJECT_ROOT>`: raíz del proyecto; de forma predeterminada usa el directorio de trabajo actual.
+
+El proyecto debe declarar el marketplace en `.agents/agentsync.toml`; si el plugin seleccionado aún no está en ese archivo, `add` y `update` lo guardan allí.
+
+Las selecciones de plugins aceptan `<MARKETPLACE/PLUGIN>` o la sintaxis del proveedor `<PLUGIN@MARKETPLACE>` en `add`, `update`, `remove` y `restore`.
+
+#### `add`
+
+Resuelve la referencia configurada del marketplace, valida el plugin seleccionado, escribe `.agents/plugins.lock.toml` y materializa las skills compatibles.
+
+```bash
+agentsync plugin add <MARKETPLACE/PLUGIN> [--json]
+```
+
+**Opciones**:
+
+- `--json`: genera JSON legible por máquinas.
+
+Es una operación explícita que puede usar la red para fuentes Git. Las fuentes locales siguen disponibles sin conexión. Las fuentes Git se guardan como instantáneas en el estado del proyecto administrado por AgentSync. Solo `plugin add` y `plugin update` resuelven `marketplace.reference` o escriben entradas en el archivo lock.
+
+#### `update`
+
+Vuelve a resolver la referencia configurada y reemplaza la entrada del archivo lock tras validar el plugin.
+
+```bash
+agentsync plugin update <MARKETPLACE/PLUGIN> [--json]
+```
+
+**Opciones**:
+
+- `--json`: genera JSON legible por máquinas.
+
+#### `list`
+
+Enumera los plugins bloqueados y sus revisiones sin cambiar archivos.
+
+```bash
+agentsync plugin list [--json]
+```
+
+**Opciones**:
+
+- `--json`: genera JSON legible por máquinas.
+
+#### `status`
+
+Valida el contenido de las fuentes bloqueadas e informa diferencias, sin materializar, descargar ni ejecutar nada. Si falta una instantánea Git, el comando falla; `status` nunca la restaura. Las declaraciones MCP de plugins se informan como `ALLOWED` o `PENDING`. `ALLOWED` significa que `plugins.allowed_mcp` aprobó el servidor, no que MCP necesariamente se escribirá si la configuración MCP global o los filtros de agentes lo deshabilitan. Las referencias `${ENV}` sin procesar se informan literalmente y nunca se expanden.
+
+```bash
+agentsync plugin status [--json]
+```
+
+#### `restore`
+
+Obtiene el commit Git bloqueado exacto para los plugins seleccionados. No resuelve `marketplace.reference` ni escribe `plugins.lock.toml` o `agentsync.toml`. Sin argumento, restaura todos los plugins de `[plugins.selections]`. Omite las fuentes locales.
+
+```bash
+agentsync plugin restore [MARKETPLACE/PLUGIN] [--json]
+```
+
+Una ejecución en línea de `agentsync apply` restaura automáticamente una instantánea **ausente**. No repara una instantánea existente no válida; para eso, usa `plugin restore`.
+
+#### `remove`
+
+Elimina solo las skills registradas como propiedad del plugin seleccionado, quita su entrada del archivo lock y elimina la selección correspondiente de `agentsync.toml`. También revoca de forma atómica todas las aprobaciones `allowed_mcp` bajo `plugin/<marketplace>/<plugin>/`. Si agregas de nuevo el plugin, sus servidores MCP comienzan en estado `PENDING`.
+
+```bash
+agentsync plugin remove <MARKETPLACE/PLUGIN> [--json]
+```
+
+**Opciones**:
+
+- `--json`: genera JSON legible por máquinas.
+
+Las declaraciones MCP de plugins se generan durante el flujo normal de `agentsync apply`. Se identifican con el espacio de nombres `plugin/<marketplace>/<plugin>/<server>` y AgentSync nunca inicia esos servidores.
+
+### `doctor`
+
+Ejecuta diagnósticos y comprobaciones de salud del entorno de sincronización.
+
+```bash
+agentsync doctor [OPTIONS]
+```
+
+**Opciones**:
+
+- `-p, --project-root <PROJECT_ROOT>`: raíz del proyecto; de forma predeterminada usa el directorio de trabajo actual.
+
+**Diagnósticos**:
+
+- Valida que `agentsync.toml` exista y tenga sintaxis válida.
+- **Verifica que existan las fuentes de destino**: comprueba que existan todos los archivos y directorios referenciados como fuentes en la configuración.
+- **Detecta anomalías de configuración**: advierte si un destino está mal configurado; por ejemplo, un destino `module-map` sin asociaciones.
+- Detecta conflictos de destino.
+- Analiza `.gitignore` mediante el reconocimiento de marcadores.
+- Verifica que se puedan ejecutar los servidores MCP.
+- **Detecta skills de Claude sin administrar**: advierte si `.claude/skills/` contiene elementos que no administra ningún destino configurado en `agentsync.toml`.
+- **Detecta incompatibilidades reconocidas en el modo de skills**: advierte si un destino de skills usa `symlink-contents`, pero el destino ya es el symlink de directorio esperado, de modo que `apply` provocaría cambios innecesarios.
+
+### `--version`
+
+Muestra la versión actual de la CLI de AgentSync.
+
+<CommandTabs command="--version" />
+
+### `--help`
+
+Muestra la ayuda de la CLI o de un comando específico.
+
+<CommandTabs command="--help" />
+<CommandTabs command="apply --help" />
+
+### `inspect`
+
+Inspecciona la proyección determinista de la configuración que AgentSync administra para un asistente. Es un informe de solo lectura y sin conexión. No aplica cambios, descarga instantáneas de plugins, expande variables de entorno, invoca CLIs de proveedores ni inicia servidores MCP.
+
+```bash
+agentsync inspect --agent <id> [--json] [--strict] [--project-root <path>]
+```
+
+**Flags**:
+
+- `--agent <id>`: obligatorio. Selecciona un asistente configurado, como `opencode` o `codex`.
+- `--json`: emite JSON v1 compacto y determinista en stdout.
+- `--strict`: termina con código `1` si el informe contiene un diagnóstico con severidad de error.
+- `-p, --project-root <path>`: raíz del proyecto; de forma predeterminada usa el directorio actual.
+
+De forma predeterminada, el código de salida `0` significa que se generó el informe, aunque incluya diagnósticos. El modo estricto es apropiado para CI. Los errores de configuración o de ejecución terminan con un código distinto de cero; los argumentos de CLI no válidos usan el código de error de uso de Clap.
+
+El informe separa la configuración declarada, los destinos planificados, el estado observado del sistema de archivos y las capacidades no compatibles. Identifica la fuente, el destino, el modo de sincronización, el propietario y la procedencia. No afirma describir todos los ajustes nativos efectivos durante la ejecución. Las capas globales, de usuario, de organización y de sesión que AgentSync no controla son desconocidas, no ausentes.
+
+Los informes MCP muestran declaraciones explícitas, contribuciones de plugins aprobadas o pendientes, servidores deshabilitados y nombres de servidores existentes en el destino. Las declaraciones MCP explícitas del proyecto son la entrada base; las contribuciones de plugins requieren aprobación en `plugins.allowed_mcp`. `apply` rechaza una colisión de nombres entre una declaración explícita y un plugin si sus definiciones difieren. Las entradas existentes del destino se conservan o reemplazan según la estrategia de combinación configurada. Nunca se incluyen valores existentes de servidores que AgentSync no administra.
+
+El informe nunca incluye valores de variables de entorno ni de encabezados. Solo contiene los nombres de las variables y los encabezados, y una clasificación de sus valores. No uses el informe como detector de secretos en instrucciones o contenido arbitrario de skills.
+
+Ejemplos:
+
+- `agentsync inspect --agent opencode`
+- `agentsync inspect --agent codex --json`
+- `agentsync inspect --agent codex --json --strict`
+
+El contrato JSON está documentado en la <BaseLink href="/reference/inspect-output/">referencia de salida de inspect</BaseLink>.
+
+### `status`
+
+Verifica el estado de los destinos administrados por AgentSync e informa diferencias.
+
+```bash
+agentsync status [--project-root <path>] [--json]
+```
+
+**Flags**:
+
+- `-p, --project-root <path>`: opcional. Ruta a la raíz del proyecto para localizar la configuración de AgentSync. Si se omite, se usa el directorio de trabajo actual.
+- `--json`: genera JSON legible por máquinas y con formato indentado que describe cada destino administrado. Es útil en CI.
+
+**Comportamiento**:
+
+- Recorre todos los agentes habilitados y sus destinos en `agentsync.toml`.
+- Valida cada destino según el tipo de sincronización configurado:
+  - `symlink` comprueba que la propia ruta de destino sea el symlink administrado.
+  - `symlink-contents` comprueba que el destino sea un directorio contenedor administrado y que contenga los symlinks secundarios esperados.
+- Para cada destino informa campos adicionales legibles por máquinas, como:
+  - `destination`: ruta del proyecto donde está el destino administrado.
+  - `sync_type`: modo de sincronización configurado para ese destino.
+  - `destination_kind`: indica si el destino actual resuelve a un symlink, directorio, archivo o no existe.
+  - `exists`: indica si existe la ruta del destino.
+  - `is_symlink`: indica si el propio destino es un symlink.
+  - `points_to`: destino del symlink, si existe.
+  - `expected_source`: ruta resuelta a la fuente esperada para destinos de enlace único, si la fuente existe.
+  - `issues`: causas estructuradas de diferencias.
+  - `managed_children`: detalle de cada elemento secundario de los destinos `symlink-contents`.
+
+La salida legible para personas usa colores y estos estados:
+
+- `✔ OK` — el symlink existe y apunta a la fuente esperada.
+- `✗ Incorrect link` — el symlink existe, pero apunta a otra ubicación.
+- `! Missing` — el destino no existe.
+- `· Exists but not a symlink` — hay un archivo o directorio normal en el destino.
+
+Para `symlink-contents`, el resultado correcto identifica el destino como directorio contenedor administrado. Una fuente válida pero vacía, como `.agents/commands/` sin archivos elegibles, también se informa como `OK`; el destino no se considera ausente ni como «no es un symlink» solo porque en ese momento haya `0 managed entries expected`.
+
+Si un destino de skills funciona, pero su modo configurado no coincide con un diseño existente reconocido (por ejemplo, se configuró `symlink-contents`, pero el destino ya es el symlink de directorio esperado), `status` conserva el estado `OK` y muestra una sugerencia específica en lugar de marcarlo como roto.
+
+**Códigos de salida**:
+
+- `0`: no se detectaron problemas.
+- `1`: se detectaron uno o más problemas; puede usarse para hacer fallar builds de CI.
+
+Ejemplos:
+
+- Salida legible por personas: <CommandTabs command="status" />
+- JSON para CI: <CommandTabs command="status --json" />
+- Con otra raíz de proyecto: <CommandTabs command="status --project-root /path/to/repo --json" />
+
+En Windows, `status` también sirve como comprobación práctica después de corregir los permisos de symlinks o cambiar a WSL. Consulta la <BaseLink href="/guides/windows-symlink-setup/">guía de configuración de symlinks en Windows</BaseLink> para conocer el proceso completo.

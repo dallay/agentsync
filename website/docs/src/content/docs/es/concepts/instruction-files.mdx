@@ -1,0 +1,71 @@
+---
+title: Archivos de instrucciones
+description: Cómo AgentSync administra las fuentes de instrucciones y los destinos específicos de cada asistente.
+---
+
+import BaseLink from "../../../../components/BaseLink.astro";
+
+AgentSync administra los archivos de instrucciones mediante enlaces entre **fuentes** configuradas y **destinos**. No interpreta el contenido ni decide cómo un asistente descubre, prioriza o combina archivos. Esas reglas pertenecen a cada asistente.
+
+Esta distinción importa cuando un repositorio contiene un archivo de instrucciones raíz y otros en subdirectorios. AgentSync puede proyectar esos archivos en los destinos configurados, pero no garantiza que todos los asistentes los carguen con el mismo alcance o prioridad.
+
+## Fuente de verdad y destinos
+
+La configuración declara una fuente para cada destino. En la mayoría de los tipos de sincronización, las fuentes se resuelven en relación con `source_dir`; los destinos se resuelven en relación con la raíz del proyecto.
+
+```toml
+[agents.claude.targets.instructions]
+source = "AGENTS.md"
+destination = "CLAUDE.md"
+type = "symlink"
+```
+
+Esto crea un enlace `CLAUDE.md` hacia la fuente `AGENTS.md` configurada. AgentSync no traduce el formato Markdown ni cambia los encabezados del archivo. El nombre del destino se elige según la convención del asistente.
+
+Para compartir una fuente entre varios asistentes, declara un destino por asistente y apunta todos a la misma fuente:
+
+```toml
+[agents.claude.targets.instructions]
+source = "AGENTS.md"
+destination = "CLAUDE.md"
+type = "symlink"
+
+[agents.codex.targets.instructions]
+source = "AGENTS.md"
+destination = "AGENTS.md"
+type = "symlink"
+```
+
+Los nombres de archivo y el soporte nativo varían según el asistente. Consulta la <BaseLink href="/reference/configuration/#agent-compatibility-matrix">matriz de compatibilidad</BaseLink> antes de asumir que un asistente cargará un destino.
+
+## Instrucciones anidadas
+
+AgentSync puede sincronizar varios archivos que coincidan con un patrón mediante `nested-glob`. Por ejemplo, puedes encontrar cada `AGENTS.md` y crear un `CLAUDE.md` en el directorio correspondiente:
+
+```toml
+[agents.claude.targets.nested_instructions]
+type = "nested-glob"
+source = "."
+pattern = "**/AGENTS.md"
+destination = "{relative_path}/CLAUDE.md"
+exclude = [".agents/**", "**/node_modules/**", "**/.git/**"]
+```
+
+Esto controla qué archivos encuentra AgentSync y dónde crea enlaces. No activa ni reproduce el descubrimiento nativo de instrucciones anidadas de Claude. Revisa las rutas descubiertas con `agentsync inspect --agent claude` y una simulación antes de aplicar cambios. Consulta la guía de <BaseLink href="/guides/recipes/">recetas de configuración</BaseLink>.
+
+## Archivos compactos `AGENTS.md`
+
+La opción global `compress_agents_md = true` crea `AGENTS.compact.md` junto a cada fuente elegible y hace que los destinos elegibles de tipo `symlink` y `symlink-contents` apunten a ese archivo generado. AgentSync no sobrescribe el archivo original `AGENTS.md`.
+
+El compresor elimina espacios y tabulaciones finales de todas las líneas, incluidas las que están dentro de bloques de código cercados. Reduce los espacios y tabulaciones consecutivos en línea y los bloques de líneas vacías repetidas solo fuera de esos cercos. Dentro de los cercos conserva la indentación inicial, el contenido y las líneas vacías repetidas, salvo los espacios o tabulaciones finales. Esto puede quitar los espacios que Markdown usa para crear saltos de línea duros. Es un compresor de espacios en blanco, no un resumidor: no elimina instrucciones ni reescribe el significado del texto, pero sí puede cambiar el formato de Markdown que depende de espacios.
+
+```toml
+compress_agents_md = true
+
+[agents.claude.targets.instructions]
+source = "AGENTS.md"
+destination = "CLAUDE.md"
+type = "symlink"
+```
+
+Usa esta opción solo si las instrucciones siguen siendo legibles después de compactarlas. Conserva una copia del archivo original en el directorio de fuentes y revisa el destino con `agentsync inspect`.

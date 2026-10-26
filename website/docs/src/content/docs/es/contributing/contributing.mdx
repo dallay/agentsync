@@ -1,0 +1,45 @@
+---
+title: Contribuir
+description: Cómo reportar problemas y contribuir a AgentSync.
+---
+
+import BaseLink from "../../../../components/BaseLink.astro";
+
+Gracias por tu interés en contribuir a AgentSync. Las contribuciones pueden incluir informes de errores, mejoras de documentación, cambios de código y comentarios sobre el producto.
+
+## Antes de empezar
+
+- Busca primero en los issues existentes para evitar duplicados.
+- Para un cambio grande o que altere el comportamiento, abre un issue y conversa sobre el enfoque antes de implementarlo.
+- Mantén los cambios pequeños y enfocados. Agrega pruebas o actualiza las existentes cuando cambie el comportamiento.
+- No incluyas secretos, credenciales ni datos personales en issues o logs.
+
+## Reportar un error
+
+Incluye la información necesaria para reproducir el problema:
+
+- versión de AgentSync (`agentsync --version`);
+- sistema operativo y método de instalación;
+- comando exacto y directorio desde el que lo ejecutaste;
+- salida observada y resultado esperado;
+- una configuración mínima, con secretos redactados.
+
+Abre el issue en [GitHub Issues](https://github.com/dallay/agentsync/issues).
+
+## Proponer una mejora
+
+Explica el problema que quieres resolver, quién se beneficia y qué resultado esperas. Para cambios de comportamiento, incluye ejemplos de uso y casos límite. Espera a que el equipo confirme el enfoque antes de invertir en una implementación grande.
+
+## Preparar una contribución
+
+1. Haz un fork del repositorio y crea una rama enfocada en tu cambio.
+2. Sigue la <BaseLink href="/contributing/development/">guía de desarrollo</BaseLink> para configurar el entorno.
+3. Agrega pruebas que cubran el comportamiento cambiado.
+4. Ejecuta las comprobaciones relevantes y revisa el diff completo.
+5. Abre un pull request con un título semántico y pasos claros para validar.
+
+## Pull requests
+
+Describe qué cambió y por qué, qué pruebas ejecutaste y cualquier impacto visible para usuarios. Actualiza la documentación cuando cambien la configuración, la salida de CLI o el comportamiento. Mantén el pull request dentro de un alcance revisable y responde a los comentarios con evidencia.
+
+Consulta las <BaseLink href="/contributing/workspaces/">instrucciones de espacios de trabajo</BaseLink> si el cambio afecta el monorepo o sus paquetes.

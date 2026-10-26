@@ -1,0 +1,153 @@
+---
+title: Integración MCP
+description: Cómo sincronizar servidores del Model Context Protocol entre asistentes.
+---
+
+AgentSync puede generar y sincronizar automáticamente archivos de configuración MCP (Model Context Protocol) para varios agentes. Así defines tus servidores MCP una sola vez y los usas en todos los asistentes compatibles.
+
+## Configuración
+
+Agrega la sección `[mcp]` a tu `agentsync.toml`:
+
+```toml
+[mcp]
+enabled = true
+
+# Estrategia para archivos existentes: "merge" (predeterminada) o "overwrite"
+merge_strategy = "merge"
+```
+
+### Estrategia de combinación
+
+- **`merge` (predeterminada):** AgentSync lee el archivo de configuración existente del asistente, agrega los servidores definidos en TOML y conserva los que no aparecen en TOML. Si hay un conflicto con el mismo nombre de servidor, prevalece la configuración TOML.
+- **`overwrite`:** AgentSync reemplaza por completo el archivo de configuración específico del asistente con los servidores definidos en TOML.
+
+### Revertir configuraciones MCP
+
+`agentsync revert` usa la instantánea creada durante `apply` para restaurar el archivo MCP. No intenta identificar servidores administrados por nombre o valor. Cuando `apply` escribe una configuración MCP, AgentSync registra el contenido original completo del archivo y el estado que escribió. La instantánea cubre todo el archivo, incluidos los ajustes de nivel superior y la salida MCP generada por plugins.
+
+La restauración es condicional:
+
+- Si el archivo todavía coincide con el estado registrado por `apply`, `revert` restaura exactamente el contenido original.
+- Si el archivo no existía antes de `apply`, `revert` elimina el archivo regular generado solo si todavía coincide con el estado registrado.
+- Si el archivo cambió después de `apply`, se convirtió en un symlink, no pasa la validación del journal o los asistentes seleccionados omiten al propietario de un destino MCP compartido, `revert` conserva el archivo y el journal, e informa una omisión o un error. No combina las ediciones posteriores con la instantánea.
+- Si una edición intencional impide una ejecución posterior de `apply`, guarda una copia del archivo y usa `agentsync apply --rebase-mcp-journal` para continuar explícitamente. `apply` usa la estrategia de combinación configurada y actualiza los hashes del journal, conservando la instantánea y los propietarios originales de antes del primer `apply`. Un `revert` posterior aún restaura esa instantánea original y puede descartar ediciones hechas desde el primer `apply`; inspecciona la configuración MCP después de rebasar el journal.
+
+Si se omite una restauración, guarda o resuelve de forma segura las ediciones posteriores y vuelve a ejecutar `revert` con todos los propietarios registrados seleccionados. Copilot y VS Code comparten `.vscode/mcp.json`, por lo que el archivo solo se restaura cuando se incluyen todos sus propietarios registrados. La restauración usa los IDs de agente registrados aunque ahora el agente o `[mcp]` estén deshabilitados; `--agents` y `default_agents` siguen controlando los propietarios seleccionados.
+
+Si no existe un journal de una versión anterior de AgentSync, `revert` no puede reconstruir el archivo previo a `apply`. Deja la configuración MCP intacta y, cuando corresponde, muestra una advertencia; no elimina servidores según sus nombres o valores. Revertir salida MCP generada por plugins usa la misma instantánea y no resuelve, materializa ni ejecuta plugins.
+
+Este mecanismo de instantáneas se aplica de manera uniforme a los 10 formatos MCP, incluidos Claude Desktop (configuración global), Gemini CLI, OpenCode y Z-Code, cuyos archivos pueden incluir ajustes de nivel superior junto a la lista de servidores. La restauración exacta en bytes conserva esos ajustes, por lo que no hace falta lógica de eliminación específica para cada formato.
+
+#### Ubicación y privacidad del journal
+
+Si se define `AGENTSYNC_DATA_DIR`, el journal se guarda en `AGENTSYNC_DATA_DIR/agentsync/mcp-ownership/<sha256-canonical-project-root>/ownership.json`. De lo contrario, se usa `dirs::data_local_dir()/agentsync/mcp-ownership/<sha256-canonical-project-root>/ownership.json`. Un proyecto cuya raíz coincida exactamente con el directorio personal puede usar el directorio local de datos del sistema operativo dentro de esa raíz. Aun en ese caso, un `AGENTSYNC_DATA_DIR` explícito debe resolverse fuera de la raíz del proyecto. El directorio de datos de la plataforma es:
+
+Si `$HOME` es un repositorio Git (por ejemplo, uno de dotfiles), el directorio predeterminado del journal queda dentro de esa raíz. Los archivos del journal tienen permisos restringidos, pero los permisos de Git no impiden que el mismo usuario los agregue al índice. Asegúrate de ignorar `.local/share/agentsync` o de no agregar sus archivos.
+
+- Linux: `$XDG_DATA_HOME` si está definido; de lo contrario, `$HOME/.local/share`.
+- macOS: `$HOME/Library/Application Support`.
+- Windows: `%LOCALAPPDATA%` (LocalAppData).
+
+La instantánea puede contener credenciales o tokens del archivo de configuración MCP original. AgentSync nunca registra ese contenido en los logs. En Unix, los directorios de estado usan modo `0700` y los archivos, `0600`. En Windows, AgentSync aplica y verifica una DACL protegida que otorga control total solo al usuario del token del proceso actual.
+
+Los registros del journal no caducan ni se limpian automáticamente. Un registro permanece hasta que se restaura correctamente su configuración MCP. `agentsync clean` no elimina el journal. Después de una restauración correcta se elimina el registro, pero queda el archivo vacío `ownership.lock`. `--keep-backups` solo se aplica a copias de seguridad de symlinks `.bak`; no conserva un journal MCP después de una restauración correcta. `--dry-run` no crea ni modifica archivos MCP ni el estado del journal. Los archivos MCP que sean symlinks se rechazan; AgentSync no los sigue ni reemplaza.
+
+La configuración MCP de Claude Desktop es global, pero el registro del journal pertenece al proyecto que ejecutó `apply`. Las operaciones de AgentSync `apply` y `revert` que apuntan a la misma ruta MCP se serializan mediante un bloqueo compartido por ruta cuando los proyectos usan el mismo directorio de datos predeterminado o el mismo `AGENTSYNC_DATA_DIR` absoluto. Se rechazan las rutas relativas porque pueden resolverse de manera distinta desde directorios de trabajo diferentes. Si los proyectos que comparten una ruta MCP global usan directorios de reemplazo distintos, sus bloqueos también son distintos; configura el mismo reemplazo absoluto para todos. Si se detecta un cambio antes de la comprobación final de publicación o restauración, ese cambio se conserva y `revert` mantiene el registro del journal. Este bloqueo solo coordina procesos de AgentSync: un editor externo que escriba durante la ventana final de comparación y publicación —o comparación y eliminación— no queda coordinado y aún puede competir con la operación.
+
+{/* agentsync:mcp:start */}
+- **Claude Code** — `.mcp.json` (ID de agente: `claude`) — JSON; formato estándar
+- **Claude Desktop** — configuración global dependiente del sistema operativo (ID de agente: `claude-desktop`) — JSON; global; deshabilitado de forma predeterminada
+- **GitHub Copilot** — `.vscode/mcp.json` (ID de agente: `copilot`) — JSON; compartido con VS Code
+- **OpenAI Codex CLI** — `.codex/config.toml` (ID de agente: `codex`) — TOML; mapea encabezados a `http_headers`
+- **Gemini CLI** — `.gemini/settings.json` (ID de agente: `gemini`) — JSON; agrega `trust: true`
+- **VS Code** — `.vscode/mcp.json` (ID de agente: `vscode`) — JSON; compartido con GitHub Copilot
+- **Cursor** — `.cursor/mcp.json` (ID de agente: `cursor`) — JSON; formato estándar
+- **OpenCode** — `opencode.json` (ID de agente: `opencode`) — JSON; formato estándar
+- **Z-Code** — `.zcode/config.json` (ID de agente: `zcode`) — JSON; usa el objeto `mcp.servers` y conserva otros ajustes de Z-Code
+- **MiniMax Code** — `.mcp.json` (ID de agente: `minimax`) — JSON; formato estándar de proyecto
+{/* agentsync:mcp:end */}
+
+## Definir servidores
+
+Define los servidores bajo `[mcp_servers.<name>]`:
+
+```toml
+[mcp_servers.filesystem]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem", "."]
+
+[mcp_servers.git]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-git", "--repository", "."]
+env = { "DEBUG" = "true" }
+```
+
+### Campos de servidor
+
+- **`command`**: ejecutable que se inicia (para transporte stdio).
+- **`args`**: lista de argumentos del comando.
+- **`env`**: pares opcionales de clave y valor para variables de entorno.
+- **`url`**: URL opcional del servidor MCP (para transporte HTTP/SSE).
+- **`headers`**: pares opcionales de clave y valor para encabezados HTTP.
+- **`type`**: tipo de transporte opcional, por ejemplo `stdio`, `http` o `sse`.
+- **`disabled`**: configura `true` para deshabilitar temporalmente un servidor sin eliminarlo.
+
+## Agentes globales
+
+Algunos asistentes guardan su configuración MCP en una ubicación global (de usuario), no en el directorio del proyecto. AgentSync los denomina **agentes globales**.
+
+Actualmente se admite este agente global:
+
+| Agente | Ubicación de configuración |
+| :--- | :--- |
+| **Claude Desktop** | macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`<br/>Linux: `~/.config/Claude/claude_desktop_config.json`<br/>Windows: `%APPDATA%\Claude\claude_desktop_config.json` |
+
+Los agentes globales están **deshabilitados de forma predeterminada** porque escriben fuera del directorio del proyecto. Para habilitar uno:
+
+```toml
+[agents.claude-desktop]
+enabled = true
+description = "Claude Desktop"
+```
+
+No se necesitan destinos symlink para los agentes globales. Solo participan en la sincronización de servidores MCP. Cuando se ejecuta `agentsync apply`, los servidores definidos en `[mcp_servers]` se combinan con el archivo de configuración global, y se conservan los ajustes existentes que no sean MCP (atajos de teclado, tema y otros).
+
+## Cómo funciona
+
+Model Context Protocol (MCP) permite definir servidores de backend para asistentes de IA en un solo lugar y sincronizar automáticamente la configuración entre los agentes compatibles. Así se reduce la duplicación y el riesgo de errores al hacerlo manualmente.
+
+### ¿Qué agentes reciben configuraciones MCP?
+
+**Importante:** solo se generan archivos de configuración MCP para los agentes que:
+
+1. están **configurados explícitamente** en `agentsync.toml` (existe una sección `[agents.<name>]`);
+2. están **habilitados** (`enabled = true`);
+3. están **incluidos en la ejecución actual** (coinciden con el filtro `--agents` o con `default_agents`).
+
+Los agentes que no estén definidos en tu configuración no recibirán archivos MCP, aunque sean compatibles.
+
+```toml
+# Ejemplo: solo claude, copilot y gemini recibirán configuraciones MCP
+[agents.claude]
+enabled = true
+
+[agents.copilot]
+enabled = true
+
+# Cursor NO está configurado, así que no se creará .cursor/mcp.json
+# Aunque AgentSync sea compatible con Cursor, no se generará su configuración MCP
+```
+
+### Pasos de configuración
+
+1. Agrega el bloque `[mcp]` a `.agents/agentsync.toml` y configura `enabled = true`. Si lo necesitas, configura `merge_strategy = "merge" | "overwrite"`.
+2. Define un bloque por cada servidor MCP bajo `[mcp_servers]`.
+3. Ejecuta `agentsync apply`. AgentSync:
+   - reúne todos los servidores definidos en `mcp_servers`;
+   - genera el archivo MCP para cada agente **configurado y habilitado**;
+   - aplica la estrategia elegida: `merge` (predeterminada) u `overwrite`;
+   - escribe los nuevos archivos en la ubicación correcta;
+   - crea los directorios padre necesarios antes de escribir.
+
+> **Recomendación:** usa la estrategia `merge` para evitar sorpresas: se conservan las entradas de servidores existentes que no aparecen en tu TOML.

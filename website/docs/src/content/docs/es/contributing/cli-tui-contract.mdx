@@ -1,0 +1,52 @@
+---
+title: Contrato de compatibilidad de CLI y TUI
+description: Garantías de compatibilidad para la salida CLI de AgentSync y las interfaces interactivas de terminal.
+---
+
+# Contrato de compatibilidad de CLI y TUI
+
+AgentSync puede mejorar su interfaz para personas sin interrumpir a quienes usan la CLI existente, siempre que cada cambio de salida respete este contrato.
+
+## Salida estable para máquinas
+
+Los comandos que admiten `--json` deben tratarlo como el modo de salida de mayor prioridad. Cuando se activa `--json`:
+
+- stdout debe contener únicamente JSON legible por máquinas.
+- Los títulos, colores, indicadores de progreso y sugerencias para personas no deben mezclarse en stdout.
+- Los nombres y significados de los campos JSON existentes deben permanecer estables, salvo que se documente explícitamente una migración del esquema.
+- Los errores deben conservar el comportamiento existente de códigos de salida y devolver JSON estructurado cuando el comando ya admita errores en JSON.
+
+## Modo de salida para personas
+
+La salida para personas está optimizada para su lectura y puede incluir títulos, etiquetas, símbolos Unicode de estado, sugerencias y resúmenes. Debe seguir siendo legible al copiarla desde logs o al canalizarla a otro comando.
+
+Usa el formateador compartido y las reglas de detección del modo de salida. No agregues comprobaciones ad hoc de color o TTY.
+
+## Reglas de TTY y color
+
+AgentSync habilita el color solo cuando stdout es un TTY y no hay una opción compatible activa para deshabilitarlo.
+
+Las opciones actuales para deshabilitar el color son:
+
+- `NO_COLOR` con cualquier valor no vacío.
+- `CLICOLOR=0`.
+- `TERM=dumb`, sin distinguir mayúsculas de minúsculas.
+
+Cuando stdout no es un TTY, AgentSync debe continuar con salida legible para personas sin color, salvo que el usuario solicite `--json`.
+
+## CI y salida canalizada
+
+La salida para CI y canalizada debe usar líneas y ser determinista. Si stdout no es un TTY interactivo, los comandos no deben requerir control del cursor, modo de pantalla alternativa ni animaciones con retornos de carro.
+
+Los flujos con mucho progreso pueden mantener un renderizador en vivo en contextos TTY seguros, pero también deben ofrecer una alternativa sencilla, basada en líneas, para logs y salida canalizada.
+
+## Compatibilidad y cambios de salida
+
+Antes de cambiar el texto visible, identifica si el consumidor es una persona o un script. Si un script podría depender del cambio, actualiza primero el contrato correspondiente, añade pruebas y documenta la migración.
+
+- Conserva el comportamiento JSON existente, salvo que un cambio de esquema esté documentado y probado.
+- Mantén los diagnósticos fuera de stdout cuando stdout contiene JSON funcional.
+- Prueba la salida tanto en una TTY como en una salida canalizada cuando cambie el renderizado interactivo.
+- No uses formato de terminal para añadir campos de datos a una interfaz destinada a máquinas.
+
+El contrato se aplica a los comandos de AgentSync y a los flujos TUI que producen salida de terminal. Una vista interactiva puede cambiar su presentación; esos cambios no deben alterar silenciosamente la salida estable para máquinas ni los códigos de salida documentados.

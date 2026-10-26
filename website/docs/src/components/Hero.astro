@@ -1,16 +1,21 @@
 ---
-import { withBase } from "../utils/links";
+import { withBase, withLocale } from "../utils/links";
 import HeroDiagram from "./HeroDiagram.astro";
 import InstallCommand from "./InstallCommand.astro";
 
 const heroFromProps = Astro.props?.hero;
 const heroFromRoute = Astro.locals?.starlightRoute?.entry?.data?.hero;
 const hero = heroFromProps ?? heroFromRoute ?? {};
+const locale = Astro.locals.starlightRoute.locale;
+const isSpanish = locale === "es";
 const title =
-	hero.title ?? "Sync Your AI Agents — Instantly.";
+	hero.title ??
+	(isSpanish ? "Sincroniza tus agentes de IA al instante." : "Sync Your AI Agents — Instantly.");
 const tagline =
 	hero.tagline ??
-	"AgentSync keeps your AI assistant configurations synchronized, so you can focus on coding, not copy-pasting.";
+	(isSpanish
+		? "AgentSync mantiene sincronizadas las configuraciones de tus asistentes de IA para que puedas programar, sin copiar y pegar archivos."
+		: "AgentSync keeps your AI assistant configurations synchronized, so you can focus on coding, not copy-pasting.");
 
 // Handle Astro's image object (has .src property) or use fallback
 const rawImage = hero?.image?.file;
@@ -22,15 +27,22 @@ const imageFile =
 const actions = (
 	hero?.actions ?? [
 		{
-			text: "Get started",
+			text: isSpanish ? "Comienza aquí" : "Read the docs",
 			link: "/guides/getting-started/",
 			variant: "primary",
 		},
-		{ text: "Contribute", link: "/contributing/contributing/", variant: "secondary" },
+		{
+			text: isSpanish ? "Contribuir" : "Contribute",
+			link: "/contributing/contributing/",
+			variant: "secondary",
+		},
 	]
 ).map((action) => ({
 	...action,
-	link: typeof action.link === "string" ? withBase(action.link) : action.link,
+	link:
+		typeof action.link === "string"
+			? withBase(withLocale(action.link, locale))
+			: action.link,
 }));
 ---
 
@@ -41,7 +53,7 @@ const actions = (
     <div class="hero-copy animate-fade-in-up">
       <div class="hero-badge">
         <span class="badge-dot"></span>
-        <span>Open Source · MIT License</span>
+        <span>{isSpanish ? "Código abierto · Licencia MIT" : "Open Source · MIT License"}</span>
       </div>
       <h1 class="hero-title">{title}</h1>
       <p class="hero-sub">{tagline}</p>
@@ -76,7 +88,9 @@ const actions = (
           )
         }
       </div>
-      <p class="compat-label">Works with the tools you already use</p>
+      <p class="compat-label">
+        {isSpanish ? "Compatible con las herramientas que ya usas" : "Works with the tools you already use"}
+      </p>
       <div class="hero-tech-badges">
         <span class="tech-badge">
           <span class="tech-dot" aria-hidden="true"></span>

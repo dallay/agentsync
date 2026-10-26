@@ -1,6 +1,6 @@
 ---
 // FeatureItem - Individual feature card with glassmorphism and hover effects
-import { withBase } from "../utils/links";
+import { withBase, withLocale } from "../utils/links";
 
 interface Props {
 	title: string;
@@ -11,7 +11,9 @@ interface Props {
 }
 
 const { title, description, icon = "✨", href, variant = "lead" } = Astro.props;
-const resolvedHref = typeof href === "string" ? withBase(href) : href;
+const locale = Astro.locals.starlightRoute.locale;
+const resolvedHref =
+	typeof href === "string" ? withBase(withLocale(href, locale)) : href;
 const Tag = resolvedHref ? "a" : "div";
 const variantClass = variant === "compact" ? "is-compact" : "is-lead";
 ---
