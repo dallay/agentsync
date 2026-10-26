@@ -1,0 +1,154 @@
+---
+title: Configuration Recipes
+description: Practical AgentSync configurations with preview, apply, and verification steps.
+---
+
+import BaseLink from "../../../components/BaseLink.astro";
+
+Use these recipes as starting points for common repository setups. Each recipe shows the target configuration and the commands to review, preview, apply, and verify the result. Run the commands from the project root, where AgentSync can find `.agents/agentsync.toml`. The TOML examples are independent; do not concatenate them verbatim because that can repeat table declarations. Merge the target sections you need into your existing configuration.
+
+AgentSync creates and checks configured links. It does not confirm that an assistant loads a destination or follows its contents. Assistant-specific discovery rules remain outside AgentSync.
+
+## Share one instruction file with multiple assistants
+
+Keep one canonical instruction file in `.agents/AGENTS.md`, then configure one target per assistant. Each destination points to the same source.
+
+```toml
+source_dir = "."
+
+[agents.claude]
+enabled = true
+
+[agents.claude.targets.instructions]
+source = "AGENTS.md"
+destination = "CLAUDE.md"
+type = "symlink"
+
+[agents.codex]
+enabled = true
+
+[agents.codex.targets.instructions]
+source = "AGENTS.md"
+destination = "AGENTS.md"
+type = "symlink"
+```
+
+Review both assistant configurations, then preview and apply the targets:
+
+```bash
+agentsync inspect --agent claude
+agentsync inspect --agent codex
+agentsync apply --dry-run --agents claude,codex
+agentsync apply --agents claude,codex
+agentsync status
+```
+
+`inspect` resolves one assistant at a time. `apply --dry-run` previews the selected targets without changing the filesystem. `status` checks all configured enabled managed targets, not only the agents named in `apply`; ensure other enabled targets are configured and ready before applying the first recipe.
+
+## Map a few instruction files to known modules
+
+Use `module-map` when the source files and destination directories are known and should be explicit in configuration. Store the source files in `.agents/instructions/`:
+
+```text
+.agents/
+├── agentsync.toml
+└── instructions/
+    ├── api.md
+    └── web.md
+```
+
+Add this target to `.agents/agentsync.toml`:
+
+```toml
+source_dir = "."
+
+[agents.claude]
+enabled = true
+
+[agents.claude.targets.module_instructions]
+source = "."
+destination = "."
+type = "module-map"
+
+[[agents.claude.targets.module_instructions.mappings]]
+source = "instructions/api.md"
+destination = "services/api"
+
+[[agents.claude.targets.module_instructions.mappings]]
+source = "instructions/web.md"
+destination = "apps/web"
+```
+
+With Claude's `CLAUDE.md` convention, the resulting links are `services/api/CLAUDE.md` and `apps/web/CLAUDE.md`. AgentSync links each source file; it does not combine those files with the root instructions.
+
+```bash
+agentsync inspect --agent claude
+agentsync apply --dry-run --agents claude
+agentsync apply --agents claude
+agentsync status
+```
+
+## Project repeated instruction files with `nested-glob`
+
+Use `nested-glob` when a naming convention identifies instruction files across a repository. In this example, project-owned `AGENTS.md` files are linked as `CLAUDE.md` files in their existing directories:
+
+```toml
+source_dir = "."
+
+[agents.claude]
+enabled = true
+
+[agents.claude.targets.nested_instructions]
+type = "nested-glob"
+source = "."
+pattern = "**/AGENTS.md"
+destination = "{relative_path}/CLAUDE.md"
+exclude = [".agents/**", "**/node_modules/**", "**/.git/**"]
+```
+
+For `nested-glob`, `source` is relative to the project root. `{relative_path}` is the matched file's parent directory relative to the search root; a match at the root uses `.`. Review the discovered destinations before applying, especially when a repository contains generated or vendored directories.
+
+```bash
+agentsync inspect --agent claude
+agentsync apply --dry-run --agents claude
+agentsync apply --agents claude
+agentsync status
+```
+
+This recipe controls which files AgentSync discovers and where it links them. It does not enable, configure, or reproduce an assistant's native nested-instruction loading behavior. See <BaseLink href="/concepts/instruction-files/">Instruction Files</BaseLink> for that boundary and the <BaseLink href="/concepts/sync-types/">sync type decision guide</BaseLink> for pattern trade-offs.
+
+## Share a skills directory
+
+For the simplest skills layout, keep skills under `.agents/skills/` and link the directory to the assistant's configured skills path:
+
+```toml
+source_dir = "."
+
+[agents.claude]
+enabled = true
+
+[agents.claude.targets.skills]
+source = "skills"
+destination = ".claude/skills"
+type = "symlink"
+```
+
+Review and apply the target as usual:
+
+```bash
+agentsync inspect --agent claude
+agentsync apply --dry-run --agents claude
+agentsync apply --agents claude
+agentsync status
+```
+
+This recipe synchronizes a local directory. To install or update skills from a provider, use the <BaseLink href="/guides/skills/">Skills guide</BaseLink> instead.
+
+## After applying
+
+- Read `agentsync status` and resolve reported missing, conflicting, or incorrect links.
+- Use `agentsync inspect --agent <id>` to review one assistant's resolved configuration and diagnostics.
+- Use `agentsync inspect --agent <id> --json` when another tool needs the resolved report as JSON. Add `--strict` to exit with an error when the report contains an error-severity diagnostic.
+- Keep managed destinations out of version control by default. If your team intentionally commits those files, follow the <BaseLink href="/guides/gitignore-team-workflows/">Gitignore Team Workflows guide</BaseLink>.
+
+For field definitions and command options, see the <BaseLink href="/reference/configuration/">Configuration Reference</BaseLink> and <BaseLink href="/reference/cli/">CLI Reference</BaseLink>.

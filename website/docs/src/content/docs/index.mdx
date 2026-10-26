@@ -43,7 +43,7 @@ import TerminalDemo from '../../components/TerminalDemo.astro';
   ><IconFileSymlink slot="icon" /></FeatureItem>
   <FeatureItem
     title="Works Across Assistants"
-    description="Claude, Copilot, Cursor, Gemini, Codex, OpenCode, and 25+ more — one config covers your whole toolchain."
+    description="Configure many assistant targets; use native MCP formatting for the supported assistants that have a formatter."
     href="/reference/configuration/"
   ><IconLayoutGrid slot="icon" /></FeatureItem>
   <FeatureItem
@@ -76,18 +76,15 @@ import TerminalDemo from '../../components/TerminalDemo.astro';
 
 ---
 
-## Quick Start
+## Pick a path
 
-Get started in under a minute — no signup, no SaaS, just the CLI:
+Start with the path that matches your goal:
 
-<TerminalDemo />
+- **Install and sync your first assistant:** follow <BaseLink href="/guides/getting-started/">Getting Started</BaseLink>.
+- **Configure common setups:** follow the <BaseLink href="/guides/recipes/">Configuration Recipes</BaseLink>.
+- **Organize instruction files:** read <BaseLink href="/concepts/instruction-files/">Instruction Files</BaseLink> and <BaseLink href="/concepts/sync-types/">Sync Types</BaseLink>.
+- **Configure MCP servers or skills:** use the <BaseLink href="/guides/mcp/">MCP Integration</BaseLink> and <BaseLink href="/guides/skills/">Skills</BaseLink> guides.
+- **Check intended configuration or drift:** use <BaseLink href="/guides/inspect/">Inspect Configuration</BaseLink> and <BaseLink href="/reference/status-output/">Status Output</BaseLink>.
+- **Automate team setup or diagnose an issue:** see <BaseLink href="/guides/git-hook-automation/">Git Hook Automation</BaseLink>, <BaseLink href="/guides/gitignore-team-workflows/">Gitignore Team Workflows</BaseLink>, and <BaseLink href="/guides/troubleshooting/">Troubleshooting</BaseLink>.
 
-Full reference lives in the <BaseLink href="/guides/getting-started/">Getting Started guide</BaseLink>, including one-off runs, binaries, and source builds.
-
-This documentation is the authoritative project reference.
-
-> **Canonical Source**: All agent instructions and skills are maintained in `.agents/AGENTS.md`. This is the single source of truth—they get synced everywhere!
-
-If you are deciding how your team should handle `.gitignore`, start with the <BaseLink href="/guides/gitignore-team-workflows/">Gitignore Team Workflows guide</BaseLink>. It explains the default managed mode, the committed-destination opt-out mode, and when `--no-gitignore` is appropriate.
-
-If you use AgentSync from Windows, the <BaseLink href="/guides/windows-symlink-setup/">Windows Symlink Setup guide</BaseLink> covers native prerequisites, when WSL is the lower-friction option, and how to verify symlink health after `apply`.
+For field definitions and command flags, use the <BaseLink href="/reference/configuration/">Configuration Reference</BaseLink> and <BaseLink href="/reference/cli/">CLI Reference</BaseLink>.

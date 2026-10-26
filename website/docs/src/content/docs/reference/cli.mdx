@@ -3,6 +3,7 @@ title: CLI Reference
 description: Detailed documentation for all agentsync commands.
 ---
 
+import BaseLink from "../../../components/BaseLink.astro";
 import CommandTabs from '../../../components/CommandTabs.astro';
 
 `agentsync` provides a straightforward set of commands to manage your AI agent configurations.
@@ -29,7 +30,7 @@ agentsync status --log-format json --json >status.json 2>diagnostics.jsonl
 The status array is written to `status.json`; structured diagnostic events are written to
 `diagnostics.jsonl`.
 
-If you run AgentSync from Windows and need symlink prerequisites, WSL setup positioning, or recovery help, use the <a href="/guides/windows-symlink-setup/">Windows Symlink Setup guide</a>. The command reference below stays focused on CLI behavior.
+If you run AgentSync from Windows and need symlink prerequisites, WSL setup positioning, or recovery help, use the <BaseLink href="/guides/windows-symlink-setup/">Windows Symlink Setup guide</BaseLink>. The command reference below stays focused on CLI behavior.
 
 ## Commands
 
@@ -117,9 +118,9 @@ In workflow terms, `agentsync apply` reconciles your local managed destinations 
 - committed-destination opt-out workflow: removes a stale AgentSync-managed block when `[gitignore].enabled = false`
 - temporary CLI opt-out: skips all `.gitignore` reconciliation when `--no-gitignore` is present
 
-For the full team decision guide, see <a href="/guides/gitignore-team-workflows/">Gitignore Team Workflows</a>. For install-time and Git hook automation patterns around `apply`, see <a href="/guides/git-hook-automation/">Git Hook Automation</a>.
+For the full team decision guide, see <BaseLink href="/guides/gitignore-team-workflows/">Gitignore Team Workflows</BaseLink>. For install-time and Git hook automation patterns around `apply`, see <BaseLink href="/guides/git-hook-automation/">Git Hook Automation</BaseLink>.
 
-If `apply` fails because the local Windows environment cannot create symlinks yet, fix the shell/setup prerequisites first with the <a href="/guides/windows-symlink-setup/">Windows Symlink Setup guide</a>.
+If `apply` fails because the local Windows environment cannot create symlinks yet, fix the shell/setup prerequisites first with the <BaseLink href="/guides/windows-symlink-setup/">Windows Symlink Setup guide</BaseLink>.
 
 ```bash
 agentsync apply [OPTIONS]
@@ -198,8 +199,6 @@ agentsync clean [FLAGS]
 
 Restores the pre-apply state: removes managed symbolic links and restores the `.bak` backups of files that existed before `apply` replaced them. Unlike `clean` (which only deletes), `revert` brings your original files back.
 
-This core revert restores managed symlink state only. It does not inspect or restore MCP config files; the full pre-apply state may therefore remain until the MCP-aware follow-up is available.
-
 ```bash
 agentsync revert [FLAGS]
 ```
@@ -218,7 +217,7 @@ Behavior:
 - Regular user files that are not managed symlinks are never touched; a backup is only restored into an absent destination or over a managed symlink — never over a real file that appeared later.
 - On complete, unfiltered symlink-revert runs, the AgentSync-managed `.gitignore` block is removed. With `--agents`, a narrowing `default_agents`, or a symlink-revert error/skip, the block is left alone because some managed destinations may remain (re-run `apply` to reconcile it). An MCP snapshot skip does not prevent this cleanup because the block tracks symlink destinations, not MCP config files.
 - For `symlink-contents` targets, `revert` removes managed child links but may leave the destination directory empty. It cannot infer whether the container existed before `apply`, so it does not delete it.
-- MCP configs are restored from the complete apply-time snapshot when the file still matches the state recorded by `apply`. If no file existed before, the generated regular file is removed only when it is unchanged. Later edits, symlinks, invalid journal state, or a partial owner selection preserve the file and journal and report a skip or error; there is no three-way merge. A missing journal from an older AgentSync version means the original state cannot be reconstructed, so the MCP file is left as-is rather than removing servers by name or value. See the [MCP journal and restore guide](/guides/mcp/#reverting-mcp-configurations) for journal location, retention, and recovery details.
+- MCP configs are restored from the complete apply-time snapshot when the file still matches the state recorded by `apply`. If no file existed before, the generated regular file is removed only when it is unchanged. Later edits, symlinks, invalid journal state, or a partial owner selection preserve the file and journal and report a skip or error; there is no three-way merge. A missing journal from an older AgentSync version means the original state cannot be reconstructed, so the MCP file is left as-is rather than removing servers by name or value. See the <BaseLink href="/guides/mcp/#reverting-mcp-configurations">MCP journal and restore guide</BaseLink> for journal location, retention, and recovery details.
 
 Examples:
 
@@ -273,7 +272,7 @@ agentsync skill suggest [--json] [--install [--all]]
 Behavior:
 
 - `skill suggest` is read-only by default.
-- Detection scope currently supports 110+ technologies. See the [Skills guide](/guides/skills/#supported-repository-technology-detection-current-scope) for a representative list.
+- Detection scope currently supports 110+ technologies. See the <BaseLink href="/guides/skills/#supported-repository-technology-detection-current-scope">Skills guide</BaseLink> for a representative list.
 - Detection comes from Rust repository scanning, while recommendation mapping comes from AgentSync's curated catalog.
 - Recommendations are opinionated, not exhaustive.
 - The runtime loads an embedded declarative catalog first, then optionally overlays valid provider metadata.
@@ -545,7 +544,7 @@ Examples:
 - `agentsync inspect --agent codex --json`
 - `agentsync inspect --agent codex --json --strict`
 
-The JSON contract is documented in <a href="/reference/inspect-output/">Inspect output</a>.
+The JSON contract is documented in <BaseLink href="/reference/inspect-output/">Inspect output</BaseLink>.
 
 ---
 
@@ -599,4 +598,4 @@ Examples
 - With custom project root:
   - <CommandTabs command="status --project-root /path/to/repo --json" />
 
-On Windows, `status` is also a practical post-setup verification step after you fix symlink permissions or switch to WSL. See the <a href="/guides/windows-symlink-setup/">Windows Symlink Setup guide</a> for the broader verification flow.
+On Windows, `status` is also a practical post-setup verification step after you fix symlink permissions or switch to WSL. See the <BaseLink href="/guides/windows-symlink-setup/">Windows Symlink Setup guide</BaseLink> for the broader verification flow.

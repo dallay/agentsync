@@ -4,7 +4,7 @@ description: Quickstart for installing and using agentsync in your project.
 ---
 
 import BaseLink from "../../../components/BaseLink.astro";
-import CommandTabs from '../../../components/CommandTabs.astro';
+import CommandTabs from "../../../components/CommandTabs.astro";
 
 `agentsync` is a fast, portable CLI tool for synchronizing AI agent configurations across multiple coding assistants using symbolic links.
 
@@ -60,36 +60,31 @@ bunx @dallay/agentsync apply
 
 Download the latest release for your platform:
 
-#### macOS (Apple Silicon)
+Release binaries are attached to the [GitHub Releases](https://github.com/dallay/agentsync/releases) page. The asset filename includes the release version, so use GitHub CLI to select the current asset by platform pattern. This example downloads the macOS Apple Silicon archive:
 
 ```bash
-curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-aarch64-apple-darwin.tar.gz
-tar xzf agentsync-aarch64-apple-darwin.tar.gz
-sudo mv agentsync-*/agentsync /usr/local/bin/
+gh release download --repo dallay/agentsync --pattern '*aarch64-apple-darwin.tar.gz'
+tar xzf agentsync-*-aarch64-apple-darwin.tar.gz
+sudo install agentsync-*/agentsync /usr/local/bin/agentsync
 ```
 
-#### Linux (x86_64)
-
-```bash
-curl -LO https://github.com/dallay/agentsync/releases/latest/download/agentsync-x86_64-unknown-linux-gnu.tar.gz
-tar xzf agentsync-x86_64-unknown-linux-gnu.tar.gz
-sudo mv agentsync-*/agentsync /usr/local/bin/
-```
+Available targets are Linux x64/ARM64 with GNU or musl (`x86_64-unknown-linux-gnu`, `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-gnu`, `aarch64-unknown-linux-musl`), macOS Intel/Apple Silicon (`x86_64-apple-darwin`, `aarch64-apple-darwin`), and Windows x64/ARM64 (`x86_64-pc-windows-msvc`, `aarch64-pc-windows-msvc`). Windows assets are `.zip`; the others are `.tar.gz`. Replace the target in the pattern to select another platform.
 
 ### From Source (Requires Rust 1.89+)
 
-If you have Rust (1.89+) and Node.js (22.22.0+) installed, you can install directly from [crates.io](https://crates.io/crates/agentsync) or from the repository:
+If you have Rust (1.89+) installed, you can install the published crate from [crates.io](https://crates.io/crates/agentsync):
 
 ```bash
-
-# From crates.io
-
 cargo install agentsync
+```
 
-# From GitHub
+To install from the repository, install Rust 1.89+ and Node.js 22.22.0+ first:
 
+```bash
 cargo install --git https://github.com/dallay/agentsync
 ```
+
+The npm wrapper requires Node.js 18 or newer. Building from source requires Rust 1.89+. The published crate does not require Node.js; installing from the Git repository also requires Node.js 22.22.0+ for generated build steps.
 
 ## Basic Usage
 
