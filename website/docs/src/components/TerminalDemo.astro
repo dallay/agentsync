@@ -2,16 +2,22 @@
 // TerminalDemo — single narrative terminal: init → apply → status.
 // Every marker below is verbatim CLI output (✔ Created, ✔ Linked,
 // ✔ Sync complete, ✔ OK, Status: All good); absolute paths trimmed.
+const isSpanish = Astro.locals.starlightRoute.locale === "es";
 ---
 
-<figure class="terminal-demo" aria-label="Terminal session: initialize, apply, and verify AgentSync">
+<figure
+	class="terminal-demo"
+	aria-label={isSpanish
+		? "Sesión de terminal: inicializar, aplicar y verificar AgentSync"
+		: "Terminal session: initialize, apply, and verify AgentSync"}
+>
 	<div class="terminal-bar" aria-hidden="true">
 		<span class="terminal-dot"></span>
 		<span class="terminal-dot"></span>
 		<span class="terminal-dot"></span>
 		<span class="terminal-title">terminal</span>
 	</div>
-<pre class="terminal-body"><code><span class="t-prompt">$</span> npx @dallay/agentsync init
+	<pre class="terminal-body"><code><span class="t-prompt">$</span> npx @dallay/agentsync init
 <span class="t-ok">✔ Created:</span> .agents/agentsync.toml
 <span class="t-ok">✔ Created:</span> .agents/AGENTS.md
 <span class="t-done">✨ Initialization complete!</span>
@@ -51,45 +57,38 @@ Status: All good</code></pre>
 	}
 
 	.terminal-title {
-		margin-left: 8px;
-		font-family: var(--as-font-mono, ui-monospace, monospace);
+		margin-left: auto;
+		color: var(--as-text-muted, #6b7280);
+		font-family: var(--sl-font-mono);
 		font-size: 0.75rem;
-		color: var(--as-text-muted, #858e9a);
 	}
 
 	.terminal-body {
 		margin: 0;
-		padding: var(--as-space-md, 16px);
-		background: transparent;
-		border: none;
-		box-shadow: none;
-		font-size: 0.85rem;
+		padding: var(--as-space-lg, 24px);
 		overflow-x: auto;
-	}
-
-	.terminal-body code {
-		background: transparent;
-		border: none;
-		padding: 0;
+		color: var(--as-text-secondary, #d1d5db);
+		font-family: var(--sl-font-mono);
+		font-size: 0.8125rem;
+		line-height: 1.8;
 	}
 
 	.t-prompt {
-		color: var(--as-primary, #00e5c4);
-		font-weight: 700;
-		user-select: none;
+		color: var(--as-accent, #a78bfa);
 	}
 
 	.t-ok {
-		color: var(--as-primary, #00e5c4);
+		color: var(--as-success, #34d399);
 	}
 
 	.t-done {
-		color: var(--as-text-primary, #fff);
+		color: var(--as-accent, #a78bfa);
 	}
 
-	/* Light mode: violet is the system accent; cyan text on paper fails AA. */
-	:global([data-theme="light"]) .t-prompt,
-	:global([data-theme="light"]) .t-ok {
-		color: var(--as-secondary, #7c4dff);
+	@media (max-width: 760px) {
+		.terminal-body {
+			padding: var(--as-space-md, 16px);
+			font-size: 0.75rem;
+		}
 	}
 </style>

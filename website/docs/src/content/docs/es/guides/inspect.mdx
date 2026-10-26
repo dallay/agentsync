@@ -1,0 +1,27 @@
+---
+title: Inspeccionar la configuración administrada por AgentSync
+description: Revisa las fuentes declaradas, los destinos previstos, las diferencias observadas y las entradas MCP de un asistente.
+---
+
+import BaseLink from "../../../../components/BaseLink.astro";
+
+Usa `inspect` para revisar qué pretende administrar AgentSync para un asistente antes de aplicar cambios.
+
+```bash
+agentsync inspect --agent opencode
+agentsync inspect --agent codex --json
+```
+
+El informe relaciona cada destino configurado con su fuente y destino final. También muestra el estado observado del sistema de archivos, por ejemplo, si falta una fuente o un destino, si un enlace está roto o si se desvió de lo esperado. Para skills y comandos configurados como `symlink-contents`, los enlaces secundarios aparecen individualmente.
+
+El comando es de solo lectura y no requiere conexión. No repara diferencias, escribe archivos, descarga plugins, expande variables de entorno, ejecuta CLIs de asistentes ni inicia servidores MCP. Una ejecución normal devuelve `0` cuando puede generar un informe. Agrega `--strict` para devolver `1` si existe un diagnóstico con severidad de error. Así los equipos pueden revisar informes sin convertir cada advertencia en un fallo de CI.
+
+Por ejemplo, puedes generar JSON estricto en una comprobación:
+
+```bash
+agentsync inspect --agent opencode --json --strict > inspect.json
+```
+
+La precedencia de MCP sigue las reglas actuales de `apply`: las declaraciones explícitas `[mcp_servers.*]` forman el conjunto base; las contribuciones de plugins usan un espacio de nombres y requieren aprobación en `plugins.allowed_mcp`. Si un plugin declara el mismo nombre que una entrada explícita con una definición distinta, `apply` rechaza el conflicto. Los nombres de servidores existentes que no administra AgentSync se informan sin exponer sus valores de configuración. El comportamiento de combinación conserva o reemplaza entradas del destino según `mcp.merge_strategy`.
+
+`inspect` informa solo sobre la configuración que administra AgentSync. No afirma que estén ausentes los ajustes nativos del proveedor, globales, de usuario, de organización o de sesión. `provider_support: "unknown"` significa que AgentSync no afirma que el asistente admita de forma nativa esa capacidad semántica. Consulta la <BaseLink href="/reference/inspect-output/">referencia de salida de inspect</BaseLink> para ver el esquema JSON y los códigos de diagnóstico.

@@ -1,0 +1,62 @@
+---
+title: Referencia de espacios de trabajo
+description: Estructura del repositorio y entorno de desarrollo con varios lenguajes.
+---
+
+`agentsync` combina un núcleo de alto rendimiento en Rust con una capa de distribución en TypeScript.
+
+## Estructura del repositorio
+
+- `src/`: lógica central y CLI en **Rust**.
+- `npm/agentsync/`: wrapper **TypeScript** para distribuir el paquete npm.
+- `website/docs/`: sitio de documentación construido con **Starlight**.
+- `tests/`: pruebas de integración para la CLI.
+
+## Workspace de Rust (núcleo)
+
+El núcleo está escrito en Rust para ofrecer rendimiento, seguridad y una distribución sencilla como binario.
+
+- **Herramientas**: Cargo, Make.
+- **Versión**: Rust 1.89 o posterior (Edition 2024).
+- **Comandos principales**:
+
+  ```bash
+  cargo build    # Compila el binario de depuración
+  cargo test     # Ejecuta pruebas unitarias y de integración
+  cargo run      # Ejecuta la CLI localmente
+  ```
+
+- **Manejo de errores**: usa `thiserror` para errores propios y `anyhow` para el manejo de errores de la aplicación.
+
+## Workspace de JavaScript (distribución)
+
+El workspace de JS funciona como wrapper y facilita la instalación mediante `pnpm` o npm. También administra la descarga de binarios por plataforma.
+
+- **Herramientas**: pnpm, TypeScript, Make.
+- **Ubicación**: `npm/agentsync/`.
+- **Comandos principales**:
+
+  ```bash
+  pnpm --filter @dallay/agentsync run typecheck  # Verifica los tipos
+  pnpm --filter @dallay/agentsync run build      # Compila TypeScript a JS
+  ```
+
+- **Tipado estricto**: aplicamos configuraciones estrictas de TypeScript. Evita usar `any`.
+
+## Herramientas modernas
+
+Usamos un **Makefile** para coordinar tareas entre Rust y JavaScript.
+
+- **`make install`**: instala todas las dependencias de JS y Rust.
+- **`make verify-all`**: ejecuta toda la suite de verificación (pruebas, linters y build de documentación).
+- **`make rust-test`**: ejecuta las pruebas unitarias de Rust.
+- **`make js-test`**: ejecuta las pruebas de JavaScript.
+- **`make fmt`**: formatea todo el código de Rust y JS.
+
+También recomendamos estas herramientas de CLI:
+
+- `bat`: muestra archivos con resaltado de sintaxis (alternativa a `cat`).
+- `rg` (ripgrep): búsqueda recursiva rápida (alternativa a `grep`).
+- `fd`: alternativa sencilla y rápida a `find`.
+- `sd`: herramienta intuitiva para buscar y reemplazar texto (alternativa a `sed`).
+- `eza`: listado de directorios con más funciones (alternativa a `ls`).

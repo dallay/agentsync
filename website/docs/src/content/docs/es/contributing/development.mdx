@@ -1,0 +1,82 @@
+---
+title: Guía de desarrollo
+description: Flujo de desarrollo de AgentSync para Rust y TypeScript.
+---
+
+import BaseLink from "../../../../components/BaseLink.astro";
+
+AgentSync es un monorepo que combina un núcleo de alto rendimiento en Rust con una capa de distribución en TypeScript. Esta guía resume el flujo de desarrollo de ambos componentes.
+
+## Estructura del monorepo
+
+- `src/`: lógica central y CLI en **Rust**.
+- `npm/agentsync/`: wrapper **TypeScript** para distribuir el paquete npm.
+- `website/docs/`: sitio de documentación construido con **Starlight**.
+- `tests/`: pruebas de integración para la CLI.
+
+## Desarrollo en Rust
+
+El núcleo está escrito en Rust para ofrecer rendimiento, seguridad y una distribución sencilla como binario.
+
+### Herramientas y versiones
+
+- **Versión**: Rust 1.89 o posterior (Edition 2024).
+- **Herramienta principal**: `cargo`.
+
+### Comandos habituales
+
+```bash
+cargo build          # Compila el binario de depuración
+cargo test           # Ejecuta las pruebas unitarias y de integración
+cargo run -- apply   # Ejecuta la CLI local con argumentos
+cargo clippy         # Analiza el código
+cargo fmt            # Formatea el código
+```
+
+### Manejo de errores
+
+Usamos `thiserror` para definir errores recuperables propios en el núcleo y `anyhow` para el manejo de errores de nivel superior en los puntos de entrada de la CLI.
+
+## Desarrollo en JavaScript y TypeScript
+
+El workspace de JS actúa como wrapper y facilita la instalación mediante `pnpm` o npm. Administra la descarga de binarios por plataforma y ofrece una API programática.
+
+### Herramientas y versiones
+
+- **Node.js**: >=18 (requisito de `npm/agentsync`).
+- **Node.js para desarrollo**: v24.14.0 o posterior (recomendado; consulta `.nvmrc`).
+- **Administrador de paquetes**: `pnpm` 10 o posterior.
+- **Ubicación**: `npm/agentsync/`.
+
+### Comandos habituales
+
+```bash
+pnpm install        # Instala dependencias
+pnpm run             # Muestra los scripts disponibles
+pnpm --filter agentsync run build
+pnpm --filter agentsync run typecheck
+```
+
+### Pruebas y calidad
+
+Desde la raíz del repositorio, ejecuta las comprobaciones relevantes para tu cambio:
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --all-features
+pnpm --filter agentsync run test
+pnpm --filter agentsync-docs run build
+```
+
+Para la lista de comandos y las expectativas de cada área, consulta `.agents/AGENTS.md` y el `Makefile`. Evita ejecutar una validación amplia si un comando enfocado da evidencia suficiente para un cambio pequeño.
+
+## Compilar el sitio de documentación
+
+El sitio está en `website/docs/` y usa Astro con Starlight. Para compilarlo desde la raíz del repositorio, ejecuta:
+
+```bash
+pnpm --filter agentsync-docs run build
+```
+
+Si modificas contenido o navegación, comprueba que las rutas generadas mantengan el idioma correcto. Consulta la <BaseLink href="/reference/configuration/">referencia de configuración</BaseLink> y la <BaseLink href="/reference/cli/">referencia de CLI</BaseLink> para revisar los detalles técnicos.

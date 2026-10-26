@@ -1,0 +1,79 @@
+---
+title: Tipos de sincronización
+description: Los cuatro tipos de sincronización — symlink, symlink-contents, nested-glob y module-map — con ejemplos y recomendaciones de uso.
+---
+
+import BaseLink from "../../../../components/BaseLink.astro";
+
+Cada destino de tu configuración `agentsync.toml` —cada entrada bajo `[agents.<name>.targets.*]`— tiene un **tipo de sincronización**. Este tipo define cómo AgentSync convierte una fuente en enlaces simbólicos administrados en los destinos.
+
+| Tipo de sincronización | Qué hace | Cuándo conviene usarlo |
+| :--- | :--- | :--- |
+| `symlink` | Crea un enlace simbólico directo desde el destino hasta la fuente (un archivo o un directorio completo). | El caso habitual: `CLAUDE.md`, `.claude/skills/`. |
+| `symlink-contents` | Crea un enlace simbólico por cada elemento elegible dentro de un directorio fuente. | Directorios de comandos o skills cuando el destino debe seguir siendo un directorio real. |
+| `nested-glob` | Busca archivos de forma recursiva con un patrón glob y crea un enlace por cada coincidencia usando destinos basados en plantillas. | Monorepos con archivos de contexto anidados. |
+| `module-map` | Asocia archivos fuente concretos con directorios de módulos específicos. | Distribuir archivos de contexto entre módulos. |
+
+## `symlink`
+
+Crea un enlace simbólico directo en `destination` que apunta a `source`. Si `source` es un directorio, se enlaza el directorio completo.
+
+```toml
+[agents.claude.targets.instructions]
+source = "AGENTS.md"
+destination = "CLAUDE.md"
+type = "symlink"
+```
+
+## `symlink-contents`
+
+Crea enlaces simbólicos individuales para cada archivo elegible *dentro* del directorio `source` y los coloca en el directorio contenedor `destination`. El destino sigue siendo un directorio real.
+
+```toml
+[agents.claude.targets.commands]
+source = "commands"
+destination = ".claude/commands"
+type = "symlink-contents"
+```
+
+Puedes filtrar los elementos que se enlazan con un patrón glob:
+
+```toml
+[agents.claude.targets.commands]
+source = "commands"
+destination = ".claude/commands"
+type = "symlink-contents"
+pattern = "*.md"
+```
+
+## `nested-glob`
+
+Busca archivos de forma recursiva desde `source` y crea un enlace simbólico por cada coincidencia. Usa una plantilla de destino para conservar la estructura de directorios:
+
+```toml
+[agents.claude.targets.nested_instructions]
+source = "."
+pattern = "**/AGENTS.md"
+destination = "{relative_path}/CLAUDE.md"
+type = "nested-glob"
+exclude = [".agents/**", "**/node_modules/**", "**/.git/**"]
+```
+
+La plantilla admite `{relative_path}`, `{file_name}`, `{stem}` y `{ext}`. Consulta la guía de <BaseLink href="/guides/recipes/">recetas de configuración</BaseLink> para ver el flujo de revisión y aplicación. AgentSync decide qué fuentes encuentra y dónde crea enlaces; el tipo de sincronización no determina cómo cada asistente descubre o combina archivos de instrucciones.
+
+## `module-map`
+
+Asocia fuentes específicas con directorios de módulos. Cada asociación puede elegir el nombre de archivo de destino mediante la convención correspondiente:
+
+```toml
+[agents.claude.targets.modules]
+source = "."
+destination = "."
+type = "module-map"
+
+[[agents.claude.targets.modules.mappings]]
+source = "context/frontend.md"
+destination = "frontend"
+```
+
+Usa `module-map` cuando la asociación entre fuente y módulo deba estar declarada de forma explícita y revisable. Consulta la <BaseLink href="/reference/configuration/">referencia de configuración</BaseLink> para conocer los campos y convenciones admitidos.

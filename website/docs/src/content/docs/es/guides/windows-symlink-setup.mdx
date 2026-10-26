@@ -1,0 +1,56 @@
+---
+title: Configurar symlinks en Windows
+description: Requisitos y pasos para crear enlaces simbólicos de AgentSync en Windows.
+---
+
+import BaseLink from "../../../../components/BaseLink.astro";
+
+Windows requiere permisos o el modo de desarrollador para crear enlaces simbólicos. Si `agentsync apply` falla al crear un symlink, revisa primero el entorno; normalmente no hace falta cambiar la configuración de AgentSync.
+
+## Opción 1: activar el modo de desarrollador
+
+El modo de desarrollador de Windows permite que las aplicaciones creen enlaces simbólicos sin ejecutarlas como administrador.
+
+1. Abre **Configuración** de Windows.
+2. En Windows 11 25H2 o posterior, ve a **Sistema → Opciones avanzadas → Para desarrolladores**. También puedes buscar **Modo de desarrollador** en Configuración.
+3. Activa **Modo de desarrollador**.
+4. Cierra y vuelve a abrir la terminal.
+5. Reintenta:
+
+```powershell
+agentsync apply
+```
+
+Si la directiva de tu organización bloquea esta opción, usa una terminal con permisos elevados o solicita ayuda a tu administrador.
+
+## Opción 2: ejecutar la terminal como administrador
+
+Abre PowerShell o Windows Terminal con **Ejecutar como administrador** y ejecuta `agentsync apply` desde la raíz del proyecto. No eleves privilegios si el modo de desarrollador ya funciona y la política de tu organización lo permite.
+
+## Opción 3: usar WSL
+
+Si desarrollas dentro de Windows Subsystem for Linux, ejecuta AgentSync desde la distribución Linux y trabaja con el repositorio dentro del sistema de archivos de WSL. Evita alternar herramientas Linux y Windows sobre el mismo directorio cuando la política de symlinks o las rutas puedan diferir.
+
+## Diagnóstico
+
+Ejecuta el diagnóstico antes de reintentar:
+
+```powershell
+agentsync doctor
+agentsync status
+```
+
+Comprueba que la terminal tenga el permiso esperado, que el repositorio esté en un sistema de archivos compatible y que el destino no sea un archivo existente que no pueda reemplazarse de forma segura. Si el destino contiene cambios propios, haz una copia antes de limpiar o volver a aplicar.
+
+`agentsync apply --dry-run` permite revisar el plan, pero no comprueba que Windows vaya a permitir la creación real de cada enlace. Después de corregir el entorno, ejecuta `agentsync apply` y verifica el estado.
+
+## Recuperación
+
+Si una aplicación anterior dejó destinos incompletos, revisa primero el resultado de `agentsync status`. No elimines archivos de destino manualmente hasta confirmar que no contienen cambios que debas conservar. Luego vuelve a ejecutar:
+
+```powershell
+agentsync apply
+agentsync status
+```
+
+Consulta la guía de <BaseLink href="/guides/troubleshooting/">solución de problemas</BaseLink> si el error continúa y la <BaseLink href="/guides/getting-started/">guía de primeros pasos</BaseLink> para confirmar la instalación.

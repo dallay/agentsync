@@ -1,0 +1,333 @@
+---
+title: Referencia de configuración
+description: Guía detallada de la configuración de agentsync.toml.
+---
+
+import BaseLink from "../../../../components/BaseLink.astro";
+
+El archivo `agentsync.toml` es el centro de la configuración de tus agentes. Define la fuente de verdad, cómo se administra `.gitignore` y los destinos específicos de cada asistente de IA.
+
+De forma predeterminada, `agentsync` busca este archivo en `.agents/agentsync.toml`.
+
+## Configuración global
+
+### `source_dir`
+
+Directorio base de los archivos fuente, relativo al archivo de configuración.
+
+- **Predeterminado**: `"."`
+
+### `compress_agents_md`
+
+Cuando está habilitado, AgentSync crea una copia compacta de `AGENTS.md` (llamada `AGENTS.compact.md`) y hace que los destinos de `AGENTS.md` con `type = "symlink"` o `type = "symlink-contents"` apunten al archivo compacto. El archivo original `AGENTS.md` nunca se modifica.
+
+- **Predeterminado**: `false`
+
+```toml
+compress_agents_md = true
+```
+
+### `default_agents`
+
+Lista de nombres de agentes que se ejecutan cuando no se especifica `--agents` en la CLI. La coincidencia de nombres no distingue mayúsculas de minúsculas y usa coincidencia de subcadenas.
+
+- **Predeterminado**: `[]` (vacío; se ejecutan todos los agentes habilitados)
+
+```toml
+# Ejecuta estos agentes de forma predeterminada
+# Al ejecutar 'agentsync apply' sin --agents, solo se procesan copilot, claude y gemini
+default_agents = ["copilot", "claude", "gemini"]
+
+[agents.copilot]
+enabled = true
+
+[agents.claude]
+enabled = true
+
+[agents.gemini]
+enabled = true
+
+[agents.cursor]
+enabled = true  # Habilitado, pero no se ejecuta salvo que se indique con --agents cursor
+```
+
+**Comportamiento:**
+
+- Si `default_agents` tiene valores y no se pasa `--agents`, solo se ejecutan los agentes que coinciden con `default_agents`.
+- Si se pasa `--agents`, se usa el filtro de la CLI y se reemplaza `default_agents`.
+- Si `default_agents` está vacío, se ejecutan todos los agentes habilitados (compatibilidad con versiones anteriores).
+
+## Plugins propiedad del repositorio
+
+AgentSync puede materializar las partes compatibles y neutrales respecto al proveedor de un plugin en el directorio canónico `.agents/skills/` y combinar declaraciones estándar `.mcp.json` con la canalización MCP existente. No instala cachés de proveedores, no habilita plugins en la configuración de usuario ni ejecuta hooks, scripts, binarios, LSP o servidores MCP.
+
+```toml
+[plugins]
+enabled = true
+lockfile = "plugins.lock.toml"
+# Denegación predeterminada: solo se exportan los servidores MCP aprobados explícitamente.
+allowed_mcp = ["plugin/internal/engineering/safe-fixture"]
+
+[plugins.marketplaces.internal]
+source = "../engineering-marketplace"
+reference = "main"
+
+[[plugins.selections]]
+marketplace = "internal"
+plugin = "engineering"
+```
+
+- `source` acepta una copia local relativa del repositorio o un repositorio de GitHub por HTTPS.
+- `reference` solo se usa en los comandos explícitos `agentsync plugin add` y `agentsync plugin update`.
+- `plugins.lock.toml` registra la revisión inmutable, el hash del contenido, las skills seleccionadas, los servidores MCP y su procedencia. `agentsync apply` y `agentsync plugin restore` nunca resuelven una revisión nueva.
+- `allowed_mcp` es una lista de aprobación con denegación predeterminada. Usa nombres como `plugin/internal/engineering/safe-fixture`. Aprueba una identidad lógica de servidor, no una revisión; una actualización explícita del plugin puede cambiar la definición aprobada y debe revisarse. Las entradas deben ser únicas y contener exactamente cuatro segmentos de identificador.
+- Las instantáneas Git se guardan en `.agents/.agentsync-plugin-sources`. Una ejecución en línea de `apply` restaura desde el SHA bloqueado una instantánea que falte. `apply --offline`, `apply --dry-run` y `plugin status` no descargan datos; usa `agentsync plugin restore` para recuperar una instantánea.
+- Los archivos de los marketplaces de proveedores se usan como entradas de declaración y descubrimiento; no activan silenciosamente plugins de Claude ni de Codex.
+- El primer diseño de plugin compatible usa `skills/<skill-id>/SKILL.md` y un `.mcp.json` en la raíz.
+- Las declaraciones MCP de plugins se tratan como configuración ejecutable. Los valores de variables de entorno y encabezados que parezcan credenciales (`TOKEN`, `SECRET`, `PASSWORD`, `API_KEY`, `Authorization` y nombres similares) deben usar referencias exactas al entorno local, como `${TOKEN}`, y no credenciales literales. Los encabezados de autorización pueden usar la plantilla completa `Bearer ${TOKEN}`. AgentSync rechaza prefijos y sufijos literales antes de distribuir los valores.
+- Las descargas ZIP tienen límites por tamaño comprimido y por cantidad y tamaño de las entradas extraídas. Estos límites reducen el riesgo de bombas de archivos, pero no sustituyen la revisión de la fuente ni la confianza en el proveedor.
+- La resolución de repositorios privados de GitHub puede usar `GITHUB_TOKEN` del entorno del proceso. El token solo se envía a solicitudes de GitHub y nunca se escribe en el archivo lock, la instantánea de fuentes ni la configuración generada.
+
+Usa `agentsync plugin status` para validar el lock y la fuente sin cambiar archivos. Usa `agentsync plugin restore` para recuperar o reparar instantáneas Git desde el archivo lock.
+
+### Plantilla de configuración de usuario
+
+Puedes definir una plantilla personal que `agentsync init` use en lugar del valor predeterminado integrado. Así evitas editar la configuración generada cada vez que inicias un proyecto.
+
+**Orden de búsqueda:**
+
+1. Flag explícito `--template <path>`; siempre tiene prioridad.
+2. `$XDG_CONFIG_HOME/agentsync/config.toml`.
+3. `~/.config/agentsync/config.toml`.
+4. Configuración predeterminada integrada; todos los agentes están habilitados.
+
+El archivo de plantilla es un **reemplazo completo**. Usa el mismo esquema `agentsync.toml`, pero solo necesita incluir los agentes y ajustes que quieras. No se combina con los valores predeterminados integrados.
+
+Si existe un archivo de configuración de usuario, pero contiene TOML no válido, AgentSync muestra una advertencia y usa los valores predeterminados integrados. Si `--template` apunta a un archivo no válido, la inicialización falla con un error claro.
+
+## Gestión de Gitignore
+
+AgentSync puede administrar automáticamente `.gitignore` para evitar que los symlinks generados y otros archivos específicos de asistentes se agreguen accidentalmente al control de versiones.
+
+`[gitignore].enabled = true` sigue siendo el valor predeterminado y el punto de partida recomendado para la mayoría de los equipos. Configura `enabled = false` solo si el equipo quiere versionar intencionalmente los destinos administrados por AgentSync en lugar de ignorarlos. Consulta la guía de <BaseLink href="/guides/gitignore-team-workflows/">flujos de trabajo de equipo con Gitignore</BaseLink> para ver los pasos de mantenedores y colaboradores.
+
+```toml
+[gitignore]
+enabled = true
+marker = "AI Agent Symlinks"
+entries = []
+```
+
+AgentSync administra un bloque delimitado por marcadores. Conserva intacto el contenido externo al bloque. Las entradas `[gitignore].entries` se agregan al bloque; usa rutas o patrones específicos para ignorar destinos adicionales. AgentSync no agrega automáticamente las rutas expandidas de `nested-glob`.
+
+```toml
+[gitignore]
+# Solo entradas adicionales; AgentSync agrega automáticamente patrones conocidos para los agentes habilitados.
+entries = []
+```
+
+```toml
+[gitignore]
+enabled = true
+marker = "AI Agent Symlinks"
+# Solo entradas adicionales; AgentSync agrega automáticamente patrones conocidos para los agentes habilitados.
+entries = []
+```
+
+- **`enabled`**: si es `true`, AgentSync actualiza `.gitignore`.
+- **`marker`**: texto usado en los comentarios para identificar la sección de AgentSync en `.gitignore`.
+- **`entries`**: lista de rutas adicionales que se agregan a las reglas de exclusión. Solo hace falta para archivos que no cubren los patrones conocidos de AgentSync.
+
+Notas sobre el comportamiento:
+
+- Cuando `enabled = true`, AgentSync concilia un bloque administrado en `.gitignore`, delimitado por marcadores.
+- Las entradas administradas incluyen patrones con alcance en la raíz, como `/CLAUDE.md`, cuando los destinos administrados están en la raíz del repositorio.
+- Cuando `enabled = false`, `agentsync apply` elimina cualquier bloque administrado de AgentSync que coincida y conserva las líneas no administradas anteriores y posteriores.
+- La limpieza reconoce los marcadores y es idempotente.
+- `agentsync apply --no-gitignore` desactiva la conciliación de `.gitignore` solo durante esa ejecución.
+
+Si el equipo quiere versionar los destinos en lugar de administrarlos como reglas de exclusión, usa:
+
+```toml
+[gitignore]
+enabled = false
+```
+
+Mantén la explicación del flujo de equipo en la <BaseLink href="/guides/gitignore-team-workflows/">guía canónica</BaseLink>; esta referencia documenta los campos.
+
+Si configuras AgentSync desde Windows y la creación de symlinks falla, conserva aquí la explicación sobre campos y consulta la guía de <BaseLink href="/guides/windows-symlink-setup/">configuración de symlinks en Windows</BaseLink> para corregir el entorno.
+
+### Patrones de exclusión conocidos
+
+AgentSync agrega automáticamente a `.gitignore` los siguientes patrones según los agentes **habilitados**:
+
+| Agente | Patrones agregados automáticamente |
+| :--- | :--- |
+| **claude** | `.mcp.json`, `.claude/commands/`, `.claude/skills` |
+| **claude-desktop** | _(ninguno: escribe en una configuración global fuera del proyecto)_ |
+| **copilot** | `.vscode/mcp.json` |
+| **codex** | `.codex/config.toml` |
+| **gemini** | `GEMINI.md`, `.gemini/settings.json`, `.gemini/commands/`, `.gemini/skills` |
+| **cursor** | `.cursor/mcp.json`, `.cursor/skills` |
+| **vscode** | `.vscode/mcp.json` |
+| **opencode** | `opencode.json`, `.opencode/command/`, `.opencode/skills` |
+| **windsurf** | `.windsurf/mcp_config.json` |
+| **cline** | `.clinerules` |
+| **crush** | `CRUSH.md`, `.crush.json` |
+| **antigravity** | `.agent/rules/`, `.agent/skills` |
+| **amazonq** | `.amazonq/rules/`, `.amazonq/mcp.json` |
+| **aider** | `.aider.conf.yml`, `.aiderignore` |
+| **firebase** | `.idx/airules.md`, `.idx/mcp.json` |
+| **openhands** | `.openhands/microagents/` |
+| **junie** | `.junie/` |
+| **augment** | `.augment/rules/` |
+| **kilocode** | `.kilocode/mcp.json` |
+| **goose** | `.goosehints` |
+| **qwen** | `.qwen/settings.json` |
+| **roo** | `.roo/mcp.json`, `.roo/rules/`, `.roo/skills` |
+| **zed** | `.zed/settings.json` |
+| **trae** | `.trae/rules/` |
+| **warp** | `WARP.md` |
+| **kiro** | `.kiro/steering/`, `.kiro/settings/mcp.json` |
+| **firebender** | `firebender.json` |
+| **factory** | `.factory/mcp.json`, `.factory/skills` |
+| **vibe** | `.vibe/config.toml`, `.vibe/skills` |
+| **jetbrains** | `.aiassistant/rules/` |
+| **minimax** | `.mcp.json` |
+| **zcode** | `.zcode/config.json`, `.zcode/commands/` |
+
+**Notas:**
+
+- El campo `entries` solo hace falta para archivos adicionales que no cubren los patrones anteriores.
+- Todas las rutas de destinos symlink también se agregan automáticamente a `.gitignore`.
+- Las entradas duplicadas se eliminan automáticamente.
+
+## Tipos de sincronización
+
+Cada destino usa un tipo de sincronización que determina cómo se proyecta la fuente:
+
+- `symlink`: un enlace simbólico al archivo o directorio completo.
+- `symlink-contents`: un enlace por cada elemento elegible dentro de un directorio fuente.
+- `nested-glob`: encuentra archivos con un patrón y crea destinos usando plantillas.
+- `module-map`: asocia archivos fuente con directorios de módulos y nombres de archivo convencionales.
+
+Consulta <BaseLink href="/concepts/sync-types/">tipos de sincronización</BaseLink> para ver ejemplos y recomendaciones de uso.
+
+## Definiciones de agentes
+
+Cada asistente se define bajo la sección `[agents.<name>]`.
+
+```toml
+[agents.claude]
+enabled = true
+description = "Claude Code - Anthropic's AI coding assistant"
+
+[agents.claude.targets.instructions]
+source = "AGENTS.md"
+destination = "CLAUDE.md"
+type = "symlink"
+
+[agents.claude.targets.skills]
+source = "skills"
+destination = ".claude/skills"
+type = "symlink"
+
+[agents.claude.targets.commands]
+source = "commands"
+destination = ".claude/commands"
+type = "symlink-contents"
+
+[agents.claude.targets.monorepo]
+type = "nested-glob"
+source = "." # Search from project root
+pattern = "**/AGENTS.md"
+destination = "{relative_path}/CLAUDE.md"
+exclude = ["node_modules/**", ".agents/**"]
+```
+
+### Skills
+
+Los destinos de skills usan `type = "symlink"` de forma predeterminada. Así, el directorio de skills visible para el agente es un único symlink de directorio hacia el origen canónico `.agents/skills/`.
+
+- Usa `symlink` en el caso habitual y en repositorios que ya tienen un symlink de directorio correcto, como `.claude/skills -> ../.agents/skills`.
+- Usa `symlink-contents` solo si el destino debe seguir siendo un directorio real y quieres que AgentSync enlace cada elemento secundario por separado.
+- `agentsync init --wizard` pregunta explícitamente qué modo usar para cada destino de skills migrado, recomienda `symlink` y conserva de forma predeterminada un symlink de directorio que ya sea correcto.
+
+Después de escribir la configuración, AgentSync muestra un resumen breve de validación. Si cambias un destino de skills a `symlink-contents` aunque ya sea un symlink de directorio a `.agents/skills`, el resumen muestra una advertencia antes del primer `agentsync apply`.
+
+### Comandos
+
+AgentSync admite un directorio canónico `.agents/commands/` para comandos de agentes (comandos de barra, prompts en Markdown, entre otros). Los comandos se sincronizan en ubicaciones específicas de cada agente mediante `symlink-contents`.
+
+El comando `init` crea `.agents/commands/` junto a `.agents/skills/`. El asistente detecta directorios de comandos existentes (`.claude/commands/`, `.gemini/commands/`, `.opencode/command/`) y ofrece migrarlos.
+
+Los destinos siguen siendo directorios reales:
+
+- fuente canónica: `.agents/commands/`;
+- ejemplos de destino: `.claude/commands/`, `.gemini/commands/`, `.opencode/command/`.
+
+`agentsync status` valida esos destinos como directorios contenedores administrados. Si `.agents/commands/` existe, pero no contiene elementos elegibles, el directorio de destino vacío sigue siendo válido y se informa como sincronizado con `0 managed entries expected`.
+
+## Matriz de compatibilidad de agentes
+
+AgentSync tiene dos niveles de compatibilidad:
+
+- **Generación MCP nativa** (formateador integrado y comportamiento de combinación): `claude`, `claude-desktop`, `copilot`, `codex`, `gemini`, `cursor`, `vscode`, `opencode`, `zcode`, `minimax`.
+- **Destinos de sincronización configurables** (reglas/skills mediante symlink): cualquier agente, si declaras entradas `[agents.<name>.targets.*]`.
+
+La matriz siguiente documenta ubicaciones comunes de agentes e indica cuáles puede administrar AgentSync actualmente.
+
+| Agente | Archivo(s) de reglas | Configuración MCP / notas | Compatibilidad / ubicación de skills |
+| :--- | :--- | :--- | :--- |
+| AGENTS.md | `AGENTS.md` | Patrón de pseudoagente mediante el destino `[agents.root]` | - |
+| Aider | - | Sin formateador MCP nativo; omite `.aider.conf.yml`, `.aiderignore` | Configurable |
+| Amazon Q CLI | - | Sin formateador MCP nativo; omite `.amazonq/rules/`, `.amazonq/mcp.json` | Configurable |
+| Amp | `AMPCODE.md` | Sin formateador MCP nativo | Configurable |
+| Antigravity | - | Sin formateador MCP nativo; omite `.agent/rules/`, `.agent/skills/` | Configurable |
+| AugmentCode | - | Sin formateador MCP nativo; omite `.augment/rules/` | Configurable |
+| Claude Code | `CLAUDE.md` | `.mcp.json` (MCP nativo) | Configurable; `.claude/skills/` |
+| Claude Desktop | - | Configuración global (MCP nativo); deshabilitado de forma predeterminada | - |
+| Cline | `.clinerules` | Sin formateador MCP nativo | Configurable |
+| Crush | `CRUSH.md` | Sin formateador MCP nativo; omite `.crush.json` | Configurable |
+| Cursor | `.cursor/rules/agentsync.mdc` | `.cursor/mcp.json` (MCP nativo) | Configurable; `.cursor/skills/` |
+| Factory Droid | - | Sin formateador MCP nativo; omite `.factory/mcp.json`, `.factory/skills/` | Configurable |
+| Firebase Studio | - | Sin formateador MCP nativo; omite `.idx/airules.md`, `.idx/mcp.json` | Configurable |
+| Firebender | - | Sin formateador MCP nativo; omite `firebender.json` | Configurable |
+| Gemini CLI | `GEMINI.md` | `.gemini/settings.json` (MCP nativo, agrega `"trust": true`) | Configurable; `.gemini/skills/` |
+| GitHub Copilot | `.github/copilot-instructions.md` | `.vscode/mcp.json` (MCP nativo) | Configurable |
+| Goose | - | Sin formateador MCP nativo; omite `.goosehints` | Configurable |
+| JetBrains AI Assistant | - | Sin formateador MCP nativo; omite `.aiassistant/rules/` | Configurable |
+| Jules | - | Sin formateador MCP nativo | Configurable |
+| Junie | - | Sin formateador MCP nativo; omite `.junie/` | Configurable |
+| Kilo Code | - | Sin formateador MCP nativo; omite `.kilocode/mcp.json` | Configurable |
+| Kiro | - | Sin formateador MCP nativo; omite `.kiro/steering/`, `.kiro/settings/mcp.json` | Configurable |
+| MiniMax Code | `AGENTS.md` | `.mcp.json` (MCP nativo) | Configurable |
+| Mistral Vibe | - | Sin formateador MCP nativo; omite `.vibe/config.toml`, `.vibe/skills/` | Configurable |
+| Open Hands | - | Sin formateador MCP nativo; omite `.openhands/microagents/` | Configurable |
+| OpenAI Codex CLI | `AGENTS.md` | `.codex/config.toml` (MCP nativo) | Configurable; `.codex/skills/` |
+| OpenCode | `AGENTS.md` | `opencode.json` (MCP nativo) | Configurable; `.opencode/skills/` |
+| Pi Coding Agent | - | Sin formateador MCP nativo | Configurable |
+| Qwen Code | - | Sin formateador MCP nativo; omite `.qwen/settings.json` | Configurable |
+| RooCode | - | Sin formateador MCP nativo; omite `.roo/mcp.json`, `.roo/rules/`, `.roo/skills/` | Configurable |
+| Trae AI | - | Sin formateador MCP nativo; omite `.trae/rules/` | Configurable |
+| VS Code | - | `.vscode/mcp.json` (MCP nativo) | Configurable |
+| Warp | `WARP.md` | Sin formateador MCP nativo | Configurable |
+| Windsurf | `.windsurfrules` | Sin formateador MCP nativo; omite `.windsurf/mcp_config.json` | Configurable |
+| Z-Code | `AGENTS.md` | `.zcode/config.json` (MCP nativo) | Configurable |
+| Zed | - | Sin formateador MCP nativo; omite `.zed/settings.json` | Configurable |
+
+**Nota sobre el nombre de archivo de reglas de Cursor:** `.cursor/rules/agentsync.mdc` es la ruta de ejemplo documentada por AgentSync. Puedes usar otro nombre o ruta `.mdc` si lo configuras explícitamente en una entrada `[agents.<name>.targets.*]`.
+
+### Qué significa «configurable» en la práctica
+
+- Define el destino de reglas bajo `[agents.<name>.targets.<target-id>]`.
+- Apunta `source` al archivo canónico en `.agents/` y `destination` a la ubicación específica de la herramienta.
+- Para asistentes sin MCP nativo, administra MCP mediante un symlink a un archivo de configuración preparado previamente como otro destino.
+
+> **Consulta también:** <BaseLink href="/concepts/sync-types/">Tipos de sincronización</BaseLink> para conocer el comportamiento completo de los destinos `symlink`, `symlink-contents`, `nested-glob` y `module-map`, incluidos patrones, marcadores de posición y resolución de nombres de archivo.
+
+## MCP (Model Context Protocol)
+
+La configuración de servidores MCP se administra en las secciones `[mcp]` y `[mcp_servers]`.
+
+Para ver una guía detallada del uso de MCP con AgentSync, consulta la <BaseLink href="/guides/mcp/">guía de integración MCP</BaseLink>.

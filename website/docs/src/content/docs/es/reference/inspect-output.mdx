@@ -1,0 +1,42 @@
+---
+title: Salida de inspect
+description: Contrato estable JSON v1 para la salida de agentsync inspect.
+---
+
+# Salida de `agentsync inspect --json`
+
+`inspect --json` escribe un objeto JSON compacto en stdout. El informe es determinista para la misma configuración y el mismo árbol del sistema de archivos. No incluye marcas de tiempo.
+
+## Estructura principal
+
+- `schema_version`: versión del contrato JSON (`1`).
+- `scope`: siempre `agentsync-managed`.
+- `agent`: identificador del asistente configurado seleccionado (en minúsculas si no está configurado).
+- `items`: destinos configurados de instrucciones, skills, comandos y otros elementos.
+- `mcp`: declaraciones MCP administradas por AgentSync, contribuciones de plugins y nombres de destinos existentes.
+- `diagnostics`: hallazgos tipados y ordenados.
+- `scope_notice`: límite explícito frente a la configuración efectiva del proveedor en tiempo de ejecución.
+
+Cada elemento informa `kind`, `target`, `sync_mode`, `source`, `destination`, `origin`, `owner`, `provider_support`, `state`, `observed` y el arreglo `children`, que siempre está presente y queda vacío cuando no aplica una proyección secundaria. En `module-map`, cada asociación se representa como un elemento secundario. Las rutas dentro de la raíz del proyecto son relativas y usan `/` como separador. Los valores `points_to` de symlinks corresponden al texto observado del enlace y pueden ser relativos al destino.
+
+Los estados de los elementos son:
+
+- `configured`: existe una intención declarada, pero falta la fuente.
+- `projected`: existe la fuente, pero el destino todavía no está materializado.
+- `observed`: el destino materializado coincide con la proyección.
+- `conflicted`: el destino materializado difiere de la proyección o existe una colisión.
+- `unsupported`: reservado para una futura proyección específica de capacidades; los informes v1 actuales no asignan este estado a destinos ni elementos.
+
+`provider_support: "unknown"` significa que el informe no afirma que el proveedor admita nativamente la capacidad semántica. Es intencional: `inspect` no implementa adaptadores entre proveedores.
+
+## Diagnósticos
+
+Los diagnósticos contienen `code`, `severity`, `target`, `path` y un mensaje breve. Los códigos incluyen `agent-not-configured`, `missing-source`, `drifted-symlink`, `broken-symlink`, `destination-collision`, `mcp-name-collision`, `unsupported-target`, `missing-plugin-snapshot`, `disabled-mcp-server`, `pending-plugin-approval`, `unsupported-plugin-component` y `existing-mcp-server`.
+
+El comportamiento predeterminado prioriza generar el informe: devuelve `0` si pudo producirlo. Con `--strict`, cualquier diagnóstico de severidad de error devuelve `1`. Los argumentos CLI no válidos usan el código `2` de Clap.
+
+## Redacción y límites
+
+Los valores de variables de entorno y encabezados nunca se incluyen; solo se informan las claves y las clasificaciones de los valores. Se redactan los valores sensibles de argumentos y de consultas URL. La configuración MCP existente que no administra AgentSync solo se analiza para obtener los nombres de servidores; sus valores no se incluyen. `inspect` no lee el contenido arbitrario de instrucciones ni de skills dentro del informe JSON, pero esto no constituye un análisis general de secretos.
+
+El informe describe solo la configuración que pertenece a AgentSync. Los ajustes nativos globales, de usuario, de organización y de sesión que están fuera del control de AgentSync son desconocidos. El comando no ejecuta CLIs de proveedores, no inicia servidores MCP, no realiza solicitudes de red, no expande variables de entorno, no descarga instantáneas ni escribe archivos.

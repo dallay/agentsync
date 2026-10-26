@@ -1,0 +1,93 @@
+---
+title: Documentación de AgentSync
+description: Herramienta CLI rápida y portable para sincronizar configuraciones de agentes de IA entre distintos asistentes de programación mediante enlaces simbólicos.
+template: splash
+hero:
+  title: "Configura una vez. Sincroniza todos tus asistentes de IA."
+  tagline: "Mantén sincronizados AGENTS.md, las skills, los comandos y los servidores MCP entre Claude, Copilot, Cursor, Gemini, Codex, OpenCode y más."
+  image:
+    file: ../../../assets/synchro.webp
+  actions:
+    - text: Leer la documentación
+      link: /guides/getting-started/
+      variant: secondary
+    - text: GitHub
+      link: https://github.com/dallay/agentsync
+      variant: secondary
+      icon: external
+---
+
+import Bento from '../../../components/Bento.astro';
+import FeatureItem from '../../../components/FeatureItem.astro';
+import BaseLink from '../../../components/BaseLink.astro';
+import HowItWorks from '../../../components/HowItWorks.astro';
+import IconLayers from '~icons/lucide/layers';
+import IconFileSymlink from '~icons/lucide/file-symlink';
+import IconLayoutGrid from '~icons/lucide/layout-grid';
+import IconPlugZap from '~icons/lucide/plug-zap';
+import IconPuzzle from '~icons/lucide/puzzle';
+import IconEyeOff from '~icons/lucide/eye-off';
+import IconMonitorSmartphone from '~icons/lucide/monitor-smartphone';
+import TerminalDemo from '../../../components/TerminalDemo.astro';
+
+<Bento title="¿Por qué AgentSync?">
+  <FeatureItem
+    title="Una sola fuente de verdad"
+    description="Mantén un único AGENTS.md y sincronízalo con Claude, Copilot, Gemini y otros mediante symlinks."
+    href="/guides/getting-started/"
+  ><IconLayers slot="icon" /></FeatureItem>
+  <FeatureItem
+    title="Symlinks nativos"
+    description="Usa enlaces simbólicos en lugar de copias. Cambia un archivo una sola vez y todos los asistentes lo verán de inmediato."
+    href="/concepts/sync-types/"
+  ><IconFileSymlink slot="icon" /></FeatureItem>
+  <FeatureItem
+    title="Funciona con distintos asistentes"
+    description="Configura destinos para varios asistentes y usa el formato MCP nativo con los asistentes compatibles."
+    href="/reference/configuration/"
+  ><IconLayoutGrid slot="icon" /></FeatureItem>
+  <FeatureItem
+    variant="compact"
+    title="Integración MCP"
+    description="Define servidores MCP una sola vez en TOML y sincronízalos con todos los entornos de agentes compatibles."
+    href="/guides/mcp/"
+  ><IconPlugZap slot="icon" /></FeatureItem>
+  <FeatureItem
+    variant="compact"
+    title="Skills"
+    description="Instala y administra skills reutilizables desde skills.sh o archivos locales en .agents/skills/."
+    href="/guides/skills/"
+  ><IconPuzzle slot="icon" /></FeatureItem>
+  <FeatureItem
+    variant="compact"
+    title="Gestión de Gitignore"
+    description="Empieza con el flujo predeterminado de .gitignore administrado o desactívalo intencionalmente si tu equipo versiona los destinos administrados."
+    href="/guides/gitignore-team-workflows/"
+  ><IconEyeOff slot="icon" /></FeatureItem>
+  <FeatureItem
+    variant="compact"
+    title="Multiplataforma"
+    description="Está escrito en Rust para ofrecer velocidad y portabilidad. Funciona en macOS, Linux y Windows."
+    href="/guides/getting-started/#instalación"
+  ><IconMonitorSmartphone slot="icon" /></FeatureItem>
+</Bento>
+
+<HowItWorks />
+
+---
+
+## Elige por dónde empezar
+
+Elige la ruta que mejor se ajuste a tu objetivo:
+
+- **Instalar y sincronizar tu primer asistente:** sigue la guía de <BaseLink href="/guides/getting-started/">primeros pasos</BaseLink>.
+- **Configurar escenarios habituales:** consulta las <BaseLink href="/guides/recipes/">recetas de configuración</BaseLink>.
+- **Organizar archivos de instrucciones:** lee <BaseLink href="/concepts/instruction-files/">archivos de instrucciones</BaseLink> y <BaseLink href="/concepts/sync-types/">tipos de sincronización</BaseLink>.
+- **Configurar servidores MCP o skills:** usa las guías de <BaseLink href="/guides/mcp/">integración MCP</BaseLink> y <BaseLink href="/guides/skills/">skills</BaseLink>.
+- **Revisar la configuración prevista o detectar diferencias:** usa <BaseLink href="/guides/inspect/">inspeccionar configuración</BaseLink> y <BaseLink href="/reference/status-output/">referencia de salida de status</BaseLink>.
+- **Revisar la compatibilidad de salida para scripts y TUI:** consulta el <BaseLink href="/contributing/cli-tui-contract/">contrato de compatibilidad de CLI y TUI</BaseLink>.
+- **Automatizar la configuración del equipo o diagnosticar un problema:** consulta <BaseLink href="/guides/git-hook-automation/">automatización con Git hooks</BaseLink>, <BaseLink href="/guides/gitignore-team-workflows/">flujos de equipo con Gitignore</BaseLink> y <BaseLink href="/guides/troubleshooting/">solución de problemas</BaseLink>.
+
+Para consultar campos y opciones, usa la <BaseLink href="/reference/configuration/">referencia de configuración</BaseLink> y la <BaseLink href="/reference/cli/">referencia de CLI</BaseLink>.
+
+<TerminalDemo />

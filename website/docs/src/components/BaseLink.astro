@@ -1,8 +1,10 @@
 ---
-import { withBase } from "../utils/links";
+import { withBase, withLocale } from "../utils/links";
 
 const { href, ...rest } = Astro.props;
-const resolvedHref = typeof href === "string" ? withBase(href) : href;
+const locale = Astro.locals.starlightRoute.locale;
+const localizedHref = typeof href === "string" ? withLocale(href, locale) : href;
+const resolvedHref = typeof localizedHref === "string" ? withBase(localizedHref) : localizedHref;
 ---
 
 <a href={resolvedHref} {...rest}>

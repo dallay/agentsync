@@ -1,0 +1,78 @@
+---
+title: Skills
+description: Cómo instalar, crear y administrar skills de AgentSync, incluidas las fuentes skills.sh y las skills locales.
+---
+
+import CommandTabs from "../../../../components/CommandTabs.astro";
+
+AgentSync admite **skills**: pequeños paquetes de contenido, prompts o archivos auxiliares ubicados en `.agents/skills/` que puedes instalar, actualizar y administrar con la CLI.
+
+Esta guía explica la estructura esperada y el formato del manifiesto, cómo instalar o actualizar skills desde proveedores como skills.sh y cómo resolver problemas habituales.
+
+## Migrar skills existentes con el asistente
+
+Si ya tienes skills en directorios específicos de asistentes (`.claude/skills/`, `.cursor/skills/`, `.codex/skills/`, `.gemini/skills/`, `.opencode/skills/`, `.roo/skills/`, `.factory/skills/`, `.vibe/skills/` o `.agent/skills/`), el asistente de `init` las detectará y ofrecerá migrarlas:
+
+<CommandTabs command="init --wizard" />
+
+El asistente:
+
+- **Detecta** directorios de skills de todos los asistentes conocidos.
+- **Copia** el contenido de las skills al directorio canónico `.agents/skills/`.
+- **Gestiona colisiones:** si ya existe una skill con el mismo nombre, la omite y muestra una advertencia.
+- **Conserva los originales:** puede crear copias de seguridad de los directorios fuente.
+
+Después de la migración, configura un destino de skills en `agentsync.toml` para que `apply` las sincronice con cada asistente:
+
+```toml
+[agents.claude.targets.skills]
+source = "skills"
+destination = ".claude/skills"
+type = "symlink"
+```
+
+> **Nota:** las skills migradas por el asistente no se registran en `registry.json`; se administran mediante la canalización de symlinks, no mediante el sistema `skill install`. Ambos sistemas coexisten: las skills instaladas viven en `.agents/skills/` junto a las migradas.
+
+### Elegir entre `symlink` y `symlink-contents`
+
+Para skills, AgentSync recomienda `type = "symlink"` y lo usa como opción predeterminada. El directorio de skills completo se enlaza como una unidad. Usa `symlink-contents` cuando el asistente necesite que el directorio destino exista como directorio real y que cada skill se enlace por separado.
+
+## Instalar una skill de un proveedor
+
+Usa `agentsync skill install` para instalar una skill desde un proveedor compatible. Por ejemplo, para instalar desde skills.sh:
+
+```bash
+agentsync skill install skill-name
+```
+
+El comando obtiene la skill, valida la ruta instalada y actualiza el registro local de skills. Usa `agentsync skill list` para revisar lo instalado y `agentsync skill update skill-name` para obtener actualizaciones.
+
+## Crear una skill local
+
+Crea un directorio dentro de `.agents/skills/` y agrega el archivo `SKILL.md` con el contenido y las instrucciones de la skill:
+
+```text
+.agents/skills/my-skill/
+└── SKILL.md
+```
+
+La instalación desde proveedores y la creación local son flujos diferentes. No agregues al registro de proveedor skills que solo migraste como archivos locales.
+
+## Comandos de administración
+
+```bash
+agentsync skill list
+agentsync skill install skill-name
+agentsync skill update skill-name
+agentsync skill uninstall skill-name
+agentsync skill suggest
+```
+
+Consulta `agentsync skill --help` para ver las opciones de la versión instalada. Cuando una skill deba distribuirse mediante symlinks a un asistente, confirma que el destino esté configurado y ejecuta `agentsync apply`.
+
+## Solución de problemas
+
+- Si una skill migrada no aparece en `agentsync skill list`, comprueba si pertenece al flujo local de symlinks y no al registro de instalaciones.
+- Si un proveedor no resuelve la ruta, verifica el identificador de repositorio y la ruta de la skill.
+- Si `apply` no crea el destino, revisa la configuración con `agentsync inspect --agent <agent>` y verifica que el agente esté habilitado.
+- Si una actualización cambia contenido que modificaste localmente, revisa el diff antes de conservar o reemplazar esos cambios.

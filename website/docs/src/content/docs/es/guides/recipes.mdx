@@ -1,0 +1,129 @@
+---
+title: Recetas de configuración
+description: Configuraciones prácticas de AgentSync con pasos para previsualizar, aplicar y verificar los cambios.
+---
+
+import BaseLink from "../../../../components/BaseLink.astro";
+
+Usa estas recetas como punto de partida para configuraciones habituales de repositorios. Cada receta incluye la configuración del destino y los comandos para revisarla, previsualizarla, aplicarla y verificar el resultado. Ejecuta los comandos desde la raíz del proyecto, donde AgentSync puede encontrar `.agents/agentsync.toml`. Los ejemplos TOML son independientes; no los concatenes tal cual porque podrías repetir declaraciones de tablas. Combina las secciones de destinos que necesites en tu configuración actual.
+
+AgentSync crea y comprueba los enlaces configurados. No confirma que un asistente cargue un destino ni que siga su contenido. Las reglas de descubrimiento específicas de cada asistente quedan fuera de AgentSync.
+
+## Compartir un archivo de instrucciones entre varios asistentes
+
+Mantén un único archivo canónico en `.agents/AGENTS.md` y configura un destino por asistente. Cada destino apunta a la misma fuente.
+
+```toml
+source_dir = "."
+
+[agents.claude]
+enabled = true
+
+[agents.claude.targets.instructions]
+source = "AGENTS.md"
+destination = "CLAUDE.md"
+type = "symlink"
+
+[agents.codex]
+enabled = true
+
+[agents.codex.targets.instructions]
+source = "AGENTS.md"
+destination = "AGENTS.md"
+type = "symlink"
+```
+
+Revisa la configuración de ambos asistentes y luego previsualiza y aplica los destinos:
+
+```bash
+agentsync inspect --agent claude
+agentsync inspect --agent codex
+agentsync apply --dry-run --agents claude,codex
+agentsync apply --agents claude,codex
+agentsync status
+```
+
+`inspect` resuelve un asistente a la vez. `apply --dry-run` previsualiza los destinos seleccionados sin cambiar el sistema de archivos. `status` comprueba todos los destinos administrados de los asistentes habilitados.
+
+## Enlazar archivos de skills individualmente
+
+Usa `symlink-contents` cuando el directorio de destino debe seguir siendo un directorio real y cada archivo de origen debe aparecer como enlace individual.
+
+```toml
+[agents.claude.targets.commands]
+source = "commands"
+destination = ".claude/commands"
+type = "symlink-contents"
+pattern = "*.md"
+```
+
+Previsualiza los archivos detectados antes de aplicar:
+
+```bash
+agentsync inspect --agent claude
+agentsync apply --dry-run --agents claude
+agentsync apply --agents claude
+agentsync status
+```
+
+Usa `symlink-contents` para directorios de comandos o skills cuando el asistente espera un directorio contenedor. Para enlazar un directorio completo como unidad, elige `symlink`.
+
+## Crear archivos de instrucciones anidados en un monorepo
+
+Usa `nested-glob` para encontrar archivos de instrucciones en paquetes y crear destinos con una plantilla. Excluye directorios generados y de dependencias para reducir las coincidencias.
+
+```toml
+source_dir = "."
+
+[agents.claude]
+enabled = true
+
+[agents.claude.targets.nested_instructions]
+type = "nested-glob"
+source = "."
+pattern = "**/AGENTS.md"
+destination = "{relative_path}/CLAUDE.md"
+exclude = [".agents/**", "**/node_modules/**", "**/.git/**"]
+```
+
+En `nested-glob`, `source` se resuelve desde la raíz del proyecto. `{relative_path}` representa el directorio padre del archivo encontrado, relativo a la raíz de búsqueda; si el archivo está en la raíz, el valor es `.`. Revisa los destinos encontrados antes de aplicar, sobre todo si el repositorio contiene directorios generados o de terceros. AgentSync no agrega los destinos de `nested-glob` a las entradas administradas de `.gitignore`, porque la plantilla puede expandirse a muchas rutas del repositorio. Si no quieres versionar estos destinos, agrega rutas o patrones específicos a `[gitignore].entries`; por ejemplo, puedes añadir `"services/*/CLAUDE.md"` para los archivos de esta receta bajo directorios de servicios.
+
+```bash
+agentsync inspect --agent claude
+agentsync apply --dry-run --agents claude
+agentsync apply --agents claude
+agentsync status
+```
+
+Esta receta controla qué archivos encuentra AgentSync y dónde crea enlaces. No habilita, configura ni reproduce el comportamiento nativo de descubrimiento de archivos anidados de un asistente. Consulta la guía sobre <BaseLink href="/concepts/instruction-files/">archivos de instrucciones</BaseLink> para entender esa diferencia.
+
+## Generar configuración MCP para varios asistentes
+
+Declara los servidores MCP una sola vez y configura AgentSync para generar las entradas en los formatos específicos de cada asistente compatible.
+
+```toml
+[mcp]
+enabled = true
+merge_strategy = "merge"
+
+[mcp_servers.example]
+command = "npx"
+args = ["-y", "example-mcp-server"]
+```
+
+Revisa qué destinos MCP se configurarán y previsualiza los cambios:
+
+```bash
+agentsync inspect --agent claude
+agentsync apply --dry-run --agents claude
+```
+
+Aplica solo después de verificar los nombres de servidor, comandos y argumentos. Consulta la guía de <BaseLink href="/guides/mcp/">integración MCP</BaseLink> para conocer formatos y reglas de combinación.
+
+## Decisiones para el equipo
+
+- Mantén en control de versiones las fuentes canónicas bajo `.agents/`.
+- Mantén fuera del control de versiones los destinos que administra la integración de `.gitignore` de AgentSync. Los destinos `nested-glob` no se agregan automáticamente; agrega rutas o patrones específicos a `[gitignore].entries` cuando quieras ignorarlos. Si el equipo decide versionar destinos administrados, sigue la guía de <BaseLink href="/guides/gitignore-team-workflows/">flujos de trabajo de equipo con Gitignore</BaseLink>.
+- Revisa las exclusiones de `nested-glob` para no crear destinos en carpetas de dependencias, compilación o vendorizadas.
+- Usa `inspect` y `apply --dry-run` antes de `apply` en automatizaciones o cambios amplios.
+- Consulta <BaseLink href="/concepts/sync-types/">tipos de sincronización</BaseLink> para elegir el comportamiento adecuado para cada destino.

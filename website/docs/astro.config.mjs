@@ -11,6 +11,12 @@ export default defineConfig({
 	integrations: [
 		starlight({
 			title: "AgentSync",
+			disable404Route: true,
+			defaultLocale: "root",
+			locales: {
+				root: { label: "English", lang: "en" },
+				es: { label: "Español", lang: "es" },
+			},
 			head: [
 				{
 					tag: "script",
@@ -42,54 +48,121 @@ export default defineConfig({
 			sidebar: [
 				{
 					label: "Start Here",
-					items: [{ label: "Getting Started", slug: "guides/getting-started" }],
+					translations: { es: "Comienza aquí" },
+					items: [
+						{
+							label: "Getting Started",
+							translations: { es: "Primeros pasos" },
+							slug: "guides/getting-started",
+						},
+					],
 				},
 				{
 					label: "Core Concepts",
+					translations: { es: "Conceptos clave" },
 					items: [
-						{ label: "Instruction Files", slug: "concepts/instruction-files" },
-						{ label: "Sync Types", slug: "concepts/sync-types" },
+						{
+							label: "Instruction Files",
+							translations: { es: "Archivos de instrucciones" },
+							slug: "concepts/instruction-files",
+						},
+						{
+							label: "Sync Types",
+							translations: { es: "Tipos de sincronización" },
+							slug: "concepts/sync-types",
+						},
 					],
 				},
 				{
 					label: "Guides and Workflows",
+					translations: { es: "Guías y flujos de trabajo" },
 					items: [
-						{ label: "Configuration Recipes", slug: "guides/recipes" },
+						{
+							label: "Configuration Recipes",
+							translations: { es: "Recetas de configuración" },
+							slug: "guides/recipes",
+						},
 						{
 							label: "Windows Symlink Setup",
+							translations: { es: "Configuración de symlinks en Windows" },
 							slug: "guides/windows-symlink-setup",
 						},
 						{
 							label: "Gitignore Team Workflows",
+							translations: { es: "Flujos de trabajo de equipo con Gitignore" },
 							slug: "guides/gitignore-team-workflows",
 						},
 						{
 							label: "Git Hook Automation",
+							translations: { es: "Automatización con Git hooks" },
 							slug: "guides/git-hook-automation",
 						},
-						{ label: "MCP Integration", slug: "guides/mcp" },
-						{ label: "Skills", slug: "guides/skills" },
-						{ label: "Inspect Configuration", slug: "guides/inspect" },
-						{ label: "Troubleshooting", slug: "guides/troubleshooting" },
+						{
+							label: "MCP Integration",
+							translations: { es: "Integración de MCP" },
+							slug: "guides/mcp",
+						},
+						{ label: "Skills", translations: { es: "Skills" }, slug: "guides/skills" },
+						{
+							label: "Inspect Configuration",
+							translations: { es: "Inspeccionar configuración" },
+							slug: "guides/inspect",
+						},
+						{
+							label: "Troubleshooting",
+							translations: { es: "Solución de problemas" },
+							slug: "guides/troubleshooting",
+						},
 					],
 				},
 				{
 					label: "CLI and Reference",
+					translations: { es: "CLI y referencia" },
 					items: [
-						{ label: "Command Line Reference", slug: "reference/cli" },
-						{ label: "Configuration", slug: "reference/configuration" },
-						{ label: "Inspect Output", slug: "reference/inspect-output" },
-						{ label: "Status Output", slug: "reference/status-output" },
+						{
+							label: "Command Line Reference",
+							translations: { es: "Referencia de la línea de comandos" },
+							slug: "reference/cli",
+						},
+					{
+							label: "Configuration",
+							translations: { es: "Configuración" },
+							slug: "reference/configuration",
+						},
+					{
+							label: "Inspect Output",
+							translations: { es: "Salida de inspect" },
+							slug: "reference/inspect-output",
+						},
+					{
+							label: "Status Output",
+							translations: { es: "Salida de status" },
+							slug: "reference/status-output",
+						},
 					],
 				},
 				{
 					label: "For Developers",
+					translations: { es: "Para desarrolladores" },
 					items: [
-						{ label: "Contributing", slug: "contributing/contributing" },
-						{ label: "Development", slug: "contributing/development" },
-						{ label: "Workspaces", slug: "contributing/workspaces" },
+						{
+							label: "Contributing",
+							translations: { es: "Contribuir" },
+							slug: "contributing/contributing",
+						},
+						{
+							label: "Development",
+							translations: { es: "Desarrollo" },
+							slug: "contributing/development",
+						},
+						{
+							label: "Workspaces",
+							translations: { es: "Espacios de trabajo" },
+							slug: "contributing/workspaces",
+						},
 						{
 							label: "CLI and TUI Compatibility Contract",
+							translations: { es: "Contrato de compatibilidad de CLI y TUI" },
 							slug: "contributing/cli-tui-contract",
 						},
 					],

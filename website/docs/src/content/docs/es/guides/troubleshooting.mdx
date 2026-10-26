@@ -1,0 +1,108 @@
+---
+title: Solución de problemas
+description: Diagnostica y resuelve problemas comunes de instalación, versiones, symlinks y configuración de AgentSync.
+---
+
+import BaseLink from "../../../../components/BaseLink.astro";
+import CommandTabs from "../../../../components/CommandTabs.astro";
+
+Usa esta guía cuando algo no funcione como esperas y no sepas si la causa es AgentSync, tu entorno o la configuración.
+
+## Comprueba primero el estado básico
+
+Desde la raíz del proyecto, ejecuta estos comandos:
+
+```bash
+agentsync --version
+agentsync doctor
+agentsync status
+```
+
+Si los tres terminan correctamente y el comportamiento sigue siendo inesperado, revisa las secciones siguientes. Las causas más comunes son un binario antiguo que tiene prioridad en `PATH`, una entrada ausente en `PATH`, diferencias de `status` que son esperadas o una advertencia de `doctor` que ya indica cómo corregirlas.
+
+## Instalé una versión nueva, pero `--version` muestra una antigua
+
+Puede que el instalador indique éxito mientras la CLI muestra otra versión. Normalmente, un binario diferente y más antiguo tiene prioridad en `PATH`.
+
+AgentSync se puede instalar de dos formas independientes:
+
+1. **Wrapper npm** (`npm`, `pnpm`, `yarn` o `bun` con instalación global): descarga un binario de plataforma y lo expone desde el directorio global del administrador, por ejemplo `$(pnpm bin -g)/agentsync` si usas pnpm.
+2. **Binario Rust** (`cargo install agentsync`): compila y coloca un binario independiente en `~/.cargo/bin/agentsync`.
+
+Los dos binarios no se actualizan entre sí. Si `~/.cargo/bin` aparece antes que el directorio global de pnpm/npm en `PATH`, el shell puede seguir ejecutando el binario Rust antiguo.
+
+Comprueba qué binario encuentra el shell:
+
+```bash
+which -a agentsync
+agentsync --version
+```
+
+Si quieres conservar ambas instalaciones, llama al binario que necesitas con su ruta completa o crea un alias explícito. Para evitar que un binario global oculte la versión deseada en CI, usa una ejecución puntual:
+
+<CommandTabs command="--version" />
+
+## `agentsync: command not found` después de una instalación global
+
+El paquete se instaló, pero su directorio `bin` no está en `PATH`.
+
+```bash
+PNPM_BIN="$(pnpm bin -g)"
+ls -la "$PNPM_BIN/agentsync"
+case ":$PATH:" in
+  *":$PNPM_BIN:"*) echo "pnpm bin ya está en PATH" ;;
+  *) echo "pnpm bin no está en PATH" ;;
+esac
+```
+
+Si el directorio no está en `PATH`, ejecuta `pnpm setup`, vuelve a abrir la terminal y repite la comprobación.
+
+Si aún no aparece en `PATH`, agrega el directorio que muestra `pnpm bin -g` al archivo de inicio del shell que usas. En Bash, puedes agregarlo a `~/.bashrc`; en Zsh, a `~/.zshrc`. Ajusta el nombre del archivo según el shell:
+
+```bash
+printf '\nexport PATH="%s:$PATH"\n' "$(pnpm bin -g)" >> ~/.bashrc
+source ~/.bashrc
+```
+
+Este cambio persiste en sesiones nuevas. Si solo necesitas corregir la sesión actual, ejecuta `export PATH="$(pnpm bin -g):$PATH"` sin escribir en el archivo de inicio.
+
+También puedes evitar la instalación global y usar un ejecutor puntual en cada proyecto:
+
+<CommandTabs command="status" />
+
+## `agentsync status` informa diferencias
+
+`status` informa cuando el sistema de archivos difiere de `agentsync.toml`. Interpreta el resultado literalmente:
+
+| Estado | Significado | Acción habitual |
+| :--- | :--- | :--- |
+| `✔ OK` | El symlink existe y apunta a la fuente esperada. | Ninguna. |
+| `✗ Incorrect link` | El symlink apunta a otra ubicación. | Ejecuta `agentsync apply`; usa `apply --clean` solo si quieres recrearlo todo. |
+| `! Missing` | El destino no existe. | Ejecuta `agentsync apply`. |
+| `· Exists but not a symlink` | Hay un archivo o directorio normal donde se esperaba un symlink. | Revisa su contenido y usa `apply` solo después de proteger los cambios que debas conservar. |
+
+Un directorio contenedor de `symlink-contents` puede ser un directorio real válido. No lo sustituyas manualmente por un symlink; consulta <BaseLink href="/concepts/sync-types/">tipos de sincronización</BaseLink>.
+
+## `apply` no puede crear symlinks en Windows
+
+Windows necesita permisos adecuados o el modo de desarrollador. Consulta la guía de <BaseLink href="/guides/windows-symlink-setup/">configuración de symlinks en Windows</BaseLink> antes de cambiar archivos de destino.
+
+## La configuración MCP no aparece en el asistente
+
+Confirma que el asistente esté declarado en `agentsync.toml`, tenga `enabled = true` y esté incluido en la ejecución mediante `--agents` o `default_agents`. Luego revisa la configuración con `agentsync inspect --agent <agent>`.
+
+AgentSync escribe solo formatos MCP compatibles. Revisa las rutas y los detalles en la guía de <BaseLink href="/guides/mcp/">integración MCP</BaseLink>. No confundas una declaración presente con una confirmación de que el asistente cargó el servidor.
+
+## La salida `--json` no se puede analizar
+
+La salida funcional JSON se escribe en stdout y los diagnósticos se escriben en stderr. Si rediriges ambos flujos al mismo archivo, los diagnósticos pueden hacer que el resultado deje de ser JSON válido.
+
+```bash
+agentsync status --json > status.json 2> diagnostics.log
+```
+
+Consulta la <BaseLink href="/reference/cli/">referencia de CLI</BaseLink> y las referencias de <BaseLink href="/reference/status-output/">salida de status</BaseLink> y <BaseLink href="/reference/inspect-output/">salida de inspect</BaseLink> para conocer los contratos de salida.
+
+## Todavía necesitas ayuda
+
+Recopila la versión de `agentsync`, el sistema operativo, el comando exacto, la salida de error y una versión redactada de la configuración relevante. No compartas tokens, contraseñas ni valores de variables de entorno. Abre un issue en GitHub si la evidencia indica un defecto reproducible del producto.

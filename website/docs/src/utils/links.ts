@@ -9,6 +9,20 @@ const normalizeBase = (base: string): string =>
 const normalizeHref = (href: string): string =>
 	href.startsWith("/") ? href : `/${href}`;
 
+export const withLocale = (href: string, locale: string | undefined): string => {
+	if (!locale || href.startsWith("#") || href.startsWith("?") || isExternalLink(href)) {
+		return href;
+	}
+
+	const normalizedHref = normalizeHref(href);
+	const localePrefix = `/${locale}`;
+	if (normalizedHref === localePrefix || normalizedHref.startsWith(`${localePrefix}/`)) {
+		return href;
+	}
+
+	return `${localePrefix}${normalizedHref}`;
+};
+
 export const withBase = (href?: string): string | undefined => {
 	if (!href) {
 		return href;
