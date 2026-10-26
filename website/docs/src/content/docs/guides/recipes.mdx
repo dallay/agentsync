@@ -106,7 +106,7 @@ destination = "{relative_path}/CLAUDE.md"
 exclude = [".agents/**", "**/node_modules/**", "**/.git/**"]
 ```
 
-For `nested-glob`, `source` is relative to the project root. `{relative_path}` is the matched file's parent directory relative to the search root; a match at the root uses `.`. Review the discovered destinations before applying, especially when a repository contains generated or vendored directories.
+For `nested-glob`, `source` is relative to the project root. `{relative_path}` is the matched file's parent directory relative to the search root; a match at the root uses `.`. Review the discovered destinations before applying, especially when a repository contains generated or vendored directories. AgentSync does not add `nested-glob` destinations to its managed `.gitignore` entries because the destination template can expand to many repository paths. If these destinations should stay out of version control, add scoped paths or patterns to `[gitignore].entries`; for example, add `"services/*/CLAUDE.md"` for this recipe's output under service directories.
 
 ```bash
 agentsync inspect --agent claude
@@ -149,6 +149,6 @@ This recipe synchronizes a local directory. To install or update skills from a p
 - Read `agentsync status` and resolve reported missing, conflicting, or incorrect links.
 - Use `agentsync inspect --agent <id>` to review one assistant's resolved configuration and diagnostics.
 - Use `agentsync inspect --agent <id> --json` when another tool needs the resolved report as JSON. Add `--strict` to exit with an error when the report contains an error-severity diagnostic.
-- Keep managed destinations out of version control by default. If your team intentionally commits those files, follow the <BaseLink href="/guides/gitignore-team-workflows/">Gitignore Team Workflows guide</BaseLink>.
+- Keep destinations managed by AgentSync's `.gitignore` integration out of version control by default. `nested-glob` destinations are not added automatically; add scoped paths or patterns to `[gitignore].entries` when you want to ignore them. If your team intentionally commits managed destinations, follow the <BaseLink href="/guides/gitignore-team-workflows/">Gitignore Team Workflows guide</BaseLink>.
 
 For field definitions and command options, see the <BaseLink href="/reference/configuration/">Configuration Reference</BaseLink> and <BaseLink href="/reference/cli/">CLI Reference</BaseLink>.

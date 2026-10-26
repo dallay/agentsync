@@ -100,7 +100,7 @@ Do not assume this pattern is equivalent to native nested-instruction discovery.
 
 The global `compress_agents_md = true` option creates `AGENTS.compact.md` next to each eligible source and points eligible `AGENTS.md` `symlink` and `symlink-contents` targets to that generated file. AgentSync does not overwrite the original `AGENTS.md`.
 
-The current compactor removes trailing whitespace, collapses repeated blank lines to one, and reduces repeated inline spaces/tabs outside fenced code blocks to one. It preserves leading indentation and code-fence content. It is a whitespace compactor, not a summarizer: it does not remove instructions or rewrite prose semantically.
+The compactor removes trailing spaces and tabs on every line, including lines inside fenced code blocks. It reduces repeated inline spaces/tabs to one and collapses repeated blank lines to one outside fences. Inside fences, it preserves leading whitespace, code content, and repeated blank lines, except that it still removes trailing spaces and tabs. This can remove Markdown hard line breaks inside fenced examples. It is a whitespace compactor, not a summarizer: it does not remove instructions or rewrite prose semantically.
 
 ```toml
 compress_agents_md = true
