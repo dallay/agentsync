@@ -9,6 +9,15 @@ const normalizeBase = (base: string): string =>
 const normalizeHref = (href: string): string =>
 	href.startsWith("/") ? href : `/${href}`;
 
+/**
+ * Prefix local paths with the locale before applying the site's base path.
+ * Leave fragment and query references, URLs with a scheme, protocol-relative
+ * URLs, and paths already prefixed with the requested locale unchanged.
+ *
+ * @param locale - Locale path segment; undefined or empty leaves href unchanged.
+ * @returns The prefixed path, or the original href when no prefix is needed.
+ * An empty href with a nonempty locale becomes `/{locale}/`.
+ */
 export const withLocale = (href: string, locale: string | undefined): string => {
 	if (!locale || href.startsWith("#") || href.startsWith("?") || isExternalLink(href)) {
 		return href;

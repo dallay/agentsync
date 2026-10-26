@@ -39,6 +39,13 @@ const copyAriaLabel = isSpanish ? "Copiar comando de instalación" : "Copy insta
 		btn.addEventListener("click", function () {
 			const el = btn;
 			const text = el.getAttribute("data-command") || "";
+			/**
+			 * Update the button's localized labels and success styling.
+			 * Showing an outcome schedules a return to the idle state after 2,000 ms.
+			 *
+			 * @param copied - Show the copy outcome when true; restore idle when false.
+			 * @param succeeded - Whether the displayed outcome is success or failure.
+			 */
 			const setCopyState = function (copied, succeeded) {
 				const label = el.querySelector(".copy-label");
 				const copyLabel = el.getAttribute("data-copy-label") || "Copy";
