@@ -47,18 +47,24 @@ Si quieres conservar ambas instalaciones, llama al binario que necesitas con su 
 El paquete se instaló, pero su directorio `bin` no está en `PATH`.
 
 ```bash
-pnpm bin -g
-ls -la "$(pnpm bin -g)/agentsync"
-echo "$PATH" | tr ':' '\n' | grep -i pnpm
+PNPM_BIN="$(pnpm bin -g)"
+ls -la "$PNPM_BIN/agentsync"
+case ":$PATH:" in
+  *":$PNPM_BIN:"*) echo "pnpm bin ya está en PATH" ;;
+  *) echo "pnpm bin no está en PATH" ;;
+esac
 ```
 
-Si `pnpm bin -g` indica que el directorio global no está en `PATH`, ejecuta `pnpm setup`, vuelve a abrir la terminal y repite la comprobación.
+Si el directorio no está en `PATH`, ejecuta `pnpm setup`, vuelve a abrir la terminal y repite la comprobación.
 
-Agrega el directorio que muestra `pnpm bin -g` a `PATH` en el perfil del shell, vuelve a cargar el shell y reintenta. Por ejemplo:
+Si aún no aparece en `PATH`, agrega el directorio que muestra `pnpm bin -g` al archivo de inicio del shell que usas. En Bash, puedes agregarlo a `~/.bashrc`; en Zsh, a `~/.zshrc`. Ajusta el nombre del archivo según el shell:
 
 ```bash
-export PATH="$(pnpm bin -g):$PATH"
+printf '\nexport PATH="%s:$PATH"\n' "$(pnpm bin -g)" >> ~/.bashrc
+source ~/.bashrc
 ```
+
+Este cambio persiste en sesiones nuevas. Si solo necesitas corregir la sesión actual, ejecuta `export PATH="$(pnpm bin -g):$PATH"` sin escribir en el archivo de inicio.
 
 También puedes evitar la instalación global y usar un ejecutor puntual en cada proyecto:
 

@@ -62,6 +62,8 @@ Regla práctica:
 - al principio, deja visible la salida para que el equipo confirme que el hook se ejecuta;
 - silencia la salida solo después de comprobar que la configuración es confiable.
 
+En los scripts `prepare` que se ejecutan mediante npm o pnpm, usa `node -e "process.exit(0)"` como fallback para mantener el comportamiento portable en Windows y POSIX. No reemplaza el resultado de `lefthook install`, `husky` ni `simple-git-hooks`: si la instalación del administrador de hooks falla, también debe fallar `prepare`. Los ejemplos de hooks individuales usan sintaxis POSIX porque esos scripts los ejecuta el shell de Git.
+
 Si un hook no se ejecutó o el estado local sigue incorrecto, ejecuta `agentsync apply` manualmente.
 
 ## Matriz de hooks recomendada
@@ -110,7 +112,7 @@ Combínalo con un script `prepare` del administrador de paquetes:
 ```json
 {
   "scripts": {
-    "prepare": "lefthook install && (agentsync apply || true)"
+    "prepare": "lefthook install && (agentsync apply || node -e \"process.exit(0)\")"
   }
 }
 ```
@@ -126,7 +128,7 @@ Usa Husky si el repositorio ya administra hooks en `.husky/`.
 ```json
 {
   "scripts": {
-    "prepare": "husky && (agentsync apply || true)"
+    "prepare": "husky && (agentsync apply || node -e \"process.exit(0)\")"
   }
 }
 ```
@@ -161,7 +163,7 @@ Usa `simple-git-hooks` si quieres mantener toda la configuración de hooks en `p
 ```json
 {
   "scripts": {
-    "prepare": "simple-git-hooks && (agentsync apply || true)"
+    "prepare": "simple-git-hooks && (agentsync apply || node -e \"process.exit(0)\")"
   },
   "simple-git-hooks": {
     "post-checkout": "agentsync apply || true",
