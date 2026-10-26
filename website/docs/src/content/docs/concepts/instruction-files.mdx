@@ -1,0 +1,134 @@
+---
+title: Instruction Files
+description: Model instruction sources and assistant-specific destinations with AgentSync.
+---
+
+import BaseLink from "../../../components/BaseLink.astro";
+
+AgentSync manages instruction files by linking configured **sources** to **destinations**. It does not interpret instruction content or decide how an assistant discovers, prioritizes, or combines files. Those rules belong to each assistant.
+
+This distinction matters when a repository has a root instruction file and additional files in subdirectories. AgentSync can project those files into configured destinations; it does not guarantee that every assistant will load them with the same scope or precedence.
+
+## Source of truth and destinations
+
+The configuration declares a source for each target. For most sync types, sources resolve relative to `source_dir`; destinations resolve relative to the project root.
+
+```toml
+[agents.claude.targets.instructions]
+source = "AGENTS.md"
+destination = "CLAUDE.md"
+type = "symlink"
+```
+
+This creates a `CLAUDE.md` link to the configured `AGENTS.md` source. AgentSync does not translate the Markdown format or rename headings inside the file. The destination filename is selected to match the assistant's configured convention.
+
+For a common source shared by several assistants, declare one target per assistant and point each target at the same source:
+
+```toml
+[agents.claude.targets.instructions]
+source = "AGENTS.md"
+destination = "CLAUDE.md"
+type = "symlink"
+
+[agents.codex.targets.instructions]
+source = "AGENTS.md"
+destination = "AGENTS.md"
+type = "symlink"
+```
+
+The filenames and native support vary by assistant. Check the compatibility matrix in the <BaseLink href="/reference/configuration/#agent-compatibility-matrix">configuration reference</BaseLink> before relying on an agent-specific convention.
+
+## Choose a projection pattern
+
+Use the sync type that matches where the source files live and how you want destinations created:
+
+- **One canonical file to one assistant destination:** use `symlink`.
+- **Several known source files to specific repository locations:** use `module-map`.
+- **Discover files recursively by a pattern and project each match:** use `nested-glob`.
+- **Create one link per item inside a directory:** use `symlink-contents`; this is usually for directories, skills, or commands rather than mapping nested instructions.
+
+The <BaseLink href="/concepts/sync-types/#which-one-should-i-use">sync type decision guide</BaseLink> has examples and a side-by-side comparison.
+
+### Known files with `module-map`
+
+Use `module-map` when the source-to-destination mapping is explicit and maintained in configuration. Each mapping points one source file to one destination directory. AgentSync chooses the output filename from `filename_override`, then the agent convention, then the source basename.
+
+```toml
+[agents.claude.targets.instructions_by_area]
+source = "."
+destination = "."
+type = "module-map"
+
+[[agents.claude.targets.instructions_by_area.mappings]]
+source = "instructions/api.md"
+destination = "services/api"
+
+[[agents.claude.targets.instructions_by_area.mappings]]
+source = "instructions/web.md"
+destination = "apps/web"
+```
+
+For Claude, the convention filename is `CLAUDE.md`, so this maps the sources to `services/api/CLAUDE.md` and `apps/web/CLAUDE.md`. The source files remain in the configured source tree. AgentSync creates symlinks at the destinations; it does not merge the source contents into the root instructions file.
+
+Use `filename_override` when the destination needs a different name:
+
+```toml
+[[agents.claude.targets.instructions_by_area.mappings]]
+source = "instructions/release.md"
+destination = "ops/release"
+filename_override = "RELEASE-RULES.md"
+```
+
+### Discover files with `nested-glob`
+
+Use `nested-glob` when files follow a naming or directory pattern and should be projected without listing each mapping. `source` is relative to the project root for this sync type. The destination is a template expanded for every match.
+
+```toml
+[agents.claude.targets.nested_instructions]
+type = "nested-glob"
+source = "."
+pattern = "**/AGENTS.md"
+destination = "{relative_path}/CLAUDE.md"
+exclude = ["**/.git/**", "**/node_modules/**", ".agents/**"]
+```
+
+`{relative_path}` is the matched file's parent directory relative to the search root. Files at the root use `.`. AgentSync projects each match to the destination produced by the template. Choose excludes carefully so the search does not traverse generated or vendor directories.
+
+Do not assume this pattern is equivalent to native nested-instruction discovery. It only controls which source files AgentSync finds and where it creates links. Confirm that the selected assistant recognizes the destination names and directory scope you need.
+
+## Compacting `AGENTS.md`
+
+The global `compress_agents_md = true` option creates `AGENTS.compact.md` next to each eligible source and points eligible `AGENTS.md` `symlink` and `symlink-contents` targets to that generated file. AgentSync does not overwrite the original `AGENTS.md`.
+
+The compactor removes trailing spaces and tabs on every line, including lines inside fenced code blocks. It reduces repeated inline spaces/tabs to one and collapses repeated blank lines to one outside fences. Inside fences, it preserves leading whitespace, code content, and repeated blank lines, except that it still removes trailing spaces and tabs. This can remove Markdown hard line breaks inside fenced examples. It is a whitespace compactor, not a summarizer: it does not remove instructions or rewrite prose semantically.
+
+```toml
+compress_agents_md = true
+
+[agents.claude.targets.instructions]
+source = "AGENTS.md"
+destination = "CLAUDE.md"
+type = "symlink"
+```
+
+This option is deliberately narrow. It only applies when the configured source filename is exactly `AGENTS.md`, and it does not apply to `nested-glob` or `module-map`. A nested `AGENTS.md` discovered by `nested-glob` is not compacted by this option. If a destination needs the original uncompressed file, configure a separate source with a filename or sync type that does not meet the compaction condition.
+
+## Verify what AgentSync projects
+
+Run `inspect` before applying to review the selected assistant's configured sources, destinations, and observed drift. Use `status` after `apply` to verify the resulting managed links.
+
+```bash
+agentsync inspect --agent claude
+agentsync apply --dry-run --agents claude
+agentsync apply --agents claude
+agentsync status --agents claude
+```
+
+`inspect`, `apply`, and `status` describe AgentSync's view of the configuration and filesystem. They do not verify that the assistant itself loaded an instruction file or applied its contents.
+
+## Related references
+
+- <BaseLink href="/reference/configuration/">Configuration reference</BaseLink> for global settings and agent destinations.
+- <BaseLink href="/concepts/sync-types/">Sync types</BaseLink> for target projection behavior.
+- <BaseLink href="/guides/inspect/">Inspect guide</BaseLink> for read-only diagnostics.
+- <BaseLink href="/reference/status-output/">Status output</BaseLink> for the machine-readable drift report.

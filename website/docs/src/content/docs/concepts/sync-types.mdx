@@ -113,14 +113,17 @@ In the example above, `src/api/CLAUDE.md` points to `.agents/api-context.md` and
 
 ## Which one should I use?
 
-| Situation | Sync type |
-| :--- | :--- |
-| One canonical file per agent (`AGENTS.md` → `CLAUDE.md`) | `symlink` |
-| Whole skills/commands directory as one link | `symlink` |
-| Destination must be a real directory with individual links | `symlink-contents` |
-| Nested context files across a monorepo | `nested-glob` |
-| Different context files to specific modules | `module-map` |
+Choose by how you identify source files and how explicit the mapping needs to be:
 
-These sync types behave the same on Windows. If your local Windows environment cannot create
-symlinks yet, fix the environment first — see the
+| Situation | Sync type | Why |
+| :--- | :--- | :--- |
+| One canonical instruction source maps to one assistant destination | `symlink` | One source and one destination are explicit. |
+| A directory should appear at the destination as one unit | `symlink` | The directory itself is the symlink. |
+| Each item in a source directory needs an individual destination link | `symlink-contents` | AgentSync keeps a real destination directory and links its eligible children. |
+| A small, known set of instruction files maps to named repository locations | `module-map` | Each source-to-directory mapping is declared in TOML. |
+| Instruction files follow a recursive naming pattern | `nested-glob` | AgentSync discovers each matching file and expands a destination template. |
+
+For instructions, prefer `module-map` when reviewers should see every mapping in configuration. Prefer `nested-glob` when a repository convention already identifies the files and explicit per-file entries would be repetitive. In both cases, AgentSync creates links; it does not merge the instruction contents.
+
+The projection behavior is the same on Windows. If your local Windows environment cannot create symlinks yet, fix the environment first — see the
 <BaseLink href="/guides/windows-symlink-setup/">Windows Symlink Setup guide</BaseLink>.

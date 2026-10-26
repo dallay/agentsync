@@ -41,13 +41,20 @@ export default defineConfig({
 			],
 			sidebar: [
 				{
-					label: "Core Concepts",
-					items: [{ label: "Sync Types", slug: "concepts/sync-types" }],
+					label: "Start Here",
+					items: [{ label: "Getting Started", slug: "guides/getting-started" }],
 				},
 				{
-					label: "Guides",
+					label: "Core Concepts",
 					items: [
-						{ label: "Getting Started", slug: "guides/getting-started" },
+						{ label: "Instruction Files", slug: "concepts/instruction-files" },
+						{ label: "Sync Types", slug: "concepts/sync-types" },
+					],
+				},
+				{
+					label: "Guides and Workflows",
+					items: [
+						{ label: "Configuration Recipes", slug: "guides/recipes" },
 						{
 							label: "Windows Symlink Setup",
 							slug: "guides/windows-symlink-setup",
@@ -62,14 +69,16 @@ export default defineConfig({
 						},
 						{ label: "MCP Integration", slug: "guides/mcp" },
 						{ label: "Skills", slug: "guides/skills" },
+						{ label: "Inspect Configuration", slug: "guides/inspect" },
 						{ label: "Troubleshooting", slug: "guides/troubleshooting" },
 					],
 				},
 				{
-					label: "Reference",
+					label: "CLI and Reference",
 					items: [
-						{ label: "CLI", slug: "reference/cli" },
+						{ label: "Command Line Reference", slug: "reference/cli" },
 						{ label: "Configuration", slug: "reference/configuration" },
+						{ label: "Inspect Output", slug: "reference/inspect-output" },
 						{ label: "Status Output", slug: "reference/status-output" },
 					],
 				},

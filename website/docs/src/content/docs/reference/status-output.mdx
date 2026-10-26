@@ -3,6 +3,8 @@ title: Status Output Reference
 description: The machine-readable schema and per-sync-type behavior of `agentsync status`.
 ---
 
+import BaseLink from "../../../components/BaseLink.astro";
+
 `agentsync status` verifies every AgentSync-managed target and reports drift. It iterates all
 enabled agents and their targets from your `agentsync.toml`, validates each one according to its
 configured sync type, and reports the result.
@@ -56,7 +58,7 @@ project root. Individual expanded matches are **not** emitted as separate entrie
 ### `module-map`
 
 Emits one entry per mapping. Each entry's destination is the mapping destination directory joined
-with the resolved output filename (see the [Sync Types guide](/concepts/sync-types/#module-map) for
+with the resolved output filename (see the <BaseLink href="/concepts/sync-types/#module-map">Sync Types guide</BaseLink> for
 filename resolution priority).
 
 ## Exit codes
@@ -72,4 +74,4 @@ agentsync status --json > status.json
 
 The status array is written to `status.json`; diagnostic events go to stderr. On Windows, `status`
 is also a practical post-setup verification step — see the
-<a href="/guides/windows-symlink-setup/">Windows Symlink Setup guide</a>.
+<BaseLink href="/guides/windows-symlink-setup/">Windows Symlink Setup guide</BaseLink>.

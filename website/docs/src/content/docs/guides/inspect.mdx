@@ -3,7 +3,7 @@ title: Inspect AgentSync-Managed Configuration
 description: Review one assistant's declared sources, planned targets, observed drift, and MCP inputs.
 ---
 
-# Inspect AgentSync-managed configuration
+import BaseLink from "../../../components/BaseLink.astro";
 
 Use `inspect` to explain what AgentSync intends to manage for one assistant before applying changes.
 
@@ -36,5 +36,5 @@ preserves or replaces destination entries according to `mcp.merge_strategy`.
 `inspect` reports only AgentSync-managed configuration. It does not claim that provider-native,
 global, user, organization, or session settings are absent. `provider_support: "unknown"` means
 AgentSync is not asserting that the assistant natively supports the semantic capability. See the
-<a href="/reference/inspect-output/">inspect output reference</a> for the JSON schema and diagnostic
-codes.
+<BaseLink href="/reference/inspect-output/">inspect output reference</BaseLink> for the JSON schema
+and diagnostic codes.
