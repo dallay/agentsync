@@ -173,7 +173,7 @@ Comportamiento:
 - Los archivos normales del usuario que no sean symlinks administrados nunca se modifican. Una copia de seguridad solo se restaura en un destino ausente o sobre un symlink administrado, nunca encima de un archivo real que haya aparecido después.
 - En las ejecuciones completas y sin filtros de reversión de symlinks, se elimina el bloque de `.gitignore` administrado por AgentSync. Si se pasa `--agents`, se reduce `default_agents` o hay un error u omisión al revertir symlinks, el bloque se conserva porque aún pueden quedar destinos administrados; vuelve a ejecutar `apply` para conciliarlo. Omitir una instantánea MCP no impide esta limpieza, porque el bloque rastrea destinos symlink, no archivos de configuración MCP.
 - Para destinos `symlink-contents`, `revert` elimina los symlinks secundarios administrados, pero puede dejar vacío el directorio de destino. No puede inferir si el contenedor existía antes de `apply`, así que no lo elimina.
-- Las configuraciones MCP se restauran desde la instantánea completa tomada durante `apply` cuando el archivo todavía coincide con el estado registrado. Si antes no había archivo, el archivo normal generado se elimina solo si no cambió. Las ediciones posteriores, los symlinks, un journal no válido o la selección parcial de propietarios conservan el archivo y el journal, e informan de la omisión o el error; no se hace una combinación de tres vías. Si falta un journal de una versión anterior de AgentSync, no se puede reconstruir el estado original, por lo que se deja el archivo como está en vez de eliminar servidores por nombre o valor. Consulta la <BaseLink href="/guides/mcp/#reverting-mcp-configurations">guía del journal MCP y de restauración</BaseLink> para conocer su ubicación, retención y recuperación.
+- Las configuraciones MCP se restauran desde la instantánea completa tomada durante `apply` cuando el archivo todavía coincide con el estado registrado. Si antes no había archivo, el archivo normal generado se elimina solo si no cambió. Las ediciones posteriores, los symlinks, un journal no válido o la selección parcial de propietarios conservan el archivo y el journal, e informan de la omisión o el error; no se hace una combinación de tres vías. Si falta un journal de una versión anterior de AgentSync, no se puede reconstruir el estado original, por lo que se deja el archivo como está en vez de eliminar servidores por nombre o valor. Consulta la <BaseLink href="/guides/mcp/#revertir-configuraciones-mcp">guía del journal MCP y de restauración</BaseLink> para conocer su ubicación, retención y recuperación.
 
 Ejemplos:
 
@@ -227,7 +227,7 @@ agentsync skill suggest [--json] [--install [--all]]
 **Comportamiento**:
 
 - `skill suggest` es de solo lectura de forma predeterminada.
-- La detección admite actualmente más de 110 tecnologías. Consulta la <BaseLink href="/guides/skills/#supported-repository-technology-detection-current-scope">guía de skills</BaseLink> para ver una lista representativa.
+- La detección admite actualmente más de 110 tecnologías. Consulta la <BaseLink href="/guides/skills/">guía de skills</BaseLink> para ver una lista representativa.
 - La detección se realiza mediante el análisis del repositorio en Rust; la asignación de recomendaciones proviene del catálogo curado de AgentSync.
 - Las recomendaciones reflejan criterios propios y no son exhaustivas.
 - El runtime carga primero un catálogo declarativo integrado y, de forma opcional, agrega metadatos válidos de proveedores.

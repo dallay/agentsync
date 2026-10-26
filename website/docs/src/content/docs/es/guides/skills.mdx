@@ -42,10 +42,10 @@ Para skills, AgentSync recomienda `type = "symlink"` y lo usa como opción prede
 Usa `agentsync skill install` para instalar una skill desde un proveedor compatible. Por ejemplo, para instalar desde skills.sh:
 
 ```bash
-agentsync skill install owner/repository/skill-name
+agentsync skill install skill-name
 ```
 
-El comando obtiene la skill, valida la ruta instalada y actualiza el registro local de skills. Usa `agentsync skill list` para revisar lo instalado y `agentsync skill update` para obtener actualizaciones.
+El comando obtiene la skill, valida la ruta instalada y actualiza el registro local de skills. Usa `agentsync skill list` para revisar lo instalado y `agentsync skill update skill-name` para obtener actualizaciones.
 
 ## Crear una skill local
 
@@ -62,8 +62,8 @@ La instalación desde proveedores y la creación local son flujos diferentes. No
 
 ```bash
 agentsync skill list
-agentsync skill install owner/repository/skill-name
-agentsync skill update
+agentsync skill install skill-name
+agentsync skill update skill-name
 agentsync skill uninstall skill-name
 agentsync skill suggest
 ```

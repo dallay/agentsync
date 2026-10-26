@@ -67,11 +67,13 @@ Asocia fuentes específicas con directorios de módulos. Cada asociación puede 
 
 ```toml
 [agents.claude.targets.modules]
+source = "."
+destination = "."
 type = "module-map"
 
 [[agents.claude.targets.modules.mappings]]
 source = "context/frontend.md"
-module = "frontend"
+destination = "frontend"
 ```
 
 Usa `module-map` cuando la asociación entre fuente y módulo deba estar declarada de forma explícita y revisable. Consulta la <BaseLink href="/reference/configuration/">referencia de configuración</BaseLink> para conocer los campos y convenciones admitidos.

@@ -26,7 +26,7 @@ Puede que el instalador indique éxito mientras la CLI muestra otra versión. No
 
 AgentSync se puede instalar de dos formas independientes:
 
-1. **Wrapper npm** (`npm`, `pnpm`, `yarn` o `bun` con instalación global): descarga un binario de plataforma y lo expone desde el directorio global del administrador, por ejemplo `~/Library/pnpm/bin/agentsync`.
+1. **Wrapper npm** (`npm`, `pnpm`, `yarn` o `bun` con instalación global): descarga un binario de plataforma y lo expone desde el directorio global del administrador, por ejemplo `$(pnpm bin -g)/agentsync` si usas pnpm.
 2. **Binario Rust** (`cargo install agentsync`): compila y coloca un binario independiente en `~/.cargo/bin/agentsync`.
 
 Los dos binarios no se actualizan entre sí. Si `~/.cargo/bin` aparece antes que el directorio global de pnpm/npm en `PATH`, el shell puede seguir ejecutando el binario Rust antiguo.
@@ -47,15 +47,17 @@ Si quieres conservar ambas instalaciones, llama al binario que necesitas con su 
 El paquete se instaló, pero su directorio `bin` no está en `PATH`.
 
 ```bash
-pnpm root -g
-ls -la ~/Library/pnpm/bin/agentsync
+pnpm bin -g
+ls -la "$(pnpm bin -g)/agentsync"
 echo "$PATH" | tr ':' '\n' | grep -i pnpm
 ```
 
-Agrega el directorio global `bin` al perfil del shell, vuelve a cargar el shell y reintenta. Para pnpm, por ejemplo:
+Si `pnpm bin -g` indica que el directorio global no está en `PATH`, ejecuta `pnpm setup`, vuelve a abrir la terminal y repite la comprobación.
+
+Agrega el directorio que muestra `pnpm bin -g` a `PATH` en el perfil del shell, vuelve a cargar el shell y reintenta. Por ejemplo:
 
 ```bash
-export PATH="$HOME/Library/pnpm/bin:$PATH"
+export PATH="$(pnpm bin -g):$PATH"
 ```
 
 También puedes evitar la instalación global y usar un ejecutor puntual en cada proyecto:

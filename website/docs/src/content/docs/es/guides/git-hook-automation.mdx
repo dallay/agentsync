@@ -110,7 +110,7 @@ Combínalo con un script `prepare` del administrador de paquetes:
 ```json
 {
   "scripts": {
-    "prepare": "lefthook install && agentsync apply || true"
+    "prepare": "lefthook install && (agentsync apply || true)"
   }
 }
 ```
@@ -126,7 +126,7 @@ Usa Husky si el repositorio ya administra hooks en `.husky/`.
 ```json
 {
   "scripts": {
-    "prepare": "husky && agentsync apply || true"
+    "prepare": "husky && (agentsync apply || true)"
   }
 }
 ```
@@ -161,7 +161,7 @@ Usa `simple-git-hooks` si quieres mantener toda la configuración de hooks en `p
 ```json
 {
   "scripts": {
-    "prepare": "simple-git-hooks && agentsync apply || true"
+    "prepare": "simple-git-hooks && (agentsync apply || true)"
   },
   "simple-git-hooks": {
     "post-checkout": "agentsync apply || true",
