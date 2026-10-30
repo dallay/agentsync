@@ -21,6 +21,37 @@
 * **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
 * **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
 
+## [1.53.0](https://github.com/dallay/agentsync/compare/v1.52.3...v1.53.0) (2026-10-30)
+
+
+### Features
+
+* add read-only agent configuration inspect ([#706](https://github.com/dallay/agentsync/issues/706)) ([bdaf77a](https://github.com/dallay/agentsync/commit/bdaf77aaf0ab1491b2a9ed6ea0da46557683d54d))
+* **skill:** add read-only installed skill inventory ([#705](https://github.com/dallay/agentsync/issues/705)) ([d407550](https://github.com/dallay/agentsync/commit/d4075505c95634c8545114c36b5867567e63ddcb))
+
+
+### Bug Fixes
+
+* update libz-sys security advisory ([#716](https://github.com/dallay/agentsync/issues/716)) ([6fd9d3d](https://github.com/dallay/agentsync/commit/6fd9d3dd5041d1248ca1e32b66468190845f6018))
+
+
+### Documentation
+
+* add Spanish documentation localization ([#712](https://github.com/dallay/agentsync/issues/712)) ([94ef940](https://github.com/dallay/agentsync/commit/94ef94003159c3ce5e478fe9f133785da50ad47d))
+* improve navigation and configuration recipes ([#711](https://github.com/dallay/agentsync/issues/711)) ([75fca22](https://github.com/dallay/agentsync/commit/75fca221399b4e4b35fd6fa7c1fc5d22c4c547bd))
+
+
+### Chores
+
+* **deps:** bump the npm_and_yarn group across 1 directory with 2 updates ([#709](https://github.com/dallay/agentsync/issues/709)) ([17901db](https://github.com/dallay/agentsync/commit/17901db7beb680e6d1e9067721f69e04648bd43f))
+* **deps:** update dependency @dallay/agentsync to v1.52.2 ([#682](https://github.com/dallay/agentsync/issues/682)) ([571f05e](https://github.com/dallay/agentsync/commit/571f05e4e28c0ba34abe92b2c7f2701a8a9b4d60))
+* **deps:** update dependency @iconify/json to v2.2.546 ([#707](https://github.com/dallay/agentsync/issues/707)) ([5114665](https://github.com/dallay/agentsync/commit/5114665278d16760ac5bd0633a325a280990de55))
+* **deps:** update dependency @iconify/json to v2.2.548 ([#714](https://github.com/dallay/agentsync/issues/714)) ([9cfe667](https://github.com/dallay/agentsync/commit/9cfe667315be7788671bfed153a02198ed1639f9))
+* **deps:** update dependency astro to v7.4.1 ([#708](https://github.com/dallay/agentsync/issues/708)) ([3bead1e](https://github.com/dallay/agentsync/commit/3bead1e5f0f2c769dab9e7429aae09aef13e2159))
+* **deps:** update dependency astro to v7.4.2 ([#715](https://github.com/dallay/agentsync/issues/715)) ([dd4e491](https://github.com/dallay/agentsync/commit/dd4e491eacc62df3be689c7a2e747cf4cb5c96f8))
+* **deps:** update node.js to v24.22.1 ([#710](https://github.com/dallay/agentsync/issues/710)) ([7657654](https://github.com/dallay/agentsync/commit/7657654ea2a5205bc3427889f30b7498760aee6e))
+* **deps:** update rust crate tokio to v1.54.1 ([#703](https://github.com/dallay/agentsync/issues/703)) ([3255013](https://github.com/dallay/agentsync/commit/3255013012431ab3df969b0678c356953324c403))
+
 ## [1.52.3](https://github.com/dallay/agentsync/compare/v1.52.2...v1.52.3) (2026-10-22)
 
 
