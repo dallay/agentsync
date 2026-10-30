@@ -209,7 +209,11 @@ pub(crate) mod fixtures {
 #[cfg(unix)]
 pub(crate) struct SuppressedStdout {
     saved: i32,
+    _lock: std::sync::MutexGuard<'static, ()>,
 }
+
+#[cfg(unix)]
+static STDOUT_SUPPRESSION_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[cfg(unix)]
 unsafe extern "C" {
@@ -223,6 +227,9 @@ impl SuppressedStdout {
     pub(crate) fn suppress() -> std::io::Result<Self> {
         use std::os::fd::AsRawFd;
 
+        let lock = STDOUT_SUPPRESSION_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let devnull = fs::File::open("/dev/null")?;
         let devnull_fd = devnull.as_raw_fd();
 
@@ -235,7 +242,7 @@ impl SuppressedStdout {
             unsafe { close(saved) };
             return Err(err);
         }
-        Ok(SuppressedStdout { saved })
+        Ok(SuppressedStdout { saved, _lock: lock })
     }
 }
 
@@ -808,6 +815,32 @@ mod tests {
         let overridden = TestCli::parse_from(["dev-bench", "--runs", "3", "--json"]);
         assert_eq!(overridden.args.runs, 3);
         assert!(overridden.args.json);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn stdout_suppression_is_serialized_across_threads() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let guard = SuppressedStdout::suppress().unwrap();
+        let (started_tx, started_rx) = mpsc::channel();
+        let (acquired_tx, acquired_rx) = mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            started_tx.send(()).unwrap();
+            let _guard = SuppressedStdout::suppress().unwrap();
+            acquired_tx.send(()).unwrap();
+        });
+
+        started_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("second thread should start");
+        assert!(acquired_rx.recv_timeout(Duration::from_millis(50)).is_err());
+        drop(guard);
+        acquired_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("second suppression should proceed after the first guard drops");
+        worker.join().unwrap();
     }
 
     #[cfg(unix)]
