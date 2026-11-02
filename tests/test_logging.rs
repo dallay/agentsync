@@ -346,15 +346,18 @@ fn apply_json_mcp_span_never_leaks_env_headers_or_url() {
 
     // env / headers values, Authorization headers, and URL userinfo+query are
     // never emitted in log events.
-    for secret in [
+    for (i, secret) in [
         "leak-check-token-42",
         "Bearer ",
         "user:pass",
         "token=abc123",
-    ] {
+    ]
+    .iter()
+    .enumerate()
+    {
         assert!(
             !stderr.contains(secret),
-            "secret leaked into stderr: {secret:?}\n{stderr}"
+            "sensitive pattern leaked into stderr (pattern index: {i})"
         );
     }
 }
