@@ -11,9 +11,9 @@ Use this guide when your team needs to decide how `agentsync` should interact wi
 The short version:
 
 - **Default:** keep `[gitignore].enabled = true` and let AgentSync manage a marker-delimited block in `.gitignore`.
-- **Local exclude workflow:** set `[gitignore].local = true` (or use `agentsync apply --gitignore-local`) to write managed entries to `.git/info/exclude` instead of `.gitignore`.
+- **Local exclude workflow:** set `[gitignore].local = true` (or use `agentsync apply --gitignore-local`) to write managed entries to the local Git exclude file instead of `.gitignore`.
 - **Intentional opt-out:** set `[gitignore].enabled = false` only if your team wants to commit AgentSync-managed destinations.
-- **Temporary CLI opt-out:** use `agentsync apply --no-gitignore` when you want one run to skip `.gitignore` reconciliation without changing team policy.
+- **Temporary CLI opt-out:** use `agentsync apply --no-gitignore` when you want one run to skip gitignore reconciliation without changing team policy.
 
 See the <BaseLink href="/reference/configuration/#gitignore-management">configuration reference</BaseLink> for field-by-field details, the <BaseLink href="/reference/cli/#apply">CLI reference</BaseLink> for command semantics, and <BaseLink href="/guides/git-hook-automation/">Git Hook Automation</BaseLink> for hook-manager and native Git hook examples.
 
@@ -29,9 +29,9 @@ This is the recommended starting point, and `[gitignore].enabled = true` remains
 
 ### Choose the local exclude workflow when
 
-- your team wants generated symlinks ignored locally without modifying the repository's checked-in `.gitignore`
+- your team wants generated symlinks ignored locally instead of keeping managed entries in the shared `.gitignore`
 - you work in a shared repository where team policy prevents committing AgentSync-specific rules to `.gitignore`
-- you want AgentSync to manage entries in `.git/info/exclude` instead
+- you want AgentSync to manage entries in the local Git exclude file instead
 
 ### Choose the committed-destination opt-out workflow when
 
@@ -226,15 +226,16 @@ Teams in this workflow can still use the same hook patterns from <BaseLink href=
 
 ## Workflow 3: Local exclude file (.git/info/exclude)
 
-Choose this when you want AgentSync to keep destinations ignored in your local Git repository without modifying the shared `.gitignore` file.
+Choose this when you want AgentSync to keep destinations ignored locally instead of in the shared `.gitignore`. On the first local-mode apply after shared mode, AgentSync removes any matching managed block from `.gitignore`; you can commit that removal to keep the shared file in sync.
 
 ### What AgentSync does
 
-With `[gitignore].local = true`, AgentSync manages the marker-delimited block in `.git/info/exclude` instead of `.gitignore`:
+With `[gitignore].local = true`, AgentSync manages the marker-delimited block in the local Git exclude file instead of `.gitignore`:
 
-- writes and updates managed entries in `.git/info/exclude`
-- resolves Git worktrees and submodules automatically (via `commondir`)
-- cleans up orphaned managed blocks from `.gitignore` when switching modes, and vice versa
+- writes and updates managed entries in `.git/info/exclude` for regular repositories
+- for a `.git` file, resolves its `gitdir` and uses its `info/exclude`; if `commondir` exists, uses that directory's `info/exclude` instead. Relative `commondir` values are resolved from the `gitdir` parent, which can differ from Git's own resolution in linked worktrees. Check the resolved path against `git rev-parse --git-path info/exclude` before relying on local mode in a worktree or submodule.
+- cleans orphaned managed blocks from `.gitignore` when switching to local mode
+- cleans `.git/info/exclude` when switching back to shared mode only in regular repositories. In worktrees and submodules, manually remove the old managed block from the local exclude file.
 
 Example configuration:
 
@@ -251,7 +252,7 @@ You can also override this per invocation from the CLI:
 
 ## Temporary opt-out for one command
 
-Use `--no-gitignore` when you want to skip `.gitignore` reconciliation for a single invocation.
+Use `--no-gitignore` when you want to skip gitignore reconciliation for a single invocation.
 
 <CommandTabs command="apply --no-gitignore" />
 <CommandTabs command="apply --dry-run --no-gitignore" />
@@ -259,7 +260,7 @@ Use `--no-gitignore` when you want to skip `.gitignore` reconciliation for a sin
 This is stricter and narrower than changing config:
 
 - it applies only to that command run
-- it skips `.gitignore` writes, updates, and cleanup
+- it skips writes, updates, and cleanup in both `.gitignore` and the local exclude file
 - it does **not** change your team workflow or config default
 
 If `[gitignore].enabled = false` and a stale managed block still exists, `agentsync apply --no-gitignore` leaves that stale block untouched for that run.

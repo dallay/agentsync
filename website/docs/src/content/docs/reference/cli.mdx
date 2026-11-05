@@ -110,13 +110,14 @@ When using the `--wizard` flag, AgentSync will guide you through the same initia
 
 ### `apply`
 
-Applies the configuration from `agentsync.toml` by creating symbolic links and updating `.gitignore`.
+Applies the configuration from `agentsync.toml` by creating symbolic links and reconciling gitignore entries.
 
 In workflow terms, `agentsync apply` reconciles your local managed destinations and then follows the repository's gitignore policy:
 
 - default workflow: writes or updates the AgentSync-managed `.gitignore` block
+- local exclude workflow: writes or updates managed entries in the local Git exclude file
 - committed-destination opt-out workflow: removes a stale AgentSync-managed block when `[gitignore].enabled = false`
-- temporary CLI opt-out: skips all `.gitignore` reconciliation when `--no-gitignore` is present
+- temporary CLI opt-out: skips gitignore reconciliation when `--no-gitignore` is present
 
 For the full team decision guide, see <BaseLink href="/guides/gitignore-team-workflows/">Gitignore Team Workflows</BaseLink>. For install-time and Git hook automation patterns around `apply`, see <BaseLink href="/guides/git-hook-automation/">Git Hook Automation</BaseLink>.
 
@@ -130,10 +131,10 @@ agentsync apply [OPTIONS]
 - `-p, --path <PATH>`: Project root directory. Also aliased as `--project-root`.
 - `-c, --config <CONFIG>`: Use a custom configuration file path instead of the default `.agents/agentsync.toml`.
 - `--clean`: Deletes existing symbolic links before applying.
-- `--dry-run`: Shows what actions would be taken without actually making any changes, including pending `.gitignore` writes or cleanup when gitignore reconciliation is active.
+- `--dry-run`: Shows what actions would be taken without actually making any changes, including pending gitignore writes or cleanup when reconciliation is active.
 - `-v, --verbose`: Enable verbose logging.
 - `-a, --agents <AGENTS>`: Filter by agent (comma-separated list, e.g., `claude,copilot`). **Overrides** `default_agents` in config.
-- `--no-gitignore`: Strictly opt out of `.gitignore` reconciliation for that invocation. AgentSync will not write, update, or remove its managed `.gitignore` block, even if config would otherwise do so.
+- `--no-gitignore`: Skip gitignore reconciliation for that invocation. AgentSync will not write, update, or remove managed entries in either `.gitignore` or `.git/info/exclude` (the resolved local Git exclude file), even if config would otherwise do so.
 - `--gitignore-local`: Write managed entries to `.git/info/exclude` instead of `.gitignore` (overrides config).
 - `--offline`: Zero network for the invocation, including the update checker. Missing Git plugin snapshots fail; run `agentsync plugin restore` first. `--dry-run` never restores snapshots either, but may still run the update checker.
 - `--rebase-mcp-journal`: Explicitly allow an apply to continue when a project MCP config differs from its ownership journal. AgentSync keeps the original pre-first-apply snapshot and owner set, applies the configured MCP merge strategy to the current file, and refreshes the recorded hashes. A later `revert` restores the original snapshot and can discard edits made after the first apply; back up and inspect the MCP config before using this option.
