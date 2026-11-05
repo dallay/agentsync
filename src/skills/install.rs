@@ -694,11 +694,13 @@ fn zip_common_root(
         .file_names()
         .collect::<Result<Vec<_>, _>>()
         .map_err(SkillInstallError::ZipArchive)?;
+    // Performance optimization: Avoid allocating a new formatted String (`format!("{root}/")`)
+    // for every entry in the archive. Instead, check if the name starts with `root` followed by `/`
+    // using zero heap allocations.
+    let is_prefixed = |n: &str| n.strip_prefix(root).is_some_and(|r| r.starts_with('/'));
     if !root.is_empty()
-        && names
-            .iter()
-            .all(|n| n == root || n.starts_with(&format!("{root}/")))
-        && names.iter().any(|n| n.starts_with(&format!("{root}/")))
+        && names.iter().all(|n| n == root || is_prefixed(n))
+        && names.iter().any(|n| is_prefixed(n))
     {
         Ok(Some(root.to_string()))
     } else {
@@ -712,8 +714,13 @@ fn zip_entry_rel_path<'a>(
     subpath: Option<&str>,
 ) -> Option<&'a str> {
     let rel_path = if let Some(root) = common_root {
-        // Strip root only at a component boundary: "root/" prefix or exact match
-        if let Some(rest) = full_name.strip_prefix(&format!("{root}/")) {
+        // Strip root only at a component boundary: "root/" prefix or exact match.
+        // Performance optimization: Use zero-allocation prefix slicing rather than
+        // allocating formatted strings (`format!("{root}/")`) per entry.
+        if let Some(rest) = full_name
+            .strip_prefix(root)
+            .and_then(|r| r.strip_prefix('/'))
+        {
             rest
         } else if full_name == root {
             ""
@@ -727,8 +734,9 @@ fn zip_entry_rel_path<'a>(
     if let Some(sub) = subpath {
         // Normalize trailing slash: "src/" → "src"
         let sub = sub.trim_end_matches('/');
-        // Strip subpath only at a component boundary
-        if let Some(rest) = rel_path.strip_prefix(&format!("{sub}/")) {
+        // Strip subpath only at a component boundary.
+        // Performance optimization: Zero-allocation prefix slicing.
+        if let Some(rest) = rel_path.strip_prefix(sub).and_then(|r| r.strip_prefix('/')) {
             Some(rest)
         } else if rel_path == sub {
             Some("")

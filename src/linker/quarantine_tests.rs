@@ -720,6 +720,8 @@ mod unix_tests {
         let name = OsStr::new("managed.md");
         let expected = EntryIdentity::capture(&parent.symlink_metadata(name).unwrap());
         fs::remove_file(&link_path).unwrap();
+        // Allow filesystem timestamp resolution to advance so creation/change time differs.
+        std::thread::sleep(std::time::Duration::from_millis(10));
         symlink(&second_target, &link_path).unwrap();
 
         let outcome =
