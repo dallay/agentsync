@@ -129,15 +129,18 @@ enabled = true
 marker = "AI Agent Symlinks"
 # Additional entries only - AgentSync automatically adds known patterns for enabled agents
 entries = []
+# Write to .git/info/exclude instead of .gitignore
+local = false
 ```
 
-- **`enabled`**: If `true`, AgentSync will update `.gitignore`.
-- **`marker`**: The text used in comments to identify the AgentSync section in `.gitignore`.
+- **`enabled`**: If `true`, AgentSync updates the selected ignore file.
+- **`marker`**: The text used in comments to identify the AgentSync section in the selected ignore file.
 - **`entries`**: A list of additional file paths to add to the ignore list. This is only needed for files not covered by AgentSync's known patterns.
+- **`local`**: If `true`, write managed entries to the local Git exclude file instead of `.gitignore`. For regular repositories this is `.git/info/exclude`; linked worktrees and submodules use a path resolved from the `.git` file. See the <BaseLink href="/guides/gitignore-team-workflows/#workflow-3-local-exclude-file-gitinfoexclude">Gitignore Team Workflows guide</BaseLink> for resolution and cleanup details. Defaults to `false`.
 
 Behavior notes:
 
-- When `enabled = true`, AgentSync reconciles one marker-delimited managed block in `.gitignore`.
+- When `enabled = true`, AgentSync reconciles one marker-delimited managed block in `.gitignore` if `local = false`, or in the resolved Git exclude file if `local = true`.
 - Managed entries include root-scoped patterns such as `/CLAUDE.md` when managed destinations live at the repository root.
 - When `enabled = false`, `agentsync apply` removes any matching AgentSync-managed block and preserves unmanaged `.gitignore` lines before and after it.
 - That cleanup is marker-aware and idempotent.
