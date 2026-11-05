@@ -129,11 +129,14 @@ enabled = true
 marker = "AI Agent Symlinks"
 # Additional entries only - AgentSync automatically adds known patterns for enabled agents
 entries = []
+# Write to .git/info/exclude instead of .gitignore
+local = false
 ```
 
 - **`enabled`**: If `true`, AgentSync will update `.gitignore`.
 - **`marker`**: The text used in comments to identify the AgentSync section in `.gitignore`.
 - **`entries`**: A list of additional file paths to add to the ignore list. This is only needed for files not covered by AgentSync's known patterns.
+- **`local`**: If `true`, write managed entries to `.git/info/exclude` instead of `.gitignore`. Defaults to `false`.
 
 Behavior notes:
 

@@ -11,6 +11,7 @@ Use this guide when your team needs to decide how `agentsync` should interact wi
 The short version:
 
 - **Default:** keep `[gitignore].enabled = true` and let AgentSync manage a marker-delimited block in `.gitignore`.
+- **Local exclude workflow:** set `[gitignore].local = true` (or use `agentsync apply --gitignore-local`) to write managed entries to `.git/info/exclude` instead of `.gitignore`.
 - **Intentional opt-out:** set `[gitignore].enabled = false` only if your team wants to commit AgentSync-managed destinations.
 - **Temporary CLI opt-out:** use `agentsync apply --no-gitignore` when you want one run to skip `.gitignore` reconciliation without changing team policy.
 
@@ -25,6 +26,12 @@ See the <BaseLink href="/reference/configuration/#gitignore-management">configur
 - you want new collaborators to rely on a simple `prepare` hook or `agentsync apply`
 
 This is the recommended starting point, and `[gitignore].enabled = true` remains the default behavior.
+
+### Choose the local exclude workflow when
+
+- your team wants generated symlinks ignored locally without modifying the repository's checked-in `.gitignore`
+- you work in a shared repository where team policy prevents committing AgentSync-specific rules to `.gitignore`
+- you want AgentSync to manage entries in `.git/info/exclude` instead
 
 ### Choose the committed-destination opt-out workflow when
 
@@ -216,6 +223,31 @@ Expected local outcome:
 - committed AgentSync-managed destinations may now appear in normal Git diffs and reviews
 
 Teams in this workflow can still use the same hook patterns from <BaseLink href="/guides/git-hook-automation/">Git Hook Automation</BaseLink>, but Git hooks are usually more optional because the managed destination files already travel with the repository.
+
+## Workflow 3: Local exclude file (.git/info/exclude)
+
+Choose this when you want AgentSync to keep destinations ignored in your local Git repository without modifying the shared `.gitignore` file.
+
+### What AgentSync does
+
+With `[gitignore].local = true`, AgentSync manages the marker-delimited block in `.git/info/exclude` instead of `.gitignore`:
+
+- writes and updates managed entries in `.git/info/exclude`
+- resolves Git worktrees and submodules automatically (via `commondir`)
+- cleans up orphaned managed blocks from `.gitignore` when switching modes, and vice versa
+
+Example configuration:
+
+```toml
+[gitignore]
+enabled = true
+marker = "AI Agent Symlinks"
+local = true
+```
+
+You can also override this per invocation from the CLI:
+
+<CommandTabs command="apply --gitignore-local" />
 
 ## Temporary opt-out for one command
 
