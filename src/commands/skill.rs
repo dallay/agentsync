@@ -849,7 +849,7 @@ fn skill_inventory(
         Err(error) => return Err(SkillInventoryError::Scan(error)),
     };
     if skills_root_metadata.as_ref().is_some_and(|metadata| {
-        !metadata.is_dir() && !(metadata.file_type().is_symlink() && skills_root.is_dir())
+        !(metadata.is_dir() || metadata.file_type().is_symlink() && skills_root.is_dir())
     }) {
         return Err(SkillInventoryError::Scan(anyhow::anyhow!(
             "skills path is not a directory: {}",

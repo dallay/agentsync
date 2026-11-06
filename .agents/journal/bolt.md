@@ -238,3 +238,16 @@ allocations during normalization and filtering.
 **Action:** When normalizing or matching short ASCII identifiers or CLI tokens against static string
 sets, avoid unconditional `to_lowercase()` calls. Fast-path lowercased ASCII directly or use
 stack-allocated byte arrays for case conversion before falling back to heap-allocated `String`s.
+
+## 2026-05-28 - Zero-Allocation Archive Path Component Stripping
+
+**Learning:** `zip_common_root` and `zip_entry_rel_path` in `src/skills/install.rs` were repeatedly
+allocating formatted strings (`format!("{root}/")` and `format!("{sub}/")`) inside loops across
+all entries in an archive. In an archive with thousands of entries, this created thousands of
+unnecessary transient heap allocations during extraction. Refactoring to zero-allocation prefix
+checks via `strip_prefix(root).is_some_and(|r| r.starts_with('/'))` and
+`.strip_prefix(prefix).and_then(|r| r.strip_prefix('/'))` eliminated these per-entry allocations.
+
+**Action:** Avoid allocating dynamic pattern strings with `format!` when matching or stripping
+path prefixes in loops. Use chained `strip_prefix` calls on string slices to verify path component
+boundaries without allocating heap memory.
