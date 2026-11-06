@@ -21,6 +21,29 @@
 * **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
 * **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
 
+## [1.53.1](https://github.com/dallay/agentsync/compare/v1.53.0...v1.53.1) (2026-11-06)
+
+
+### Performance
+
+* **skills:** eliminate string allocations in zip path extraction ([#727](https://github.com/dallay/agentsync/issues/727)) ([6d4375a](https://github.com/dallay/agentsync/commit/6d4375a25879dac4170962486de3105352ab6939))
+
+
+### Documentation
+
+* document gitignore local option and --gitignore-local flag ([#724](https://github.com/dallay/agentsync/issues/724)) ([8134eaf](https://github.com/dallay/agentsync/commit/8134eaf7641d9ddb875125906f8cd8c3a373517a))
+
+
+### Chores
+
+* **deps:** update cargo dependencies ([#725](https://github.com/dallay/agentsync/issues/725)) ([95de5d2](https://github.com/dallay/agentsync/commit/95de5d2631d408c93fe4dcc490526bce5885d300))
+* **deps:** update dependency @astrojs/starlight to v0.42.8 ([#717](https://github.com/dallay/agentsync/issues/717)) ([30aed90](https://github.com/dallay/agentsync/commit/30aed9082db619b808bb05e7dea5aee41e63d116))
+* **deps:** update dependency @biomejs/biome to v2.6.4 ([#726](https://github.com/dallay/agentsync/issues/726)) ([609197e](https://github.com/dallay/agentsync/commit/609197efeacae862498c76cb0dc177e5ecc3afdb))
+* **deps:** update dependency @dallay/agentsync to v1.52.3 ([#718](https://github.com/dallay/agentsync/issues/718)) ([a2ac5a1](https://github.com/dallay/agentsync/commit/a2ac5a16d69af52faed4390f41454f7959a3f81e))
+* **deps:** update dependency @iconify/json to v2.2.552 ([#723](https://github.com/dallay/agentsync/issues/723)) ([bfdb1be](https://github.com/dallay/agentsync/commit/bfdb1be573ee614f8c6a72bbe23935c47ee63318))
+* **deps:** update dependency astro to v7.4.4 ([#722](https://github.com/dallay/agentsync/issues/722)) ([07ffc4b](https://github.com/dallay/agentsync/commit/07ffc4bb8d95c3ec263b1990406cc0e8123d5a06))
+* **deps:** update node.js to v24.22.2 ([#719](https://github.com/dallay/agentsync/issues/719)) ([1d1c609](https://github.com/dallay/agentsync/commit/1d1c609fb95cf224f2c8fbec5a98e481170ceee9))
+
 ## [1.53.0](https://github.com/dallay/agentsync/compare/v1.52.3...v1.53.0) (2026-10-30)
 
 
