@@ -10,6 +10,6 @@ permissions:
 
 jobs:
   cleanup:
-    uses: dallay/common-actions/.github/workflows/cleanup-cache.yml@5efa6a4c8865caf90a607cc5d5232564312048fd # v2.3.0
+    uses: dallay/common-actions/.github/workflows/cleanup-cache.yml@8dd14d86a6bf1a4673aba902e3c3e27993b0e583 # v2.9.1
     secrets:
       github-token: ${{ secrets.GITHUB_TOKEN }}
