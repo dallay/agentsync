@@ -1174,7 +1174,7 @@ mod tests {
     #[test]
     fn update_check_decision_matches_command_contract() {
         // Only offline or read-only commands must avoid the background update check.
-        let cases: [(&[&str], bool); 32] = [
+        let cases: [(&[&str], bool); 50] = [
             (&["agentsync", "apply"], true),
             (&["agentsync", "apply", "--offline"], false),
             (&["agentsync", "apply", "--dry-run"], true),
@@ -1219,6 +1219,30 @@ mod tests {
             ),
             (&["agentsync", "dev-install", "demo"], true),
             (&["agentsync", "dev-bench"], true),
+            (&["agentsync", "apply", "--clean"], true),
+            (&["agentsync", "apply", "--no-gitignore"], true),
+            (&["agentsync", "apply", "--gitignore-local"], true),
+            (&["agentsync", "apply", "--dry-run", "--offline"], false),
+            (&["agentsync", "clean", "--path", "."], true),
+            (&["agentsync", "revert", "--keep-backups"], true),
+            (&["agentsync", "status", "--json"], true),
+            (&["agentsync", "doctor", "--project-root", "."], true),
+            (
+                &["agentsync", "inspect", "--agent", "codex", "--json"],
+                false,
+            ),
+            (&["agentsync", "init", "--wizard"], true),
+            (&["agentsync", "skill", "install", "demo", "--json"], true),
+            (&["agentsync", "skill", "uninstall", "demo", "--json"], true),
+            (&["agentsync", "skill", "suggest", "--json"], true),
+            (&["agentsync", "plugin", "list", "--json"], true),
+            (
+                &["agentsync", "plugin", "add", "marketplace/plugin", "--json"],
+                true,
+            ),
+            (&["agentsync", "plugin", "restore", "--json"], true),
+            (&["agentsync", "dev-bench", "--runs", "1"], true),
+            (&["agentsync", "dev-install", "demo", "--json"], true),
         ];
 
         for (args, expected) in cases {
