@@ -13,6 +13,7 @@ keywords = ["ai", "agents", "cli", "configuration", "mcp"]
 categories = ["command-line-utilities", "development-tools"]
 authors = ["Yuniel Acosta <yunielacosta738@gmail.com>"]
 exclude = [
+    ".cargo/",
     ".github/",
     ".gitignore",
     "*.md",

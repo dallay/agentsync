@@ -35,6 +35,18 @@ cargo fmt            # Format code
 ### Error Handling
 We use `thiserror` for defining custom, recoverable errors in the core logic and `anyhow` for high-level error handling in the CLI entry points.
 
+### Dependency Cooldown
+
+Repository dependency resolution uses a three-day minimum publish age for Cargo registry packages. Cargo 1.100 or later enforces this policy through `.cargo/config.toml`; Cargo 1.89 remains the crate's MSRV and is not sufficient to enforce the cooldown. Existing versions in `Cargo.lock` remain usable. Renovate applies the same three-day minimum age to Cargo updates.
+
+For an urgent update, run the Cargo command with the resolver override:
+
+```bash
+CARGO_RESOLVER_INCOMPATIBLE_PUBLISH_AGE=allow cargo update
+```
+
+`cargo install` does not enforce the publish-age cooldown. This repository policy applies to dependency resolution in the repository; it does not change the behavior of installing tools with `cargo install`.
+
 ---
 
 ## JavaScript/TypeScript Development
