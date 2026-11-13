@@ -40,10 +40,7 @@ fn should_spawn_update_check(command: &Commands) -> bool {
     {
         return false;
     }
-    if matches!(command, Commands::Inspect { .. }) {
-        return false;
-    }
-    true
+    !matches!(command, Commands::Inspect { .. })
 }
 
 fn current_project_root<F>(path: Option<PathBuf>, current_dir: F) -> Result<PathBuf>
@@ -1172,6 +1169,21 @@ mod tests {
         let dry_run = Cli::try_parse_from(["agentsync", "apply", "--dry-run"])
             .expect("apply --dry-run should parse");
         assert!(should_spawn_update_check(&dry_run.command));
+    }
+
+    #[test]
+    fn read_only_commands_skip_update_checker() {
+        let inspect = Cli::try_parse_from(["agentsync", "inspect", "--agent", "claude"])
+            .expect("inspect should parse");
+        assert!(matches!(inspect.command, Commands::Inspect { .. }));
+        assert!(!should_spawn_update_check(&inspect.command));
+
+        let skill_list =
+            Cli::try_parse_from(["agentsync", "skill", "list"]).expect("skill list should parse");
+        assert!(!should_spawn_update_check(&skill_list.command));
+
+        let status = Cli::try_parse_from(["agentsync", "status"]).expect("status should parse");
+        assert!(should_spawn_update_check(&status.command));
     }
 
     fn make_revert_gate_config(
