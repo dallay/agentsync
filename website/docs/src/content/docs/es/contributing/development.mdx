@@ -37,6 +37,18 @@ cargo fmt            # Formatea el código
 
 Usamos `thiserror` para definir errores recuperables propios en el núcleo y `anyhow` para el manejo de errores de nivel superior en los puntos de entrada de la CLI.
 
+### Periodo de espera para dependencias
+
+La resolución de dependencias del repositorio exige esperar tres días desde la publicación de los paquetes de Cargo en el registro. Cargo 1.100 o posterior aplica esta política mediante `.cargo/config.toml`; Cargo 1.89 sigue siendo la versión mínima compatible del crate (MSRV), pero no basta para aplicar esta espera. Las versiones que ya aparecen en `Cargo.lock` siguen disponibles. Renovate aplica el mismo plazo de tres días a las actualizaciones de Cargo.
+
+Para actualizar de forma urgente, ejecuta el comando de Cargo con esta variable de entorno:
+
+```bash
+CARGO_RESOLVER_INCOMPATIBLE_PUBLISH_AGE=allow cargo update
+```
+
+`cargo install` no aplica la espera por fecha de publicación. Esta política del repositorio se aplica a la resolución de dependencias dentro del repositorio; no cambia el comportamiento de la instalación de herramientas mediante `cargo install`.
+
 ## Desarrollo en JavaScript y TypeScript
 
 El workspace de JS actúa como wrapper y facilita la instalación mediante `pnpm` o npm. Administra la descarga de binarios por plataforma y ofrece una API programática.

@@ -40,10 +40,7 @@ fn should_spawn_update_check(command: &Commands) -> bool {
     {
         return false;
     }
-    if matches!(command, Commands::Inspect { .. }) {
-        return false;
-    }
-    true
+    !matches!(command, Commands::Inspect { .. })
 }
 
 fn current_project_root<F>(path: Option<PathBuf>, current_dir: F) -> Result<PathBuf>
@@ -1172,6 +1169,91 @@ mod tests {
         let dry_run = Cli::try_parse_from(["agentsync", "apply", "--dry-run"])
             .expect("apply --dry-run should parse");
         assert!(should_spawn_update_check(&dry_run.command));
+    }
+
+    #[test]
+    fn update_check_decision_matches_command_contract() {
+        // Only offline or read-only commands must avoid the background update check.
+        let cases: [(&[&str], bool); 50] = [
+            (&["agentsync", "apply"], true),
+            (&["agentsync", "apply", "--offline"], false),
+            (&["agentsync", "apply", "--dry-run"], true),
+            (&["agentsync", "apply", "--agents", "claude"], true),
+            (&["agentsync", "apply", "--config", "agentsync.toml"], true),
+            (&["agentsync", "clean"], true),
+            (&["agentsync", "clean", "--dry-run"], true),
+            (&["agentsync", "revert"], true),
+            (&["agentsync", "revert", "--dry-run"], true),
+            (&["agentsync", "status"], true),
+            (&["agentsync", "doctor"], true),
+            (&["agentsync", "inspect", "--agent", "claude"], false),
+            (&["agentsync", "init"], true),
+            (&["agentsync", "init", "--force"], true),
+            (&["agentsync", "skill", "list"], false),
+            (&["agentsync", "skill", "list", "--json"], false),
+            (&["agentsync", "skill", "suggest"], true),
+            (
+                &["agentsync", "skill", "suggest", "--install", "--all"],
+                true,
+            ),
+            (&["agentsync", "skill", "install", "demo"], true),
+            (&["agentsync", "skill", "update", "demo"], true),
+            (&["agentsync", "skill", "uninstall", "demo"], true),
+            (&["agentsync", "skill", "registry", "validate"], true),
+            (&["agentsync", "skill", "registry", "sync"], true),
+            (&["agentsync", "plugin", "list"], true),
+            (&["agentsync", "plugin", "status"], true),
+            (&["agentsync", "plugin", "add", "marketplace/plugin"], true),
+            (
+                &["agentsync", "plugin", "update", "marketplace/plugin"],
+                true,
+            ),
+            (
+                &["agentsync", "plugin", "remove", "marketplace/plugin"],
+                true,
+            ),
+            (&["agentsync", "plugin", "restore"], true),
+            (
+                &["agentsync", "plugin", "restore", "marketplace/plugin"],
+                true,
+            ),
+            (&["agentsync", "dev-install", "demo"], true),
+            (&["agentsync", "dev-bench"], true),
+            (&["agentsync", "apply", "--clean"], true),
+            (&["agentsync", "apply", "--no-gitignore"], true),
+            (&["agentsync", "apply", "--gitignore-local"], true),
+            (&["agentsync", "apply", "--dry-run", "--offline"], false),
+            (&["agentsync", "clean", "--path", "."], true),
+            (&["agentsync", "revert", "--keep-backups"], true),
+            (&["agentsync", "status", "--json"], true),
+            (&["agentsync", "doctor", "--project-root", "."], true),
+            (
+                &["agentsync", "inspect", "--agent", "codex", "--json"],
+                false,
+            ),
+            (&["agentsync", "init", "--wizard"], true),
+            (&["agentsync", "skill", "install", "demo", "--json"], true),
+            (&["agentsync", "skill", "uninstall", "demo", "--json"], true),
+            (&["agentsync", "skill", "suggest", "--json"], true),
+            (&["agentsync", "plugin", "list", "--json"], true),
+            (
+                &["agentsync", "plugin", "add", "marketplace/plugin", "--json"],
+                true,
+            ),
+            (&["agentsync", "plugin", "restore", "--json"], true),
+            (&["agentsync", "dev-bench", "--runs", "1"], true),
+            (&["agentsync", "dev-install", "demo", "--json"], true),
+        ];
+
+        for (args, expected) in cases {
+            let cli = Cli::try_parse_from(args)
+                .unwrap_or_else(|err| panic!("{args:?} should parse: {err}"));
+            assert_eq!(
+                should_spawn_update_check(&cli.command),
+                expected,
+                "unexpected update check decision for {args:?}"
+            );
+        }
     }
 
     fn make_revert_gate_config(
