@@ -21,6 +21,28 @@
 * **deps:** bump rand in the cargo group across 1 directory ([#345](https://github.com/dallay/agentsync/issues/345)) ([c8a6877](https://github.com/dallay/agentsync/commit/c8a68778d1308d2d9c797db51ce697c02169757a))
 * **deps:** lock file maintenance ([#339](https://github.com/dallay/agentsync/issues/339)) ([ff355dc](https://github.com/dallay/agentsync/commit/ff355dcea9fecf689c0e205b5fed24b494546632))
 
+## [1.53.2](https://github.com/dallay/agentsync/compare/v1.53.1...v1.53.2) (2026-11-14)
+
+
+### Bug Fixes
+
+* **deps:** update dependency unplugin-icons to v24 ([#737](https://github.com/dallay/agentsync/issues/737)) ([0326d74](https://github.com/dallay/agentsync/commit/0326d747c61d62f2a2b386c349c1667f414b6d3a))
+
+
+### Chores
+
+* add cargo dependency cooldown ([#747](https://github.com/dallay/agentsync/issues/747)) ([027d0e3](https://github.com/dallay/agentsync/commit/027d0e3d62eb56f35cf25dfd00a80eb5814975a6))
+* **deps:** update cargo dependencies ([#731](https://github.com/dallay/agentsync/issues/731)) ([71135a2](https://github.com/dallay/agentsync/commit/71135a2d7ff3941e3a90f71aaf70f5421b41a117))
+* **deps:** update dependency @astrojs/starlight to v0.42.10 ([#741](https://github.com/dallay/agentsync/issues/741)) ([c3bc612](https://github.com/dallay/agentsync/commit/c3bc612abbd65e647838ee36f1f883b64d2eb252))
+* **deps:** update dependency @astrojs/starlight to v0.42.9 ([#732](https://github.com/dallay/agentsync/issues/732)) ([560ac6c](https://github.com/dallay/agentsync/commit/560ac6c329a711d7581203871fe5c3e66ba9f4f4))
+* **deps:** update dependency @biomejs/biome to v2.6.5 ([#733](https://github.com/dallay/agentsync/issues/733)) ([52a7877](https://github.com/dallay/agentsync/commit/52a787784b7624ba19d89dd518b4b2697dd5631d))
+* **deps:** update dependency @iconify/json to v2.2.553 ([#734](https://github.com/dallay/agentsync/issues/734)) ([ccb4cc4](https://github.com/dallay/agentsync/commit/ccb4cc48576a655fe7b26fc8a4f2fc3392997acf))
+* **deps:** update dependency @iconify/json to v2.2.555 ([#748](https://github.com/dallay/agentsync/issues/748)) ([77c574c](https://github.com/dallay/agentsync/commit/77c574c8c3fa6b59be73e7f31fe7562c61a47593))
+* **deps:** update github actions ([#735](https://github.com/dallay/agentsync/issues/735)) ([93d14ea](https://github.com/dallay/agentsync/commit/93d14eac502b151ddc156a750afc84dbc1c423e4))
+* **deps:** update node.js to v26 ([#736](https://github.com/dallay/agentsync/issues/736)) ([29307df](https://github.com/dallay/agentsync/commit/29307dfb5cd2aa9e49a8b75f659980eb264d93e6))
+* **deps:** update pnpm-lock.yaml to match package.json ([#740](https://github.com/dallay/agentsync/issues/740)) ([6ee3962](https://github.com/dallay/agentsync/commit/6ee3962c85f03075fe8bc2b1a80ba78f1f44d78c))
+* **deps:** update rust crate zip to v9.5.1 ([#743](https://github.com/dallay/agentsync/issues/743)) ([906a5ec](https://github.com/dallay/agentsync/commit/906a5ec3d4ecbb01d188018b492f7a30b98d040c))
+
 ## [1.53.1](https://github.com/dallay/agentsync/compare/v1.53.0...v1.53.1) (2026-11-09)
 
 
