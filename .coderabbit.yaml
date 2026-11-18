@@ -31,6 +31,25 @@ reviews:
   review_details: false
   enable_prompt_for_ai_agents: true
 
+  auto_review:
+    enabled: true
+    drafts: false
+    auto_incremental_review: true
+    auto_pause_after_reviewed_commits: 5
+    base_branches:
+      - '.*'
+    ignore_title_keywords:
+      - 'WIP'
+      - 'DO NOT MERGE'
+      - '[skip review]'
+      - 'DRAFT'
+    ignore_usernames:
+      - 'dependabot[bot]'
+      - 'renovate[bot]'
+      - 'github-actions[bot]'
+      - 'release-please[bot]'
+      - 'dallay-bot'
+
   path_filters:
     - '!target/**'
     - '!node_modules/**'
