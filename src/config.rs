@@ -84,6 +84,31 @@ fn default_true() -> bool {
     true
 }
 
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            source_dir: default_source_dir(),
+            compress_agents_md: false,
+            default_agents: Vec::new(),
+            agents: BTreeMap::new(),
+            gitignore: GitignoreConfig::default(),
+            mcp: McpGlobalConfig::default(),
+            mcp_servers: BTreeMap::new(),
+            plugins: crate::plugins::PluginsConfig::default(),
+        }
+    }
+}
+
+impl Default for AgentConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            description: String::new(),
+            targets: BTreeMap::new(),
+        }
+    }
+}
+
 /// Specifies a single file or directory synchronization rule for an agent.
 /// Corresponds to a `[agents.agent_name.targets.target_name]` section.
 #[derive(Debug, Deserialize, Clone)]

@@ -4,17 +4,28 @@
 //! Unlike tools that copy files, AgentSync creates symlinks to maintain a single
 //! source of truth for your AI agent instructions.
 
+pub mod adapters;
 pub(crate) mod agent_ids;
+pub mod audit;
 pub mod config;
+pub mod context;
+pub mod diagnostics;
+pub mod explorer;
 pub mod gitignore;
+pub mod import;
 pub mod init;
 pub mod inspect;
 pub mod linker;
+pub mod lock;
 pub mod logging;
 pub mod mcp;
 #[allow(dead_code)] // Consumed by the following MCP apply/revert integration tasks.
 pub(crate) mod mcp_ownership;
+pub mod mcp_registry;
 pub mod plugins;
+pub mod policy;
+pub mod profile;
+pub mod secrets;
 pub mod skills;
 pub mod skills_layout;
 pub mod status;

@@ -16,10 +16,14 @@ use agentsync::{
 use tracing_subscriber::filter::LevelFilter;
 mod commands;
 mod output;
+use commands::audit::{AuditArgs, run_audit};
 use commands::dev_bench::{DevBenchArgs, run_dev_bench};
 use commands::doctor::run_doctor;
 use commands::inspect::{InspectArgs, run_inspect};
+use commands::lock::{LockArgs, run_lock};
 use commands::plugin::{PluginCommand, run_plugin};
+use commands::policy::{PolicyArgs, run_policy};
+use commands::profile::{ProfileArgs, run_profile};
 use commands::skill::{SkillCommand, run_skill};
 use commands::status::{StatusArgs, run_status};
 use output::{
@@ -38,6 +42,10 @@ fn should_spawn_update_check(command: &Commands) -> bool {
     if let Commands::Skill { cmd, .. } = command
         && matches!(cmd, SkillCommand::List { .. })
     {
+        return false;
+    }
+    // `audit` is a read-only, offline static analysis and must not perform network access.
+    if matches!(command, Commands::Audit { .. }) {
         return false;
     }
     !matches!(command, Commands::Inspect { .. })
@@ -146,6 +154,35 @@ enum Commands {
         /// Project root (defaults to CWD)
         #[arg(short, long)]
         project_root: Option<PathBuf>,
+    },
+    /// Run static security audit on skills, plugins, and MCP configurations
+    Audit {
+        #[command(flatten)]
+        args: AuditArgs,
+        /// Project root (defaults to CWD)
+        #[arg(short, long)]
+        project_root: Option<PathBuf>,
+    },
+    /// Manage composable configuration profiles
+    Profile {
+        #[command(flatten)]
+        args: ProfileArgs,
+        /// Project root (defaults to CWD)
+        #[arg(short, long)]
+        project_root: Option<PathBuf>,
+    },
+    /// Manage environment lockfile for reproducibility
+    Lock {
+        #[command(flatten)]
+        args: LockArgs,
+        /// Project root (defaults to CWD)
+        #[arg(short, long)]
+        project_root: Option<PathBuf>,
+    },
+    /// Validate configuration against policy packs
+    Policy {
+        #[command(flatten)]
+        args: PolicyArgs,
     },
     /// Initialize a new agentsync configuration in the current or specified directory.
     Init {
@@ -290,6 +327,31 @@ fn run() -> Result<()> {
             let project_root =
                 current_project_root(project_root, || env::current_dir().map_err(Into::into))?;
             run_doctor(project_root)?;
+            Ok(())
+        }),
+        Commands::Audit { args, project_root } => run_in_root_span("audit", || {
+            let project_root =
+                current_project_root(project_root, || env::current_dir().map_err(Into::into))?;
+            run_audit(args, project_root)?;
+            Ok(())
+        }),
+        Commands::Profile { args, project_root } => run_in_root_span("profile", || {
+            let project_root =
+                current_project_root(project_root, || env::current_dir().map_err(Into::into))?;
+            run_profile(args, &project_root)?;
+            Ok(())
+        }),
+        Commands::Lock { args, project_root } => run_in_root_span("lock", || {
+            let project_root =
+                current_project_root(project_root, || env::current_dir().map_err(Into::into))?;
+            run_lock(args, &project_root)?;
+            Ok(())
+        }),
+        Commands::Policy { args } => run_in_root_span("policy", || {
+            let project_root = env::current_dir()
+                .map_err(anyhow::Error::new)
+                .context("failed to determine current directory")?;
+            run_policy(args, project_root)?;
             Ok(())
         }),
         Commands::Init {

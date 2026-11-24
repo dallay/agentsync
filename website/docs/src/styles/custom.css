@@ -2,341 +2,382 @@
    AGENTSYNC - Premium Design System
    ============================================ */
 
-/* --- CSS Custom Properties (Theme Tokens) --- */
-:root {
-	/* Primary Palette */
-	--as-primary: #00e5c4;
-	--as-primary-hover: #00d4b4;
-	--as-secondary: #7c4dff;
-	--as-secondary-hover: #6b3de8;
+/* --- Cascade Layers --- */
+@layer theme, base, components, utilities;
 
-	/* Background Layers */
-	--as-bg-base: #07070a;
-	--as-bg-elevated: #0d0d12;
-	--as-bg-surface: #121218;
-	--as-bg-card: rgba(18, 18, 24, 0.6);
+/* ============================================
+   LAYER: theme — Design tokens only
+   ============================================ */
+@layer theme {
+	/* --- CSS Custom Properties (Theme Tokens) --- */
+	:root {
+		/* Color-scheme: tells the browser to adapt UI chrome (scrollbars, form
+		   controls) to the current theme and prevents flash of un-themed content. */
+		color-scheme: light dark;
 
-	/* Text Colors */
-	--as-text-primary: #ffffff;
-	--as-text-secondary: #9aa7b3;
-	/* AA contrast on --as-bg-elevated (#0d0d12): 5.85:1 (D2) */
-	--as-text-muted: #858e9a;
+		/* Primary Palette */
+		--as-primary: #00e5c4;
+		--as-primary-hover: #00d4b4;
+		--as-secondary: #7c4dff;
+		--as-secondary-hover: #6b3de8;
 
-	/* Borders & Accents */
-	--as-border: rgba(255, 255, 255, 0.08);
-	--as-border-hover: rgba(255, 255, 255, 0.15);
-	--as-glow-primary: rgba(0, 229, 196, 0.25);
-	--as-glow-secondary: rgba(124, 77, 255, 0.2);
+		/* Background Layers — uses light-dark() for automatic theme switching */
+		--as-bg-base: light-dark(#f8fafc, #07070a);
+		--as-bg-elevated: light-dark(#ffffff, #0d0d12);
+		--as-bg-surface: light-dark(#e2e8f0, #121218);
+		--as-bg-card: light-dark(rgba(255, 255, 255, 0.9), rgba(18, 18, 24, 0.6));
 
-	/* Gradients */
-	--as-gradient-primary: linear-gradient(
-		135deg,
-		var(--as-primary),
-		var(--as-secondary)
-	);
-	--as-gradient-bg:
-		radial-gradient(
-			ellipse 80% 50% at 50% -20%,
-			rgba(0, 229, 196, 0.08),
-			transparent
-		),
-		radial-gradient(
-			ellipse 60% 40% at 80% 100%,
-			rgba(124, 77, 255, 0.06),
-			transparent
+		/* Text Colors */
+		--as-text-primary: light-dark(#0f172a, #ffffff);
+		--as-text-secondary: light-dark(#475569, #9aa7b3);
+		/* AA contrast on --as-bg-elevated (#0d0d12): 5.85:1 (D2) */
+		--as-text-muted: light-dark(#64748b, #858e9a);
+
+		/* Borders & Accents */
+		--as-border: light-dark(rgba(15, 23, 42, 0.12), rgba(255, 255, 255, 0.08));
+		--as-border-hover: light-dark(
+			rgba(15, 23, 42, 0.25),
+			rgba(255, 255, 255, 0.15)
+		);
+		--as-glow-primary: light-dark(
+			rgba(0, 229, 196, 0.15),
+			rgba(0, 229, 196, 0.25)
+		);
+		--as-glow-secondary: light-dark(
+			rgba(124, 77, 255, 0.1),
+			rgba(124, 77, 255, 0.2)
 		);
 
-	/* Typography */
-	--as-font-sans: "Geist Sans", system-ui, -apple-system, sans-serif;
-	--as-font-mono: "Geist Mono", ui-monospace, "Cascadia Code", monospace;
+		/* Gradients */
+		--as-gradient-primary: linear-gradient(
+			135deg,
+			var(--as-primary),
+			var(--as-secondary)
+		);
+		--as-gradient-bg:
+			radial-gradient(
+				ellipse 80% 50% at 50% -20%,
+				rgba(0, 229, 196, 0.08),
+				transparent
+			),
+			radial-gradient(
+				ellipse 60% 40% at 80% 100%,
+				rgba(124, 77, 255, 0.06),
+				transparent
+			);
 
-	/* Spacing Scale */
-	--as-space-xs: 4px;
-	--as-space-sm: 8px;
-	--as-space-md: 16px;
-	--as-space-lg: 24px;
-	--as-space-xl: 32px;
-	--as-space-2xl: 48px;
-	--as-space-3xl: 64px;
+		/* Typography */
+		--as-font-sans: "Geist Sans", system-ui, -apple-system, sans-serif;
+		--as-font-mono: "Geist Mono", ui-monospace, "Cascadia Code", monospace;
 
-	/* Border Radius */
-	--as-radius-sm: 6px;
-	--as-radius-md: 10px;
-	--as-radius-lg: 16px;
-	--as-radius-xl: 24px;
+		/* Spacing Scale */
+		--as-space-xs: 4px;
+		--as-space-sm: 8px;
+		--as-space-md: 16px;
+		--as-space-lg: 24px;
+		--as-space-xl: 32px;
+		--as-space-2xl: 48px;
+		--as-space-3xl: 64px;
 
-	/* Shadows */
-	--as-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
-	--as-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4);
-	--as-shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.5);
-	--as-shadow-glow: 0 0 40px var(--as-glow-primary);
+		/* Border Radius */
+		--as-radius-sm: 6px;
+		--as-radius-md: 10px;
+		--as-radius-lg: 16px;
+		--as-radius-xl: 24px;
 
-	/* Transitions */
-	--as-transition-fast: 150ms ease;
-	--as-transition-base: 250ms ease;
-	--as-transition-slow: 400ms ease;
+		/* Shadows */
+		--as-shadow-sm: light-dark(
+			0 2px 8px rgba(0, 0, 0, 0.06),
+			0 2px 8px rgba(0, 0, 0, 0.3)
+		);
+		--as-shadow-md: light-dark(
+			0 8px 24px rgba(0, 0, 0, 0.08),
+			0 8px 24px rgba(0, 0, 0, 0.4)
+		);
+		--as-shadow-lg: light-dark(
+			0 16px 48px rgba(0, 0, 0, 0.12),
+			0 16px 48px rgba(0, 0, 0, 0.5)
+		);
+		--as-shadow-glow: 0 0 40px var(--as-glow-primary);
 
-	/* Hero-specific (dark mode default) */
-	--as-hero-bg: linear-gradient(180deg, #07070a 0%, #0a0a10 100%);
-	--as-hero-glow-1: rgba(0, 229, 196, 0.08);
-	--as-hero-glow-2: rgba(124, 77, 255, 0.06);
+		/* Transitions */
+		--as-transition-fast: 150ms ease;
+		--as-transition-base: 250ms ease;
+		--as-transition-slow: 400ms ease;
 
-	/* Starlight theme overrides (Dark) */
-	--sl-color-accent: var(--as-primary);
-	--sl-color-text-accent: var(--as-primary);
-	--sl-color-text-invert: var(--as-bg-base);
+		/* Hero-specific — uses light-dark() for theme switching */
+		--as-hero-bg: light-dark(
+			linear-gradient(135deg, #f8fafc 0%, #e2e8f0 50%, #f1f5f9 100%),
+			linear-gradient(180deg, #07070a 0%, #0a0a10 100%)
+		);
+		--as-hero-glow-1: light-dark(
+			rgba(0, 229, 196, 0.15),
+			rgba(0, 229, 196, 0.08)
+		);
+		--as-hero-glow-2: light-dark(
+			rgba(124, 77, 255, 0.1),
+			rgba(124, 77, 255, 0.06)
+		);
+
+		/* Starlight theme overrides — dark mode values as fallback, light via light-dark() */
+		--sl-color-accent: light-dark(var(--as-secondary), var(--as-primary));
+		--sl-color-text-accent: light-dark(var(--as-secondary), var(--as-primary));
+		--sl-color-text-invert: light-dark(#ffffff, var(--as-bg-base));
+	}
 }
 
-/* Light mode overrides for Starlight compatibility */
-[data-theme="light"] {
-	--as-bg-base: #f8fafc;
-	--as-bg-elevated: #ffffff;
-	--as-bg-surface: #e2e8f0;
-	--as-bg-card: rgba(255, 255, 255, 0.9);
-	--as-text-primary: #0f172a;
-	--as-text-secondary: #475569;
-	--as-text-muted: #64748b;
-	--as-border: rgba(15, 23, 42, 0.12);
-	--as-border-hover: rgba(15, 23, 42, 0.25);
-	--as-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
-	--as-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.08);
-	--as-shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.12);
-	--as-glow-primary: rgba(0, 229, 196, 0.15);
-	--as-glow-secondary: rgba(124, 77, 255, 0.1);
-
-	/* Hero-specific light mode */
-	--as-hero-bg: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 50%, #f1f5f9 100%);
-	--as-hero-glow-1: rgba(0, 229, 196, 0.15);
-	--as-hero-glow-2: rgba(124, 77, 255, 0.1);
-
-	/* Starlight theme overrides (Light) */
-	--sl-color-accent: var(--as-secondary);
-	--sl-color-text-accent: var(--as-secondary);
-	--sl-color-text-invert: #ffffff;
-}
-
-/* --- Links - Base styles first (lowest specificity) --- */
-a {
-	transition: color var(--as-transition-fast);
-}
-
-a:hover {
-	color: var(--as-primary);
-}
-
-/* Fix link contrast in light mode */
-[data-theme="light"] a:hover {
-	color: var(--as-secondary);
-}
-
-/* --- Header Overrides --- */
-header.header {
-	background: var(--as-bg-elevated);
-	border-bottom: 1px solid var(--as-border);
-	backdrop-filter: blur(12px);
-	-webkit-backdrop-filter: blur(12px);
-}
-
-.site-title {
-	font-weight: 700;
-	background: var(--as-gradient-primary);
-	-webkit-background-clip: text;
-	-webkit-text-fill-color: transparent;
-	background-clip: text;
-}
-
-/* Search box styling */
-site-search button {
-	background: var(--as-bg-surface);
-	border: 1px solid var(--as-border);
-	border-radius: var(--as-radius-md);
-	min-height: 2.75rem; /* 44px touch target (D3) */
-}
-
-/* Theme toggle and social icons */
-starlight-theme-select select,
-.social-icons a {
-	color: var(--as-text-secondary);
-	transition: color var(--as-transition-fast);
-}
-
-starlight-theme-select select:hover,
-.social-icons a:hover {
-	color: var(--as-primary);
-}
-
-/* --- Touch Targets (44px = 2.75rem @ 16px root) ---
-   IMPORTANT: keep these rules UNLAYERED (no @layer). Unlayered author
-   styles beat every Starlight @layer regardless of specificity. */
-/* D6 split: own rule for the theme selector only, so .social-icons a
-   (which shares the color rule above) does NOT grow to 44px. */
-starlight-theme-select select {
-	min-height: 2.75rem;
-}
-
-/* Broad selector: survives Starlight upgrades and covers every tab. */
-[role="tablist"] [role="tab"] {
-	min-height: 2.75rem;
-}
-
-/* --- Global Resets & Base Styles --- */
-html {
-	scroll-behavior: smooth;
-}
-
-body {
-	font-family: var(--as-font-sans);
-	background: var(--as-bg-base);
-	color: var(--as-text-primary);
-}
-
-::selection {
-	background: var(--as-primary);
-	color: var(--as-bg-base);
-}
-
-/* --- Custom Scrollbar --- */
-::-webkit-scrollbar {
-	width: 8px;
-	height: 8px;
-}
-
-::-webkit-scrollbar-track {
-	background: var(--as-bg-elevated);
-}
-
-::-webkit-scrollbar-thumb {
-	background: var(--as-border-hover);
-	border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-	background: var(--as-text-muted);
-}
-
-/* --- Glassmorphism Utility --- */
-.glass {
-	background: var(--as-bg-card);
-	backdrop-filter: blur(12px);
-	-webkit-backdrop-filter: blur(12px);
-	border: 1px solid var(--as-border);
-}
-
-.glass:hover {
-	border-color: var(--as-border-hover);
-}
-
-/* --- Gradient Text Utility --- */
-.gradient-text {
-	background: var(--as-gradient-primary);
-	-webkit-background-clip: text;
-	-webkit-text-fill-color: transparent;
-	background-clip: text;
-}
-
-/* --- Starlight Overrides --- */
-
-/* Cards styling */
-.card {
-	background: var(--as-bg-card);
-	backdrop-filter: blur(12px);
-	border: 1px solid var(--as-border);
-	border-radius: var(--as-radius-lg);
-	transition: all var(--as-transition-base);
-}
-
-.card:hover {
-	border-color: var(--as-border-hover);
-	transform: translateY(-2px);
-	box-shadow: var(--as-shadow-md);
-}
-
-/* Sidebar enhancements */
-.sidebar-content {
-	background: var(--as-bg-elevated);
-}
-
-/* Higher specificity to override Starlight without !important */
-.sidebar-content a[aria-current="page"]:hover,
-.sidebar-content a[aria-current="page"]:focus {
-	color: var(--sl-color-text-invert);
-}
-
-/* Code blocks */
-pre {
-	background: var(--as-bg-surface);
-	border: 1px solid var(--as-border);
-	border-radius: var(--as-radius-md);
-	padding: 16px;
-	box-shadow: var(--as-shadow-sm);
-}
-
-/* Inline code */
-code {
-	font-family: var(--as-font-mono);
-	background: var(--as-bg-surface);
-	padding: 2px 6px;
-	border-radius: 4px;
-	font-size: 0.9em;
-	border: 1px solid var(--as-border);
-}
-
-/* Code inside pre (don't double-style) */
-pre code {
-	background: transparent;
-	padding: 0;
-	border: none;
-}
-
-/* Force readable text color in code blocks for light mode */
-[data-theme="light"] pre,
-[data-theme="light"] pre code,
-[data-theme="light"] pre code span {
-	color: #1e293b;
-}
-
-/* Force readable text color in inline code for light mode */
-[data-theme="light"] code {
-	color: #334155;
-}
-
-/* --- Animation Utilities --- */
-@keyframes fadeInUp {
-	from {
-		opacity: 0;
-		transform: translateY(20px);
+/* ============================================
+   LAYER: base — Resets, typography, links, scrollbar
+   ============================================ */
+@layer base {
+	/* --- Global Resets & Base Styles --- */
+	html {
+		scroll-behavior: smooth;
 	}
 
-	to {
+	body {
+		font-family: var(--as-font-sans);
+		background: var(--as-bg-base);
+		color: var(--as-text-primary);
+	}
+
+	::selection {
+		background: var(--as-primary);
+		color: var(--as-bg-base);
+	}
+
+	/* --- Custom Scrollbar --- */
+	/* Standard scrollbar-color/scrollbar-width (Baseline Dec 2025) */
+	:root {
+		scrollbar-color: var(--as-border-hover) var(--as-bg-elevated);
+		scrollbar-width: thin;
+	}
+
+	/* Fallback for WebKit/Blink browsers that don't support scrollbar-color */
+	@supports not (scrollbar-color: auto) {
+		::-webkit-scrollbar {
+			width: 8px;
+			height: 8px;
+		}
+
+		::-webkit-scrollbar-track {
+			background: var(--as-bg-elevated);
+		}
+
+		::-webkit-scrollbar-thumb {
+			background: var(--as-border-hover);
+			border-radius: 4px;
+		}
+
+		::-webkit-scrollbar-thumb:hover {
+			background: var(--as-text-muted);
+		}
+	}
+
+	/* --- Links - Base styles first (lowest specificity) --- */
+	a {
+		transition: color var(--as-transition-fast);
+	}
+
+	a:hover {
+		color: var(--as-primary);
+	}
+
+	/* Fix link contrast in light mode */
+	[data-theme="light"] a:hover {
+		color: var(--as-secondary);
+	}
+
+	/* --- Focus States (A11y) --- */
+	:focus-visible {
+		outline: 2px solid var(--as-primary);
+		outline-offset: 2px;
+	}
+}
+
+/* ============================================
+   LAYER: components — Header, cards, sidebar, code, etc.
+   ============================================ */
+@layer components {
+	/* --- Header Overrides --- */
+	header.header {
+		background: var(--as-bg-elevated);
+		border-bottom: 1px solid var(--as-border);
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+	}
+
+	.site-title {
+		font-weight: 700;
+		background: var(--as-gradient-primary);
+		-webkit-background-clip: text;
+		-webkit-text-fill-color: transparent;
+		background-clip: text;
+	}
+
+	/* Search box styling */
+	site-search button {
+		background: var(--as-bg-surface);
+		border: 1px solid var(--as-border);
+		border-radius: var(--as-radius-md);
+		min-height: 2.75rem; /* 44px touch target (D3) */
+	}
+
+	/* Theme toggle and social icons */
+	starlight-theme-select select,
+	.social-icons a {
+		color: var(--as-text-secondary);
+		transition: color var(--as-transition-fast);
+	}
+
+	starlight-theme-select select:hover,
+	.social-icons a:hover {
+		color: var(--as-primary);
+	}
+
+	/* --- Starlight Overrides --- */
+
+	/* Cards styling */
+	.card {
+		background: var(--as-bg-card);
+		backdrop-filter: blur(12px);
+		border: 1px solid var(--as-border);
+		border-radius: var(--as-radius-lg);
+		transition: all var(--as-transition-base);
+	}
+
+	.card:hover {
+		border-color: var(--as-border-hover);
+		transform: translateY(-2px);
+		box-shadow: var(--as-shadow-md);
+	}
+
+	/* Sidebar enhancements */
+	.sidebar-content {
+		background: var(--as-bg-elevated);
+	}
+
+	/* Higher specificity to override Starlight without !important */
+	.sidebar-content a[aria-current="page"]:hover,
+	.sidebar-content a[aria-current="page"]:focus {
+		color: var(--sl-color-text-invert);
+	}
+
+	/* Code blocks */
+	pre {
+		background: var(--as-bg-surface);
+		border: 1px solid var(--as-border);
+		border-radius: var(--as-radius-md);
+		padding: 16px;
+		box-shadow: var(--as-shadow-sm);
+	}
+
+	/* Inline code */
+	code {
+		font-family: var(--as-font-mono);
+		background: var(--as-bg-surface);
+		padding: 2px 6px;
+		border-radius: 4px;
+		font-size: 0.9em;
+		border: 1px solid var(--as-border);
+	}
+
+	/* Code inside pre (don't double-style) */
+	pre code {
+		background: transparent;
+		padding: 0;
+		border: none;
+	}
+
+	/* Force readable text color in code blocks for light mode */
+	[data-theme="light"] pre,
+	[data-theme="light"] pre code,
+	[data-theme="light"] pre code span {
+		color: #1e293b;
+	}
+
+	/* Force readable text color in inline code for light mode */
+	[data-theme="light"] code {
+		color: #334155;
+	}
+
+	/* --- Glassmorphism Utility --- */
+	.glass {
+		background: var(--as-bg-card);
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+		border: 1px solid var(--as-border);
+	}
+
+	.glass:hover {
+		border-color: var(--as-border-hover);
+	}
+
+	/* --- Gradient Text Utility --- */
+	.gradient-text {
+		background: var(--as-gradient-primary);
+		-webkit-background-clip: text;
+		-webkit-text-fill-color: transparent;
+		background-clip: text;
+	}
+}
+
+/* ============================================
+   LAYER: utilities — Animation classes, etc.
+   ============================================ */
+@layer utilities {
+	/* --- Animation Utilities --- */
+	/* Default: visible and static. Motion is opt-in below. */
+	.animate-fade-in-up {
 		opacity: 1;
 		transform: translateY(0);
 	}
-}
 
-@keyframes pulse-glow {
-	0%,
-	100% {
-		box-shadow: 0 0 20px var(--as-glow-primary);
+	.animate-pulse-glow {
+		/* No animation by default — opt-in below */
 	}
 
-	50% {
-		box-shadow: 0 0 40px var(--as-glow-primary);
+	@keyframes fadeInUp {
+		from {
+			opacity: 0;
+			transform: translateY(20px);
+		}
+
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+
+	@keyframes pulse-glow {
+		0%,
+		100% {
+			box-shadow: 0 0 20px var(--as-glow-primary);
+		}
+
+		50% {
+			box-shadow: 0 0 40px var(--as-glow-primary);
+		}
+	}
+
+	/* Opt-in to motion for users who prefer it */
+	@media (prefers-reduced-motion: no-preference) {
+		.animate-fade-in-up {
+			opacity: 0;
+			transform: translateY(20px);
+			animation: fadeInUp 0.6s ease forwards;
+		}
+
+		.animate-pulse-glow {
+			animation: pulse-glow 3s ease-in-out infinite;
+		}
 	}
 }
 
-.animate-fade-in-up {
-	animation: fadeInUp 0.6s ease forwards;
-}
-
-.animate-pulse-glow {
-	animation: pulse-glow 3s ease-in-out infinite;
-}
-
-/* --- Focus States (A11y) --- */
-:focus-visible {
-	outline: 2px solid var(--as-primary);
-	outline-offset: 2px;
-}
+/* ============================================
+   UNLAYERED — Scroll-driven reveal animations
+   These use @supports which cannot be nested in @layer.
+   ============================================ */
 
 /* --- Scroll-driven reveal (Overdrive A: landing choreography) ---
    Progressive enhancement: the default state is visible. Motion only exists
@@ -431,26 +472,36 @@ pre code {
 	}
 }
 
+/* ============================================
+   UNLAYERED — Touch targets & reduced motion
+   IMPORTANT: keep these rules UNLAYERED (no @layer). Unlayered author
+   styles beat every Starlight @layer regardless of specificity.
+   ============================================ */
+
+/* --- Touch Targets (44px = 2.75rem @ 16px root) --- */
+/* D6 split: own rule for the theme selector only, so .social-icons a
+   (which shares the color rule above) does NOT grow to 44px. */
+starlight-theme-select select {
+	min-height: 2.75rem;
+}
+
+/* Broad selector: survives Starlight upgrades and covers every tab. */
+[role="tablist"] [role="tab"] {
+	min-height: 2.75rem;
+}
+
 /* --- Reduced Motion (unlayered — must stay out of @layer) --- */
 @media (prefers-reduced-motion: reduce) {
 	html {
 		scroll-behavior: auto;
 	}
 
-	/* Scoped Hero rules ([data-astro-cid], 0,2,0) inject after custom.css —
-	   these selectors use (0,3,0) to win the unlayered tie-break. */
+	/* Hero animations: stop motion. Elements already default to visible
+	   because the animation is opt-in via prefers-reduced-motion: no-preference. */
 	.hero .hero-badge .badge-dot,
 	.hero .robot-wrap .robot-glow,
 	.hero .robot-wrap .robot {
 		animation: none;
-	}
-
-	/* CRITICAL: .animate-fade-in-up starts at opacity: 0 (Hero.astro:390);
-	   killing fadeInUp without restoring opacity hides the hero. */
-	.hero .hero-copy.animate-fade-in-up,
-	.hero .hero-visual.animate-fade-in-up {
-		animation: none;
-		opacity: 1;
 	}
 
 	/* Overdrive scroll reveal: static and visible when reduced motion is preferred. */

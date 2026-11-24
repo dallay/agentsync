@@ -12,6 +12,7 @@ pub mod suggest;
 pub mod transaction;
 pub mod uninstall;
 pub mod update;
+pub mod validation;
 
 pub use catalog::*;
 pub use detect::*;

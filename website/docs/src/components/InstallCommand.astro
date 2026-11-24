@@ -9,15 +9,19 @@ const failedLabel = isSpanish ? "Error" : "Failed";
 const copyFailedAriaLabel = isSpanish
 	? "No se pudo copiar el comando de instalación"
 	: "Could not copy install command";
-const copyAriaLabel = isSpanish ? "Copiar comando de instalación" : "Copy install command";
+const copyAriaLabel = isSpanish
+	? "Copiar comando de instalación"
+	: "Copy install command";
 ---
 
 <div class="install-command">
 	<span class="install-prompt" aria-hidden="true">$</span>
-	<code class="install-code">{command}</code>
+	<code id="install-code" class="install-code">{command}</code>
 	<button
 		type="button"
 		class="install-copy"
+		command="--copy"
+		commandfor="install-code"
 		data-command={command}
 		data-copy-label={copyLabel}
 		data-copied-label={copiedLabel}
@@ -35,50 +39,45 @@ const copyAriaLabel = isSpanish ? "Copiar comando de instalación" : "Copy insta
 </div>
 
 <script>
-	document.querySelectorAll(".install-copy").forEach(function (btn) {
-		btn.addEventListener("click", function () {
-			const el = btn;
-			const text = el.getAttribute("data-command") || "";
-			const setCopyState = function (copied, succeeded) {
-				const label = el.querySelector(".copy-label");
-				const copyLabel = el.getAttribute("data-copy-label") || "Copy";
-				const stateLabel = succeeded
-					? el.getAttribute("data-copied-label") || "Copied"
-					: el.getAttribute("data-failed-label") || "Failed";
-				if (label) label.textContent = copied ? stateLabel : copyLabel;
-				el.setAttribute(
-					"aria-label",
-					copied
-						? succeeded
-							? el.getAttribute("data-copy-aria-label") || "Copy install command"
-							: el.getAttribute("data-failed-aria-label") || "Could not copy install command"
-						: el.getAttribute("data-copy-aria-label") || "Copy install command",
-				);
-				el.classList.toggle("is-copied", copied && succeeded);
-				if (copied) window.setTimeout(function () { setCopyState(false, succeeded); }, 2000);
-			};
-			const done = function () {
-				setCopyState(true, true);
-			};
-			const fail = function () {
-				setCopyState(true, false);
-			};
-			if (navigator.clipboard && navigator.clipboard.writeText) {
-				navigator.clipboard.writeText(text).then(done, fail);
-			} else {
-				const area = document.createElement("textarea");
-				area.value = text;
-				document.body.appendChild(area);
-				area.select();
-				var succeeded = false;
-				try {
-					succeeded = document.execCommand("copy");
-				} catch (e) { /* fall through */ }
-				area.remove();
-				if (succeeded) { done(); } else { fail(); }
-			}
-		});
+// Fallback click handler for browsers without Invoker Commands support.
+// Browsers that support command="--copy" will handle the copy natively;
+// this handler provides the same UX (label change, aria state) for all cases.
+document.querySelectorAll(".install-copy").forEach(function (btn) {
+	btn.addEventListener("click", function () {
+		const el = btn;
+		const text = el.getAttribute("data-command") || "";
+		const setCopyState = function (copied, succeeded) {
+			const label = el.querySelector(".copy-label");
+			const copyLabel = el.getAttribute("data-copy-label") || "Copy";
+			const stateLabel = succeeded
+				? el.getAttribute("data-copied-label") || "Copied"
+				: el.getAttribute("data-failed-label") || "Failed";
+			if (label) label.textContent = copied ? stateLabel : copyLabel;
+			el.setAttribute(
+				"aria-label",
+				copied
+					? succeeded
+						? el.getAttribute("data-copy-aria-label") || "Copy install command"
+						: el.getAttribute("data-failed-aria-label") || "Could not copy install command"
+					: el.getAttribute("data-copy-aria-label") || "Copy install command",
+			);
+			el.classList.toggle("is-copied", copied && succeeded);
+			if (copied) window.setTimeout(function () { setCopyState(false, succeeded); }, 2000);
+		};
+		const done = function () {
+			setCopyState(true, true);
+		};
+		const fail = function () {
+			setCopyState(true, false);
+		};
+		// Async Clipboard API is Baseline since 2020 — no execCommand fallback needed.
+		if (navigator.clipboard && navigator.clipboard.writeText) {
+			navigator.clipboard.writeText(text).then(done, fail);
+		} else {
+			fail();
+		}
 	});
+});
 </script>
 
 <style>

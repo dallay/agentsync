@@ -1,3 +1,22 @@
+## [Unreleased]
+
+### Features
+
+* **epic-686:** trusted, reproducible cross-agent configuration platform ([#686](https://github.com/dallay/agentsync/issues/686))
+  * `agentsync audit` — static security analyzer for skills and plugins with credential detection, fetch-and-execute patterns, file traversal, and MCP privilege checks
+  * `agentsync skill test` — offline skill quality validation with frontmatter, references, path escape, and bundle integrity checks
+  * `agentsync profile` — composable configuration profiles with merge, precedence, and cycle detection
+  * `agentsync lock` — deterministic environment lockfile with SHA-256 hashes and drift detection
+  * `agentsync policy` — versioned policy packs for team-defined configuration rules
+  * Cross-agent capability adapters for 10 agents (Claude, Copilot, Codex, Gemini, Cursor, OpenCode, VS Code, Windsurf, Cline, Roo)
+  * Safe import of native agent/MCP configuration with reviewable diffs
+  * MCP registry discovery with opt-in network access and safety validation
+  * Secret reference integration with `${ENV_NAME}` syntax, redaction, and plaintext detection
+  * Context budget analysis with token estimation and duplicate guidance detection
+  * Configuration explorer data API for tree visualization and profile comparison
+  * GitHub Action for CI/CD integrity checks
+  * ADRs for ResolvedConfiguration contract and secret handling
+
 ## [1.42.6](https://github.com/dallay/agentsync/compare/v1.42.5...v1.42.6) (2026-04-14)
 
 
