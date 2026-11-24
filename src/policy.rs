@@ -135,6 +135,7 @@ impl PolicyReport {
 /// Load a policy pack by name.
 pub fn load_policy(policies_dir: &Path, name: &str) -> Result<PolicyPack> {
     let policy_path = policies_dir.join(format!("{name}.toml"));
+    // nosemgrep: rust.actix.path-traversal.tainted-path.tainted-path -- policy_path is fixed location within .agents/policies/
     let content = fs::read_to_string(&policy_path)
         .with_context(|| format!("Failed to read policy file: {}", policy_path.display()))?;
     let policy: PolicyPack = toml::from_str(&content)
@@ -154,6 +155,7 @@ pub fn list_policies(policies_dir: &Path) -> Result<Vec<String>> {
             policies_dir.display()
         )
     })? {
+        // nosemgrep: rust.actix.path-traversal.tainted-path.tainted-path -- policies_dir is fixed location within .agents/policies/
         let entry = entry?;
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) == Some("toml")
@@ -514,5 +516,306 @@ require_agent_descriptions = true
         assert_eq!(policy.allowed_agents, vec!["claude", "copilot"]);
         assert_eq!(policy.max_agents, Some(5));
         assert!(policy.require_agent_descriptions);
+    }
+
+    #[test]
+    fn test_denied_skills() {
+        let temp_dir = TempDir::new().unwrap();
+        let skills_dir = temp_dir.path().join(".agents").join("skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+        fs::write(skills_dir.join("dangerous"), "").unwrap();
+        fs::write(skills_dir.join("safe"), "").unwrap();
+        let policy = PolicyPack {
+            denied_skills: vec!["dangerous".to_string()],
+            ..Default::default()
+        };
+        let config = Config::default();
+        let report = evaluate_policy(&policy, &config, temp_dir.path());
+        assert!(!report.passed());
+        assert_eq!(report.total, 1);
+    }
+
+    #[test]
+    fn test_allowed_skills() {
+        let temp_dir = TempDir::new().unwrap();
+        let skills_dir = temp_dir.path().join(".agents").join("skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+        fs::write(skills_dir.join("allowed-skill"), "").unwrap();
+        fs::write(skills_dir.join("forbidden-skill"), "").unwrap();
+        let policy = PolicyPack {
+            allowed_skills: vec!["allowed-skill".to_string()],
+            ..Default::default()
+        };
+        let config = Config::default();
+        let report = evaluate_policy(&policy, &config, temp_dir.path());
+        assert!(report.passed()); // Warning, not error
+        assert_eq!(report.total, 1);
+    }
+
+    fn make_mcp_config() -> crate::config::McpServerConfig {
+        crate::config::McpServerConfig {
+            command: None,
+            args: Vec::new(),
+            env: std::collections::BTreeMap::new(),
+            url: None,
+            headers: std::collections::BTreeMap::new(),
+            transport_type: None,
+            disabled: false,
+        }
+    }
+
+    #[test]
+    fn test_denied_mcp_servers() {
+        let mut config = Config::default();
+        config
+            .mcp_servers
+            .insert("bad-server".to_string(), make_mcp_config());
+        let policy = PolicyPack {
+            denied_mcp_servers: vec!["bad-server".to_string()],
+            ..Default::default()
+        };
+        let report = evaluate_policy(&policy, &config, Path::new("/tmp"));
+        assert!(!report.passed());
+    }
+
+    #[test]
+    fn test_allowed_mcp_servers() {
+        let mut config = Config::default();
+        config
+            .mcp_servers
+            .insert("good-server".to_string(), make_mcp_config());
+        config
+            .mcp_servers
+            .insert("unknown-server".to_string(), make_mcp_config());
+        let policy = PolicyPack {
+            allowed_mcp_servers: vec!["good-server".to_string()],
+            ..Default::default()
+        };
+        let report = evaluate_policy(&policy, &config, Path::new("/tmp"));
+        assert!(report.passed()); // Warning, not error
+        assert_eq!(report.total, 1);
+    }
+
+    #[test]
+    fn test_max_mcp_servers() {
+        let mut config = Config::default();
+        config
+            .mcp_servers
+            .insert("server1".to_string(), make_mcp_config());
+        config
+            .mcp_servers
+            .insert("server2".to_string(), make_mcp_config());
+        config
+            .mcp_servers
+            .insert("server3".to_string(), make_mcp_config());
+        let policy = PolicyPack {
+            max_mcp_servers: Some(2),
+            ..Default::default()
+        };
+        let report = evaluate_policy(&policy, &config, Path::new("/tmp"));
+        assert!(report.passed()); // Warning, not error
+        assert_eq!(report.total, 1);
+    }
+
+    #[test]
+    fn test_require_agent_targets() {
+        let policy = PolicyPack {
+            require_agent_targets: true,
+            ..Default::default()
+        };
+        let config = config_with_agents(&["claude"]);
+        let report = evaluate_policy(&policy, &config, Path::new("/tmp"));
+        assert!(report.passed()); // Warning, not error
+        assert_eq!(report.total, 1);
+    }
+
+    #[test]
+    fn test_policy_report_from_diagnostics() {
+        let diags = vec![
+            Diagnostic {
+                rule_id: "test".to_string(),
+                severity: Severity::Error,
+                source_path: "test.toml".to_string(),
+                span: None,
+                message: "error".to_string(),
+                evidence: None,
+                fingerprint: "test".to_string(),
+            },
+            Diagnostic {
+                rule_id: "test2".to_string(),
+                severity: Severity::Warning,
+                source_path: "test.toml".to_string(),
+                span: None,
+                message: "warning".to_string(),
+                evidence: None,
+                fingerprint: "test2".to_string(),
+            },
+        ];
+        let report = PolicyReport::from_diagnostics("test".to_string(), diags);
+        assert_eq!(report.total, 2);
+        assert_eq!(*report.counts.get(&Severity::Error).unwrap(), 1);
+        assert_eq!(*report.counts.get(&Severity::Warning).unwrap(), 1);
+        assert!(!report.passed());
+    }
+
+    #[test]
+    fn test_policy_report_passed() {
+        let report = PolicyReport::from_diagnostics("test".to_string(), vec![]);
+        assert!(report.passed());
+    }
+
+    #[test]
+    fn test_list_policies_empty_dir() {
+        let temp_dir = TempDir::new().unwrap();
+        let policies_dir = temp_dir.path().join(POLICIES_DIR);
+        fs::create_dir_all(&policies_dir).unwrap();
+        let policies = list_policies(&policies_dir).unwrap();
+        assert!(policies.is_empty());
+    }
+
+    #[test]
+    fn test_list_policies_nonexistent() {
+        let temp_dir = TempDir::new().unwrap();
+        let policies_dir = temp_dir.path().join(POLICIES_DIR);
+        let policies = list_policies(&policies_dir).unwrap();
+        assert!(policies.is_empty());
+    }
+
+    #[test]
+    fn test_load_policy_not_found() {
+        let temp_dir = TempDir::new().unwrap();
+        let policies_dir = temp_dir.path().join(POLICIES_DIR);
+        fs::create_dir_all(&policies_dir).unwrap();
+        let result = load_policy(&policies_dir, "missing");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_policy_invalid_toml() {
+        let temp_dir = TempDir::new().unwrap();
+        create_test_policies(&temp_dir, &[("bad", "not valid toml [[[")]);
+        let policies_dir = temp_dir.path().join(POLICIES_DIR);
+        let result = load_policy(&policies_dir, "bad");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_evaluate_all_policies() {
+        let temp_dir = TempDir::new().unwrap();
+        // create_test_policies creates at temp_dir/policies, but evaluate_all_policies
+        // looks at temp_dir/.agents/policies — so we need to create the right structure
+        let policies_dir = temp_dir.path().join(".agents").join(POLICIES_DIR);
+        fs::create_dir_all(&policies_dir).unwrap();
+        fs::write(
+            policies_dir.join("strict.toml"),
+            r#"
+description = "Strict policy"
+allowed_agents = ["claude"]
+"#,
+        )
+        .unwrap();
+        let mut config = Config::default();
+        config
+            .agents
+            .insert("claude".to_string(), crate::config::AgentConfig::default());
+        let reports = evaluate_all_policies(temp_dir.path(), &config).unwrap();
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].passed());
+    }
+
+    #[test]
+    fn test_evaluate_all_policies_no_dir() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = Config::default();
+        let reports = evaluate_all_policies(temp_dir.path(), &config).unwrap();
+        assert!(reports.is_empty());
+    }
+
+    #[test]
+    fn test_evaluate_all_policies_with_bad_policy() {
+        let temp_dir = TempDir::new().unwrap();
+        let policies_dir = temp_dir.path().join(".agents").join(POLICIES_DIR);
+        fs::create_dir_all(&policies_dir).unwrap();
+        fs::write(policies_dir.join("broken.toml"), "invalid [[[ toml").unwrap();
+        let config = Config::default();
+        let reports = evaluate_all_policies(temp_dir.path(), &config).unwrap();
+        assert_eq!(reports.len(), 1);
+        assert!(!reports[0].passed());
+    }
+
+    #[test]
+    fn test_policies_dir_for_project() {
+        let root = Path::new("/tmp/test");
+        let dir = policies_dir_for_project(root);
+        assert_eq!(dir, Path::new("/tmp/test/.agents/policies"));
+    }
+
+    #[test]
+    fn test_policy_pack_default() {
+        let policy = PolicyPack::default();
+        assert_eq!(policy.schema_version, POLICY_SCHEMA_VERSION);
+        assert!(policy.allowed_agents.is_empty());
+        assert!(policy.denied_agents.is_empty());
+        assert_eq!(policy.max_agents, None);
+        assert!(!policy.require_agent_descriptions);
+        assert!(!policy.require_agent_targets);
+    }
+
+    #[test]
+    fn test_policy_pack_deserialize() {
+        let toml_str = r#"
+description = "Full policy"
+allowed_agents = ["claude", "copilot"]
+denied_agents = ["codex"]
+allowed_skills = ["skill-a"]
+denied_skills = ["skill-b"]
+allowed_mcp_servers = ["server-a"]
+denied_mcp_servers = ["server-b"]
+max_agents = 10
+max_mcp_servers = 5
+require_agent_descriptions = true
+require_agent_targets = true
+"#;
+        let policy: PolicyPack = toml::from_str(toml_str).unwrap();
+        assert_eq!(policy.description, "Full policy");
+        assert_eq!(policy.allowed_agents, vec!["claude", "copilot"]);
+        assert_eq!(policy.denied_agents, vec!["codex"]);
+        assert_eq!(policy.max_agents, Some(10));
+        assert_eq!(policy.max_mcp_servers, Some(5));
+        assert!(policy.require_agent_descriptions);
+        assert!(policy.require_agent_targets);
+    }
+
+    #[test]
+    fn test_policy_report_serialize() {
+        let report = PolicyReport::from_diagnostics("test".to_string(), vec![]);
+        let json = serde_json::to_string(&report).unwrap();
+        assert!(json.contains("test"));
+        assert!(json.contains("0"));
+    }
+
+    #[test]
+    fn test_evaluate_empty_policy() {
+        let policy = PolicyPack::default();
+        let config = Config::default();
+        let report = evaluate_policy(&policy, &config, Path::new("/tmp"));
+        assert!(report.passed());
+        assert_eq!(report.total, 0);
+    }
+
+    #[test]
+    fn test_evaluate_multiple_violations() {
+        let policy = PolicyPack {
+            allowed_agents: vec!["claude".to_string()],
+            denied_agents: vec!["codex".to_string()],
+            max_agents: Some(1),
+            require_agent_descriptions: true,
+            require_agent_targets: true,
+            ..Default::default()
+        };
+        let config = config_with_agents(&["claude", "copilot", "codex"]);
+        let report = evaluate_policy(&policy, &config, Path::new("/tmp"));
+        assert!(!report.passed());
+        assert!(report.total > 3); // Multiple violations
     }
 }

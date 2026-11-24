@@ -103,6 +103,7 @@ pub fn parse_claud_mcp(project_root: &Path) -> Result<Vec<NativeMcpServer>> {
         return Ok(Vec::new());
     }
 
+    // nosemgrep: rust.actix.path-traversal.tainted-path.tainted-path -- mcp_path is constructed from project_root with fixed filename
     let content = fs::read_to_string(&mcp_path)
         .with_context(|| format!("Failed to read {}", mcp_path.display()))?;
 
@@ -146,6 +147,7 @@ pub fn parse_vscode_mcp(project_root: &Path) -> Result<Vec<NativeMcpServer>> {
         return Ok(Vec::new());
     }
 
+    // nosemgrep: rust.actix.path-traversal.tainted-path.tainted-path -- mcp_path is constructed from project_root with fixed filename
     let content = fs::read_to_string(&mcp_path)
         .with_context(|| format!("Failed to read {}", mcp_path.display()))?;
 
@@ -188,6 +190,7 @@ pub fn parse_cursor_mcp(project_root: &Path) -> Result<Vec<NativeMcpServer>> {
         return Ok(Vec::new());
     }
 
+    // nosemgrep: rust.actix.path-traversal.tainted-path.tainted-path -- mcp_path is constructed from project_root with fixed filename
     let content = fs::read_to_string(&mcp_path)
         .with_context(|| format!("Failed to read {}", mcp_path.display()))?;
 
@@ -244,6 +247,7 @@ pub fn parse_instructions(project_root: &Path, agent: &str) -> Result<Vec<Native
     for path_str in instruction_paths {
         let path = project_root.join(path_str);
         if path.exists() {
+            // nosemgrep: rust.actix.path-traversal.tainted-path.tainted-path -- path is constructed from project_root with fixed filenames
             let content = fs::read_to_string(&path)
                 .with_context(|| format!("Failed to read {}", path.display()))?;
             instructions.push(NativeInstruction {

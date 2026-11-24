@@ -80,6 +80,7 @@ impl EnvLock {
     /// Load a lockfile from disk.
     pub fn load(project_root: &Path) -> Result<Self> {
         let path = Self::lockfile_path(project_root);
+        // nosemgrep: rust.actix.path-traversal.tainted-path.tainted-path -- path is fixed lockfile location within project
         let content = fs::read_to_string(&path)
             .with_context(|| format!("Failed to read lockfile: {}", path.display()))?;
         let lock: EnvLock = serde_json::from_str(&content)
@@ -255,6 +256,7 @@ fn hash_file(path: &Path) -> Result<Option<String>> {
         return Ok(None);
     }
 
+    // nosemgrep: rust.actix.path-traversal.tainted-path.tainted-path -- path is within project directory tree
     let content = fs::read(path)
         .with_context(|| format!("Failed to read file for hashing: {}", path.display()))?;
 
@@ -272,6 +274,7 @@ fn hash_directory_recursively(
     project_root: &Path,
     category: LockCategory,
 ) -> Result<()> {
+    // nosemgrep: rust.actix.path-traversal.tainted-path.tainted-path -- dir is within project directory tree
     let entries = fs::read_dir(dir)
         .with_context(|| format!("Failed to read directory: {}", dir.display()))?;
 
