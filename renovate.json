@@ -32,9 +32,10 @@
 			"automerge": false
 		},
 		{
-			"description": "Configure minor and patch updates for npm/pnpm devDependencies to automerge after the baseline release age threshold is met and CI passes, without restrictive schedules.",
+			"description": "Configure minor and patch updates for npm/pnpm devDependencies to automerge after the 7-day release age threshold is met and CI passes, without restrictive schedules.",
 			"matchDepTypes": ["devDependencies"],
 			"groupName": "devDependencies",
+			"minimumReleaseAge": "7 days",
 			"automerge": true,
 			"automergeType": "branch",
 			"semanticCommitType": "chore",
