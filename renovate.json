@@ -23,7 +23,7 @@
 		},
 		{
 			"description": "Baseline rule enforcing 3-day minimum release age for supported package updates (dependencies, devDependencies, etc.). Note: pnpm-workspace.yaml controls release age validation for lockfile maintenance, and .cargo/config.toml controls the equivalent Cargo cooldown.",
-			"matchManagers": ["npm", "pnpm", "cargo"],
+			"matchManagers": ["npm", "cargo"],
 			"minimumReleaseAge": "3 days"
 		},
 		{
@@ -39,7 +39,7 @@
 			"automergeType": "branch",
 			"semanticCommitType": "chore",
 			"matchUpdateTypes": ["minor", "patch"],
-			"matchManagers": ["npm", "pnpm"]
+			"matchManagers": ["npm"]
 		},
 		{
 			"description": "Configure cargo dependencies minor and patch updates to automerge on schedule.",
