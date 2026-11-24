@@ -10,7 +10,9 @@ const locale = Astro.locals.starlightRoute.locale;
 const isSpanish = locale === "es";
 const title =
 	hero.title ??
-	(isSpanish ? "Sincroniza tus agentes de IA al instante." : "Sync Your AI Agents — Instantly.");
+	(isSpanish
+		? "Sincroniza tus agentes de IA al instante."
+		: "Sync Your AI Agents — Instantly.");
 const tagline =
 	hero.tagline ??
 	(isSpanish
@@ -221,7 +223,7 @@ const actions = (
     height: 6px;
     background: var(--as-primary, #00e5c4);
     border-radius: 50%;
-    animation: pulse 2s ease-in-out infinite;
+    /* Animation opt-in below for prefers-reduced-motion: no-preference */
   }
 
   @keyframes pulse {
@@ -369,9 +371,10 @@ const actions = (
   }
 
   /* ===== Fade-in Animation ===== */
+  /* Default: visible and static. Motion is opt-in. */
   .animate-fade-in-up {
-    opacity: 0;
-    animation: fadeInUp 0.8s ease forwards;
+    opacity: 1;
+    transform: translateY(0);
   }
 
   @keyframes fadeInUp {
@@ -382,6 +385,19 @@ const actions = (
     to {
       opacity: 1;
       transform: translateY(0);
+    }
+  }
+
+  /* Opt-in to motion for users who prefer it */
+  @media (prefers-reduced-motion: no-preference) {
+    .animate-fade-in-up {
+      opacity: 0;
+      transform: translateY(24px);
+      animation: fadeInUp 0.8s ease forwards;
+    }
+
+    .badge-dot {
+      animation: pulse 2s ease-in-out infinite;
     }
   }
 

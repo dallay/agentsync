@@ -1,3 +1,8 @@
+---
+title: "ADR-002: Secret Reference, Redaction, and Reproducibility Contract"
+description: "Establishes the contract for secret references, redaction, and reproducibility in AgentSync."
+---
+
 # ADR-002: Secret Reference, Redaction, and Reproducibility Contract
 
 **Status:** Accepted  

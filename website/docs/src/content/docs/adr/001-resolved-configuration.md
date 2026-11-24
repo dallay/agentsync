@@ -1,3 +1,8 @@
+---
+title: "ADR-001: ResolvedConfiguration Contract, Provenance, and Capability Boundaries"
+description: "Formalizes the ResolvedConfiguration contract for inspection, profiles, and policy features."
+---
+
 # ADR-001: ResolvedConfiguration Contract, Provenance, and Capability Boundaries
 
 **Status:** Accepted  
