@@ -5,7 +5,7 @@
 - Change: `issue-688-static-security-audit-hardening`
 - Related issues: #688, #695, #702
 - Expected scope: 5 dependency-ordered implementation slices delivered together in one PR;
-  5,967 changed lines at final preflight (5,251 additions and 716 deletions), including tests and
+  5,968 changed lines at final preflight (5,252 additions and 716 deletions), including tests and
   SDD/CLI documentation.
 - Release condition: do not close #688 or claim the audit is a security guarantee until all slices
   and acceptance checks pass.
@@ -29,8 +29,8 @@
 - Issue references: #688, #695, #702
 - Existing S1 code diff: 599 changed lines (514 additions, 85 deletions); included in the approved
   single-PR exception. Total scope now substantially exceeds the original 1,000–1,400-line estimate.
-- Next action: complete broad verification, resolve compatibility/review findings, then open the
-  single PR against `main` if all release gates pass.
+- Next action: draft PR [#758](https://github.com/dallay/agentsync/pull/758) is open against `main`;
+  resolve the documented verification and compatibility gates before marking it ready or merging.
 
 ## Phase 1: Secure Scan Contract and Traversal
 

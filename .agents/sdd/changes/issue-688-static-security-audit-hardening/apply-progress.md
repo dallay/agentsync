@@ -30,7 +30,7 @@
 
 - **Forecast**: High; the user explicitly authorized one `size-exception` PR containing all five internal slices.
 - **PR boundary**: base `main`, head `feat/issue-688-scan-contract`, position 1/1; related issues #688, #695, and #702.
-- **Diff budget**: 5,967 changed lines at preflight (5,251 additions and 716 deletions), versus the
+- **Diff budget**: 5,968 changed lines at preflight (5,252 additions and 716 deletions), versus the
   default 400-line budget; disclose this explicitly in the PR body.
 
 ## Commands Run
@@ -56,6 +56,7 @@
 - [x] Implementation tasks S1–S5.
 - [x] Rerun the full suite, format, clippy, and docs checks after the latest regression tests and persist fresh counts.
 - [x] Run and persist SDD technical verification and independent acceptance QA; QA is `PASS WITH WARNINGS`, verification remains `FAIL` on documented TDD evidence.
-- [ ] Create the single draft PR after reviewing the verification/QA reports and confirming GitHub access.
+- [x] Open the single draft PR #758 against `main` and verify its title, base, head, and draft state.
+- [ ] Resolve the TDD verification failure and remaining platform/schema/observer gates before marking the PR ready or merging.
 
-**Status**: 18/18 implementation tasks complete. Fresh full-suite, formatting, clippy, and docs evidence is recorded; QA is `PASS WITH WARNINGS` and verification remains `FAIL` on the documented TDD gap.
+**Status**: 18/18 implementation tasks complete; draft PR #758 is open. QA is `PASS WITH WARNINGS`; verification remains `FAIL` on the documented TDD gap, so the PR is not ready to merge.
