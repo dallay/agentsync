@@ -1,0 +1,61 @@
+# Implementation Progress: Static Security Audit Hardening (#688)
+
+**Change**: `issue-688-static-security-audit-hardening`
+**Testing scope**: Rust behavior changes, binary-level CLI contracts, plugin trust fixtures, and CLI documentation.
+
+## Completed Tasks
+
+- [x] S1 — bounded traversal reports, coverage, stable safe errors, and validation consumer migration.
+- [x] S2 — secret-safe findings, validated selectors, trusted skill roots, incomplete scan status, and exit codes.
+- [x] S3 — Markdown and structured-format rules, path-reference checks, deterministic ordering, and SHA-256 fingerprints.
+- [x] S4 — offline lock/provenance-aware plugin inspection and structured MCP approval/risk reporting.
+- [x] S5 — real-binary acceptance tests and English/Spanish CLI documentation.
+
+## Files Changed
+
+| File | Action | Summary |
+|---|---|---|
+| `src/diagnostics.rs` | Modified | Shared scan status, coverage, errors, and capability-based bounded traversal. |
+| `src/skills/validation.rs` | Modified | Uses shared traversal and keeps validation diagnostics compatible. |
+| `src/audit.rs` | Modified | Sanitized, parser-aware rules, deterministic reports, target identities, and aggregate audit flows. |
+| `src/commands/audit.rs` | Modified | Selector validation, JSON/human output, and threshold/incomplete exit outcomes. |
+| `src/main.rs` | Modified | Maps audit outcomes to process exit codes and removes the duplicated root option. |
+| `src/plugins.rs` | Modified | Read-only, lock/provenance-verified local plugin audit snapshots. |
+| `src/policy.rs`, `src/explorer.rs` | Modified | Initialize the optional shared diagnostic target field. |
+| `tests/contracts/test_audit_output.rs`, `tests/all_tests.rs` | Added/modified | Binary acceptance, trust-state, redaction, limits, and output contract fixtures. |
+| `website/docs/src/content/docs/{,es/}reference/cli.mdx` | Modified | Audit command, coverage, limits, and exit-code reference. |
+| `.agents/sdd/changes/issue-688-static-security-audit-hardening/` | Added/modified | Delta spec, design, plan, and implementation evidence. |
+
+## Review Workload
+
+- **Forecast**: High; the user explicitly authorized one `size-exception` PR containing all five internal slices.
+- **PR boundary**: base `main`, head `feat/issue-688-scan-contract`, position 1/1; related issues #688, #695, and #702.
+- **Diff budget**: 5,967 changed lines at preflight (5,251 additions and 716 deletions), versus the
+  default 400-line budget; disclose this explicitly in the PR body.
+
+## Commands Run
+
+| Command | Result | Evidence |
+|---|---|---|
+| `cargo test --all-features` | PASS, exit 0 | Final run: 30 test-result summaries; 1,516 passed, 0 failed, 6 ignored. The real-binary audit contract module contains 35 tests. |
+| `cargo fmt --all -- --check` | PASS, exit 0 | No formatting changes required. |
+| `cargo clippy --all-targets --all-features -- -D warnings` | PASS, exit 0 | Existing manifest warning: `package.homepage` duplicates `package.repository`. |
+| `pnpm run docs:build` | PASS WITH WARNING, exit 0 | Astro built 45 pages on Node `v26.13.1` / pnpm `12.21.0`. The install `prepare` hook could not find the globally installed `@dallay/agentsync` wrapper; `astro build` still completed. |
+| `cargo check --target x86_64-pc-windows-msvc --all-targets --all-features` | BLOCKED, exit 101 | Cross-target C dependencies could not find Windows system headers/Vcpkg (`libz-sys`, `zstd-sys`); the Rust crate was not reached. |
+| `git diff --check` | PASS, exit 0 | No whitespace errors in the working diff. |
+
+## TDD Evidence and Deviations
+
+- The user explicitly authorized continuing while documenting TDD deviations; no complete TDD-compliance claim is made.
+- The fail-closed plugin branch, empty-result human text, and final coverage aggregation were implemented before their specific tests were added. YAML parsing, initial Markdown-reference detection, repeated-JSON comparison, shared secret-classifier integration, human target rendering, split MCP arguments, and directory-entry limits also lack retained pre-fix RED evidence; their later passing tests are not retroactive TDD evidence.
+- Terminal evidence does not establish a RED→GREEN cycle for every changed behavior. Passing tests are recorded as verification only, not as retroactive TDD evidence.
+- The standalone no-follow open test passed on its first run because `cap-std` already rejects the tested Unix symlink; it is characterization evidence, not a RED run.
+
+## Remaining Tasks
+
+- [x] Implementation tasks S1–S5.
+- [x] Rerun the full suite, format, clippy, and docs checks after the latest regression tests and persist fresh counts.
+- [x] Run and persist SDD technical verification and independent acceptance QA; QA is `PASS WITH WARNINGS`, verification remains `FAIL` on documented TDD evidence.
+- [ ] Create the single draft PR after reviewing the verification/QA reports and confirming GitHub access.
+
+**Status**: 18/18 implementation tasks complete. Fresh full-suite, formatting, clippy, and docs evidence is recorded; QA is `PASS WITH WARNINGS` and verification remains `FAIL` on the documented TDD gap.

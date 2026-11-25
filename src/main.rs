@@ -16,7 +16,7 @@ use agentsync::{
 use tracing_subscriber::filter::LevelFilter;
 mod commands;
 mod output;
-use commands::audit::{AuditArgs, run_audit};
+use commands::audit::{AuditArgs, AuditExitError, run_audit};
 use commands::dev_bench::{DevBenchArgs, run_dev_bench};
 use commands::doctor::run_doctor;
 use commands::inspect::{InspectArgs, run_inspect};
@@ -284,8 +284,12 @@ enum Commands {
 }
 
 fn main() {
-    if run().is_err() {
-        std::process::exit(1);
+    if let Err(error) = run() {
+        let exit_code = error
+            .downcast_ref::<AuditExitError>()
+            .map(AuditExitError::exit_code)
+            .unwrap_or(1);
+        std::process::exit(exit_code);
     }
 }
 
@@ -331,9 +335,9 @@ fn run() -> Result<()> {
         }),
         Commands::Audit { args, project_root } => run_in_root_span("audit", || {
             let project_root =
-                current_project_root(project_root, || env::current_dir().map_err(Into::into))?;
-            run_audit(args, project_root)?;
-            Ok(())
+                current_project_root(project_root, || env::current_dir().map_err(Into::into))
+                    .map_err(|_| AuditExitError::operational())?;
+            run_audit(args, project_root)
         }),
         Commands::Profile { args, project_root } => run_in_root_span("profile", || {
             let project_root =

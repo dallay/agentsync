@@ -5,25 +5,30 @@
 //! declarations for the existing configuration generator.
 
 use crate::config::McpServerConfig;
+use crate::diagnostics::{open_entry_nofollow, open_root_directory};
 use anyhow::{Context, Result, bail, ensure};
+use cap_fs_ext::DirExt;
+use cap_std::fs::Dir as CapabilityDir;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::future::Future;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tempfile::{NamedTempFile, TempDir};
 use toml_edit::{DocumentMut, Item, Table, value};
-use walkdir::WalkDir;
 
 const PLUGIN_LOCK_SCHEMA_VERSION: &str = "v1";
 const DEFAULT_PLUGIN_LOCKFILE: &str = "plugins.lock.toml";
 const MAX_PLUGIN_FILES: usize = 10_000;
+const MAX_PLUGIN_ENTRIES: usize = 10_000;
+const MAX_PLUGIN_DIRECTORY_DEPTH: usize = 64;
 const MAX_PLUGIN_CONTENT_SIZE: u64 = 500 * 1024 * 1024;
+const MAX_PLUGIN_AUDIT_TARGETS: usize = 1_000;
 
 fn default_plugin_lockfile() -> String {
     DEFAULT_PLUGIN_LOCKFILE.to_string()
@@ -272,6 +277,13 @@ pub struct PluginStatusReport {
     pub servers: Vec<PluginMcpStatus>,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct PluginAuditSnapshot {
+    pub(crate) identity: String,
+    pub(crate) root: PathBuf,
+    pub(crate) servers: Vec<PluginMcpStatus>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct PluginMcpStatus {
     pub name: String,
@@ -370,6 +382,10 @@ impl PluginManager {
             );
             return Ok(report);
         }
+        ensure!(
+            self.config.selections.len() <= MAX_PLUGIN_AUDIT_TARGETS,
+            "plugin status inventory exceeds {MAX_PLUGIN_AUDIT_TARGETS} targets"
+        );
         let lock_path = self
             .lock_path()
             .context("failed to resolve plugin lockfile path")?;
@@ -385,40 +401,42 @@ impl PluginManager {
                         !is_absolute_path(&locked.source.location),
                         "locked local plugin source must be relative"
                     );
-                    self.config_path
-                        .parent()
-                        .unwrap_or_else(|| Path::new("."))
-                        .join(location)
+                    let config_dir = self.config_path.parent().unwrap_or_else(|| Path::new("."));
+                    ensure_local_source_has_no_symlinks(config_dir, &locked.source.location)?;
+                    config_dir.join(location)
                 }
                 LockedSourceKind::Git => self.git_source_cache_path(&locked.source)?,
             };
-            let metadata = match locked.source.kind {
-                LockedSourceKind::Local => fs::metadata(&root),
-                LockedSourceKind::Git => fs::symlink_metadata(&root),
-            }
-            .map_err(|error| {
-                let missing = error.kind() == std::io::ErrorKind::NotFound;
-                let error = anyhow::Error::new(error);
-                if missing {
-                    error.context(PluginInspectError::MissingSnapshot)
-                } else {
-                    error
-                }
-            })
-            .with_context(|| {
-                format!(
-                    "failed to read plugin snapshot metadata: {}",
-                    root.display()
-                )
-            })?;
+            let metadata = fs::symlink_metadata(&root)
+                .map_err(|error| {
+                    let missing = error.kind() == std::io::ErrorKind::NotFound;
+                    let error = anyhow::Error::new(error);
+                    if missing {
+                        error.context(PluginInspectError::MissingSnapshot)
+                    } else {
+                        error
+                    }
+                })
+                .with_context(|| {
+                    format!(
+                        "failed to read plugin snapshot metadata: {}",
+                        root.display()
+                    )
+                })?;
             if locked.source.kind == LockedSourceKind::Git {
                 ensure_git_snapshot_dir(&root)?;
             }
             ensure!(
-                metadata.is_dir(),
-                "plugin snapshot is not a directory: {}",
-                root.display()
+                metadata.is_dir() && !metadata.file_type().is_symlink(),
+                "plugin snapshot is not a trusted directory"
             );
+            let source_hash = hash_tree(&root)?;
+            if locked.source.kind == LockedSourceKind::Local {
+                ensure!(
+                    format!("local:{source_hash}") == locked.source.revision,
+                    "local plugin source does not match its lock revision"
+                );
+            }
             let discovered = discover_plugin(&root, &locked.marketplace, &locked.plugin)?;
             ensure_snapshot_discovery_matches_lock(&discovered, locked)?;
             report.skills += discovered.skills.len();
@@ -440,6 +458,124 @@ impl PluginManager {
             .servers
             .sort_by(|left, right| left.name.cmp(&right.name));
         Ok(report)
+    }
+
+    /// Return already-present, lock-verified plugin roots for offline auditing.
+    pub(crate) fn inspect_audit_snapshots_read_only(
+        &self,
+        selection: Option<&str>,
+    ) -> Result<Vec<PluginAuditSnapshot>> {
+        self.config.validate()?;
+        if !self.config.enabled || self.config.selections.is_empty() {
+            ensure!(
+                selection.is_none() && self.config.allowed_mcp.is_empty(),
+                "requested plugin is not selected or has no verifiable lock state"
+            );
+            return Ok(Vec::new());
+        }
+        ensure!(
+            self.config.selections.len() <= MAX_PLUGIN_AUDIT_TARGETS,
+            "plugin audit inventory exceeds {MAX_PLUGIN_AUDIT_TARGETS} targets"
+        );
+
+        ensure_regular_file_without_symlink(&self.config_path)?;
+        let config_dir = self.config_path.parent().unwrap_or_else(|| Path::new("."));
+        let config_metadata = fs::symlink_metadata(config_dir)?;
+        ensure!(
+            config_metadata.is_dir() && !config_metadata.file_type().is_symlink(),
+            "plugin configuration directory is not trusted"
+        );
+        let lock_path = self.lock_path()?;
+        ensure_regular_file_without_symlink(&lock_path)?;
+        let lock = PluginLock::load(&lock_path)?;
+        let selected = selected_lock_entries(&self.config, &lock)?;
+        validate_allowed_mcp_against_lock(&self.config.allowed_mcp, &selected)?;
+
+        let selected = if let Some(selection) = selection {
+            let (marketplace, plugin) = selection
+                .split_once('/')
+                .ok_or_else(|| anyhow::anyhow!("plugin selector must be namespaced"))?;
+            ensure!(
+                !plugin.contains('/') && !marketplace.is_empty() && !plugin.is_empty(),
+                "plugin selector must be namespaced"
+            );
+            validate_identifier("marketplace", marketplace)?;
+            validate_identifier("plugin", plugin)?;
+            let key = format!("{marketplace}/{plugin}");
+            let locked = selected
+                .get(&key)
+                .ok_or_else(|| anyhow::anyhow!("requested plugin is not selected"))?;
+            BTreeMap::from([(key, locked)])
+        } else {
+            selected
+                .iter()
+                .map(|(key, locked)| (key.clone(), locked))
+                .collect()
+        };
+
+        let allowed = self.config.allowed_mcp.iter().collect::<BTreeSet<_>>();
+        let mut snapshots = Vec::new();
+        for (key, locked) in selected {
+            let source_root = match locked.source.kind {
+                LockedSourceKind::Local => {
+                    ensure!(
+                        !is_absolute_path(&locked.source.location)
+                            && !locked.source.location.contains("://")
+                            && !locked.source.location.contains(':'),
+                        "locked local plugin source must be relative"
+                    );
+                    let config_dir = self.config_path.parent().unwrap_or_else(|| Path::new("."));
+                    ensure_local_source_has_no_symlinks(config_dir, &locked.source.location)?;
+                    config_dir.join(&locked.source.location)
+                }
+                LockedSourceKind::Git => self.git_source_cache_path(&locked.source)?,
+            };
+            let metadata = fs::symlink_metadata(&source_root)?;
+            ensure!(
+                !metadata.file_type().is_symlink() && metadata.is_dir(),
+                "plugin snapshot is not a trusted directory"
+            );
+            if locked.source.kind == LockedSourceKind::Git {
+                ensure_git_snapshot_dir(&source_root)?;
+            }
+            let source_hash = hash_tree(&source_root)?;
+            if locked.source.kind == LockedSourceKind::Local {
+                let revision = format!("local:{source_hash}");
+                ensure!(
+                    revision == locked.source.revision,
+                    "local plugin source does not match its lock revision"
+                );
+            }
+
+            let discovered = discover_plugin(&source_root, &locked.marketplace, &locked.plugin)?;
+            ensure_snapshot_discovery_matches_lock(&discovered, locked)?;
+            let plugin_root = source_root.join(&discovered.plugin_path);
+            let plugin_metadata = fs::symlink_metadata(&plugin_root)?;
+            ensure!(
+                !plugin_metadata.file_type().is_symlink() && plugin_metadata.is_dir(),
+                "plugin root is not a trusted directory"
+            );
+
+            let servers = discovered
+                .namespaced_mcp_servers(&locked.marketplace, &locked.plugin)?
+                .into_iter()
+                .map(|(name, server)| PluginMcpStatus {
+                    approval: if allowed.contains(&name) {
+                        PluginMcpApproval::Allowed
+                    } else {
+                        PluginMcpApproval::Pending
+                    },
+                    name,
+                    server,
+                })
+                .collect();
+            snapshots.push(PluginAuditSnapshot {
+                identity: format!("plugin/{key}"),
+                root: plugin_root,
+                servers,
+            });
+        }
+        Ok(snapshots)
     }
 
     pub fn status_report(&self) -> Result<PluginStatusReport> {
@@ -1585,12 +1721,17 @@ fn discover_plugin(root: &Path, marketplace: &str, plugin_name: &str) -> Result<
     ];
     let mut selected_manifest = None;
     for (relative, path) in &manifest_candidates {
-        if !path.is_file() {
+        if !ensure_regular_file_without_symlink(path)? {
             continue;
         }
         // nosemgrep: rust.actix.path-traversal.tainted-path.tainted-path -- path is selected from validated marketplace roots
-        let content = fs::read_to_string(path)
-            .with_context(|| format!("failed to read marketplace manifest: {}", path.display()))?;
+        let content = String::from_utf8(read_plugin_file_bounded(
+            root,
+            Path::new(relative),
+            MAX_PLUGIN_CONTENT_SIZE,
+            None,
+        )?)
+        .context("marketplace manifest is not valid UTF-8")?;
         let value = serde_json::from_str::<Value>(&content)
             .with_context(|| format!("failed to parse marketplace manifest: {}", path.display()))?;
         selected_manifest = Some(((*relative).to_string(), value));
@@ -1640,14 +1781,15 @@ fn discover_plugin(root: &Path, marketplace: &str, plugin_name: &str) -> Result<
     );
 
     let plugin_manifest_path = plugin_root.join(".claude-plugin/plugin.json");
-    let plugin_manifest = if plugin_manifest_path.is_file() {
+    let plugin_manifest = if ensure_regular_file_without_symlink(&plugin_manifest_path)? {
         // nosemgrep: rust.actix.path-traversal.tainted-path.tainted-path -- plugin_root is a resolved marketplace source
-        let content = fs::read_to_string(&plugin_manifest_path).with_context(|| {
-            format!(
-                "failed to read plugin manifest: {}",
-                plugin_manifest_path.display()
-            )
-        })?;
+        let content = String::from_utf8(read_plugin_file_bounded(
+            &plugin_root,
+            Path::new(".claude-plugin/plugin.json"),
+            MAX_PLUGIN_CONTENT_SIZE,
+            None,
+        )?)
+        .context("plugin manifest is not valid UTF-8")?;
         Some(serde_json::from_str::<Value>(&content).with_context(|| {
             format!(
                 "failed to parse plugin manifest: {}",
@@ -1703,43 +1845,42 @@ fn discover_plugin(root: &Path, marketplace: &str, plugin_name: &str) -> Result<
 }
 
 fn discover_skills(plugin_root: &Path) -> Result<Vec<DiscoveredSkill>> {
-    let skills_root = plugin_root.join("skills");
-    if !skills_root.exists() {
-        return Ok(Vec::new());
-    }
-    ensure!(
-        skills_root.is_dir(),
-        "plugin skills path is not a directory: {}",
-        skills_root.display()
-    );
-    let mut skills = Vec::new();
-    // nosemgrep: rust.actix.path-traversal.tainted-path.tainted-path -- skills_root is derived from a resolved plugin root
-    for entry in fs::read_dir(&skills_root)
-        .with_context(|| format!("failed to read plugin skills: {}", skills_root.display()))?
+    let plugin_directory = open_root_directory(plugin_root)?;
+    let skills_directory = match plugin_directory.open_dir_nofollow(std::ffi::OsStr::new("skills"))
     {
+        Ok(directory) => directory,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error.into()),
+    };
+    let mut skills = Vec::new();
+    for (entry_index, entry) in skills_directory.entries()?.enumerate() {
+        ensure!(
+            entry_index < MAX_PLUGIN_ENTRIES,
+            "plugin skills directory contains too many entries"
+        );
         let entry = entry?;
-        let path = entry.path();
-        let metadata = fs::symlink_metadata(&path)?;
+        let name = entry.file_name();
+        let metadata = skills_directory.symlink_metadata(&name)?;
         ensure!(
             !metadata.file_type().is_symlink(),
-            "plugin skill symlink is not allowed: {}",
-            path.display()
+            "plugin skill symlink is not allowed"
         );
         if !metadata.is_dir() {
             continue;
         }
-        let id = entry.file_name().to_string_lossy().into_owned();
+        let id = name.to_string_lossy().into_owned();
         validate_identifier("skill", &id)?;
+        let skill_directory = skills_directory.open_dir_nofollow(&name)?;
+        let manifest_metadata = skill_directory.symlink_metadata("SKILL.md")?;
         ensure!(
-            path.join("SKILL.md").is_file(),
-            "plugin skill is missing SKILL.md: {}",
-            path.display()
+            manifest_metadata.is_file() && !manifest_metadata.file_type().is_symlink(),
+            "plugin skill is missing a regular SKILL.md manifest"
         );
         skills.push(DiscoveredSkill {
             id: id.clone(),
-            path,
+            path: plugin_root.join("skills").join(&id),
             relative_path: format!("skills/{id}"),
-            content_sha256: hash_tree(&skills_root.join(&id))?,
+            content_sha256: hash_tree_directory(&skill_directory)?,
         });
     }
     skills.sort_by(|left, right| left.id.cmp(&right.id));
@@ -1748,12 +1889,17 @@ fn discover_skills(plugin_root: &Path) -> Result<Vec<DiscoveredSkill>> {
 
 fn read_plugin_mcp(plugin_root: &Path) -> Result<BTreeMap<String, McpServerConfig>> {
     let path = plugin_root.join(".mcp.json");
-    if !path.exists() {
+    if !ensure_regular_file_without_symlink(&path)? {
         return Ok(BTreeMap::new());
     }
     // nosemgrep: rust.actix.path-traversal.tainted-path.tainted-path -- plugin_root is a resolved marketplace source
-    let content = fs::read_to_string(&path)
-        .with_context(|| format!("failed to read plugin MCP declaration: {}", path.display()))?;
+    let content = String::from_utf8(read_plugin_file_bounded(
+        plugin_root,
+        Path::new(".mcp.json"),
+        MAX_PLUGIN_CONTENT_SIZE,
+        None,
+    )?)
+    .context("plugin MCP declaration is not valid UTF-8")?;
     let value: Value = serde_json::from_str(&content)
         .with_context(|| format!("failed to parse plugin MCP declaration: {}", path.display()))?;
     let servers = value
@@ -1800,47 +1946,15 @@ fn validate_plugin_mcp_server(name: &str, server: &McpServerConfig) -> Result<()
 }
 
 pub(crate) fn is_sensitive_mcp_key(key: &str) -> bool {
-    let normalized = key.to_ascii_lowercase().replace(['-', '.'], "_");
-    [
-        "token",
-        "secret",
-        "password",
-        "passwd",
-        "credential",
-        "api_key",
-        "apikey",
-        "authorization",
-        "cookie",
-    ]
-    .iter()
-    .any(|marker| normalized.contains(marker))
+    crate::secrets::is_sensitive_key(key)
 }
 
 pub(crate) fn is_environment_reference(value: &str) -> bool {
-    let value = value.trim();
-    let valid_name = |name: &str| {
-        !name.is_empty()
-            && name.chars().enumerate().all(|(index, character)| {
-                (index == 0 && (character.is_ascii_alphabetic() || character == '_'))
-                    || (index > 0 && (character.is_ascii_alphanumeric() || character == '_'))
-            })
-    };
-
-    if let Some(name) = value
-        .strip_prefix("${")
-        .and_then(|value| value.strip_suffix('}'))
-    {
-        return valid_name(name);
-    }
-    value.strip_prefix('$').is_some_and(valid_name)
+    crate::secrets::is_environment_reference(value)
 }
 
 fn is_header_environment_reference(value: &str) -> bool {
-    let value = value.trim();
-    is_environment_reference(value)
-        || value
-            .strip_prefix("Bearer ")
-            .is_some_and(is_environment_reference)
+    crate::secrets::is_header_environment_reference(value)
 }
 
 fn parse_plugin_source(value: &Value) -> Result<Option<String>> {
@@ -2466,52 +2580,206 @@ fn is_local_source(source: &str) -> bool {
     source.starts_with('.') || is_absolute_path(source) || !source.contains("://")
 }
 
+fn ensure_regular_file_without_symlink(path: &Path) -> Result<bool> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => {
+            ensure!(
+                !metadata.file_type().is_symlink() && metadata.is_file(),
+                "refusing to read a non-regular or symlinked plugin file"
+            );
+            Ok(true)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn ensure_local_source_has_no_symlinks(config_dir: &Path, location: &str) -> Result<()> {
+    let mut current = config_dir.to_path_buf();
+    for component in Path::new(location).components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                ensure!(
+                    current.pop(),
+                    "local plugin source escaped its config boundary"
+                );
+            }
+            Component::Normal(name) => {
+                current.push(name);
+                match fs::symlink_metadata(&current) {
+                    Ok(metadata) => ensure!(
+                        !metadata.file_type().is_symlink(),
+                        "local plugin source contains a symlink"
+                    ),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(error.into()),
+                }
+            }
+            Component::RootDir | Component::Prefix(_) => {
+                bail!("local plugin source must be a relative path")
+            }
+        }
+    }
+    Ok(())
+}
+
 fn is_absolute_path(path: &str) -> bool {
     Path::new(path).is_absolute() || path.starts_with(['/', '\\'])
 }
 
-fn hash_tree(root: &Path) -> Result<String> {
-    ensure!(root.is_dir(), "expected directory: {}", root.display());
-    let mut entries = Vec::new();
-    let mut total_bytes = 0_u64;
-    for entry in WalkDir::new(root).follow_links(false) {
-        let entry = entry?;
-        if entry.path() == root {
-            continue;
+#[derive(Default)]
+struct PluginTreeState {
+    entries: Vec<(String, u64)>,
+    entry_count: usize,
+    file_count: usize,
+    total_bytes: u64,
+}
+
+#[cfg(test)]
+fn read_plugin_file_for_hash(root: &Path, relative_path: &Path) -> Result<Vec<u8>> {
+    read_plugin_file_bounded(root, relative_path, MAX_PLUGIN_CONTENT_SIZE, None)
+}
+
+fn read_plugin_file_bounded(
+    root: &Path,
+    relative_path: &Path,
+    max_bytes: u64,
+    expected_size: Option<u64>,
+) -> Result<Vec<u8>> {
+    let root_directory = open_root_directory(root)?;
+    read_plugin_file_from_directory(&root_directory, relative_path, max_bytes, expected_size)
+}
+
+fn read_plugin_file_from_directory(
+    root_directory: &CapabilityDir,
+    relative_path: &Path,
+    max_bytes: u64,
+    expected_size: Option<u64>,
+) -> Result<Vec<u8>> {
+    ensure!(
+        !relative_path.is_absolute()
+            && relative_path
+                .components()
+                .all(|component| matches!(component, Component::Normal(_) | Component::CurDir)),
+        "plugin file path is not a safe relative path"
+    );
+    let file_name = relative_path
+        .file_name()
+        .ok_or_else(|| anyhow::anyhow!("plugin file path has no file name"))?;
+    let parent_path = relative_path.parent().unwrap_or_else(|| Path::new(""));
+    let mut directory = root_directory.try_clone()?;
+    for component in parent_path.components() {
+        match component {
+            Component::Normal(name) => directory = directory.open_dir_nofollow(name)?,
+            Component::CurDir => {}
+            _ => bail!("plugin file path contains an unsafe component"),
         }
-        let metadata = fs::symlink_metadata(entry.path())?;
+    }
+    let file = open_entry_nofollow(&directory, file_name)?;
+    let metadata = file.metadata()?;
+    ensure!(
+        metadata.is_file(),
+        "plugin source entry is not a regular file"
+    );
+    ensure!(
+        metadata.len() <= max_bytes,
+        "plugin source file exceeds its read limit"
+    );
+    if let Some(expected_size) = expected_size {
+        ensure!(
+            metadata.len() == expected_size,
+            "plugin source file changed during hashing"
+        );
+    }
+    let read_limit = expected_size.unwrap_or(max_bytes).min(max_bytes);
+    let mut content = Vec::new();
+    file.take(read_limit.saturating_add(1))
+        .read_to_end(&mut content)?;
+    ensure!(
+        content.len() as u64 <= read_limit && content.len() as u64 == metadata.len(),
+        "plugin source file changed or exceeded its read limit"
+    );
+    Ok(content)
+}
+
+fn collect_plugin_tree_entries(
+    directory: &CapabilityDir,
+    relative_directory: &Path,
+    depth: usize,
+    state: &mut PluginTreeState,
+) -> Result<()> {
+    ensure!(
+        depth <= MAX_PLUGIN_DIRECTORY_DEPTH,
+        "plugin source directory depth exceeds {MAX_PLUGIN_DIRECTORY_DEPTH}"
+    );
+    for entry in directory.entries()? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let metadata = directory.symlink_metadata(&name)?;
+        if metadata.is_file() && state.file_count >= MAX_PLUGIN_FILES {
+            bail!("plugin source contains too many files: exceeds {MAX_PLUGIN_FILES}");
+        }
+        ensure!(
+            state.entry_count < MAX_PLUGIN_ENTRIES,
+            "plugin source contains too many directory entries: exceeds {MAX_PLUGIN_ENTRIES}"
+        );
+        state.entry_count += 1;
         ensure!(
             !metadata.file_type().is_symlink(),
-            "symlinks are not allowed in plugin sources: {}",
-            entry.path().display()
+            "symlinks are not allowed in plugin sources"
         );
-        if metadata.is_file() {
-            ensure!(
-                entries.len() < MAX_PLUGIN_FILES,
-                "plugin source contains too many files: exceeds {MAX_PLUGIN_FILES}"
-            );
-            total_bytes = total_bytes
+        let relative_path = relative_directory.join(&name);
+        if metadata.is_dir() {
+            let child = directory.open_dir_nofollow(&name)?;
+            collect_plugin_tree_entries(&child, &relative_path, depth + 1, state)?;
+        } else if metadata.is_file() {
+            state.file_count += 1;
+            state.total_bytes = state
+                .total_bytes
                 .checked_add(metadata.len())
                 .ok_or_else(|| anyhow::anyhow!("plugin source size overflow"))?;
             ensure!(
-                total_bytes <= MAX_PLUGIN_CONTENT_SIZE,
+                state.total_bytes <= MAX_PLUGIN_CONTENT_SIZE,
                 "plugin source content is too large: exceeds {MAX_PLUGIN_CONTENT_SIZE} bytes"
             );
-            let relative = entry
-                .path()
-                .strip_prefix(root)?
-                .to_string_lossy()
-                .replace('\\', "/");
-            entries.push(relative);
+            state.entries.push((
+                relative_path.to_string_lossy().replace('\\', "/"),
+                metadata.len(),
+            ));
+        } else {
+            bail!("plugin source contains an unsupported filesystem entry");
         }
     }
-    entries.sort();
+    Ok(())
+}
+
+fn hash_tree(root: &Path) -> Result<String> {
+    let root_metadata = fs::symlink_metadata(root)?;
+    ensure!(
+        root_metadata.is_dir() && !root_metadata.file_type().is_symlink(),
+        "expected a non-symlink plugin source directory"
+    );
+    let root_directory = open_root_directory(root)?;
+    hash_tree_directory(&root_directory)
+}
+
+fn hash_tree_directory(root_directory: &CapabilityDir) -> Result<String> {
+    let mut state = PluginTreeState::default();
+    collect_plugin_tree_entries(root_directory, Path::new(""), 0, &mut state)?;
+    state.entries.sort_by(|left, right| left.0.cmp(&right.0));
+
     let mut hasher = Sha256::new();
-    for path in entries {
-        let bytes = fs::read(root.join(&path))?;
+    for (path, expected_size) in state.entries {
+        let bytes = read_plugin_file_from_directory(
+            root_directory,
+            Path::new(&path),
+            MAX_PLUGIN_CONTENT_SIZE,
+            Some(expected_size),
+        )?;
         hasher.update(path.as_bytes());
         hasher.update([0]);
-        hasher.update((bytes.len() as u64).to_be_bytes());
+        hasher.update(expected_size.to_be_bytes());
         hasher.update(bytes);
     }
     Ok(format_digest(hasher.finalize()))
@@ -2612,6 +2880,65 @@ mod tests {
         let loaded = PluginLock::load(&path).unwrap();
         loaded.save_atomic(&path).unwrap();
         assert_eq!(first, fs::read_to_string(path).unwrap());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn plugin_hash_reader_rejects_symlink_files() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        fs::create_dir(temp.path().join("source")).unwrap();
+        fs::write(temp.path().join("outside.txt"), b"outside data").unwrap();
+        symlink(
+            temp.path().join("outside.txt"),
+            temp.path().join("source/link.txt"),
+        )
+        .unwrap();
+
+        assert!(read_plugin_file_for_hash(temp.path(), Path::new("source/link.txt")).is_err());
+    }
+
+    #[test]
+    fn plugin_hash_tree_caps_directory_entries() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path().join("source");
+        fs::create_dir(&root).unwrap();
+        for index in 0..10_001 {
+            fs::create_dir(root.join(format!("dir-{index:05}"))).unwrap();
+        }
+
+        assert!(hash_tree(&root).is_err());
+    }
+
+    #[test]
+    fn plugin_hash_tree_caps_directory_depth() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path().join("source");
+        fs::create_dir(&root).unwrap();
+        let mut path = root.clone();
+        for _ in 0..65 {
+            path.push("d");
+            fs::create_dir(&path).unwrap();
+        }
+
+        assert!(hash_tree(&root).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn skill_discovery_rejects_a_symlinked_skills_directory() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let plugin = temp.path().join("plugin");
+        let external = temp.path().join("external-skills");
+        fs::create_dir_all(&plugin).unwrap();
+        fs::create_dir_all(external.join("review")).unwrap();
+        fs::write(external.join("review/SKILL.md"), "name: review\n").unwrap();
+        symlink(&external, plugin.join("skills")).unwrap();
+
+        assert!(discover_skills(&plugin).is_err());
     }
 
     #[tokio::test]
@@ -3044,6 +3371,38 @@ plugin = "engineering"
     }
 
     #[test]
+    fn audit_snapshot_inventory_rejects_too_many_selected_plugins_before_lock_access() {
+        let temp = TempDir::new().unwrap();
+        let config_path = temp.path().join(".agents/agentsync.toml");
+        let selections = (0..=MAX_PLUGIN_AUDIT_TARGETS)
+            .map(|index| PluginSelection {
+                marketplace: "internal".to_string(),
+                plugin: format!("fixture-{index}"),
+            })
+            .collect();
+        let config = PluginsConfig {
+            enabled: true,
+            marketplaces: BTreeMap::from([(
+                "internal".to_string(),
+                MarketplaceConfig {
+                    source: "../marketplace".to_string(),
+                    reference: None,
+                },
+            )]),
+            selections,
+            ..PluginsConfig::default()
+        };
+        let manager = PluginManager::new(temp.path().to_path_buf(), config_path, config);
+
+        let error = manager.inspect_audit_snapshots_read_only(None).unwrap_err();
+
+        assert!(error.to_string().contains("inventory exceeds"));
+
+        let status_error = manager.inspect_status_report_read_only().unwrap_err();
+        assert!(status_error.to_string().contains("inventory exceeds"));
+    }
+
+    #[test]
     fn status_report_covers_git_pending_and_raw_server_declaration() {
         let fixture = marketplace_fixture();
         let (_project, manager, selection, _, _) = git_locked_manager(fixture);
@@ -3062,6 +3421,102 @@ plugin = "engineering"
             Some("/bin/false")
         );
         assert_eq!(report.servers[0].server.env["FIXTURE"], "true");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn status_report_rejects_symlinked_skills_before_discovery() {
+        use std::os::unix::fs::symlink;
+
+        let fixture = marketplace_fixture();
+        let (project, manager, selection, _, _) = git_locked_manager(fixture);
+        manager.restore(Some(&selection)).unwrap();
+        let lock = PluginLock::load(&manager.lock_path().unwrap()).unwrap();
+        let locked = lock.plugins.get(&selection.key()).unwrap();
+        let snapshot = manager.git_source_cache_path(&locked.source).unwrap();
+        let skills = snapshot.join("plugins/engineering/skills");
+        let external = project.path().join("outside-skills");
+        fs::remove_dir_all(&skills).unwrap();
+        fs::create_dir_all(external.join("review")).unwrap();
+        fs::write(
+            external.join("review/SKILL.md"),
+            "api_key: OUTSIDE_CANARY\n",
+        )
+        .unwrap();
+        symlink(&external, &skills).unwrap();
+
+        let error = manager.inspect_status_report_read_only().unwrap_err();
+        let error_message = format!("{error:#}").to_ascii_lowercase();
+
+        assert!(
+            error_message.contains("not a directory") || error_message.contains("symlink"),
+            "{error:#}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn status_report_rejects_symlinked_local_source_ancestors() {
+        use std::os::unix::fs::symlink;
+
+        let project = TempDir::new().unwrap();
+        let source_root = project.path().join("external/marketplace");
+        copy_tree(&marketplace_fixture(), &source_root);
+        std::fs::create_dir_all(project.path().join(".agents")).unwrap();
+        symlink(
+            project.path().join("external"),
+            project.path().join("marketplace-link"),
+        )
+        .unwrap();
+        let config_path = project.path().join(".agents/agentsync.toml");
+        fs::write(
+            &config_path,
+            r#"
+[plugins]
+enabled = true
+lockfile = "plugins.lock.toml"
+
+[plugins.marketplaces.internal]
+source = "../marketplace-link/marketplace"
+reference = "main"
+
+[[plugins.selections]]
+marketplace = "internal"
+plugin = "engineering"
+"#,
+        )
+        .unwrap();
+        let config = PluginsConfig {
+            enabled: true,
+            lockfile: "plugins.lock.toml".to_string(),
+            marketplaces: BTreeMap::from([(
+                "internal".to_string(),
+                MarketplaceConfig {
+                    source: "../marketplace-link/marketplace".to_string(),
+                    reference: Some("main".to_string()),
+                },
+            )]),
+            allowed_mcp: Vec::new(),
+            selections: vec![PluginSelection {
+                marketplace: "internal".to_string(),
+                plugin: "engineering".to_string(),
+            }],
+        };
+        let manager = PluginManager::new(project.path().to_path_buf(), config_path, config);
+        manager
+            .add(&PluginSelection {
+                marketplace: "internal".to_string(),
+                plugin: "engineering".to_string(),
+            })
+            .unwrap();
+        let lock = PluginLock::load(&manager.lock_path().unwrap()).unwrap();
+        let locked = lock.plugins.get("internal/engineering").unwrap();
+        assert_eq!(locked.source.kind, LockedSourceKind::Local);
+        assert_eq!(locked.source.location, "../marketplace-link/marketplace");
+
+        let error = manager.inspect_status_report_read_only().unwrap_err();
+
+        assert!(format!("{error:#}").contains("local plugin source contains a symlink"));
     }
 
     #[test]
