@@ -113,6 +113,10 @@ pub trait ValidationRule: Send + Sync {
 
 /// Bounded file traversal to prevent pathological inputs.
 pub const DEFAULT_MAX_TRAVERSAL_ENTRIES: usize = 10_000;
+pub const DEFAULT_MAX_TRAVERSAL_DEPTH: usize = 10;
+pub const DEFAULT_MAX_CONTENT_SIZE: usize = 10 * 1024 * 1024;
+pub const DEFAULT_MAX_FILE_SIZE: usize = 10 * 1024 * 1024;
+pub const DEFAULT_MAX_FILES: usize = 1_000;
 
 pub struct BoundedTraversal {
     /// Maximum recursion depth (default: 10).
@@ -131,8 +135,8 @@ struct TraversalState<'a> {
     root: &'a Path,
     bounds: &'a BoundedTraversal,
     file_count: usize,
-    bytes_consumed: u64,
     entry_count: usize,
+    bytes_consumed: u64,
     stopped: bool,
     report: TraversalReport,
 }
@@ -140,10 +144,10 @@ struct TraversalState<'a> {
 impl BoundedTraversal {
     pub fn new() -> Self {
         Self {
-            max_depth: 10,
-            max_content_size: 10 * 1024 * 1024, // 10MB
-            max_file_size: 10 * 1024 * 1024,    // 10MB
-            max_files: 1000,
+            max_depth: DEFAULT_MAX_TRAVERSAL_DEPTH,
+            max_content_size: DEFAULT_MAX_CONTENT_SIZE,
+            max_file_size: DEFAULT_MAX_FILE_SIZE,
+            max_files: DEFAULT_MAX_FILES,
             max_entries: DEFAULT_MAX_TRAVERSAL_ENTRIES,
         }
     }
@@ -174,13 +178,20 @@ impl BoundedTraversal {
     }
 
     /// Traverse a directory and yield file paths with their content, respecting bounds.
+    ///
+    /// Returning `false` from the callback stops traversal successfully. Symlinks,
+    /// unsupported entries, and other incomplete scans return an error.
     pub fn traverse(
         &self,
         root: &Path,
         callback: impl FnMut(&Path, &[u8]) -> bool,
     ) -> Result<(), TraversalError> {
         let report = self.traverse_with_report(root, callback);
-        match report.errors.first() {
+        match report
+            .errors
+            .iter()
+            .find(|error| error.code != ScanErrorCode::CallbackStopped)
+        {
             Some(error) => Err(match error.code {
                 ScanErrorCode::InvalidTarget
                 | ScanErrorCode::TargetNotFound
@@ -261,8 +272,8 @@ impl BoundedTraversal {
             root,
             bounds: self,
             file_count: 0,
-            bytes_consumed: 0,
             entry_count: 0,
+            bytes_consumed: 0,
             stopped: false,
             report: TraversalReport::default(),
         };
@@ -371,36 +382,38 @@ impl BoundedTraversal {
                                 callback,
                             );
                         }
-                        Err(_) => state.report.errors.push(ScanError::new(
-                            if directory
-                                .symlink_metadata(&name)
-                                .is_ok_and(|m| m.file_type().is_symlink())
-                            {
-                                ScanErrorCode::SymlinkSkipped
-                            } else {
-                                ScanErrorCode::DirectoryReadFailed
-                            },
-                            relative_source_path(state.root, &child_path),
-                        )),
+                        Err(_) => {
+                            let code = match directory.symlink_metadata(&name) {
+                                Ok(metadata) if metadata.file_type().is_symlink() => {
+                                    ScanErrorCode::SymlinkSkipped
+                                }
+                                _ => ScanErrorCode::DirectoryReadFailed,
+                            };
+                            state.report.errors.push(ScanError::new(
+                                code,
+                                relative_source_path(state.root, &child_path),
+                            ));
+                        }
                     }
                 } else if child_metadata.is_file() {
-                    if depth >= state.bounds.max_depth {
+                    let child_depth = depth + 1;
+                    if child_depth > state.bounds.max_depth {
                         state.report.coverage.files_discovered += 1;
                         state.report.coverage.files_skipped += 1;
                         state.report.errors.push(ScanError::new(
                             ScanErrorCode::MaxDepthExceeded,
                             relative_source_path(state.root, &child_path),
                         ));
-                        continue;
+                    } else {
+                        Self::scan_file(
+                            directory,
+                            &name,
+                            &child_path,
+                            child_metadata,
+                            state,
+                            callback,
+                        );
                     }
-                    Self::scan_file(
-                        directory,
-                        &name,
-                        &child_path,
-                        child_metadata,
-                        state,
-                        callback,
-                    );
                 } else {
                     state.report.coverage.files_discovered += 1;
                     state.report.coverage.files_skipped += 1;
@@ -483,14 +496,25 @@ impl BoundedTraversal {
                 return;
             }
         };
-        let content = match read_bounded(file, read_limit, &mut state.bytes_consumed) {
-            Ok(content) => content,
-            Err(_) => {
+        let (content, bytes_read, read_result) = read_bounded_counted(file, read_limit);
+        state.bytes_consumed = state.bytes_consumed.saturating_add(bytes_read);
+        let content = match read_result {
+            Ok(()) => content,
+            Err(error) => {
                 state.report.coverage.files_skipped += 1;
-                state.report.errors.push(ScanError::new(
-                    ScanErrorCode::FileReadFailed,
-                    relative_source_path(state.root, path),
-                ));
+                let code = if error.kind() == io::ErrorKind::InvalidData {
+                    if read_limit == state.bounds.max_file_size as u64 {
+                        ScanErrorCode::MaxFileSizeExceeded
+                    } else {
+                        ScanErrorCode::MaxContentSizeExceeded
+                    }
+                } else {
+                    ScanErrorCode::FileReadFailed
+                };
+                state
+                    .report
+                    .errors
+                    .push(ScanError::new(code, relative_source_path(state.root, path)));
                 return;
             }
         };
@@ -672,11 +696,26 @@ pub(crate) fn open_entry_nofollow(
 
 pub(crate) fn open_root_directory(root: &Path) -> io::Result<CapabilityDir> {
     let absolute = if root.is_absolute() {
-        root.to_owned()
+        root.to_path_buf()
     } else {
         std::env::current_dir()?.join(root)
     };
+    let absolute = resolve_system_directory_aliases(&absolute);
     open_absolute_directory_nofollow(&absolute)
+}
+
+fn resolve_system_directory_aliases(path: &Path) -> PathBuf {
+    #[cfg(target_os = "macos")]
+    for (alias, physical) in [
+        ("/var", "/private/var"),
+        ("/tmp", "/private/tmp"),
+        ("/etc", "/private/etc"),
+    ] {
+        if let Ok(relative) = path.strip_prefix(alias) {
+            return Path::new(physical).join(relative);
+        }
+    }
+    path.to_path_buf()
 }
 
 #[cfg(unix)]
@@ -688,10 +727,34 @@ fn open_absolute_directory_nofollow(path: &Path) -> io::Result<CapabilityDir> {
             "directory path is not absolute",
         ));
     }
-    walk_absolute_components(
-        CapabilityDir::open_ambient_dir(Path::new("/"), ambient_authority())?,
-        components,
-    )
+    let mut directories = vec![CapabilityDir::open_ambient_dir(
+        Path::new("/"),
+        ambient_authority(),
+    )?];
+    for component in components {
+        match component {
+            Component::RootDir | Component::CurDir => {}
+            Component::Normal(name) => {
+                let child = directories
+                    .last()
+                    .expect("root directory handle is present")
+                    .open_dir_nofollow(name)?;
+                directories.push(child);
+            }
+            Component::ParentDir => {
+                if directories.len() > 1 {
+                    directories.pop();
+                }
+            }
+            Component::Prefix(_) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "directory path contains an unsafe component",
+                ));
+            }
+        }
+    }
+    Ok(directories.pop().expect("root directory handle is present"))
 }
 
 #[cfg(windows)]
@@ -705,48 +768,39 @@ fn open_absolute_directory_nofollow(path: &Path) -> io::Result<CapabilityDir> {
     };
     let mut volume_root = PathBuf::from(prefix.as_os_str());
     volume_root.push("\\");
-    walk_absolute_components(
-        CapabilityDir::open_ambient_dir(&volume_root, ambient_authority())?,
-        components,
-    )
-}
-
-#[cfg(any(unix, windows))]
-fn walk_absolute_components(
-    mut current: CapabilityDir,
-    components: std::path::Components<'_>,
-) -> io::Result<CapabilityDir> {
-    let mut ancestors = Vec::new();
+    let mut directories = vec![CapabilityDir::open_ambient_dir(
+        &volume_root,
+        ambient_authority(),
+    )?];
     for component in components {
         match component {
             Component::RootDir | Component::CurDir => {}
             Component::Normal(name) => {
-                let child = current.open_dir_nofollow(name)?;
-                ancestors.push(current);
-                current = child;
+                let child = directories
+                    .last()
+                    .expect("volume root handle is present")
+                    .open_dir_nofollow(name)?;
+                directories.push(child);
             }
             Component::ParentDir => {
-                if let Some(parent) = ancestors.pop() {
-                    current = parent;
+                if directories.len() > 1 {
+                    directories.pop();
                 }
             }
             Component::Prefix(_) => {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
-                    "unexpected volume prefix",
+                    "directory path contains an unsafe component",
                 ));
             }
         }
     }
-    Ok(current)
+    Ok(directories.pop().expect("volume root handle is present"))
 }
 
 #[cfg(not(any(unix, windows)))]
-fn open_absolute_directory_nofollow(_path: &Path) -> io::Result<CapabilityDir> {
-    Err(io::Error::new(
-        io::ErrorKind::Unsupported,
-        "no verified directory anchor on this platform",
-    ))
+fn open_absolute_directory_nofollow(path: &Path) -> io::Result<CapabilityDir> {
+    CapabilityDir::open_ambient_dir(path, ambient_authority())
 }
 
 fn finalize_traversal_report(mut report: TraversalReport) -> TraversalReport {
@@ -770,13 +824,42 @@ fn relative_source_path(root: &Path, path: &Path) -> Option<String> {
     (!components.is_empty()).then(|| components.join("/"))
 }
 
-fn read_bounded(reader: impl Read, max_bytes: u64, consumed: &mut u64) -> std::io::Result<Vec<u8>> {
+fn read_bounded_counted(
+    mut reader: impl Read,
+    max_bytes: u64,
+) -> (Vec<u8>, u64, std::io::Result<()>) {
     let mut content = Vec::new();
-    let mut limited = reader.take(max_bytes);
-    let result = limited.read_to_end(&mut content);
-    *consumed += max_bytes - limited.limit();
-    result?;
-    Ok(content)
+    let mut buffer = [0; 8192];
+    let read_limit = max_bytes.saturating_add(1);
+    while (content.len() as u64) < read_limit {
+        let remaining = (read_limit - content.len() as u64).min(buffer.len() as u64) as usize;
+        match reader.read(&mut buffer[..remaining]) {
+            Ok(0) => {
+                let bytes_read = content.len() as u64;
+                return (content, bytes_read, Ok(()));
+            }
+            Ok(read) => {
+                content.extend_from_slice(&buffer[..read]);
+                if content.len() as u64 > max_bytes {
+                    let bytes_read = content.len() as u64;
+                    return (
+                        content,
+                        bytes_read,
+                        Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "bounded read exceeded its byte limit",
+                        )),
+                    );
+                }
+            }
+            Err(error) => {
+                let bytes_read = content.len() as u64;
+                return (content, bytes_read, Err(error));
+            }
+        }
+    }
+    let bytes_read = content.len() as u64;
+    (content, bytes_read, Ok(()))
 }
 
 /// Collection of diagnostics with metadata.
@@ -965,6 +1048,106 @@ mod tests {
     }
 
     #[test]
+    fn traverse_preserves_success_when_callback_stops_early() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(temp_dir.path().join("a.txt"), "first").unwrap();
+        fs::write(temp_dir.path().join("b.txt"), "second").unwrap();
+
+        let result = BoundedTraversal::new().traverse(temp_dir.path(), |_, _| false);
+
+        assert!(result.is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn traverse_reports_nested_symlink_as_an_error() {
+        use std::os::unix::fs::symlink;
+
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path().join("root");
+        let outside = temp_dir.path().join("outside.txt");
+        fs::create_dir(&root).unwrap();
+        fs::write(&outside, "outside").unwrap();
+        symlink(&outside, root.join("link.txt")).unwrap();
+
+        let result = BoundedTraversal::new().traverse(&root, |_, _| true);
+
+        assert!(matches!(result, Err(TraversalError::SymlinkEncountered)));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn traverse_reports_unsupported_entries_as_errors() {
+        use std::os::unix::net::UnixListener;
+
+        let temp_dir = TempDir::new().unwrap();
+        let socket_path = temp_dir.path().join("unsupported.sock");
+        let _listener = UnixListener::bind(&socket_path).unwrap();
+
+        let result = BoundedTraversal::new().traverse(temp_dir.path(), |_, _| true);
+
+        assert!(matches!(result, Err(TraversalError::IoError)));
+    }
+
+    #[test]
+    fn traversal_applies_depth_limit_to_files_and_allows_depth_ten() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut valid_parent = temp_dir.path().join("valid");
+        for index in 0..8 {
+            valid_parent.push(format!("d{index}"));
+        }
+        fs::create_dir_all(&valid_parent).unwrap();
+        fs::write(valid_parent.join("valid.txt"), "valid").unwrap();
+
+        let mut too_deep_parent = temp_dir.path().join("too-deep");
+        for index in 0..9 {
+            too_deep_parent.push(format!("d{index}"));
+        }
+        fs::create_dir_all(&too_deep_parent).unwrap();
+        fs::write(too_deep_parent.join("too-deep.txt"), "too deep").unwrap();
+
+        let mut visited = Vec::new();
+        let report = BoundedTraversal::new().max_depth(10).traverse_with_report(
+            temp_dir.path(),
+            |path, _| {
+                visited.push(path.file_name().unwrap().to_string_lossy().into_owned());
+                true
+            },
+        );
+
+        assert_eq!(visited, vec!["valid.txt"]);
+        assert_eq!(report.status, ScanStatus::Incomplete);
+        assert!(report.errors.iter().any(|error| {
+            error.code == ScanErrorCode::MaxDepthExceeded
+                && error.source_path.as_deref()
+                    == Some("too-deep/d0/d1/d2/d3/d4/d5/d6/d7/d8/too-deep.txt")
+        }));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn traversal_rejects_symlinked_ancestors_of_the_scan_root() {
+        use std::os::unix::fs::symlink;
+
+        let temp_dir = TempDir::new().unwrap();
+        let actual_parent = temp_dir.path().join("actual");
+        let root = actual_parent.join("root");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("secret.txt"), "must not be scanned").unwrap();
+        let linked_parent = temp_dir.path().join("linked-parent");
+        symlink(&actual_parent, &linked_parent).unwrap();
+
+        let mut visited = Vec::new();
+        let result = BoundedTraversal::new().traverse(&linked_parent.join("root"), |path, _| {
+            visited.push(path.to_path_buf());
+            true
+        });
+
+        assert!(result.is_err());
+        assert!(visited.is_empty());
+    }
+
+    #[test]
     fn traversal_report_counts_and_sorts_files() {
         let temp_dir = TempDir::new().unwrap();
         fs::write(temp_dir.path().join("z.txt"), "last").unwrap();
@@ -1132,25 +1315,34 @@ mod tests {
     fn bounded_read_never_consumes_more_than_its_limit() {
         let mut source = Cursor::new(b"12345".to_vec());
 
-        let mut consumed = 0;
-        let content = read_bounded(&mut source, 3, &mut consumed).unwrap();
-        assert_eq!(consumed, 3);
+        let (content, bytes_read, result) = read_bounded_counted(&mut source, 3);
 
-        assert_eq!(content, b"123");
-        assert_eq!(source.position(), 3);
+        assert_eq!(content, b"1234");
+        assert_eq!(bytes_read, 4);
+        assert_eq!(source.position(), 4);
+        assert_eq!(result.unwrap_err().kind(), io::ErrorKind::InvalidData);
     }
 
     #[test]
-    fn partial_read_errors_still_consume_budget() {
-        struct Fails;
-        impl Read for Fails {
-            fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
-                Err(io::Error::other("read failed"))
+    fn bounded_read_reports_bytes_consumed_before_an_io_error() {
+        struct PartialThenError(bool);
+
+        impl Read for PartialThenError {
+            fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+                if self.0 {
+                    return Err(io::Error::other("synthetic read failure"));
+                }
+                self.0 = true;
+                buffer[..3].copy_from_slice(b"abc");
+                Ok(3)
             }
         }
-        let mut consumed = 4;
-        assert!(read_bounded(Cursor::new(b"abc").chain(Fails), 20, &mut consumed).is_err());
-        assert_eq!(consumed, 7);
+
+        let (content, bytes_read, result) = read_bounded_counted(PartialThenError(false), 10);
+
+        assert_eq!(content, b"abc");
+        assert_eq!(bytes_read, 3);
+        assert!(result.is_err());
     }
 
     #[test]

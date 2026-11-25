@@ -336,7 +336,7 @@ fn run() -> Result<()> {
         Commands::Audit { args, project_root } => run_in_root_span("audit", || {
             let project_root =
                 current_project_root(project_root, || env::current_dir().map_err(Into::into))
-                    .map_err(|_| AuditExitError::current_directory())?;
+                    .map_err(|_| AuditExitError::project_root_unavailable())?;
             run_audit(args, project_root)
         }),
         Commands::Profile { args, project_root } => run_in_root_span("profile", || {

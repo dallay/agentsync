@@ -342,12 +342,12 @@ impl BundleIntegrityRule {
         let mut findings = Vec::new();
 
         let root_manifest = self._root.join("SKILL.md");
-        if !manifests.iter().any(|(path, _)| path == &root_manifest)
-            && crate::diagnostics::open_root_directory(&self._root).is_ok_and(|dir| {
-                dir.symlink_metadata("SKILL.md")
-                    .is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound)
-            })
-        {
+        let manifest_was_scanned = manifests.iter().any(|(path, _)| path == &root_manifest);
+        let manifest_is_missing = matches!(
+            std::fs::symlink_metadata(&root_manifest),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound
+        );
+        if !manifest_was_scanned && manifest_is_missing {
             findings.push(Diagnostic {
                 rule_id: self.rule_id().into(),
                 target: None,
@@ -453,6 +453,28 @@ mod tests {
 
         let report = validate_skill(temp_dir.path()).unwrap();
         assert!(!report.has_errors());
+    }
+
+    #[test]
+    fn oversized_root_manifest_is_not_reported_as_missing() {
+        let temp_dir = TempDir::new().unwrap();
+        let manifest = temp_dir.path().join("SKILL.md");
+        fs::write(&manifest, vec![b' '; 5 * 1024 * 1024 + 1]).unwrap();
+
+        let report = validate_skill(temp_dir.path()).unwrap();
+
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|finding| finding.rule_id == "traversal-size")
+        );
+        assert!(
+            !report
+                .findings
+                .iter()
+                .any(|finding| finding.rule_id == "bundle-integrity")
+        );
     }
 
     #[test]

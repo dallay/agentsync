@@ -8,6 +8,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 /// Default configuration file name
@@ -15,6 +16,7 @@ pub const CONFIG_FILE_NAME: &str = "agentsync.toml";
 
 /// Default source directory name
 pub const DEFAULT_SOURCE_DIR: &str = ".agents";
+const MAX_CONFIG_FILE_SIZE: u64 = 10 * 1024 * 1024;
 
 /// Represents the root of the `agentsync.toml` configuration file.
 #[derive(Debug, Deserialize, Clone)]
@@ -323,15 +325,9 @@ fn is_false(v: &bool) -> bool {
 impl Config {
     /// Load configuration from a file
     pub fn load(path: &Path) -> Result<Self> {
-        let file = fs::File::open(path)
-            .with_context(|| format!("Failed to read config file: {}", path.display()))?;
-        Self::load_opened(path, file)
-    }
-
-    pub(crate) fn load_opened(path: &Path, file: fs::File) -> Result<Self> {
-        use std::io::Read;
         // SECURITY: Limit config file size to prevent DoS via memory exhaustion when parsing untrusted TOML
-        const MAX_CONFIG_FILE_SIZE: u64 = 10 * 1024 * 1024; // 10 MB
+        let file = fs::File::open(path)
+            .with_context(|| format!("Failed to open config file: {}", path.display()))?;
         let metadata = file
             .metadata()
             .with_context(|| format!("Failed to stat config file: {}", path.display()))?;
@@ -344,16 +340,11 @@ impl Config {
             );
         }
 
-        anyhow::ensure!(metadata.is_file(), "configuration is not a regular file");
-        let mut content = String::new();
-        file.take(MAX_CONFIG_FILE_SIZE + 1)
-            .read_to_string(&mut content)
+        let content = read_config_bytes(file, MAX_CONFIG_FILE_SIZE)
             .with_context(|| format!("Failed to read config file: {}", path.display()))?;
+        let content = String::from_utf8(content)
+            .with_context(|| format!("Config file is not valid UTF-8: {}", path.display()))?;
 
-        anyhow::ensure!(
-            content.len() as u64 <= MAX_CONFIG_FILE_SIZE,
-            "Config file exceeds maximum limit"
-        );
         let config: Config = toml::from_str(&content)
             .with_context(|| format!("Failed to parse config file: {}", path.display()))?;
 
@@ -466,6 +457,19 @@ impl Config {
     pub fn known_ignore_patterns(agent_name: &str) -> &'static [&'static str] {
         agent_ids::known_ignore_patterns(agent_name)
     }
+}
+
+fn read_config_bytes(reader: impl Read, max_bytes: u64) -> Result<Vec<u8>> {
+    let mut content = Vec::new();
+    reader
+        .take(max_bytes.saturating_add(1))
+        .read_to_end(&mut content)
+        .context("failed to read bounded config content")?;
+    anyhow::ensure!(
+        content.len() as u64 <= max_bytes,
+        "config file exceeds maximum limit of {max_bytes} bytes"
+    );
+    Ok(content)
 }
 
 fn normalize_managed_gitignore_entry(entry: &str) -> String {
@@ -755,6 +759,20 @@ mod tests {
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("exceeds maximum limit"));
+    }
+
+    #[test]
+    fn bounded_config_reader_detects_growth_beyond_checked_size() {
+        use std::io::Cursor;
+
+        let content = vec![b' '; 11];
+        let error = read_config_bytes(Cursor::new(content), 10).unwrap_err();
+
+        assert!(error.to_string().contains("exceeds maximum limit"));
+        assert_eq!(
+            read_config_bytes(Cursor::new(b"source_dir = '.'"), 20).unwrap(),
+            b"source_dir = '.'"
+        );
     }
 
     // ==========================================================================

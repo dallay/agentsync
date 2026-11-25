@@ -28,7 +28,10 @@ const MAX_PLUGIN_FILES: usize = 10_000;
 const MAX_PLUGIN_ENTRIES: usize = 10_000;
 const MAX_PLUGIN_DIRECTORY_DEPTH: usize = 64;
 const MAX_PLUGIN_CONTENT_SIZE: u64 = 500 * 1024 * 1024;
+const MAX_PLUGIN_LOCKFILE_SIZE: u64 = 10 * 1024 * 1024;
 const MAX_PLUGIN_AUDIT_TARGETS: usize = 1_000;
+type PluginAuditFile = (PathBuf, Vec<u8>);
+type PluginAuditFiles = Vec<PluginAuditFile>;
 
 fn default_plugin_lockfile() -> String {
     DEFAULT_PLUGIN_LOCKFILE.to_string()
@@ -178,15 +181,28 @@ impl Default for PluginLock {
 
 impl PluginLock {
     pub fn load(path: &Path) -> Result<Self> {
-        // nosemgrep: rust.actix.path-traversal.tainted-path.tainted-path -- callers provide the lockfile path explicitly
-        let content = fs::read_to_string(path)
-            .with_context(|| format!("failed to read plugin lockfile: {}", path.display()))?;
-        Self::parse(path, &content)
+        let parent = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+        let file_name = path
+            .file_name()
+            .ok_or_else(|| anyhow::anyhow!("plugin lockfile has no file name"))?;
+        let directory = open_root_directory(parent)
+            .context("failed to open trusted plugin lockfile directory")?;
+        Self::load_from_directory(&directory, Path::new(file_name))
     }
 
-    fn parse(path: &Path, content: &str) -> Result<Self> {
-        let lock: Self = toml::from_str(content)
-            .with_context(|| format!("failed to parse plugin lockfile: {}", path.display()))?;
+    fn load_from_directory(directory: &CapabilityDir, relative_path: &Path) -> Result<Self> {
+        let bytes = read_plugin_file_from_directory(
+            directory,
+            relative_path,
+            MAX_PLUGIN_LOCKFILE_SIZE,
+            None,
+        )
+        .context("failed to read bounded plugin lockfile")?;
+        let content = std::str::from_utf8(&bytes).context("plugin lockfile is not valid UTF-8")?;
+        let lock: Self = toml::from_str(content).context("failed to parse plugin lockfile")?;
         lock.validate()?;
         Ok(lock)
     }
@@ -285,8 +301,8 @@ pub struct PluginStatusReport {
 pub(crate) struct PluginAuditSnapshot {
     pub(crate) identity: String,
     pub(crate) root: PathBuf,
-    pub(crate) hashes: BTreeMap<PathBuf, [u8; 32]>,
     pub(crate) servers: Vec<PluginMcpStatus>,
+    pub(crate) files: PluginAuditFiles,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -407,7 +423,11 @@ impl PluginManager {
                         "locked local plugin source must be relative"
                     );
                     let config_dir = self.config_path.parent().unwrap_or_else(|| Path::new("."));
-                    ensure_local_source_has_no_symlinks(config_dir, &locked.source.location)?;
+                    ensure_local_source_has_no_symlinks(
+                        &self.project_root,
+                        config_dir,
+                        &locked.source.location,
+                    )?;
                     config_dir.join(location)
                 }
                 LockedSourceKind::Git => self.git_source_cache_path(&locked.source)?,
@@ -469,7 +489,6 @@ impl PluginManager {
     pub(crate) fn inspect_audit_snapshots_read_only(
         &self,
         selection: Option<&str>,
-        config_directory: &CapabilityDir,
     ) -> Result<Vec<PluginAuditSnapshot>> {
         self.config.validate()?;
         if !self.config.enabled || self.config.selections.is_empty() {
@@ -484,15 +503,18 @@ impl PluginManager {
             "plugin audit inventory exceeds {MAX_PLUGIN_AUDIT_TARGETS} targets"
         );
 
-        let lock_path = self.lock_path()?;
-        const MAX_AUDIT_LOCK_BYTES: u64 = 10 * 1024 * 1024;
-        let lock_bytes = read_plugin_file_from_directory(
-            config_directory,
-            Path::new(&self.config.lockfile),
-            MAX_AUDIT_LOCK_BYTES,
-            None,
-        )?;
-        let lock = PluginLock::parse(&lock_path, std::str::from_utf8(&lock_bytes)?)?;
+        ensure_regular_file_without_symlink(&self.config_path)?;
+        let config_dir = self.config_path.parent().unwrap_or_else(|| Path::new("."));
+        let config_metadata = fs::symlink_metadata(config_dir)?;
+        ensure!(
+            config_metadata.is_dir() && !config_metadata.file_type().is_symlink(),
+            "plugin configuration directory is not trusted"
+        );
+        self.lock_path()?;
+        let config_directory = open_root_directory(config_dir)
+            .context("failed to open trusted plugin configuration directory")?;
+        let lock =
+            PluginLock::load_from_directory(&config_directory, Path::new(&self.config.lockfile))?;
         let selected = selected_lock_entries(&self.config, &lock)?;
         validate_allowed_mcp_against_lock(&self.config.allowed_mcp, &selected)?;
 
@@ -530,7 +552,11 @@ impl PluginManager {
                         "locked local plugin source must be relative"
                     );
                     let config_dir = self.config_path.parent().unwrap_or_else(|| Path::new("."));
-                    ensure_local_source_has_no_symlinks(config_dir, &locked.source.location)?;
+                    ensure_local_source_has_no_symlinks(
+                        &self.project_root,
+                        config_dir,
+                        &locked.source.location,
+                    )?;
                     config_dir.join(&locked.source.location)
                 }
                 LockedSourceKind::Git => self.git_source_cache_path(&locked.source)?,
@@ -543,7 +569,11 @@ impl PluginManager {
             if locked.source.kind == LockedSourceKind::Git {
                 ensure_git_snapshot_dir(&source_root)?;
             }
-            let source_hash = hash_tree(&source_root)?;
+            let source_directory = open_root_directory(&source_root)
+                .context("failed to open plugin source for audit snapshot")?;
+            let plugin_prefix = Path::new(&locked.provenance.plugin_path);
+            let (source_hash, files) =
+                hash_tree_directory_with_capture(&source_directory, Some(plugin_prefix))?;
             if locked.source.kind == LockedSourceKind::Local {
                 let revision = format!("local:{source_hash}");
                 ensure!(
@@ -554,6 +584,14 @@ impl PluginManager {
 
             let discovered = discover_plugin(&source_root, &locked.marketplace, &locked.plugin)?;
             ensure_snapshot_discovery_matches_lock(&discovered, locked)?;
+            ensure!(
+                hash_plugin_files(&files)? == locked.content_sha256,
+                "plugin audit content does not match its locked hash"
+            );
+            ensure!(
+                hash_tree(&source_root)? == source_hash,
+                "plugin source changed while preparing its audit snapshot"
+            );
             let plugin_root = source_root.join(&discovered.plugin_path);
             let plugin_metadata = fs::symlink_metadata(&plugin_root)?;
             ensure!(
@@ -561,26 +599,6 @@ impl PluginManager {
                 "plugin root is not a trusted directory"
             );
 
-            let mut hashes = BTreeMap::new();
-            let mut verified_mcp = BTreeMap::new();
-            let digest =
-                hash_tree_inspecting(&open_root_directory(&plugin_root)?, |path, bytes| {
-                    hashes.insert(path.to_owned(), Sha256::digest(bytes).into());
-                    if path == Path::new(".mcp.json") {
-                        verified_mcp = parse_plugin_mcp(bytes)?;
-                    }
-                    Ok(())
-                })?;
-            ensure!(
-                digest == locked.content_sha256,
-                "plugin content drift during audit"
-            );
-            ensure!(
-                verified_mcp.keys().eq(discovered.mcp_servers.keys()),
-                "plugin MCP declaration drift"
-            );
-            let mut discovered = discovered;
-            discovered.mcp_servers = verified_mcp;
             let servers = discovered
                 .namespaced_mcp_servers(&locked.marketplace, &locked.plugin)?
                 .into_iter()
@@ -597,8 +615,8 @@ impl PluginManager {
             snapshots.push(PluginAuditSnapshot {
                 identity: format!("plugin/{key}"),
                 root: plugin_root,
-                hashes,
                 servers,
+                files,
             });
         }
         Ok(snapshots)
@@ -1306,9 +1324,14 @@ fn ensure_snapshot_discovery_matches_lock(
     locked: &LockedPlugin,
 ) -> Result<()> {
     ensure!(
-        discovered.plugin_path == locked.provenance.plugin_path
-            && discovered.marketplace_manifest == locked.provenance.marketplace_manifest,
-        "plugin provenance path drift"
+        discovered.plugin_path == locked.provenance.plugin_path,
+        "plugin provenance path drift detected for {}",
+        locked.key()
+    );
+    ensure!(
+        discovered.marketplace_manifest == locked.provenance.marketplace_manifest,
+        "marketplace manifest provenance drift detected for {}",
+        locked.key()
     );
     ensure!(
         discovered.content_sha256 == locked.content_sha256,
@@ -1881,7 +1904,9 @@ fn discover_skills(plugin_root: &Path) -> Result<Vec<DiscoveredSkill>> {
     {
         Ok(directory) => directory,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(error) => return Err(error).context("failed to open plugin skills directory"),
+        Err(error) => {
+            return Err(error).context("failed to open plugin skills directory");
+        }
     };
     let mut skills = Vec::new();
     for (entry_index, entry) in skills_directory.entries()?.enumerate() {
@@ -1924,18 +1949,15 @@ fn read_plugin_mcp(plugin_root: &Path) -> Result<BTreeMap<String, McpServerConfi
         return Ok(BTreeMap::new());
     }
     // nosemgrep: rust.actix.path-traversal.tainted-path.tainted-path -- plugin_root is a resolved marketplace source
-    let content = read_plugin_file_bounded(
+    let content = String::from_utf8(read_plugin_file_bounded(
         plugin_root,
         Path::new(".mcp.json"),
         MAX_PLUGIN_CONTENT_SIZE,
         None,
-    )?;
-    parse_plugin_mcp(&content)
-}
-
-fn parse_plugin_mcp(content: &[u8]) -> Result<BTreeMap<String, McpServerConfig>> {
-    let value: Value =
-        serde_json::from_slice(content).context("failed to parse plugin MCP declaration")?;
+    )?)
+    .context("plugin MCP declaration is not valid UTF-8")?;
+    let value: Value = serde_json::from_str(&content)
+        .with_context(|| format!("failed to parse plugin MCP declaration: {}", path.display()))?;
     let servers = value
         .get("mcpServers")
         .and_then(Value::as_object)
@@ -2628,16 +2650,31 @@ fn ensure_regular_file_without_symlink(path: &Path) -> Result<bool> {
     }
 }
 
-fn ensure_local_source_has_no_symlinks(config_dir: &Path, location: &str) -> Result<()> {
-    let mut current = config_dir.to_path_buf();
+fn ensure_local_source_has_no_symlinks(
+    project_root: &Path,
+    config_dir: &Path,
+    location: &str,
+) -> Result<()> {
+    let project_root = project_root.canonicalize()?;
+    let config_metadata = fs::symlink_metadata(config_dir)?;
+    ensure!(
+        config_metadata.is_dir() && !config_metadata.file_type().is_symlink(),
+        "plugin configuration directory is not trusted"
+    );
+    let mut current = config_dir.canonicalize()?;
+    ensure!(
+        current.starts_with(&project_root),
+        "plugin configuration directory escaped project boundary"
+    );
     for component in Path::new(location).components() {
         match component {
             Component::CurDir => {}
             Component::ParentDir => {
                 ensure!(
-                    current.pop(),
-                    "local plugin source escaped its config boundary"
+                    current != project_root,
+                    "local plugin source escaped project boundary"
                 );
+                current.pop();
             }
             Component::Normal(name) => {
                 current.push(name);
@@ -2664,7 +2701,7 @@ fn is_absolute_path(path: &str) -> bool {
 
 #[derive(Default)]
 struct PluginTreeState {
-    entries: Vec<(String, PathBuf, u64)>,
+    entries: Vec<(PathBuf, String, u64)>,
     entry_count: usize,
     file_count: usize,
     total_bytes: u64,
@@ -2777,17 +2814,11 @@ fn collect_plugin_tree_entries(
                 state.total_bytes <= MAX_PLUGIN_CONTENT_SIZE,
                 "plugin source content is too large: exceeds {MAX_PLUGIN_CONTENT_SIZE} bytes"
             );
-            let key = relative_path
-                .components()
-                .map(|c| {
-                    c.as_os_str()
-                        .to_str()
-                        .filter(|s| !s.contains('\\'))
-                        .context("ambiguous plugin hash path")
-                })
-                .collect::<Result<Vec<_>>>()?
-                .join("/");
-            state.entries.push((key, relative_path, metadata.len()));
+            state.entries.push((
+                relative_path.clone(),
+                relative_path.to_string_lossy().replace('\\', "/"),
+                metadata.len(),
+            ));
         } else {
             bail!("plugin source contains an unsupported filesystem entry");
         }
@@ -2806,30 +2837,77 @@ fn hash_tree(root: &Path) -> Result<String> {
 }
 
 fn hash_tree_directory(root_directory: &CapabilityDir) -> Result<String> {
-    hash_tree_inspecting(root_directory, |_, _| Ok(()))
+    hash_tree_directory_with_capture(root_directory, None).map(|(hash, _)| hash)
 }
 
-fn hash_tree_inspecting(
+fn hash_tree_directory_with_capture(
     root_directory: &CapabilityDir,
-    mut inspect: impl FnMut(&Path, &[u8]) -> Result<()>,
-) -> Result<String> {
+    capture_prefix: Option<&Path>,
+) -> Result<(String, PluginAuditFiles)> {
     let mut state = PluginTreeState::default();
     collect_plugin_tree_entries(root_directory, Path::new(""), 0, &mut state)?;
-    state.entries.sort_by(|left, right| left.0.cmp(&right.0));
+    state.entries.sort_by(|left, right| left.1.cmp(&right.1));
+    ensure!(
+        state
+            .entries
+            .windows(2)
+            .all(|entries| entries[0].1 != entries[1].1),
+        "plugin source contains ambiguous normalized file paths"
+    );
 
     let mut hasher = Sha256::new();
-    for (key, path, expected_size) in state.entries {
+    let mut captured_files = Vec::new();
+    for (relative_path, portable_path, expected_size) in state.entries {
         let bytes = read_plugin_file_from_directory(
             root_directory,
-            &path,
+            &relative_path,
             MAX_PLUGIN_CONTENT_SIZE,
             Some(expected_size),
         )?;
-        inspect(&path, &bytes)?;
-        hasher.update(key.as_bytes());
+        hasher.update(portable_path.as_bytes());
         hasher.update([0]);
         hasher.update(expected_size.to_be_bytes());
-        hasher.update(bytes);
+        hasher.update(&bytes);
+        if let Some(prefix) = capture_prefix
+            && let Ok(path) = relative_path.strip_prefix(prefix)
+        {
+            captured_files.push((path.to_path_buf(), bytes));
+        }
+    }
+    Ok((format_digest(hasher.finalize()), captured_files))
+}
+
+fn hash_plugin_files(files: &[PluginAuditFile]) -> Result<String> {
+    let mut entries = files
+        .iter()
+        .map(|(path, content)| {
+            (
+                path.clone(),
+                path.to_string_lossy().replace('\\', "/"),
+                content,
+            )
+        })
+        .collect::<Vec<_>>();
+    entries.sort_by(|left, right| left.1.cmp(&right.1));
+    ensure!(
+        entries
+            .windows(2)
+            .all(|entries| entries[0].1 != entries[1].1),
+        "plugin audit snapshot contains ambiguous normalized file paths"
+    );
+    let mut hasher = Sha256::new();
+    for (path, portable_path, content) in entries {
+        ensure!(
+            !path.is_absolute()
+                && path
+                    .components()
+                    .all(|component| matches!(component, Component::Normal(_))),
+            "plugin audit snapshot contains an unsafe file path"
+        );
+        hasher.update(portable_path.as_bytes());
+        hasher.update([0]);
+        hasher.update((content.len() as u64).to_be_bytes());
+        hasher.update(content);
     }
     Ok(format_digest(hasher.finalize()))
 }
@@ -2931,6 +3009,43 @@ mod tests {
         assert_eq!(first, fs::read_to_string(path).unwrap());
     }
 
+    #[test]
+    fn lockfile_loader_supports_regular_nested_paths() {
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("nested/plugins.lock.toml");
+        PluginLock::default().save_atomic(&path).unwrap();
+
+        assert_eq!(PluginLock::load(&path).unwrap(), PluginLock::default());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn lockfile_loader_rejects_a_symlinked_parent_component() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let trusted = temp.path().join("trusted");
+        let outside = temp.path().join("outside");
+        fs::create_dir_all(&trusted).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        PluginLock::default()
+            .save_atomic(&outside.join("plugins.lock.toml"))
+            .unwrap();
+        symlink(&outside, trusted.join("nested")).unwrap();
+
+        assert!(PluginLock::load(&trusted.join("nested/plugins.lock.toml")).is_err());
+    }
+
+    #[test]
+    fn lockfile_loader_enforces_a_read_limit() {
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("plugins.lock.toml");
+        let file = fs::File::create(&path).unwrap();
+        file.set_len(MAX_PLUGIN_LOCKFILE_SIZE + 1).unwrap();
+
+        assert!(PluginLock::load(&path).is_err());
+    }
+
     #[cfg(unix)]
     #[test]
     fn plugin_hash_reader_rejects_symlink_files() {
@@ -2987,7 +3102,9 @@ mod tests {
         fs::write(external.join("review/SKILL.md"), "name: review\n").unwrap();
         symlink(&external, plugin.join("skills")).unwrap();
 
-        assert!(discover_skills(&plugin).is_err());
+        let error = discover_skills(&plugin).unwrap_err();
+        assert!(format!("{error:#}").contains("failed to open plugin skills directory"));
+        assert!(!format!("{error:#}").contains(plugin.to_str().unwrap()));
     }
 
     #[tokio::test]
@@ -3443,9 +3560,7 @@ plugin = "engineering"
         };
         let manager = PluginManager::new(temp.path().to_path_buf(), config_path, config);
 
-        let error = manager
-            .inspect_audit_snapshots_read_only(None, &open_root_directory(temp.path()).unwrap())
-            .unwrap_err();
+        let error = manager.inspect_audit_snapshots_read_only(None).unwrap_err();
 
         assert!(error.to_string().contains("inventory exceeds"));
 
@@ -3571,6 +3686,39 @@ plugin = "engineering"
     }
 
     #[test]
+    fn audit_snapshots_reject_local_plugin_sources_outside_project_root() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path().join("project");
+        let source_root = temp.path().join("outside");
+        copy_tree(&marketplace_fixture(), &source_root);
+        let config_path = project_root.join(".agents/agentsync.toml");
+        fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+        let selection = PluginSelection {
+            marketplace: "internal".to_string(),
+            plugin: "engineering".to_string(),
+        };
+        let config = PluginsConfig {
+            enabled: true,
+            lockfile: "plugins.lock.toml".to_string(),
+            marketplaces: BTreeMap::from([(
+                "internal".to_string(),
+                MarketplaceConfig {
+                    source: "../../outside".to_string(),
+                    reference: Some("main".to_string()),
+                },
+            )]),
+            allowed_mcp: Vec::new(),
+            selections: vec![selection.clone()],
+        };
+        let manager = PluginManager::new(project_root, config_path, config);
+        manager.add(&selection).unwrap();
+
+        let error = manager.inspect_audit_snapshots_read_only(None).unwrap_err();
+
+        assert!(format!("{error:#}").contains("project boundary"));
+    }
+
+    #[test]
     fn stale_approvals_fail_before_lock_or_snapshot_access() {
         let temp = TempDir::new().unwrap();
         let config_path = temp.path().join(".agents/agentsync.toml");
@@ -3647,6 +3795,38 @@ plugin = "engineering"
         let mut skill_content_drift = locked;
         skill_content_drift.skills[0].content_sha256 = "f".repeat(64);
         assert!(ensure_snapshot_discovery_matches_lock(&discovered, &skill_content_drift).is_err());
+    }
+
+    #[test]
+    fn snapshot_discovery_requires_locked_provenance_paths() {
+        let root = marketplace_fixture();
+        let source = ResolvedMarketplaceSource {
+            root: root.clone(),
+            locked_source: LockedSource {
+                kind: LockedSourceKind::Local,
+                location: "../marketplace".to_string(),
+                revision: "local:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                    .to_string(),
+            },
+            temp: None,
+        };
+        let discovered = discover_plugin(&root, "internal", "engineering").unwrap();
+        let locked = discovered
+            .to_locked_plugin("internal", "engineering", &source)
+            .unwrap();
+
+        assert!(ensure_snapshot_discovery_matches_lock(&discovered, &locked).is_ok());
+
+        let mut different_plugin_path = locked.clone();
+        different_plugin_path.provenance.plugin_path = "plugins/other".to_string();
+        assert!(
+            ensure_snapshot_discovery_matches_lock(&discovered, &different_plugin_path).is_err()
+        );
+
+        let mut different_manifest = locked;
+        different_manifest.provenance.marketplace_manifest =
+            ".claude-plugin/marketplace.json".to_string();
+        assert!(ensure_snapshot_discovery_matches_lock(&discovered, &different_manifest).is_err());
     }
 
     #[test]
@@ -3960,6 +4140,25 @@ plugin = "engineering"
         file.set_len(MAX_PLUGIN_CONTENT_SIZE + 1).unwrap();
         let error = hash_tree(temp.path()).unwrap_err();
         assert!(error.to_string().contains("content is too large"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn plugin_hash_uses_native_relative_paths_and_rejects_ambiguous_keys() {
+        use std::ffi::OsString;
+
+        let temp = TempDir::new().unwrap();
+        let root = temp.path().join("source");
+        fs::create_dir(&root).unwrap();
+        fs::write(root.join(OsString::from("literal\\backslash")), b"one").unwrap();
+
+        assert!(hash_tree(&root).is_ok());
+
+        fs::create_dir(root.join("literal")).unwrap();
+        fs::write(root.join("literal/backslash"), b"two").unwrap();
+        let error = hash_tree(&root).unwrap_err();
+
+        assert!(error.to_string().contains("ambiguous"));
     }
 
     #[test]

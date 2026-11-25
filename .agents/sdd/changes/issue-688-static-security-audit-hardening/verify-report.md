@@ -3,9 +3,10 @@
 **Change**: `issue-688-static-security-audit-hardening`
 **Spec version**: N/A
 **Audit report schema**: 2
-**Verification run**: 2026-11-24 (fresh full-suite execution after the latest status/inventory caps, symlink checks, skill-local MCP scan, and shared secret-classifier fixes)
-**Fresh full-suite log**: `/Users/acosta/.junie/sessions/session-261124-131238-1x3l/task-261124-160019-1ks7/terminal-output/terminal-output-5235162038257154938.txt`
-**Log note**: The user-referenced log path was unavailable; this report cites the successful direct rerun captured above.
+**Verification run**: 2026-11-24 original verification; 2026-11-25 review-reconciliation refresh
+**Latest full-suite log**: `/Users/acosta/.junie/sessions/session-261124-131238-1x3l/task-261125-103704-dw7n/terminal-output/terminal-output-7988393195676727869.txt`
+**Original full-suite log**: `/Users/acosta/.junie/sessions/session-261124-131238-1x3l/task-261124-160019-1ks7/terminal-output/terminal-output-5235162038257154938.txt`
+**Log note**: The 2026-11-25 suite used an isolated target directory to rebuild tests against the reconciled checkout; this was verification evidence, not a new SDD or independent QA run.
 
 **Status**: partial
 **Verdict**: FAIL
@@ -14,9 +15,12 @@
 
 All 18 implementation tasks are checked. The delta specification has 24 Given/When/Then scenarios:
 21 have passing runtime evidence and three remain partial because direct network-attempt, arbitrary
-MCP-process, and filesystem-metadata observation is unavailable. The fresh `cargo test --all-features`
+MCP-process, and filesystem-metadata observation is unavailable. The original fresh `cargo test --all-features`
 run exited 0 with 1,516 passed, 0 failed, and 6 ignored across 30 test-result summaries, including
-35 `audit_output_contract` tests. Fresh native all-target check, formatting, strict Clippy, and
+35 `audit_output_contract` tests. A subsequent 2026-11-25 `CARGO_TARGET_DIR=target/reconcile-pr-758 cargo test --all-features`
+run from the reconciled checkout exited 0 with all suites passing. An intermediate shared-target
+run reused a test binary with the removed temporary worktree embedded in `CARGO_MANIFEST_DIR`; it
+was not used as code-failure evidence. Fresh native all-target check, formatting, strict Clippy, and
 `git diff --check` exited 0. The supplied docs result is exit 0 with 45 Astro pages; its pnpm
 `prepare` hook warned that the globally installed wrapper was unavailable. The run used Node
 `v26.13.1`, matching `.nvmrc` but differing from the project guidelines' `24.14.0` target. Current
@@ -25,9 +29,11 @@ caps inventory before discovery; plugin hashing is capability-relative, no-follo
 entry/depth/file/byte limits; skill discovery rejects symlinks; skill-local MCP privilege findings
 and shared secret classification are present. Bundle integrity consumes only bounded-traversal
 `SKILL.md` manifests. The Windows target remains blocked in native dependencies before AgentSync
-compilation. The independent QA report remains `PASS WITH WARNINGS` at its prior 1,515-pass
-publication and was not rerun or changed by this technical verification. Verification remains
-**FAIL** because persisted records do not establish complete RED→GREEN→REFACTOR evidence or
+compilation. At this report's 2026-11-24 publication, the independent QA report was `PASS WITH
+WARNINGS` and cited prior 1,515-pass evidence; QA was not rerun or changed by this verification.
+The subsequent `qa-report.md` refresh on 2026-11-25 uses 1,516-pass evidence from the verification
+run without rerunning tests. Verification remains **FAIL** because persisted records do not
+establish complete RED→GREEN→REFACTOR evidence or
 validation-migration baseline/post-refactor evidence. No TDD-compliance or full-compliance claim is
 made; external JSON compatibility also remains an open release risk.
 
@@ -39,13 +45,17 @@ made; external JSON compatibility also remains an open release risk.
 | Implementation tasks complete | 18 |
 | Implementation tasks incomplete | 0 |
 
-<!-- coderabbit-ai-generated:v1 -->
-
-<!-- coderabbit-ai-generated-section:v1:2b25af11946fc4ea136ea1edd4b2f44ae738fdd24d5661085dae4d11f54156af -->
-
-All 18 implementation tasks are checked. On November 24, 2026, the draft PR was pending and the independent QA publication cited 1,515 passing tests. The subsequent handoff in `apply-progress.md` records draft PR #758 as open. On November 25, `qa-report.md` was refreshed using the serial suite’s 1,516-pass evidence without rerunning tests. QA remains **PASS WITH WARNINGS**; the technical verification verdict remains **FAIL**.
-
-<!-- /coderabbit-ai-generated:v1 -->
+`tasks.md` contains 18 checked implementation tasks and no unchecked implementation tasks.
+At this report's 2026-11-24 publication, `apply-progress.md` recorded all five slices complete,
+1,516 passing tests, and draft PR creation pending; `qa-report.md` cited its prior 1,515-pass
+publication. These are historical handoff details. The 2026-11-25 QA refresh used the recorded
+1,516-pass evidence without rerunning tests; its separate verdict remains `PASS WITH WARNINGS`.
+GitHub currently reports PR #758 open, no longer draft, with `CHANGES_REQUESTED` at head `ec2324d`.
+The local branch now matches that head, with 12 review-change files remaining uncommitted and
+unpublished. The current PR snapshot has 11 open review threads, four with outdated anchors; no
+GitHub replies or resolutions were made. The PR body still states the Windows cross-target gap.
+`state.yaml` records `current_phase: qa`, both `verify` and `qa` completed, and `next: verify`.
+This refresh preserves this report's technical verdict as `FAIL`.
 
 ### Build, Tests & Artifact Checks
 
@@ -84,9 +94,15 @@ read-only status validates every existing local-source ancestor and hashes the b
 before plugin discovery; `discover_skills` traverses capability-relative directories without
 following symlinks. `BundleIntegrityRule` consumes only the `SKILL.md` files returned by bounded
 traversal. The selected audit inventory is capped before lock access. Cargo reported the redundant
-`package.homepage` and unused `renamore` dependency warnings. The retained QA report remains a
-separate `PASS WITH WARNINGS` publication and was not rerun here; it cites its previous 1,515-pass
-suite.
+`package.homepage` and unused `renamore` dependency warnings. At the time of this 2026-11-24
+verification, QA had not yet been refreshed and cited 1,515 passes. The later 2026-11-25 QA refresh
+uses the recorded 1,516-pass evidence and did not rerun tests; its separate verdict remains
+`PASS WITH WARNINGS`.
+
+A later fresh run from the reconciled checkout used
+`CARGO_TARGET_DIR=target/reconcile-pr-758 cargo test --all-features` and exited 0 with all suites
+passing. Its full output is linked in the report metadata above; this refresh does not recalculate
+or replace the earlier 1,516-pass aggregate.
 
 **Artifact checks**:
 
@@ -219,9 +235,10 @@ behavioral changes. **No TDD-compliance claim is made.**
   local assertions, but the #695/#702 design questions remain unchecked and external consumers are
   unknown. All seven proposal success-criteria checkboxes remain unchecked despite the runtime
   evidence recorded here; the proposal artifact was not changed in this verification.
-- **Acceptance QA was not rerun.** `qa-report.md` retains its earlier `PASS WITH WARNINGS` result and
-  says no scenarios were rerun in its publication refresh. The three observer gaps (network,
-  arbitrary process, metadata) remain partial here too.
+- **Acceptance QA was not rerun during this 2026-11-24 verification.** The `qa-report.md` publication
+  was subsequently refreshed on 2026-11-25 using the 1,516-pass evidence recorded here, without
+  rerunning tests. Its `PASS WITH WARNINGS` verdict and the three observer gaps (network, arbitrary
+  process, metadata) remain separate from this report's technical verdict.
 - **Some new behavior has focused rather than end-to-end coverage.** Split `--key value` detection
   passes its unit test but has no separate real-binary assertion for that exact argument form across
   output channels. The `MaxEntriesExceeded` to `traversal-entries` validation mapping is present in
@@ -229,8 +246,8 @@ behavioral changes. **No TDD-compliance claim is made.**
 - **Worktree baseline is unavailable.** A status snapshot during verification showed staged and
   unstaged changes across implementation, SDD artifacts, tests, and docs; their origin cannot be
   determined. The docs install briefly advanced `pnpm-lock.yaml` wrapper versions; that incidental
-  change was restored to the existing index version. This verification updates only
-  `verify-report.md` and leaves the independent QA report unchanged.
+  change was restored to the existing index version. This verification updated only
+  `verify-report.md`; the later 2026-11-25 QA refresh is documented separately in `qa-report.md`.
 
 **SUGGESTION**
 
@@ -246,6 +263,7 @@ network, arbitrary MCP process, and metadata observation. The fresh serial Rust 
 default-parallel attempt had one isolated `dev_bench` broken-pipe failure. Native check, format,
 strict Clippy, diff check, and the supplied docs build also exited 0; Astro built 45 pages despite
 the prepare-hook warning. The historical TDD CRITICAL remains unresolved; Windows compilation and
-external schema compatibility remain unverified. Independent QA remains `PASS WITH WARNINGS` at its
-prior evidence and was not refreshed by this verification. Do not treat this result as release or
+external schema compatibility remain unverified. At this report's publication, independent QA
+remained `PASS WITH WARNINGS` at its then-current 1,515-pass evidence; the separate 2026-11-25 QA
+refresh used the 1,516-pass evidence without rerunning tests. Do not treat this result as release or
 archive clearance.

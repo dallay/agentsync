@@ -17,6 +17,10 @@
   * GitHub Action for CI/CD integrity checks
   * ADRs for ResolvedConfiguration contract and secret handling
 
+### Changed
+
+* `BoundedTraversal::traverse` returns success when its callback stops early; symlinks and unsupported entries remain traversal errors.
+
 ## [1.42.6](https://github.com/dallay/agentsync/compare/v1.42.5...v1.42.6) (2026-04-14)
 
 

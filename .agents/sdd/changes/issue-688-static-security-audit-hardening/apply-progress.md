@@ -20,11 +20,11 @@
 | `src/audit.rs` | Modified | Sanitized, parser-aware rules, deterministic reports, target identities, and aggregate audit flows. |
 | `src/commands/audit.rs` | Modified | Selector validation, JSON/human output, and threshold/incomplete exit outcomes. |
 | `src/main.rs` | Modified | Maps audit outcomes to process exit codes and removes the duplicated root option. |
-| `src/plugins.rs` | Modified | Read-only, lock/provenance-verified local plugin audit snapshots. |
+| `src/plugins.rs`, `src/config.rs`, `src/commands/plugin.rs` | Modified | Read-only lock/provenance-verified snapshots, bounded config/lock reads, and not-found-only empty plugin listing. |
 | `src/policy.rs`, `src/explorer.rs` | Modified | Initialize the optional shared diagnostic target field. |
-| `tests/contracts/test_audit_output.rs`, `tests/all_tests.rs` | Added/modified | Binary acceptance, trust-state, redaction, limits, and output contract fixtures. |
+| `tests/contracts/test_audit_output.rs`, `tests/all_tests.rs`, Rust unit tests | Added/modified | Binary acceptance, trust-state, redaction, limits, writer failures, and output contract fixtures. |
 | `website/docs/src/content/docs/{,es/}reference/cli.mdx` | Modified | Audit command, coverage, limits, and exit-code reference. |
-| `.agents/sdd/changes/issue-688-static-security-audit-hardening/` | Added/modified | Delta spec, design, plan, and implementation evidence. |
+| `.agents/sdd/changes/issue-688-static-security-audit-hardening/`, `CHANGELOG.md` | Added/modified | Delta spec, design, plan, implementation evidence, and traversal contract changelog. |
 
 ## Review Workload
 
@@ -35,20 +35,21 @@
 
 ## Commands Run
 
-<!-- coderabbit-ai-generated:v1 -->
-
-<!-- coderabbit-ai-generated-section:v1:f631c31fdf2af5f7ca57f7a943327449b2cb3db3622ce4b27ba04d6c321b390e -->
-
 | Command | Result | Evidence |
 |---|---|---|
-| `cargo test --all-features` | Default parallel attempt: FAIL (`dev_bench` broken pipe). Serial rerun: PASS, exit 0 | Serial reproduction: `cargo test --all-features -- --test-threads=1` (original serial invocation not retained in this checkout). Serial totals: 30 test-result summaries; 1,516 passed, 0 failed, 6 ignored. The real-binary audit contract module contains 35 tests. |
-| `cargo fmt --all -- --check` | PASS, exit 0 | No formatting changes required. |
+| `cargo test --all-features` (2026-11-24, default parallel) | FAIL, exit 101 | Historical attempt ended with a `dev_bench` broken-pipe failure. The later serial success does not establish that this parallel failure was resolved. |
+| 2026-11-24 recorded serial rerun | PASS, exit 0 | Preserved result: 30 test-result summaries; 1,516 passed, 0 failed, 6 ignored; the audit-output contract module had 35 tests. The original command was not retained in that report. |
+| `cargo test --all-features -- --test-threads=1 --quiet` (2026-11-25) | PASS, exit 0 | Exact serial invocation: 29 summaries; 1,543 passed, 0 failed, 6 ignored. This is fresh evidence and does not replace the historical 1,516-pass result. |
+| `cargo test --all-features` (2026-11-25, default parallel) | PASS, exit 0 | All suites passed. The original 2026-11-24 `dev_bench` broken-pipe failure remains documented; the new run does not explain its cause. |
+| `CARGO_TARGET_DIR=target/reconcile-pr-758 cargo test --all-features` (2026-11-25, reconciled checkout) | PASS, exit 0 | Fresh isolated target; all test suites passed from the checkout rooted at the reconciled PR head. |
+| `cargo check --all-targets --all-features` | PASS, exit 0 | Fresh check of the reviewed tree. |
+| `cargo fmt --all -- --check` | PASS, exit 0 | Fresh formatting check. |
 | `cargo clippy --all-targets --all-features -- -D warnings` | PASS, exit 0 | Existing manifest warning: `package.homepage` duplicates `package.repository`. |
 | `pnpm run docs:build` | PASS WITH WARNING, exit 0 | Astro built 45 pages on Node `v26.13.1` / pnpm `12.21.0`. The install `prepare` hook could not find the globally installed `@dallay/agentsync` wrapper; `astro build` still completed. |
 | `cargo check --target x86_64-pc-windows-msvc --all-targets --all-features` | BLOCKED, exit 101 | Cross-target C dependencies could not find Windows system headers/Vcpkg (`libz-sys`, `zstd-sys`); the Rust crate was not reached. |
 | `git diff --check` | PASS, exit 0 | No whitespace errors in the working diff. |
 
-<!-- /coderabbit-ai-generated:v1 -->
+Two intermediate full-suite attempts were environment/artifact-specific: the nested temporary worktree lacked the sibling `agents-skills` fallback until the repository override was supplied, and a later shared-target run reused a test binary embedding the removed worktree path. The isolated-target run above rebuilt against the project root and passed; no source changes were made to mask either condition.
 
 ## TDD Evidence and Deviations
 
@@ -65,4 +66,6 @@
 - [x] Open the single draft PR #758 against `main` and verify its title, base, head, and draft state.
 - [ ] Resolve the TDD verification failure and remaining platform/schema/observer gates before marking the PR ready or merging.
 
-**Status**: 18/18 implementation tasks complete; draft PR #758 is open. QA is `PASS WITH WARNINGS`; verification remains `FAIL` on the documented TDD gap, so the PR is not ready to merge.
+**2026-11-24 handoff status**: 18/18 implementation tasks complete; draft PR #758 was open. QA was `PASS WITH WARNINGS`; verification was `FAIL` on the documented TDD gap.
+
+**2026-11-25 reconciled handoff**: PR #758 is open, no longer draft, and has `CHANGES_REQUESTED` at head `ec2324d`. The local branch now matches that head; 12 files of review changes remain uncommitted and unpublished. The current review snapshot has 11 open threads, four with outdated anchors; applicable CodeRabbit fixes are present locally, while three active Semgrep path alerts were verified as non-actionable. No GitHub replies or thread resolutions were made. The technical verification verdict remains `FAIL` on the documented TDD evidence gap; Windows cross-target and other release gates remain open. The 2026-11-24 parallel test failure remains a separate historical result despite later passing runs.
