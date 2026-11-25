@@ -181,7 +181,11 @@ impl PluginLock {
         // nosemgrep: rust.actix.path-traversal.tainted-path.tainted-path -- callers provide the lockfile path explicitly
         let content = fs::read_to_string(path)
             .with_context(|| format!("failed to read plugin lockfile: {}", path.display()))?;
-        let lock: Self = toml::from_str(&content)
+        Self::parse(path, &content)
+    }
+
+    fn parse(path: &Path, content: &str) -> Result<Self> {
+        let lock: Self = toml::from_str(content)
             .with_context(|| format!("failed to parse plugin lockfile: {}", path.display()))?;
         lock.validate()?;
         Ok(lock)
@@ -281,6 +285,7 @@ pub struct PluginStatusReport {
 pub(crate) struct PluginAuditSnapshot {
     pub(crate) identity: String,
     pub(crate) root: PathBuf,
+    pub(crate) hashes: BTreeMap<PathBuf, [u8; 32]>,
     pub(crate) servers: Vec<PluginMcpStatus>,
 }
 
@@ -464,6 +469,7 @@ impl PluginManager {
     pub(crate) fn inspect_audit_snapshots_read_only(
         &self,
         selection: Option<&str>,
+        config_directory: &CapabilityDir,
     ) -> Result<Vec<PluginAuditSnapshot>> {
         self.config.validate()?;
         if !self.config.enabled || self.config.selections.is_empty() {
@@ -478,16 +484,15 @@ impl PluginManager {
             "plugin audit inventory exceeds {MAX_PLUGIN_AUDIT_TARGETS} targets"
         );
 
-        ensure_regular_file_without_symlink(&self.config_path)?;
-        let config_dir = self.config_path.parent().unwrap_or_else(|| Path::new("."));
-        let config_metadata = fs::symlink_metadata(config_dir)?;
-        ensure!(
-            config_metadata.is_dir() && !config_metadata.file_type().is_symlink(),
-            "plugin configuration directory is not trusted"
-        );
         let lock_path = self.lock_path()?;
-        ensure_regular_file_without_symlink(&lock_path)?;
-        let lock = PluginLock::load(&lock_path)?;
+        const MAX_AUDIT_LOCK_BYTES: u64 = 10 * 1024 * 1024;
+        let lock_bytes = read_plugin_file_from_directory(
+            config_directory,
+            Path::new(&self.config.lockfile),
+            MAX_AUDIT_LOCK_BYTES,
+            None,
+        )?;
+        let lock = PluginLock::parse(&lock_path, std::str::from_utf8(&lock_bytes)?)?;
         let selected = selected_lock_entries(&self.config, &lock)?;
         validate_allowed_mcp_against_lock(&self.config.allowed_mcp, &selected)?;
 
@@ -556,6 +561,26 @@ impl PluginManager {
                 "plugin root is not a trusted directory"
             );
 
+            let mut hashes = BTreeMap::new();
+            let mut verified_mcp = BTreeMap::new();
+            let digest =
+                hash_tree_inspecting(&open_root_directory(&plugin_root)?, |path, bytes| {
+                    hashes.insert(path.to_owned(), Sha256::digest(bytes).into());
+                    if path == Path::new(".mcp.json") {
+                        verified_mcp = parse_plugin_mcp(bytes)?;
+                    }
+                    Ok(())
+                })?;
+            ensure!(
+                digest == locked.content_sha256,
+                "plugin content drift during audit"
+            );
+            ensure!(
+                verified_mcp.keys().eq(discovered.mcp_servers.keys()),
+                "plugin MCP declaration drift"
+            );
+            let mut discovered = discovered;
+            discovered.mcp_servers = verified_mcp;
             let servers = discovered
                 .namespaced_mcp_servers(&locked.marketplace, &locked.plugin)?
                 .into_iter()
@@ -572,6 +597,7 @@ impl PluginManager {
             snapshots.push(PluginAuditSnapshot {
                 identity: format!("plugin/{key}"),
                 root: plugin_root,
+                hashes,
                 servers,
             });
         }
@@ -1280,6 +1306,11 @@ fn ensure_snapshot_discovery_matches_lock(
     locked: &LockedPlugin,
 ) -> Result<()> {
     ensure!(
+        discovered.plugin_path == locked.provenance.plugin_path
+            && discovered.marketplace_manifest == locked.provenance.marketplace_manifest,
+        "plugin provenance path drift"
+    );
+    ensure!(
         discovered.content_sha256 == locked.content_sha256,
         "plugin content drift detected for {}: expected {}, got {}",
         locked.key(),
@@ -1850,7 +1881,7 @@ fn discover_skills(plugin_root: &Path) -> Result<Vec<DiscoveredSkill>> {
     {
         Ok(directory) => directory,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(error) => return Err(error.into()),
+        Err(error) => return Err(error).context("failed to open plugin skills directory"),
     };
     let mut skills = Vec::new();
     for (entry_index, entry) in skills_directory.entries()?.enumerate() {
@@ -1893,15 +1924,18 @@ fn read_plugin_mcp(plugin_root: &Path) -> Result<BTreeMap<String, McpServerConfi
         return Ok(BTreeMap::new());
     }
     // nosemgrep: rust.actix.path-traversal.tainted-path.tainted-path -- plugin_root is a resolved marketplace source
-    let content = String::from_utf8(read_plugin_file_bounded(
+    let content = read_plugin_file_bounded(
         plugin_root,
         Path::new(".mcp.json"),
         MAX_PLUGIN_CONTENT_SIZE,
         None,
-    )?)
-    .context("plugin MCP declaration is not valid UTF-8")?;
-    let value: Value = serde_json::from_str(&content)
-        .with_context(|| format!("failed to parse plugin MCP declaration: {}", path.display()))?;
+    )?;
+    parse_plugin_mcp(&content)
+}
+
+fn parse_plugin_mcp(content: &[u8]) -> Result<BTreeMap<String, McpServerConfig>> {
+    let value: Value =
+        serde_json::from_slice(content).context("failed to parse plugin MCP declaration")?;
     let servers = value
         .get("mcpServers")
         .and_then(Value::as_object)
@@ -2630,7 +2664,7 @@ fn is_absolute_path(path: &str) -> bool {
 
 #[derive(Default)]
 struct PluginTreeState {
-    entries: Vec<(String, u64)>,
+    entries: Vec<(String, PathBuf, u64)>,
     entry_count: usize,
     file_count: usize,
     total_bytes: u64,
@@ -2743,10 +2777,17 @@ fn collect_plugin_tree_entries(
                 state.total_bytes <= MAX_PLUGIN_CONTENT_SIZE,
                 "plugin source content is too large: exceeds {MAX_PLUGIN_CONTENT_SIZE} bytes"
             );
-            state.entries.push((
-                relative_path.to_string_lossy().replace('\\', "/"),
-                metadata.len(),
-            ));
+            let key = relative_path
+                .components()
+                .map(|c| {
+                    c.as_os_str()
+                        .to_str()
+                        .filter(|s| !s.contains('\\'))
+                        .context("ambiguous plugin hash path")
+                })
+                .collect::<Result<Vec<_>>>()?
+                .join("/");
+            state.entries.push((key, relative_path, metadata.len()));
         } else {
             bail!("plugin source contains an unsupported filesystem entry");
         }
@@ -2765,19 +2806,27 @@ fn hash_tree(root: &Path) -> Result<String> {
 }
 
 fn hash_tree_directory(root_directory: &CapabilityDir) -> Result<String> {
+    hash_tree_inspecting(root_directory, |_, _| Ok(()))
+}
+
+fn hash_tree_inspecting(
+    root_directory: &CapabilityDir,
+    mut inspect: impl FnMut(&Path, &[u8]) -> Result<()>,
+) -> Result<String> {
     let mut state = PluginTreeState::default();
     collect_plugin_tree_entries(root_directory, Path::new(""), 0, &mut state)?;
     state.entries.sort_by(|left, right| left.0.cmp(&right.0));
 
     let mut hasher = Sha256::new();
-    for (path, expected_size) in state.entries {
+    for (key, path, expected_size) in state.entries {
         let bytes = read_plugin_file_from_directory(
             root_directory,
-            Path::new(&path),
+            &path,
             MAX_PLUGIN_CONTENT_SIZE,
             Some(expected_size),
         )?;
-        hasher.update(path.as_bytes());
+        inspect(&path, &bytes)?;
+        hasher.update(key.as_bytes());
         hasher.update([0]);
         hasher.update(expected_size.to_be_bytes());
         hasher.update(bytes);
@@ -3394,7 +3443,9 @@ plugin = "engineering"
         };
         let manager = PluginManager::new(temp.path().to_path_buf(), config_path, config);
 
-        let error = manager.inspect_audit_snapshots_read_only(None).unwrap_err();
+        let error = manager
+            .inspect_audit_snapshots_read_only(None, &open_root_directory(temp.path()).unwrap())
+            .unwrap_err();
 
         assert!(error.to_string().contains("inventory exceeds"));
 

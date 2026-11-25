@@ -35,14 +35,20 @@
 
 ## Commands Run
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:f631c31fdf2af5f7ca57f7a943327449b2cb3db3622ce4b27ba04d6c321b390e -->
+
 | Command | Result | Evidence |
 |---|---|---|
-| `cargo test --all-features` | PASS, exit 0 | Final run: 30 test-result summaries; 1,516 passed, 0 failed, 6 ignored. The real-binary audit contract module contains 35 tests. |
+| `cargo test --all-features` | Default parallel attempt: FAIL (`dev_bench` broken pipe). Serial rerun: PASS, exit 0 | Serial reproduction: `cargo test --all-features -- --test-threads=1` (original serial invocation not retained in this checkout). Serial totals: 30 test-result summaries; 1,516 passed, 0 failed, 6 ignored. The real-binary audit contract module contains 35 tests. |
 | `cargo fmt --all -- --check` | PASS, exit 0 | No formatting changes required. |
 | `cargo clippy --all-targets --all-features -- -D warnings` | PASS, exit 0 | Existing manifest warning: `package.homepage` duplicates `package.repository`. |
 | `pnpm run docs:build` | PASS WITH WARNING, exit 0 | Astro built 45 pages on Node `v26.13.1` / pnpm `12.21.0`. The install `prepare` hook could not find the globally installed `@dallay/agentsync` wrapper; `astro build` still completed. |
 | `cargo check --target x86_64-pc-windows-msvc --all-targets --all-features` | BLOCKED, exit 101 | Cross-target C dependencies could not find Windows system headers/Vcpkg (`libz-sys`, `zstd-sys`); the Rust crate was not reached. |
 | `git diff --check` | PASS, exit 0 | No whitespace errors in the working diff. |
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 ## TDD Evidence and Deviations
 

@@ -342,7 +342,12 @@ impl BundleIntegrityRule {
         let mut findings = Vec::new();
 
         let root_manifest = self._root.join("SKILL.md");
-        if !manifests.iter().any(|(path, _)| path == &root_manifest) {
+        if !manifests.iter().any(|(path, _)| path == &root_manifest)
+            && crate::diagnostics::open_root_directory(&self._root).is_ok_and(|dir| {
+                dir.symlink_metadata("SKILL.md")
+                    .is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound)
+            })
+        {
             findings.push(Diagnostic {
                 rule_id: self.rule_id().into(),
                 target: None,

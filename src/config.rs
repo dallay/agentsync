@@ -323,9 +323,17 @@ fn is_false(v: &bool) -> bool {
 impl Config {
     /// Load configuration from a file
     pub fn load(path: &Path) -> Result<Self> {
+        let file = fs::File::open(path)
+            .with_context(|| format!("Failed to read config file: {}", path.display()))?;
+        Self::load_opened(path, file)
+    }
+
+    pub(crate) fn load_opened(path: &Path, file: fs::File) -> Result<Self> {
+        use std::io::Read;
         // SECURITY: Limit config file size to prevent DoS via memory exhaustion when parsing untrusted TOML
         const MAX_CONFIG_FILE_SIZE: u64 = 10 * 1024 * 1024; // 10 MB
-        let metadata = fs::metadata(path)
+        let metadata = file
+            .metadata()
             .with_context(|| format!("Failed to stat config file: {}", path.display()))?;
         if metadata.len() > MAX_CONFIG_FILE_SIZE {
             anyhow::bail!(
@@ -336,9 +344,16 @@ impl Config {
             );
         }
 
-        let content = fs::read_to_string(path)
+        anyhow::ensure!(metadata.is_file(), "configuration is not a regular file");
+        let mut content = String::new();
+        file.take(MAX_CONFIG_FILE_SIZE + 1)
+            .read_to_string(&mut content)
             .with_context(|| format!("Failed to read config file: {}", path.display()))?;
 
+        anyhow::ensure!(
+            content.len() as u64 <= MAX_CONFIG_FILE_SIZE,
+            "Config file exceeds maximum limit"
+        );
         let config: Config = toml::from_str(&content)
             .with_context(|| format!("Failed to parse config file: {}", path.display()))?;
 

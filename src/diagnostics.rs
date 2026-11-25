@@ -131,6 +131,7 @@ struct TraversalState<'a> {
     root: &'a Path,
     bounds: &'a BoundedTraversal,
     file_count: usize,
+    bytes_consumed: u64,
     entry_count: usize,
     stopped: bool,
     report: TraversalReport,
@@ -260,6 +261,7 @@ impl BoundedTraversal {
             root,
             bounds: self,
             file_count: 0,
+            bytes_consumed: 0,
             entry_count: 0,
             stopped: false,
             report: TraversalReport::default(),
@@ -370,11 +372,27 @@ impl BoundedTraversal {
                             );
                         }
                         Err(_) => state.report.errors.push(ScanError::new(
-                            ScanErrorCode::SymlinkSkipped,
+                            if directory
+                                .symlink_metadata(&name)
+                                .is_ok_and(|m| m.file_type().is_symlink())
+                            {
+                                ScanErrorCode::SymlinkSkipped
+                            } else {
+                                ScanErrorCode::DirectoryReadFailed
+                            },
                             relative_source_path(state.root, &child_path),
                         )),
                     }
                 } else if child_metadata.is_file() {
+                    if depth >= state.bounds.max_depth {
+                        state.report.coverage.files_discovered += 1;
+                        state.report.coverage.files_skipped += 1;
+                        state.report.errors.push(ScanError::new(
+                            ScanErrorCode::MaxDepthExceeded,
+                            relative_source_path(state.root, &child_path),
+                        ));
+                        continue;
+                    }
                     Self::scan_file(
                         directory,
                         &name,
@@ -423,8 +441,8 @@ impl BoundedTraversal {
         }
         state.file_count += 1;
 
-        let remaining_size = (state.bounds.max_content_size as u64)
-            .saturating_sub(state.report.coverage.bytes_scanned);
+        let remaining_size =
+            (state.bounds.max_content_size as u64).saturating_sub(state.bytes_consumed);
         if metadata.len() > state.bounds.max_file_size as u64 {
             state.report.coverage.files_skipped += 1;
             state.report.errors.push(ScanError::new(
@@ -465,7 +483,7 @@ impl BoundedTraversal {
                 return;
             }
         };
-        let content = match read_bounded(file, read_limit) {
+        let content = match read_bounded(file, read_limit, &mut state.bytes_consumed) {
             Ok(content) => content,
             Err(_) => {
                 state.report.coverage.files_skipped += 1;
@@ -653,16 +671,12 @@ pub(crate) fn open_entry_nofollow(
 }
 
 pub(crate) fn open_root_directory(root: &Path) -> io::Result<CapabilityDir> {
-    let Some(name) = root.file_name() else {
-        return CapabilityDir::open_ambient_dir(root, ambient_authority());
+    let absolute = if root.is_absolute() {
+        root.to_owned()
+    } else {
+        std::env::current_dir()?.join(root)
     };
-    let parent_path = root
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .unwrap_or(Path::new("."));
-    let canonical_parent = std::fs::canonicalize(parent_path)?;
-    let parent = open_absolute_directory_nofollow(&canonical_parent)?;
-    parent.open_dir_nofollow(name)
+    open_absolute_directory_nofollow(&absolute)
 }
 
 #[cfg(unix)]
@@ -674,20 +688,10 @@ fn open_absolute_directory_nofollow(path: &Path) -> io::Result<CapabilityDir> {
             "directory path is not absolute",
         ));
     }
-    let mut current = CapabilityDir::open_ambient_dir(Path::new("/"), ambient_authority())?;
-    for component in components {
-        match component {
-            Component::RootDir | Component::CurDir => {}
-            Component::Normal(name) => current = current.open_dir_nofollow(name)?,
-            Component::ParentDir | Component::Prefix(_) => {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "directory path contains an unsafe component",
-                ));
-            }
-        }
-    }
-    Ok(current)
+    walk_absolute_components(
+        CapabilityDir::open_ambient_dir(Path::new("/"), ambient_authority())?,
+        components,
+    )
 }
 
 #[cfg(windows)]
@@ -701,15 +705,35 @@ fn open_absolute_directory_nofollow(path: &Path) -> io::Result<CapabilityDir> {
     };
     let mut volume_root = PathBuf::from(prefix.as_os_str());
     volume_root.push("\\");
-    let mut current = CapabilityDir::open_ambient_dir(&volume_root, ambient_authority())?;
+    walk_absolute_components(
+        CapabilityDir::open_ambient_dir(&volume_root, ambient_authority())?,
+        components,
+    )
+}
+
+#[cfg(any(unix, windows))]
+fn walk_absolute_components(
+    mut current: CapabilityDir,
+    components: std::path::Components<'_>,
+) -> io::Result<CapabilityDir> {
+    let mut ancestors = Vec::new();
     for component in components {
         match component {
             Component::RootDir | Component::CurDir => {}
-            Component::Normal(name) => current = current.open_dir_nofollow(name)?,
-            Component::ParentDir | Component::Prefix(_) => {
+            Component::Normal(name) => {
+                let child = current.open_dir_nofollow(name)?;
+                ancestors.push(current);
+                current = child;
+            }
+            Component::ParentDir => {
+                if let Some(parent) = ancestors.pop() {
+                    current = parent;
+                }
+            }
+            Component::Prefix(_) => {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
-                    "directory path contains an unsafe component",
+                    "unexpected volume prefix",
                 ));
             }
         }
@@ -718,8 +742,11 @@ fn open_absolute_directory_nofollow(path: &Path) -> io::Result<CapabilityDir> {
 }
 
 #[cfg(not(any(unix, windows)))]
-fn open_absolute_directory_nofollow(path: &Path) -> io::Result<CapabilityDir> {
-    CapabilityDir::open_ambient_dir(path, ambient_authority())
+fn open_absolute_directory_nofollow(_path: &Path) -> io::Result<CapabilityDir> {
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "no verified directory anchor on this platform",
+    ))
 }
 
 fn finalize_traversal_report(mut report: TraversalReport) -> TraversalReport {
@@ -743,9 +770,12 @@ fn relative_source_path(root: &Path, path: &Path) -> Option<String> {
     (!components.is_empty()).then(|| components.join("/"))
 }
 
-fn read_bounded(reader: impl Read, max_bytes: u64) -> std::io::Result<Vec<u8>> {
+fn read_bounded(reader: impl Read, max_bytes: u64, consumed: &mut u64) -> std::io::Result<Vec<u8>> {
     let mut content = Vec::new();
-    reader.take(max_bytes).read_to_end(&mut content)?;
+    let mut limited = reader.take(max_bytes);
+    let result = limited.read_to_end(&mut content);
+    *consumed += max_bytes - limited.limit();
+    result?;
     Ok(content)
 }
 
@@ -1102,10 +1132,25 @@ mod tests {
     fn bounded_read_never_consumes_more_than_its_limit() {
         let mut source = Cursor::new(b"12345".to_vec());
 
-        let content = read_bounded(&mut source, 3).unwrap();
+        let mut consumed = 0;
+        let content = read_bounded(&mut source, 3, &mut consumed).unwrap();
+        assert_eq!(consumed, 3);
 
         assert_eq!(content, b"123");
         assert_eq!(source.position(), 3);
+    }
+
+    #[test]
+    fn partial_read_errors_still_consume_budget() {
+        struct Fails;
+        impl Read for Fails {
+            fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
+                Err(io::Error::other("read failed"))
+            }
+        }
+        let mut consumed = 4;
+        assert!(read_bounded(Cursor::new(b"abc").chain(Fails), 20, &mut consumed).is_err());
+        assert_eq!(consumed, 7);
     }
 
     #[test]

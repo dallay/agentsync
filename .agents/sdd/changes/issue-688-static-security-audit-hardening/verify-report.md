@@ -39,13 +39,13 @@ made; external JSON compatibility also remains an open release risk.
 | Implementation tasks complete | 18 |
 | Implementation tasks incomplete | 0 |
 
-`tasks.md` contains 18 checked implementation tasks and no unchecked implementation tasks.
-`apply-progress.md` records all five slices complete and the current 1,516-pass full suite; it also
-records technical verification `FAIL` on TDD and draft PR creation pending. `state.yaml` records
-`current_phase: qa`, both `verify` and `qa` completed, and `next: verify`; this refresh updates only
-the verification report. `qa-report.md` remains the independent `PASS WITH WARNINGS` publication,
-based on its prior 1,515-pass evidence; QA was not rerun or republished, so its independent result
-and count are not replaced by this technical-verification run.
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:2b25af11946fc4ea136ea1edd4b2f44ae738fdd24d5661085dae4d11f54156af -->
+
+All 18 implementation tasks are checked. On November 24, 2026, the draft PR was pending and the independent QA publication cited 1,515 passing tests. The subsequent handoff in `apply-progress.md` records draft PR #758 as open. On November 25, `qa-report.md` was refreshed using the serial suite’s 1,516-pass evidence without rerunning tests. QA remains **PASS WITH WARNINGS**; the technical verification verdict remains **FAIL**.
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 ### Build, Tests & Artifact Checks
 

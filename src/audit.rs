@@ -48,12 +48,43 @@ impl ValidationRule for CredentialLiteralRule {
 
         let extension = audit_extension(path);
         let root = &self._root;
-        if matches!(extension.as_deref(), Some("json" | "yaml" | "yml" | "toml"))
-            && let Some(value) = parse_structured_value(extension.as_deref().unwrap(), text)
+        if extension.as_deref() == Some("toml") {
+            if let Ok(doc) = toml_edit::Document::parse(text) {
+                let starts = std::iter::once(0)
+                    .chain(text.match_indices('\n').map(|(i, _)| i + 1))
+                    .collect::<Vec<_>>();
+                struct Credentials<F>(F);
+                impl<'doc, F: FnMut(&str, &str, usize)> toml_edit::visit::Visit<'doc> for Credentials<F> {
+                    fn visit_table_like_kv(&mut self, key: &'doc str, item: &'doc toml_edit::Item) {
+                        if let (Some(value), Some(span)) = (item.as_str(), item.span()) {
+                            (self.0)(key, value, span.start);
+                        }
+                        toml_edit::visit::visit_table_like_kv(self, key, item);
+                    }
+                }
+                let mut visitor = Credentials(|key: &str, value: &str, offset| {
+                    if is_sensitive_key(key)
+                        && is_literal_sensitive_value(key, value)
+                        && looks_like_secret(value)
+                    {
+                        let line = starts.partition_point(|start| *start <= offset) as u32;
+                        diagnostics.push(credential_diagnostic(root, path, key, line));
+                    }
+                });
+                toml_edit::visit::Visit::visit_table(&mut visitor, doc.as_table());
+            }
+            return diagnostics;
+        }
+        if let Some(ext @ ("json" | "yaml" | "yml")) = extension.as_deref()
+            && let Some(value) = parse_structured_value(ext, text)
         {
+            let mut locations = credential_locations(text);
             collect_structured_credentials(&value, &mut |key, value| {
+                let line = locations
+                    .get_mut(key)
+                    .and_then(|lines| lines.pop_front())
+                    .unwrap_or(1);
                 if is_literal_sensitive_value(key, value) && looks_like_secret(value) {
-                    let line = line_for_key(text, key);
                     diagnostics.push(credential_diagnostic(root, path, key, line));
                 }
             });
@@ -141,18 +172,27 @@ fn collect_structured_credentials(value: &serde_json::Value, visit: &mut impl Fn
     }
 }
 
-fn line_for_key(text: &str, key: &str) -> u32 {
-    let json_key = format!("\"{key}\"");
-    let yaml_key = format!("{key}:");
-    text.lines()
-        .position(|line| {
-            let lower = line.to_ascii_lowercase();
-            lower.contains(&json_key)
-                || lower.contains(&yaml_key)
-                || lower.contains(&format!("{key} ="))
-        })
-        .map(|index| (index + 1) as u32)
-        .unwrap_or(1)
+fn credential_locations(
+    text: &str,
+) -> std::collections::HashMap<&str, std::collections::VecDeque<u32>> {
+    use std::sync::LazyLock;
+    static KEY: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r#"(?:^|[\s,{.])["']?([\w.-]+)["']?\s*[:=]"#)
+            .expect("static credential key regex")
+    });
+    let mut locations = std::collections::HashMap::<_, std::collections::VecDeque<_>>::new();
+    for (index, line) in text.lines().enumerate() {
+        for hit in KEY.captures_iter(line) {
+            let (_, [key]) = hit.extract();
+            if is_sensitive_key(key) {
+                locations
+                    .entry(key)
+                    .or_default()
+                    .push_back((index + 1) as u32);
+            }
+        }
+    }
+    locations
 }
 
 fn is_literal_sensitive_value(key: &str, value: &str) -> bool {
@@ -341,23 +381,51 @@ impl ValidationRule for FetchAndExecuteRule {
             (&["iex", "irm"], "PowerShell IEX with IRM"),
         ];
 
-        let lines = text.lines().collect::<Vec<_>>();
+        let structured = extension
+            .as_deref()
+            .and_then(|ext| parse_structured_value(ext, text));
+        let mut strings = Vec::new();
+        fn collect_strings<'a>(value: &'a serde_json::Value, strings: &mut Vec<&'a str>) {
+            match value {
+                serde_json::Value::String(s) => strings.push(s),
+                serde_json::Value::Array(items) => {
+                    items.iter().for_each(|v| collect_strings(v, strings))
+                }
+                serde_json::Value::Object(fields) => {
+                    fields.values().for_each(|v| collect_strings(v, strings))
+                }
+                _ => {}
+            }
+        }
+        let lines = if let Some(value) = &structured {
+            collect_strings(value, &mut strings);
+            strings
+        } else {
+            text.lines().collect()
+        };
         let mut line_index = 0;
         while line_index < lines.len() {
             let first_line = line_index;
             let mut command = lines[line_index].trim().to_string();
-            while command.trim_end().ends_with('\\') && line_index + 1 < lines.len() {
-                command = command.trim_end().trim_end_matches('\\').to_string();
+            if !markdown
+                && command
+                    .trim_start_matches('>')
+                    .trim_start()
+                    .starts_with('#')
+            {
+                line_index += 1;
+                continue;
+            }
+            while structured.is_none()
+                && command.trim_end().ends_with('\\')
+                && line_index + 1 < lines.len()
+            {
+                command.truncate(command.trim_end().trim_end_matches('\\').len());
                 line_index += 1;
                 command.push(' ');
                 command.push_str(lines[line_index].trim());
             }
             let trimmed = command.trim_start_matches('>').trim().to_lowercase();
-
-            if !markdown && trimmed.starts_with('#') {
-                line_index += 1;
-                continue;
-            }
 
             if let Some((_, description)) = patterns
                 .iter()
@@ -370,7 +438,7 @@ impl ValidationRule for FetchAndExecuteRule {
                     target: None,
                     severity: self.default_severity(),
                     source_path: relative_path.clone(),
-                    span: Some(Span::line(line)),
+                    span: structured.is_none().then(|| Span::line(line)),
                     message: format!("Risky fetch-and-execute pattern: {description}"),
                     evidence: Some(format!("Detected pattern: {description}")),
                     fingerprint: fingerprint(self.rule_id(), &relative_path, line, description),
@@ -547,28 +615,26 @@ fn path_reference_escapes_root(root: &Path, source_path: &Path, reference: &str)
         parent.join(reference_path)
     };
 
-    let mut components = Vec::new();
+    let mut candidate = root.to_path_buf();
     for component in relative_path.components() {
         match component {
             std::path::Component::CurDir => {}
             std::path::Component::ParentDir => {
-                if components.pop().is_none() {
+                if candidate == root {
                     return true;
                 }
+                candidate.pop();
             }
-            std::path::Component::Normal(component) => components.push(component.to_os_string()),
-            std::path::Component::RootDir | std::path::Component::Prefix(_) => return true,
-        }
-    }
-
-    let mut candidate = root.to_path_buf();
-    for component in components {
-        candidate.push(component);
-        match std::fs::symlink_metadata(&candidate) {
-            Ok(metadata) if metadata.file_type().is_symlink() => return true,
-            Ok(_) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
-            Err(_) => return true,
+            std::path::Component::Normal(name) => {
+                candidate.push(name);
+                match std::fs::symlink_metadata(&candidate) {
+                    Ok(meta) if meta.file_type().is_symlink() => return true,
+                    Ok(_) => {}
+                    Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(_) => return true,
+                }
+            }
+            _ => return true,
         }
     }
     false
@@ -633,7 +699,7 @@ impl ValidationRule for McpPrivilegeRule {
 
 /// Audit MCP server configuration for credential exposure.
 pub fn audit_mcp_server(
-    _name: &str,
+    name: &str,
     server: &McpServerConfig,
     source_path: &str,
 ) -> Vec<Diagnostic> {
@@ -660,7 +726,7 @@ pub fn audit_mcp_server(
                     "credential-literal",
                     source_path,
                     0,
-                    &format!("env:{}", fingerprint_key(key)),
+                    &format!("{name}\0env:{}", fingerprint_key(key)),
                 ),
             });
         }
@@ -688,7 +754,7 @@ pub fn audit_mcp_server(
                     "credential-literal",
                     source_path,
                     0,
-                    &format!("header:{}", fingerprint_key(key)),
+                    &format!("{name}\0header:{}", fingerprint_key(key)),
                 ),
             });
         }
@@ -725,7 +791,7 @@ pub fn audit_mcp_server(
                     "credential-literal",
                     source_path,
                     0,
-                    &format!("args:{}", fingerprint_key(key)),
+                    &format!("{name}\0args:{}", fingerprint_key(key)),
                 ),
             });
         }
@@ -751,7 +817,7 @@ pub fn audit_mcp_server_state(
             span: None,
             message: "Plugin MCP server has not been explicitly approved".to_string(),
             evidence: Some("MCP approval is pending".to_string()),
-            fingerprint: fingerprint("mcp-approval-pending", source_path, 0, "pending"),
+            fingerprint: fingerprint("mcp-approval-pending", source_path, 0, name),
         });
     }
 
@@ -770,7 +836,7 @@ pub fn audit_mcp_server_state(
             span: None,
             message: "MCP server command contains a potentially privileged operation".to_string(),
             evidence: Some("Structured command declaration matched a privilege rule".to_string()),
-            fingerprint: fingerprint("mcp-privilege", source_path, 0, "structured-command"),
+            fingerprint: fingerprint("mcp-privilege", source_path, 0, name),
         });
     }
     diagnostics
@@ -790,14 +856,18 @@ fn fingerprint_key(key: &str) -> String {
 
 /// Run all audit rules on a directory.
 pub fn audit_directory(root: &Path) -> DiagnosticReport {
-    audit_directory_inner(root, None)
+    audit_directory_inner(root, None, None)
 }
 
 pub fn audit_directory_for_target(root: &Path, target: &str) -> DiagnosticReport {
-    audit_directory_inner(root, Some(target))
+    audit_directory_inner(root, Some(target), None)
 }
 
-fn audit_directory_inner(root: &Path, target: Option<&str>) -> DiagnosticReport {
+fn audit_directory_inner(
+    root: &Path,
+    target: Option<&str>,
+    mut hashes: Option<std::collections::BTreeMap<PathBuf, [u8; 32]>>,
+) -> DiagnosticReport {
     let mut all_diagnostics = Vec::new();
     let mut unsupported_errors = Vec::new();
     let mut unsupported_files = 0;
@@ -811,7 +881,20 @@ fn audit_directory_inner(root: &Path, target: Option<&str>) -> DiagnosticReport 
 
     let traversal = BoundedTraversal::new();
 
+    let mut drift = false;
     let traversal_report = traversal.traverse_with_report(root, |path, content| {
+        if let Some(expected) = hashes.as_mut() {
+            let digest: [u8; 32] = Sha256::digest(content).into();
+            if path
+                .strip_prefix(root)
+                .ok()
+                .and_then(|p| expected.remove(p))
+                != Some(digest)
+            {
+                drift = true;
+                return false;
+            }
+        }
         if let Some(code) = unsupported_content(path, content) {
             unsupported_files += 1;
             unsupported_errors.push(ScanError::new(code, Some(portable_path(root, path))));
@@ -824,6 +907,12 @@ fn audit_directory_inner(root: &Path, target: Option<&str>) -> DiagnosticReport 
         true
     });
 
+    if drift || hashes.is_some_and(|remaining| !remaining.is_empty()) {
+        return incomplete_scan_report(
+            ScanError::new(ScanErrorCode::PluginTrustUnavailable, None)
+                .with_target(target.unwrap_or_default()),
+        );
+    }
     let mut coverage = traversal_report.coverage;
     coverage.files_scanned = coverage.files_scanned.saturating_sub(unsupported_files);
     coverage.files_skipped += unsupported_files;
@@ -898,6 +987,9 @@ pub fn audit_plugin_selection(project_root: &Path, selection: &str) -> Diagnosti
 }
 
 pub fn audit_all(project_root: &Path) -> DiagnosticReport {
+    if crate::diagnostics::open_root_directory(project_root).is_err() {
+        return incomplete_scan_report(ScanError::new(ScanErrorCode::RootReadFailed, None));
+    }
     let mut findings = Vec::new();
     let mut scan_errors = Vec::new();
     let mut coverage = ScanCoverage::default();
@@ -939,7 +1031,6 @@ pub fn audit_all(project_root: &Path) -> DiagnosticReport {
                             };
                             if metadata.file_type().is_symlink() {
                                 coverage.targets_discovered += 1;
-                                coverage.files_skipped += 1;
                                 scan_errors.push(ScanError::new(
                                     ScanErrorCode::SymlinkSkipped,
                                     Some("skills".to_string()),
@@ -978,6 +1069,7 @@ pub fn audit_all(project_root: &Path) -> DiagnosticReport {
                 )),
             }
         }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(_) => scan_errors.push(ScanError::new(
             ScanErrorCode::RootReadFailed,
             Some(".agents".to_string()),
@@ -1053,13 +1145,17 @@ fn inspect_plugin_inventory(
         }
         return Ok((Vec::new(), None));
     };
-    let config = Config::load(&config_path)?;
+    let parent =
+        crate::diagnostics::open_root_directory(config_path.parent().unwrap_or(project_root))?;
+    let file =
+        crate::diagnostics::open_entry_nofollow(&parent, std::ffi::OsStr::new("agentsync.toml"))?;
+    let config = Config::load_opened(&config_path, file.into_std())?;
     let manager = PluginManager::new(
         Config::project_root(&config_path),
         config_path,
         config.plugins.clone(),
     );
-    let snapshots = manager.inspect_audit_snapshots_read_only(selection)?;
+    let snapshots = manager.inspect_audit_snapshots_read_only(selection, &parent)?;
     Ok((snapshots, Some(config)))
 }
 
@@ -1069,11 +1165,30 @@ fn aggregate_plugin_snapshots(snapshots: Vec<PluginAuditSnapshot>) -> Diagnostic
     let mut coverage = ScanCoverage::default();
 
     for snapshot in snapshots {
-        let report = audit_directory_for_target(&snapshot.root, &snapshot.identity);
+        let report = audit_directory_inner(
+            &snapshot.root,
+            Some(&snapshot.identity),
+            Some(snapshot.hashes),
+        );
+        let trusted = !report
+            .scan_errors
+            .iter()
+            .flatten()
+            .any(|e| e.code == ScanErrorCode::PluginTrustUnavailable);
         merge_report(report, &mut findings, &mut scan_errors, &mut coverage);
+        if !trusted {
+            continue;
+        }
         for server in snapshot.servers {
-            let mut diagnostics =
-                audit_mcp_server_state(&server.name, &server.server, ".mcp.json", server.approval);
+            let mut diagnostics = audit_mcp_server_state(
+                server
+                    .name
+                    .strip_prefix(&format!("{}/", snapshot.identity))
+                    .unwrap_or(&server.name),
+                &server.server,
+                ".mcp.json",
+                server.approval,
+            );
             diagnostics.retain(should_include_mcp_state_finding);
             apply_target(&mut diagnostics, &snapshot.identity);
             findings.extend(diagnostics);
@@ -1181,8 +1296,8 @@ fn unsupported_content(path: &Path, content: &[u8]) -> Option<ScanErrorCode> {
     };
     let extension = audit_extension(path);
     match extension.as_deref() {
-        Some("json" | "yaml" | "yml" | "toml") => {
-            let valid = parse_structured_value(extension.as_deref().unwrap(), text).is_some();
+        Some(ext @ ("json" | "yaml" | "yml" | "toml")) => {
+            let valid = parse_structured_value(ext, text).is_some();
             (!valid).then_some(ScanErrorCode::UnsupportedContent)
         }
         Some(
@@ -1226,6 +1341,45 @@ mod tests {
     use std::collections::BTreeMap;
     use std::fs;
     use tempfile::TempDir;
+
+    #[test]
+    fn repeated_toml_keys_keep_their_source_locations() {
+        let root = Path::new(".");
+        let findings = CredentialLiteralRule::new(root).check_file(
+            Path::new("./config.toml"),
+            br#"
+[z]
+api_key = "${SKIP_ME}"
+[b]
+api_key = "synthetic-test-credential-1234"
+[a]
+api_key = "synthetic-test-credential-1234"
+"#,
+        );
+        assert_eq!(
+            findings
+                .iter()
+                .map(|f| f.span.as_ref().unwrap().line)
+                .collect::<Vec<_>>(),
+            [5, 7]
+        );
+        assert_ne!(findings[0].fingerprint, findings[1].fingerprint);
+    }
+
+    #[test]
+    fn plugin_scan_rejects_same_length_drift() {
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("run.sh");
+        let original = b"echo ok";
+        fs::write(path, b"echo no").unwrap();
+        let hashes = BTreeMap::from([(PathBuf::from("run.sh"), Sha256::digest(original).into())]);
+        let report = audit_directory_inner(temp.path(), Some("plugin/test/demo"), Some(hashes));
+        assert_eq!(report.status, Some(ScanStatus::Incomplete));
+        assert_eq!(
+            report.scan_errors.unwrap()[0].code,
+            ScanErrorCode::PluginTrustUnavailable
+        );
+    }
 
     #[test]
     fn skill_directory_entry_errors_are_retained_as_scan_errors() {
