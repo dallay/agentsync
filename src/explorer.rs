@@ -399,6 +399,7 @@ mod tests {
     fn test_convert_audit_results() {
         let issues = vec![crate::diagnostics::Diagnostic {
             rule_id: "test-rule".to_string(),
+            target: None,
             severity: crate::diagnostics::Severity::Warning,
             source_path: String::new(),
             span: None,

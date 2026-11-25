@@ -5,7 +5,7 @@
 //! model APIs. All validation is completely offline and deterministic.
 
 use crate::diagnostics::{
-    BoundedTraversal, Diagnostic, DiagnosticReport, Severity, Span, TraversalError, ValidationRule,
+    BoundedTraversal, Diagnostic, DiagnosticReport, ScanErrorCode, Severity, Span, ValidationRule,
     fingerprint, redact_evidence,
 };
 use std::path::{Path, PathBuf};
@@ -33,10 +33,8 @@ pub fn validate_skill(skill_path: &Path) -> Result<DiagnosticReport, ValidationE
         Box::new(PathEscapeRule {
             _root: skill_path.to_path_buf(),
         }),
-        Box::new(BundleIntegrityRule {
-            _root: skill_path.to_path_buf(),
-        }),
     ];
+    let mut scanned_manifests = Vec::new();
 
     // Traverse the skill directory with bounds
     let traversal = BoundedTraversal::new()
@@ -45,66 +43,85 @@ pub fn validate_skill(skill_path: &Path) -> Result<DiagnosticReport, ValidationE
         .max_files(500);
 
     // Check each file
-    if let Err(err) = traversal.traverse(skill_path, |path, content| {
+    let traversal_report = traversal.traverse_with_report(skill_path, |path, content| {
         for rule in &rules {
             findings.extend(rule.check_file(path, content));
         }
-        true // Continue traversal
-    }) {
-        match err {
-            TraversalError::MaxDepthExceeded => {
-                findings.push(Diagnostic {
-                    rule_id: "traversal-depth".into(),
-                    severity: Severity::Error,
-                    source_path: skill_path.to_string_lossy().into(),
-                    span: None,
-                    message: "Skill directory exceeds maximum traversal depth.".into(),
-                    evidence: None,
-                    fingerprint: fingerprint(
-                        "traversal-depth",
-                        &skill_path.to_string_lossy(),
-                        &None,
-                    ),
-                });
-            }
-            TraversalError::MaxFilesExceeded => {
-                findings.push(Diagnostic {
-                    rule_id: "traversal-files".into(),
-                    severity: Severity::Error,
-                    source_path: skill_path.to_string_lossy().into(),
-                    span: None,
-                    message: "Skill contains too many files.".into(),
-                    evidence: None,
-                    fingerprint: fingerprint(
-                        "traversal-files",
-                        &skill_path.to_string_lossy(),
-                        &None,
-                    ),
-                });
-            }
-            TraversalError::MaxContentSizeExceeded => {
-                findings.push(Diagnostic {
-                    rule_id: "traversal-size".into(),
-                    severity: Severity::Error,
-                    source_path: skill_path.to_string_lossy().into(),
-                    span: None,
-                    message: "Skill total content size exceeds limit.".into(),
-                    evidence: None,
-                    fingerprint: fingerprint(
-                        "traversal-size",
-                        &skill_path.to_string_lossy(),
-                        &None,
-                    ),
-                });
-            }
-            _ => {}
+        if path.file_name().and_then(|name| name.to_str()) == Some("SKILL.md") {
+            scanned_manifests.push((path.to_path_buf(), content.to_vec()));
         }
+        true // Continue traversal
+    });
+    for error in traversal_report.errors {
+        let (rule_id, message) = match error.code {
+            ScanErrorCode::InvalidTarget
+            | ScanErrorCode::TargetNotFound
+            | ScanErrorCode::PluginTrustUnavailable => (
+                "traversal-read",
+                "Skill target could not be resolved for inspection.",
+            ),
+            ScanErrorCode::MaxDepthExceeded => (
+                "traversal-depth",
+                "Skill directory exceeds maximum traversal depth.",
+            ),
+            ScanErrorCode::MaxFilesExceeded => {
+                ("traversal-files", "Skill contains too many files.")
+            }
+            ScanErrorCode::MaxEntriesExceeded => (
+                "traversal-entries",
+                "Skill contains too many directory entries.",
+            ),
+            ScanErrorCode::MaxContentSizeExceeded => {
+                ("traversal-size", "Skill total content size exceeds limit.")
+            }
+            ScanErrorCode::MaxFileSizeExceeded => {
+                ("traversal-size", "Skill file size exceeds limit.")
+            }
+            ScanErrorCode::SymlinkSkipped => (
+                "traversal-symlink",
+                "Skill contains a symbolic link that was not traversed.",
+            ),
+            ScanErrorCode::RootReadFailed
+            | ScanErrorCode::DirectoryReadFailed
+            | ScanErrorCode::FileReadFailed => {
+                ("traversal-read", "Skill content could not be read.")
+            }
+            ScanErrorCode::UnsupportedEntry => (
+                "traversal-unsupported",
+                "Skill contains an unsupported file type.",
+            ),
+            ScanErrorCode::UnsupportedContent => (
+                "traversal-unsupported",
+                "Skill content could not be inspected.",
+            ),
+            ScanErrorCode::CallbackStopped => (
+                "traversal-stopped",
+                "Skill traversal stopped before completion.",
+            ),
+        };
+        let source_path = error
+            .source_path
+            .as_deref()
+            .map(|path| skill_path.join(path).to_string_lossy().into_owned())
+            .unwrap_or_else(|| skill_path.to_string_lossy().into_owned());
+        findings.push(Diagnostic {
+            rule_id: rule_id.into(),
+            target: None,
+            severity: Severity::Error,
+            fingerprint: fingerprint(rule_id, &source_path, &None),
+            source_path,
+            span: None,
+            message: message.into(),
+            evidence: None,
+        });
     }
 
-    // Check directory-level rules
-    for rule in &rules {
-        findings.extend(rule.check_directory(skill_path));
-    }
+    findings.extend(
+        BundleIntegrityRule {
+            _root: skill_path.to_path_buf(),
+        }
+        .check_scanned_manifests(&scanned_manifests),
+    );
 
     Ok(DiagnosticReport::new(findings))
 }
@@ -153,6 +170,7 @@ impl ValidationRule for ManifestFrontmatterRule {
         if !content_str.starts_with("---") {
             findings.push(Diagnostic {
                 rule_id: self.rule_id().into(),
+                target: None,
                 severity: self.default_severity(),
                 source_path: path.to_string_lossy().into(),
                 span: Some(Span::line(1)),
@@ -192,6 +210,7 @@ impl ValidationRule for RequiredFieldsRule {
             if !frontmatter.contains("name:") {
                 findings.push(Diagnostic {
                     rule_id: self.rule_id().into(),
+                    target: None,
                     severity: self.default_severity(),
                     source_path: path.to_string_lossy().into(),
                     span: Some(Span::line(1)),
@@ -239,6 +258,7 @@ impl ValidationRule for RelativeReferencesRule {
                     if !full_path.exists() {
                         findings.push(Diagnostic {
                             rule_id: self.rule_id().into(),
+                            target: None,
                             severity: self.default_severity(),
                             source_path: path.to_string_lossy().into(),
                             span: None,
@@ -285,6 +305,7 @@ impl ValidationRule for PathEscapeRule {
         if content_str.contains("../") || content_str.contains("..\\") {
             findings.push(Diagnostic {
                 rule_id: self.rule_id().into(),
+                target: None,
                 severity: self.default_severity(),
                 source_path: path.to_string_lossy().into(),
                 span: None,
@@ -311,40 +332,47 @@ impl ValidationRule for BundleIntegrityRule {
     fn default_severity(&self) -> Severity {
         Severity::Warning
     }
+    fn check_file(&self, _path: &Path, _content: &[u8]) -> Vec<Diagnostic> {
+        vec![]
+    }
+}
 
-    fn check_directory(&self, path: &Path) -> Vec<Diagnostic> {
+impl BundleIntegrityRule {
+    fn check_scanned_manifests(&self, manifests: &[(PathBuf, Vec<u8>)]) -> Vec<Diagnostic> {
         let mut findings = Vec::new();
 
-        // Check for SKILL.md existence
-        let skill_md = path.join("SKILL.md");
-        if !skill_md.exists() {
+        let root_manifest = self._root.join("SKILL.md");
+        let manifest_was_scanned = manifests.iter().any(|(path, _)| path == &root_manifest);
+        let manifest_is_missing = matches!(
+            std::fs::symlink_metadata(&root_manifest),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound
+        );
+        if !manifest_was_scanned && manifest_is_missing {
             findings.push(Diagnostic {
                 rule_id: self.rule_id().into(),
+                target: None,
                 severity: Severity::Error,
-                source_path: path.to_string_lossy().into(),
+                source_path: self._root.to_string_lossy().into(),
                 span: None,
                 message: "Skill directory is missing SKILL.md.".into(),
                 evidence: None,
-                fingerprint: fingerprint(self.rule_id(), &path.to_string_lossy(), &None),
+                fingerprint: fingerprint(self.rule_id(), &self._root.to_string_lossy(), &None),
             });
         }
 
-        // Check for duplicate skill IDs (if multiple SKILL.md files exist)
         let mut skill_names = Vec::new();
-        if let Ok(entries) = path.read_dir() {
-            for entry in entries.flatten() {
-                let sub_dir = entry.path();
-                if sub_dir.is_dir() {
-                    let sub_skill_md = sub_dir.join("SKILL.md");
-                    if sub_skill_md.exists()
-                        && let Ok(content) = std::fs::read_to_string(&sub_skill_md)
-                        && let Some(frontmatter) = extract_frontmatter(&content)
-                    {
-                        for (_, value) in parse_simple_yaml(&frontmatter) {
-                            if !value.is_empty() {
-                                skill_names.push(value.clone());
-                            }
-                        }
+        for (manifest_path, content) in manifests {
+            if manifest_path == &root_manifest
+                || manifest_path.parent().and_then(Path::parent) != Some(self._root.as_path())
+            {
+                continue;
+            }
+            if let Ok(content) = std::str::from_utf8(content)
+                && let Some(frontmatter) = extract_frontmatter(content)
+            {
+                for (_, value) in parse_simple_yaml(&frontmatter) {
+                    if !value.is_empty() {
+                        skill_names.push(value);
                     }
                 }
             }
@@ -356,21 +384,18 @@ impl ValidationRule for BundleIntegrityRule {
             if !seen.insert(name) {
                 findings.push(Diagnostic {
                     rule_id: "duplicate-id".into(),
+                    target: None,
                     severity: Severity::Error,
-                    source_path: path.to_string_lossy().into(),
+                    source_path: self._root.to_string_lossy().into(),
                     span: None,
                     message: format!("Duplicate skill ID detected: {}", name),
                     evidence: None,
-                    fingerprint: fingerprint("duplicate-id", &path.to_string_lossy(), &None),
+                    fingerprint: fingerprint("duplicate-id", &self._root.to_string_lossy(), &None),
                 });
             }
         }
 
         findings
-    }
-
-    fn check_file(&self, _path: &Path, _content: &[u8]) -> Vec<Diagnostic> {
-        vec![]
     }
 }
 
@@ -431,6 +456,28 @@ mod tests {
     }
 
     #[test]
+    fn oversized_root_manifest_is_not_reported_as_missing() {
+        let temp_dir = TempDir::new().unwrap();
+        let manifest = temp_dir.path().join("SKILL.md");
+        fs::write(&manifest, vec![b' '; 5 * 1024 * 1024 + 1]).unwrap();
+
+        let report = validate_skill(temp_dir.path()).unwrap();
+
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|finding| finding.rule_id == "traversal-size")
+        );
+        assert!(
+            !report
+                .findings
+                .iter()
+                .any(|finding| finding.rule_id == "bundle-integrity")
+        );
+    }
+
+    #[test]
     fn test_missing_frontmatter() {
         let temp_dir = TempDir::new().unwrap();
         create_test_skill(
@@ -485,6 +532,51 @@ mod tests {
             .filter(|f| f.rule_id == "path-escape")
             .collect::<Vec<_>>();
         assert!(!escape_errors.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn bundle_integrity_does_not_read_skills_through_symlinks() {
+        use std::os::unix::fs::symlink;
+
+        let project = TempDir::new().unwrap();
+        let root = project.path().join("root-skill");
+        let first = root.join("child-a");
+        let outside = project.path().join("outside");
+        let second = outside.join("child-b");
+        fs::create_dir_all(&first).unwrap();
+        fs::create_dir_all(&second).unwrap();
+        fs::write(
+            root.join("SKILL.md"),
+            "---\nname: root\ndescription: Root skill\n---\n",
+        )
+        .unwrap();
+        fs::write(
+            first.join("SKILL.md"),
+            "---\nname: duplicate\ndescription: First child\n---\n",
+        )
+        .unwrap();
+        fs::write(
+            second.join("SKILL.md"),
+            "---\nname: duplicate\ndescription: External child\n---\n",
+        )
+        .unwrap();
+        symlink(&second, root.join("child-b")).unwrap();
+
+        let report = validate_skill(&root).unwrap();
+
+        assert!(
+            !report
+                .findings
+                .iter()
+                .any(|finding| finding.rule_id == "duplicate-id")
+        );
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|finding| finding.rule_id == "traversal-symlink")
+        );
     }
 
     #[test]

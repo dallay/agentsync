@@ -178,6 +178,7 @@ pub fn evaluate_policy(policy: &PolicyPack, config: &Config, project_root: &Path
             if !policy.allowed_agents.contains(agent_name) {
                 diagnostics.push(Diagnostic {
                     rule_id: "allowed-agents".to_string(),
+                    target: None,
                     severity: Severity::Error,
                     source_path: ".agents/agentsync.toml".to_string(),
                     span: None,
@@ -194,6 +195,7 @@ pub fn evaluate_policy(policy: &PolicyPack, config: &Config, project_root: &Path
         if policy.denied_agents.contains(agent_name) {
             diagnostics.push(Diagnostic {
                 rule_id: "denied-agents".to_string(),
+                target: None,
                 severity: Severity::Error,
                 source_path: ".agents/agentsync.toml".to_string(),
                 span: None,
@@ -210,6 +212,7 @@ pub fn evaluate_policy(policy: &PolicyPack, config: &Config, project_root: &Path
             if !policy.allowed_mcp_servers.contains(server_name) {
                 diagnostics.push(Diagnostic {
                     rule_id: "allowed-mcp-servers".to_string(),
+                    target: None,
                     severity: Severity::Warning,
                     source_path: ".agents/agentsync.toml".to_string(),
                     span: None,
@@ -226,6 +229,7 @@ pub fn evaluate_policy(policy: &PolicyPack, config: &Config, project_root: &Path
         if policy.denied_mcp_servers.contains(server_name) {
             diagnostics.push(Diagnostic {
                 rule_id: "denied-mcp-servers".to_string(),
+                target: None,
                 severity: Severity::Error,
                 source_path: ".agents/agentsync.toml".to_string(),
                 span: None,
@@ -242,6 +246,7 @@ pub fn evaluate_policy(policy: &PolicyPack, config: &Config, project_root: &Path
     {
         diagnostics.push(Diagnostic {
             rule_id: "max-agents".to_string(),
+            target: None,
             severity: Severity::Warning,
             source_path: ".agents/agentsync.toml".to_string(),
             span: None,
@@ -261,6 +266,7 @@ pub fn evaluate_policy(policy: &PolicyPack, config: &Config, project_root: &Path
     {
         diagnostics.push(Diagnostic {
             rule_id: "max-mcp-servers".to_string(),
+            target: None,
             severity: Severity::Warning,
             source_path: ".agents/agentsync.toml".to_string(),
             span: None,
@@ -280,6 +286,7 @@ pub fn evaluate_policy(policy: &PolicyPack, config: &Config, project_root: &Path
             if agent.description.is_empty() {
                 diagnostics.push(Diagnostic {
                     rule_id: "require-agent-descriptions".to_string(),
+                    target: None,
                     severity: Severity::Info,
                     source_path: ".agents/agentsync.toml".to_string(),
                     span: None,
@@ -297,6 +304,7 @@ pub fn evaluate_policy(policy: &PolicyPack, config: &Config, project_root: &Path
             if agent.targets.is_empty() {
                 diagnostics.push(Diagnostic {
                     rule_id: "require-agent-targets".to_string(),
+                    target: None,
                     severity: Severity::Warning,
                     source_path: ".agents/agentsync.toml".to_string(),
                     span: None,
@@ -322,6 +330,7 @@ pub fn evaluate_policy(policy: &PolicyPack, config: &Config, project_root: &Path
                     {
                         diagnostics.push(Diagnostic {
                             rule_id: "allowed-skills".to_string(),
+                            target: None,
                             severity: Severity::Warning,
                             source_path: format!(
                                 ".agents/skills/{}",
@@ -338,6 +347,7 @@ pub fn evaluate_policy(policy: &PolicyPack, config: &Config, project_root: &Path
                     if policy.denied_skills.contains(&name.to_string()) {
                         diagnostics.push(Diagnostic {
                             rule_id: "denied-skills".to_string(),
+                            target: None,
                             severity: Severity::Error,
                             source_path: format!(
                                 ".agents/skills/{}",
@@ -381,6 +391,7 @@ pub fn evaluate_all_policies(project_root: &Path, config: &Config) -> Result<Vec
             Err(e) => {
                 let diagnostics = vec![Diagnostic {
                     rule_id: "policy-parse".to_string(),
+                    target: None,
                     severity: Severity::Error,
                     source_path: format!(".agents/policies/{}.toml", name),
                     span: None,
@@ -634,6 +645,7 @@ require_agent_descriptions = true
         let diags = vec![
             Diagnostic {
                 rule_id: "test".to_string(),
+                target: None,
                 severity: Severity::Error,
                 source_path: "test.toml".to_string(),
                 span: None,
@@ -643,6 +655,7 @@ require_agent_descriptions = true
             },
             Diagnostic {
                 rule_id: "test2".to_string(),
+                target: None,
                 severity: Severity::Warning,
                 source_path: "test.toml".to_string(),
                 span: None,

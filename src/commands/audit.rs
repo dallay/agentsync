@@ -5,12 +5,17 @@
 //! unexpected privilege escalation.
 
 use anyhow::{Context, Result};
-use clap::{Parser, ValueEnum};
+use clap::{ArgGroup, Parser, ValueEnum};
 use colored::Colorize;
+use std::fmt;
+use std::fs;
+use std::io::{self, Write};
 use std::path::PathBuf;
 
-use agentsync::audit::{AuditReport, audit_directory};
-use agentsync::diagnostics::Severity;
+use agentsync::audit::{audit_all, audit_directory_for_target, audit_plugin_selection};
+use agentsync::diagnostics::{
+    DiagnosticReport, ScanCoverage, ScanError, ScanErrorCode, ScanStatus, Severity,
+};
 
 /// Output format for audit results.
 #[derive(Debug, Clone, Copy, Default, ValueEnum)]
@@ -35,13 +40,14 @@ pub enum FailThreshold {
 
 /// Arguments for the audit command.
 #[derive(Parser, Debug)]
+#[command(group(ArgGroup::new("target").args(["all", "skill", "plugin"]).multiple(false)))]
 pub struct AuditArgs {
     /// Audit all skills in the project.
-    #[arg(long)]
+    #[arg(long, conflicts_with_all = ["skill", "plugin"])]
     all: bool,
 
     /// Audit a specific skill by ID.
-    #[arg(long)]
+    #[arg(long, conflicts_with = "plugin")]
     skill: Option<String>,
 
     /// Audit a specific plugin by ID.
@@ -55,14 +61,69 @@ pub struct AuditArgs {
     /// Fail with non-zero exit code if findings reach this severity.
     #[arg(long)]
     fail_on: Option<FailThreshold>,
-
-    /// Project root (defaults to CWD).
-    #[arg(short, long)]
-    project_root: Option<PathBuf>,
 }
+
+/// An audit result that must be reflected in the process exit status.
+#[derive(Debug)]
+pub struct AuditExitError {
+    code: i32,
+    message: &'static str,
+}
+
+impl AuditExitError {
+    pub fn incomplete() -> Self {
+        Self {
+            code: 2,
+            message: "audit scan incomplete",
+        }
+    }
+
+    pub fn threshold_reached() -> Self {
+        Self {
+            code: 1,
+            message: "audit findings met the configured threshold",
+        }
+    }
+
+    pub fn operational() -> Self {
+        Self {
+            code: 2,
+            message: "audit operation failed",
+        }
+    }
+
+    pub fn project_root_unavailable() -> Self {
+        Self {
+            code: 2,
+            message: "failed to determine current project directory; supply --project-root to specify it",
+        }
+    }
+
+    pub fn exit_code(&self) -> i32 {
+        self.code
+    }
+}
+
+impl fmt::Display for AuditExitError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.message)
+    }
+}
+
+impl std::error::Error for AuditExitError {}
 
 /// Run the audit command.
 pub fn run_audit(args: AuditArgs, project_root: PathBuf) -> Result<()> {
+    let stdout = io::stdout();
+    let mut writer = stdout.lock();
+    run_audit_with_writer(args, project_root, &mut writer)
+}
+
+fn run_audit_with_writer(
+    args: AuditArgs,
+    project_root: PathBuf,
+    writer: &mut impl Write,
+) -> Result<()> {
     // Determine what to audit
     let audit_target = if args.all {
         AuditTarget::All
@@ -75,46 +136,33 @@ pub fn run_audit(args: AuditArgs, project_root: PathBuf) -> Result<()> {
         AuditTarget::All
     };
 
-    // Determine the directory to audit
-    let audit_dir = match &audit_target {
-        AuditTarget::All => project_root.join(".agents"),
-        AuditTarget::Skill(skill_id) => project_root.join(".agents").join("skills").join(skill_id),
-        AuditTarget::Plugin(plugin_id) => {
-            project_root.join(".agents").join("plugins").join(plugin_id)
+    let report = match &audit_target {
+        AuditTarget::All => audit_all(&project_root),
+        AuditTarget::Skill(skill_id) if !valid_selector(skill_id) => {
+            incomplete_report(ScanErrorCode::InvalidTarget, None)
         }
+        AuditTarget::Skill(skill_id) => audit_skill(&project_root, skill_id),
+        AuditTarget::Plugin(plugin_id) if !valid_plugin_selector(plugin_id) => {
+            incomplete_report(ScanErrorCode::InvalidTarget, None)
+        }
+        AuditTarget::Plugin(plugin_id) => audit_plugin_selection(&project_root, plugin_id),
     };
 
-    if !audit_dir.exists() {
-        eprintln!(
-            "{} Audit target does not exist: {}",
-            "warning:".yellow().bold(),
-            audit_dir.display()
-        );
+    print_report(&report, args.format, writer)
+        .and_then(|()| writer.flush().map_err(anyhow::Error::from))
+        .map_err(|_| AuditExitError::operational())?;
 
-        // Return empty report
-        let report = AuditReport::from_diagnostics(vec![]);
-        return print_report(&report, args.format, args.fail_on);
+    if report.status == Some(ScanStatus::Incomplete) {
+        return Err(AuditExitError::incomplete().into());
     }
 
-    // Run audit
-    let report = audit_directory(&audit_dir);
-
-    // Print results
-    print_report(&report, args.format, args.fail_on)?;
-
-    // Check fail threshold
-    if let Some(threshold) = args.fail_on {
-        let should_fail = match threshold {
-            FailThreshold::Warning => {
-                *report.counts.get(&Severity::Warning).unwrap_or(&0) > 0
-                    || *report.counts.get(&Severity::Error).unwrap_or(&0) > 0
-            }
-            FailThreshold::Error => *report.counts.get(&Severity::Error).unwrap_or(&0) > 0,
-        };
-
-        if should_fail {
-            std::process::exit(1);
-        }
+    let threshold_reached = match args.fail_on {
+        Some(FailThreshold::Warning) => report.summary.warning > 0 || report.summary.error > 0,
+        Some(FailThreshold::Error) => report.summary.error > 0,
+        None => false,
+    };
+    if threshold_reached {
+        return Err(AuditExitError::threshold_reached().into());
     }
 
     Ok(())
@@ -128,97 +176,117 @@ enum AuditTarget {
 
 /// Print the audit report in the specified format.
 fn print_report(
-    report: &AuditReport,
+    report: &DiagnosticReport,
     format: AuditFormat,
-    _fail_on: Option<FailThreshold>,
+    writer: &mut impl Write,
 ) -> Result<()> {
     match format {
-        AuditFormat::Human => print_human_report(report),
-        AuditFormat::Json => print_json_report(report),
+        AuditFormat::Human => print_human_report(report, writer),
+        AuditFormat::Json => print_json_report(report, writer),
     }
 }
 
 /// Print a human-readable report.
-fn print_human_report(report: &AuditReport) -> Result<()> {
-    if report.diagnostics.is_empty() {
-        println!("{} No security issues found.", "✓".green().bold());
-        return Ok(());
+fn print_human_report(report: &DiagnosticReport, writer: &mut impl Write) -> Result<()> {
+    writeln!(writer, "\n{}", "=== Security Audit Report ===".bold())?;
+    if let Some(status) = report.status {
+        writeln!(writer, "Scan status: {status:?}")?;
+    }
+    writeln!(writer, "Total findings: {}", report.findings.len())?;
+    if let Some(coverage) = &report.coverage {
+        writeln!(
+            writer,
+            "Coverage: {}/{} targets scanned; files discovered: {}, files scanned: {}, files skipped: {}, bytes scanned: {}",
+            coverage.targets_scanned,
+            coverage.targets_discovered,
+            coverage.files_discovered,
+            coverage.files_scanned,
+            coverage.files_skipped,
+            coverage.bytes_scanned
+        )?;
     }
 
-    // Print summary
-    println!("\n{}", "=== Security Audit Report ===".bold());
-    println!("Total findings: {}", report.total);
-
-    let error_count = report.counts.get(&Severity::Error).unwrap_or(&0);
-    let warning_count = report.counts.get(&Severity::Warning).unwrap_or(&0);
-    let info_count = report.counts.get(&Severity::Info).unwrap_or(&0);
-
-    if *error_count > 0 {
-        println!("  {} errors", format!("{}", error_count).red().bold());
+    if report.summary.error > 0 {
+        writeln!(
+            writer,
+            "  {} errors",
+            report.summary.error.to_string().red().bold()
+        )?;
     }
-    if *warning_count > 0 {
-        println!(
+    if report.summary.warning > 0 {
+        writeln!(
+            writer,
             "  {} warnings",
-            format!("{}", warning_count).yellow().bold()
-        );
+            report.summary.warning.to_string().yellow().bold()
+        )?;
     }
-    if *info_count > 0 {
-        println!("  {} info", format!("{}", info_count).blue());
+    if report.summary.info > 0 {
+        writeln!(writer, "  {} info", report.summary.info.to_string().blue())?;
     }
 
-    // Print diagnostics grouped by severity
-    println!();
-
-    // Errors first
-    let errors: Vec<_> = report
-        .diagnostics
-        .iter()
-        .filter(|d| d.severity == Severity::Error)
-        .collect();
-
-    if !errors.is_empty() {
-        println!("{}", "--- Errors ---".red().bold());
-        for diag in &errors {
-            print_diagnostic(diag);
+    match (report.status, report.findings.is_empty()) {
+        (Some(ScanStatus::Complete), true) | (None, true) => {
+            writeln!(
+                writer,
+                "{} No findings detected by the enabled audit rules.\nThis does not guarantee that the audited content is safe.",
+                "✓".green().bold()
+            )?;
         }
-        println!();
+        (Some(ScanStatus::Incomplete), true) => {
+            writeln!(writer, "Scan incomplete; no findings were confirmed.")?;
+        }
+        _ => {}
     }
 
-    // Warnings
-    let warnings: Vec<_> = report
-        .diagnostics
-        .iter()
-        .filter(|d| d.severity == Severity::Warning)
-        .collect();
-
-    if !warnings.is_empty() {
-        println!("{}", "--- Warnings ---".yellow().bold());
-        for diag in &warnings {
-            print_diagnostic(diag);
+    writeln!(writer)?;
+    for (severity, heading) in [
+        (Severity::Error, "--- Errors ---".red().bold()),
+        (Severity::Warning, "--- Warnings ---".yellow().bold()),
+        (Severity::Info, "--- Info ---".blue().bold()),
+    ] {
+        let findings = report
+            .findings
+            .iter()
+            .filter(|finding| finding.severity == severity)
+            .collect::<Vec<_>>();
+        if !findings.is_empty() {
+            writeln!(writer, "{heading}")?;
+            for finding in findings {
+                print_diagnostic(finding, writer)?;
+            }
+            writeln!(writer)?;
         }
-        println!();
     }
 
-    // Info
-    let infos: Vec<_> = report
-        .diagnostics
-        .iter()
-        .filter(|d| d.severity == Severity::Info)
-        .collect();
-
-    if !infos.is_empty() {
-        println!("{}", "--- Info ---".blue().bold());
-        for diag in &infos {
-            print_diagnostic(diag);
+    if let Some(scan_errors) = report
+        .scan_errors
+        .as_ref()
+        .filter(|errors| !errors.is_empty())
+    {
+        writeln!(writer, "{}", "--- Scan errors ---".red().bold())?;
+        for error in scan_errors {
+            let target = error
+                .target
+                .as_deref()
+                .map(|target| format!(" [{}]", escape_terminal_controls(target)))
+                .unwrap_or_default();
+            let location = error
+                .source_path
+                .as_deref()
+                .map(|path| format!(" ({})", escape_terminal_controls(path)))
+                .unwrap_or_default();
+            writeln!(writer, "  {}{target}{location}", error.code.message())?;
         }
-        println!();
     }
 
     Ok(())
 }
 
 /// Print a single diagnostic.
-fn print_diagnostic(diag: &agentsync::diagnostics::Diagnostic) {
+fn print_diagnostic(
+    diag: &agentsync::diagnostics::Diagnostic,
+    writer: &mut impl Write,
+) -> Result<()> {
     let severity_icon = match diag.severity {
         Severity::Error => "✗".red(),
         Severity::Warning => "⚠".yellow(),
@@ -226,28 +294,220 @@ fn print_diagnostic(diag: &agentsync::diagnostics::Diagnostic) {
     };
 
     let location = if let Some(span) = &diag.span {
-        format!("{}:{}", diag.source_path, span.line)
+        format!(
+            "{}:{}",
+            escape_terminal_controls(&diag.source_path),
+            span.line
+        )
     } else {
-        diag.source_path.clone()
+        escape_terminal_controls(&diag.source_path)
     };
+    let target = diag
+        .target
+        .as_deref()
+        .map(|target| format!(" [{}]", escape_terminal_controls(target)))
+        .unwrap_or_default();
 
-    println!(
-        "  {} [{}] {}",
+    writeln!(
+        writer,
+        "  {} [{}]{} {}",
         severity_icon,
         diag.rule_id.bold(),
+        target,
         diag.message
-    );
-    println!("     {}", location.dimmed());
+    )?;
+    writeln!(writer, "     {}", location.dimmed())?;
 
     if let Some(evidence) = &diag.evidence {
-        println!("     {}", evidence.dimmed());
+        writeln!(writer, "     {}", evidence.dimmed())?;
     }
+    Ok(())
 }
 
 /// Print a JSON report.
-fn print_json_report(report: &AuditReport) -> Result<()> {
+fn print_json_report(report: &DiagnosticReport, writer: &mut impl Write) -> Result<()> {
     let json =
         serde_json::to_string_pretty(report).context("Failed to serialize audit report to JSON")?;
-    println!("{}", json);
+    writeln!(writer, "{}", json)?;
     Ok(())
+}
+
+fn escape_terminal_controls(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_control() {
+                character.escape_default().to_string()
+            } else {
+                character.to_string()
+            }
+        })
+        .collect()
+}
+
+fn audit_skill(project_root: &std::path::Path, skill_id: &str) -> DiagnosticReport {
+    let agents_root = project_root.join(".agents");
+    let skills_root = agents_root.join("skills");
+    let skill_root = skills_root.join(skill_id);
+    let target = format!("skill/{skill_id}");
+
+    for (path, relative_path) in [
+        (agents_root.as_path(), ".agents"),
+        (skills_root.as_path(), ".agents/skills"),
+        (skill_root.as_path(), ".agents/skills/<target>"),
+    ] {
+        match fs::symlink_metadata(path) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return incomplete_target_report(
+                    ScanErrorCode::SymlinkSkipped,
+                    Some(relative_path),
+                    &target,
+                );
+            }
+            Ok(metadata) if !metadata.is_dir() => {
+                return incomplete_target_report(
+                    ScanErrorCode::TargetNotFound,
+                    Some(relative_path),
+                    &target,
+                );
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return incomplete_target_report(
+                    ScanErrorCode::TargetNotFound,
+                    Some(relative_path),
+                    &target,
+                );
+            }
+            Err(_) => {
+                return incomplete_target_report(
+                    ScanErrorCode::RootReadFailed,
+                    Some(relative_path),
+                    &target,
+                );
+            }
+        }
+    }
+
+    audit_directory_for_target(&skill_root, &target)
+}
+
+fn valid_selector(value: &str) -> bool {
+    !value.is_empty()
+        && value != "."
+        && value != ".."
+        && value.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
+        })
+}
+
+fn valid_plugin_selector(value: &str) -> bool {
+    let mut parts = value.split('/');
+    let first = parts.next().unwrap_or_default();
+    let Some(second) = parts.next() else {
+        return false;
+    };
+    valid_selector(first) && valid_selector(second) && parts.next().is_none()
+}
+
+fn incomplete_report(code: ScanErrorCode, target: Option<&str>) -> DiagnosticReport {
+    let error = ScanError::new(code, None);
+    let error = target.map_or(error.clone(), |target| error.with_target(target));
+    DiagnosticReport::with_scan(
+        Vec::new(),
+        ScanStatus::Incomplete,
+        ScanCoverage::default(),
+        vec![error],
+    )
+}
+
+fn incomplete_target_report(
+    code: ScanErrorCode,
+    source_path: Option<&str>,
+    target: &str,
+) -> DiagnosticReport {
+    let error = ScanError::new(code, source_path.map(str::to_string)).with_target(target);
+    DiagnosticReport::with_scan(
+        Vec::new(),
+        ScanStatus::Incomplete,
+        ScanCoverage {
+            targets_discovered: 0,
+            ..ScanCoverage::default()
+        },
+        vec![error],
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct FailingWriter {
+        fail_write: bool,
+        fail_flush: bool,
+    }
+
+    impl Write for FailingWriter {
+        fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+            if self.fail_write {
+                Err(io::Error::other("synthetic stdout failure"))
+            } else {
+                Ok(buffer.len())
+            }
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            if self.fail_flush {
+                Err(io::Error::other("synthetic flush failure"))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[test]
+    fn output_write_and_flush_failures_return_exit_code_two() {
+        let project = tempfile::TempDir::new().unwrap();
+        for (fail_write, fail_flush) in [(true, false), (false, true)] {
+            let args = AuditArgs {
+                all: false,
+                skill: None,
+                plugin: None,
+                format: AuditFormat::Json,
+                fail_on: None,
+            };
+            let mut writer = FailingWriter {
+                fail_write,
+                fail_flush,
+            };
+
+            let error =
+                run_audit_with_writer(args, project.path().to_path_buf(), &mut writer).unwrap_err();
+
+            assert_eq!(
+                error.downcast_ref::<AuditExitError>().unwrap().exit_code(),
+                2
+            );
+        }
+    }
+
+    #[test]
+    fn human_scan_error_locations_escape_terminal_controls() {
+        let report = DiagnosticReport::with_scan(
+            Vec::new(),
+            ScanStatus::Incomplete,
+            ScanCoverage::default(),
+            vec![ScanError::new(
+                ScanErrorCode::FileReadFailed,
+                Some("unsafe\u{1b}[31m.sh".to_string()),
+            )],
+        );
+        let mut output = Vec::new();
+
+        print_human_report(&report, &mut output).unwrap();
+
+        let output = String::from_utf8(output).unwrap();
+        assert!(output.contains("unsafe\\u{1b}[31m.sh"));
+        assert!(!output.contains('\u{1b}'));
+    }
 }

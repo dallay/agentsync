@@ -95,7 +95,13 @@ fn run_remove(manager: &PluginManager, args: &PluginSelectionArgs) -> Result<()>
 fn run_list(manager: &PluginManager, json: bool) -> Result<()> {
     let lock = match manager.load_lock() {
         Ok(lock) => lock,
-        Err(error) if error.to_string().contains("failed to read plugin lockfile") => {
+        Err(error)
+            if error.chain().any(|cause| {
+                cause
+                    .downcast_ref::<std::io::Error>()
+                    .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+            }) =>
+        {
             PluginLock::default()
         }
         Err(error) => return Err(error),

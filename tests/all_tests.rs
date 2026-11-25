@@ -1,3 +1,5 @@
+#[path = "contracts/test_audit_output.rs"]
+mod audit_output_contract;
 #[path = "contracts/test_inspect_output.rs"]
 mod inspect_output_contract;
 mod integration;

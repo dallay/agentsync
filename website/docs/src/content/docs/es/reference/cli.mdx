@@ -402,6 +402,61 @@ agentsync plugin remove <MARKETPLACE/PLUGIN> [--json]
 
 Las declaraciones MCP de plugins se generan durante el flujo normal de `agentsync apply`. Se identifican con el espacio de nombres `plugin/<marketplace>/<plugin>/<server>` y AgentSync nunca inicia esos servidores.
 
+### `audit`
+
+Ejecuta una auditoría estática local y de solo lectura de las skills de AgentSync, los servidores
+MCP configurados y las instantáneas de plugins confiables. El comando no descarga ni restaura
+plugins, no ejecuta contenido, no inicia servidores MCP y no modifica archivos del proyecto.
+
+```bash
+agentsync audit [OPTIONS]
+```
+
+**Opciones**:
+
+- `--all`: analiza las skills detectadas y las instantáneas de plugins seleccionadas y verificadas
+  por el archivo lock. Es el comportamiento predeterminado si no se indica un selector.
+- `--skill <ID>`: analiza una skill de `.agents/skills/`.
+- `--plugin <MARKETPLACE/PLUGIN>`: analiza un plugin seleccionado mediante su identidad namespaced.
+  Deben verificarse la instantánea local, la entrada del archivo lock y la procedencia; si el estado
+  de confianza no está disponible o no es válido, el análisis queda incompleto.
+- `--format human|json`: elige la salida legible por personas (predeterminada) o un único informe
+  JSON en stdout.
+- `--fail-on warning|error`: devuelve el código `1` cuando los hallazgos alcanzan la severidad
+  indicada.
+- `-p, --project-root <PROJECT_ROOT>`: raíz del proyecto; de forma predeterminada usa el directorio
+  de trabajo actual.
+
+Solo se permite uno de estos selectores: `--all`, `--skill` o `--plugin`. Los informes JSON usan la
+versión de esquema `2` e incluyen `status`, `coverage`, `summary`, `findings` y `scan_errors`. El
+contenido no compatible, los symlinks no confiables, los destinos ausentes y los errores de
+recorrido marcan el análisis como `incomplete`; no se presentan como un resultado limpio.
+
+#### Contenido compatible y límites del recorrido
+
+La auditoría analiza `SKILL.md` y archivos compatibles de Markdown, texto, scripts, JSON, YAML y
+TOML. Cada destino tiene un límite de 10 niveles de directorios, 10.000 entradas, 1.000 archivos,
+10 MiB por archivo y 10 MiB de contenido total. El inventario de skills de `--all` también se limita
+a 10.000 entradas. La cobertura informa cuántos archivos se detectaron, analizaron y omitieron,
+además del total de bytes leídos.
+Antes de ejecutar las reglas, la verificación de confianza de plugins se limita a 1.000 plugins
+seleccionados y cada árbol de origen a 64 niveles de directorios, 10.000 entradas, 10.000 archivos y
+500 MiB. La cobertura informa los bytes leídos por el recorrido de auditoría.
+
+Códigos de salida:
+
+- `0`: el análisis terminó sin alcanzar el umbral de severidad configurado. No encontrar hallazgos
+  no garantiza que el contenido analizado sea seguro.
+- `1`: un hallazgo alcanzó el umbral de `--fail-on`.
+- `2`: el análisis quedó incompleto o ocurrió un error operativo. Este código tiene prioridad sobre
+  el umbral de severidad.
+
+```bash
+agentsync audit --all --format json
+agentsync audit --skill my-skill --fail-on warning
+agentsync audit --plugin internal/example --format json
+```
+
 ### `doctor`
 
 Ejecuta diagnósticos y comprobaciones de salud del entorno de sincronización.
