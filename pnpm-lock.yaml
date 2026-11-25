@@ -25,23 +25,23 @@ importers:
         version: 7.0.2
     optionalDependencies:
       '@dallay/agentsync-darwin-arm64':
-        specifier: 1.53.1
-        version: 1.53.1
+        specifier: 1.53.2
+        version: 1.53.2
       '@dallay/agentsync-darwin-x64':
-        specifier: 1.53.1
-        version: 1.53.1
+        specifier: 1.53.2
+        version: 1.53.2
       '@dallay/agentsync-linux-arm64':
-        specifier: 1.53.1
-        version: 1.53.1
+        specifier: 1.53.2
+        version: 1.53.2
       '@dallay/agentsync-linux-x64':
-        specifier: 1.53.1
-        version: 1.53.1
+        specifier: 1.53.2
+        version: 1.53.2
       '@dallay/agentsync-windows-arm64':
-        specifier: 1.53.1
-        version: 1.53.1
+        specifier: 1.53.2
+        version: 1.53.2
       '@dallay/agentsync-windows-x64':
-        specifier: 1.53.1
-        version: 1.53.1
+        specifier: 1.53.2
+        version: 1.53.2
 
   website/docs:
     dependencies:
@@ -65,7 +65,7 @@ importers:
         version: 0.35.5(@types/node@26.6.6)
       starlight-theme-black:
         specifier: ^0.7.0
-        version: 0.7.1(@astrojs/starlight@0.42.11(astro@7.4.11(@types/node@26.6.6)(yaml@2.9.1))(typescript@7.0.2))
+        version: 0.7.2(@astrojs/starlight@0.42.11(astro@7.4.11(@types/node@26.6.6)(yaml@2.9.1))(typescript@7.0.2))
       unplugin-icons:
         specifier: ^24.0.0
         version: 24.0.0(rolldown@1.2.19)(vite@8.3.8(@types/node@26.6.6)(yaml@2.9.1))
@@ -404,43 +404,43 @@ packages:
     resolution: {integrity: sha512-6V0+8vw/GmH92URQ/Ki12FPhoB3nqaQUJE+5xgbFbB5ok0OXYK5jCQsQQoyR3BzCddHsCpyCFRnIcI1PSOVYkQ==}
     engines: {node: '>=14'}
 
-  '@dallay/agentsync-darwin-arm64@1.53.1':
-    resolution: {integrity: sha512-g9mOpet54smUT61l2VHugzR6h4qQ0wfMqhObyYkU5ck42KBYJ0+V7QPm3URKJ5d0cqXtebSS2ZV288Maneakwg==}
+  '@dallay/agentsync-darwin-arm64@1.53.2':
+    resolution: {integrity: sha512-tCJFisbnIX3154PM2h31Jy/DP+7EgOwLtgxtzOpHayvrVHJ9DGuBkBjWvybEElIm9nDth03gOVU9j2Trp+uq2A==}
     engines: {node: '>=18'}
     cpu: [arm64]
     os: [darwin]
     hasBin: true
 
-  '@dallay/agentsync-darwin-x64@1.53.1':
-    resolution: {integrity: sha512-43tSM9Xonu5n7M8mJ2GHUAHPxS+9nHBbTmL0Vw8d5g2aD2q/k+RxcyZUOKJ+id8hO9eeUV4nF0gIjEdaILrbvg==}
+  '@dallay/agentsync-darwin-x64@1.53.2':
+    resolution: {integrity: sha512-K51IWn0lamIlpU445PSOQeZglpkxx7zGFoRPHPmiTosR3F1l7yHVT+vz+eBMsglZF6lOpB0wqPpkfKxhFgnJfA==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [darwin]
     hasBin: true
 
-  '@dallay/agentsync-linux-arm64@1.53.1':
-    resolution: {integrity: sha512-wbvlKirZxCwIEwV15KipFHQie0B4iUGmnnV82kWgMQsf+Xa8lhvEPHVJgjGzMgWLs5/9jjkQOCDTozfzIBh6Hw==}
+  '@dallay/agentsync-linux-arm64@1.53.2':
+    resolution: {integrity: sha512-/lbagOyb9mQU3BSBmz1xAasoxcrFFE+Uh/xHmcGhOa+0LlwK8HKOneiRmMsq9g1c3clq/qqArYUdRwCgCGyUcQ==}
     engines: {node: '>=18'}
     cpu: [arm64]
     os: [linux]
     hasBin: true
 
-  '@dallay/agentsync-linux-x64@1.53.1':
-    resolution: {integrity: sha512-c49sGOsasZ22MkRttGuJXKu371VbEW4ptV0ifaoMpJnovMQfMwT/rpVAhDsnCgOsvUSBk6jb3wHejjlGGF6ayg==}
+  '@dallay/agentsync-linux-x64@1.53.2':
+    resolution: {integrity: sha512-VXFlrzt6kCKNfJWnxo5bYHTUJjC8/qTdodRBJOb7ldAiYUAkq6Am5szZ79cF7073/ai0WeDuxRYpcbmKH08Q8A==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [linux]
     hasBin: true
 
-  '@dallay/agentsync-windows-arm64@1.53.1':
-    resolution: {integrity: sha512-Pvv+pmnvf0S7thOWqkqlppbKWRIcKam+IfdpEIieiyoKlIugRspioJas/CiFUuQQIkiDoXwyf0YqCB2U4za62A==}
+  '@dallay/agentsync-windows-arm64@1.53.2':
+    resolution: {integrity: sha512-i07cuG24R7BJsb6c6KhDT7Rtc1ygsttx6AmhN6xwKjuKdd/OkfeNbxLxV6E+woP20gBT3IycEz9rBZttk0HqDw==}
     engines: {node: '>=18'}
     cpu: [arm64]
     os: [win32]
     hasBin: true
 
-  '@dallay/agentsync-windows-x64@1.53.1':
-    resolution: {integrity: sha512-2H1qr9Z81/U2dAMnQ7FZi+6gW9ejwpnfzcEtwWCNuIIkq0y2FaMrtE2WNJIV6U9r+mdIKeJ2w6G9qucj8iF36w==}
+  '@dallay/agentsync-windows-x64@1.53.2':
+    resolution: {integrity: sha512-NHHN4stn12p1TvGYB8FU1uSYpwYIbmgatfl8A73kMEfsuwvfhMmwosOEflhQdqCQmaclO/OF0m16tOQkw0c6JQ==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
@@ -1826,8 +1826,8 @@ packages:
   space-separated-tokens@2.0.2:
     resolution: {integrity: sha512-PEGlAwrG8yXGXRjW32fGbg66JAlOAwbObuqVoJpv/mRgoWDQfgH1wDPvtzWyUSNAXBGSk8h755YDbbcEy3SH2Q==}
 
-  starlight-theme-black@0.7.1:
-    resolution: {integrity: sha512-AWfrsHcPETyDsyMtBLSsUZ4HZMLcsUfF+JGNX4X/zIyOL9eU5cFi/nsJ/rf0CxjPMpe+ljZcrumdefEgQnhSoQ==}
+  starlight-theme-black@0.7.2:
+    resolution: {integrity: sha512-8Ehzrsacvr5Ykie5lC/UrnyXieSIi/4chnAAVwJFunxm4f9+ktjXfegMXRit4aB9+8kQRLc+1BtOrLp0RrCbyw==}
     engines: {node: '>=22.12.0'}
     peerDependencies:
       '@astrojs/starlight': '>=0.41'
@@ -2421,22 +2421,22 @@ snapshots:
 
   '@ctrl/tinycolor@4.3.0': {}
 
-  '@dallay/agentsync-darwin-arm64@1.53.1':
+  '@dallay/agentsync-darwin-arm64@1.53.2':
     optional: true
 
-  '@dallay/agentsync-darwin-x64@1.53.1':
+  '@dallay/agentsync-darwin-x64@1.53.2':
     optional: true
 
-  '@dallay/agentsync-linux-arm64@1.53.1':
+  '@dallay/agentsync-linux-arm64@1.53.2':
     optional: true
 
-  '@dallay/agentsync-linux-x64@1.53.1':
+  '@dallay/agentsync-linux-x64@1.53.2':
     optional: true
 
-  '@dallay/agentsync-windows-arm64@1.53.1':
+  '@dallay/agentsync-windows-arm64@1.53.2':
     optional: true
 
-  '@dallay/agentsync-windows-x64@1.53.1':
+  '@dallay/agentsync-windows-x64@1.53.2':
     optional: true
 
   '@emnapi/core@1.11.1':
@@ -3944,7 +3944,7 @@ snapshots:
 
   space-separated-tokens@2.0.2: {}
 
-  starlight-theme-black@0.7.1(@astrojs/starlight@0.42.11(astro@7.4.11(@types/node@26.6.6)(yaml@2.9.1))(typescript@7.0.2)):
+  starlight-theme-black@0.7.2(@astrojs/starlight@0.42.11(astro@7.4.11(@types/node@26.6.6)(yaml@2.9.1))(typescript@7.0.2)):
     dependencies:
       '@astrojs/starlight': 0.42.11(astro@7.4.11(@types/node@26.6.6)(yaml@2.9.1))(typescript@7.0.2)
 
