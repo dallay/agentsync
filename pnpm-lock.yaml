@@ -65,7 +65,7 @@ importers:
         version: 0.35.5(@types/node@26.6.6)
       starlight-theme-black:
         specifier: ^0.7.0
-        version: 0.7.1(@astrojs/starlight@0.42.11(astro@7.4.11(@types/node@26.6.6)(yaml@2.9.1))(typescript@7.0.2))
+        version: 0.7.2(@astrojs/starlight@0.42.11(astro@7.4.11(@types/node@26.6.6)(yaml@2.9.1))(typescript@7.0.2))
       unplugin-icons:
         specifier: ^24.0.0
         version: 24.0.0(rolldown@1.2.19)(vite@8.3.8(@types/node@26.6.6)(yaml@2.9.1))
@@ -1826,8 +1826,8 @@ packages:
   space-separated-tokens@2.0.2:
     resolution: {integrity: sha512-PEGlAwrG8yXGXRjW32fGbg66JAlOAwbObuqVoJpv/mRgoWDQfgH1wDPvtzWyUSNAXBGSk8h755YDbbcEy3SH2Q==}
 
-  starlight-theme-black@0.7.1:
-    resolution: {integrity: sha512-AWfrsHcPETyDsyMtBLSsUZ4HZMLcsUfF+JGNX4X/zIyOL9eU5cFi/nsJ/rf0CxjPMpe+ljZcrumdefEgQnhSoQ==}
+  starlight-theme-black@0.7.2:
+    resolution: {integrity: sha512-8Ehzrsacvr5Ykie5lC/UrnyXieSIi/4chnAAVwJFunxm4f9+ktjXfegMXRit4aB9+8kQRLc+1BtOrLp0RrCbyw==}
     engines: {node: '>=22.12.0'}
     peerDependencies:
       '@astrojs/starlight': '>=0.41'
@@ -3944,7 +3944,7 @@ snapshots:
 
   space-separated-tokens@2.0.2: {}
 
-  starlight-theme-black@0.7.1(@astrojs/starlight@0.42.11(astro@7.4.11(@types/node@26.6.6)(yaml@2.9.1))(typescript@7.0.2)):
+  starlight-theme-black@0.7.2(@astrojs/starlight@0.42.11(astro@7.4.11(@types/node@26.6.6)(yaml@2.9.1))(typescript@7.0.2)):
     dependencies:
       '@astrojs/starlight': 0.42.11(astro@7.4.11(@types/node@26.6.6)(yaml@2.9.1))(typescript@7.0.2)
 
