@@ -21,6 +21,30 @@
 
 * `BoundedTraversal::traverse` returns success when its callback stops early; symlinks and unsupported entries remain traversal errors.
 
+## [1.54.0](https://github.com/dallay/agentsync/compare/v1.53.2...v1.54.0) (2026-11-28)
+
+
+### Features
+
+* **audit:** harden static security auditing ([#758](https://github.com/dallay/agentsync/issues/758)) ([d61d5c9](https://github.com/dallay/agentsync/commit/d61d5c90ea97822febfe03f41412ca60eb739da6))
+* implement AgentSync Next epic [#686](https://github.com/dallay/agentsync/issues/686) ([#755](https://github.com/dallay/agentsync/issues/755)) ([79c80db](https://github.com/dallay/agentsync/commit/79c80db464e90a07b8d399694b8e9e8a872b8fe8))
+
+
+### Bug Fixes
+
+* **renovate:** use supported npm manager for pnpm rules ([#757](https://github.com/dallay/agentsync/issues/757)) ([18b4d58](https://github.com/dallay/agentsync/commit/18b4d5890589889940467ae23195e0b5ff9ac15f))
+
+
+### Chores
+
+* **deps:** update actions/create-github-app-token digest to f418cff ([#759](https://github.com/dallay/agentsync/issues/759)) ([b8797bf](https://github.com/dallay/agentsync/commit/b8797bf4727561aa8cb9a8c964b719df4c92b352))
+* **deps:** update dependency @biomejs/biome to v2.6.8 ([#760](https://github.com/dallay/agentsync/issues/760)) ([be39d33](https://github.com/dallay/agentsync/commit/be39d33762316ae12933d1d962a934521fe37f83))
+* **deps:** update dependency @dallay/agentsync to v1.53.2 ([#764](https://github.com/dallay/agentsync/issues/764)) ([451b570](https://github.com/dallay/agentsync/commit/451b570a4449e81929a2846a1450e4502f181f8f))
+* **deps:** update dependency @iconify/json to v2.2.560 ([#761](https://github.com/dallay/agentsync/issues/761)) ([b36de7e](https://github.com/dallay/agentsync/commit/b36de7e46d7b557109f6a26b920b186c000de278))
+* **deps:** update dependency astro to v7.4.13 ([#762](https://github.com/dallay/agentsync/issues/762)) ([a17f1a9](https://github.com/dallay/agentsync/commit/a17f1a9b4bd6296aceb97744750175856dfe7a04))
+* **deps:** update dependency starlight-theme-black to v0.7.2 ([#763](https://github.com/dallay/agentsync/issues/763)) ([400b053](https://github.com/dallay/agentsync/commit/400b05354726dac2a1b019cd654331b137964cb8))
+* **deps:** update rust docker tag to v1.100 ([#765](https://github.com/dallay/agentsync/issues/765)) ([c774308](https://github.com/dallay/agentsync/commit/c774308b0f648d589d8b209c12242c99ed3bc9c1))
+
 ## [1.42.6](https://github.com/dallay/agentsync/compare/v1.42.5...v1.42.6) (2026-04-14)
 
 
