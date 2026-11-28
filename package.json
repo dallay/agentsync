@@ -23,5 +23,5 @@
 		"@biomejs/biome": "2.6.8",
 		"lefthook": "^2.1.6"
 	},
-	"version": "1.53.2"
+	"version": "1.54.0"
 }
