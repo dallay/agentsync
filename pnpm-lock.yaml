@@ -56,7 +56,7 @@ importers:
         version: 5.3.0
       '@iconify/json':
         specifier: ^2.2.468
-        version: 2.2.560
+        version: 2.2.561
       astro:
         specifier: ^7.3.3
         version: 7.4.11(@types/node@26.6.6)(yaml@2.9.1)
@@ -491,8 +491,8 @@ packages:
   '@fontsource/geist-sans@5.3.0':
     resolution: {integrity: sha512-AmG7cE1AvE4NHROPaOl1sN+a02cB5xy6pA/ZV76HXqWTCsJTV2SCBc9DTFHfJqnVOODm7HhXIYtUIb75NP5QXQ==}
 
-  '@iconify/json@2.2.560':
-    resolution: {integrity: sha512-YclhHQsi7GT88AOE0lVZFO5n1PKxEa8DImC3e8CHhWLbzQuVHR/i06IXP6Dw5nZWT38PFOKe4NeaHXYdFjbZdQ==}
+  '@iconify/json@2.2.561':
+    resolution: {integrity: sha512-7fNqKYCmeu/2L9R5y5+EtHfotXP61cJeKvtfXotw/4kocYJ0BQrxUCvfN4RxlXXkoeNf9Ltp/wzOgnXYzltrZA==}
 
   '@iconify/types@2.0.0':
     resolution: {integrity: sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg==}
@@ -2516,7 +2516,7 @@ snapshots:
 
   '@fontsource/geist-sans@5.3.0': {}
 
-  '@iconify/json@2.2.560':
+  '@iconify/json@2.2.561':
     dependencies:
       '@iconify/types': 2.0.0
       pathe: 2.0.3
